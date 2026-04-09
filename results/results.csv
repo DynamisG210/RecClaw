@@ -1,1 +1,1 @@
-run_id,model,dataset,config_change,ndcg@10,recall@10,valid_metric,run_time,status,log_path,notesbaseline_bpr_20260409_111908,BPR,ml-1m,task_ml1m+bpr.yaml,,,NDCG@10,,crash,/root/projects/RecClaw/results/baseline/baseline_bpr_20260409_111908.log,baseline | warnings: no metric block could be parsed from the log; run time could not be inferred from log timestamps
+run_id,model,dataset,config_change,ndcg@10,recall@10,valid_metric,run_time,status,log_path,notes
