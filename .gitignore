@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.env
+.venv/
+.pytest_cache/
+.mypy_cache/
+.vscode/
+.idea/
+results/**/*.log
+results/**/*.out
+results/**/*.err
+results/**/*.tmp
+results/**/*.pth
+results/**/*.pt

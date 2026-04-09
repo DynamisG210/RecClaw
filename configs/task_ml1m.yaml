@@ -1,0 +1,26 @@
+dataset: ml-1m
+seed: 2026
+reproducibility: true
+use_gpu: false
+state: INFO
+show_progress: false
+epochs: 100
+eval_step: 1
+stopping_step: 10
+train_batch_size: 2048
+eval_batch_size: 4096
+train_neg_sample_args:
+  distribution: uniform
+  sample_num: 1
+  alpha: 1.0
+  dynamic: false
+  candidate_num: 0
+eval_args:
+  split: {'RS': [0.8, 0.1, 0.1]}
+  group_by: user
+  order: RO
+  mode: full
+metrics: ['NDCG', 'Recall']
+topk: [10]
+valid_metric: NDCG@10
+metric_decimal_place: 4
