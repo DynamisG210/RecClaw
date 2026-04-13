@@ -13,13 +13,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+METRIC_FIELDS = [
+    "ndcg@10",
+    "recall@10",
+    "mrr@10",
+    "hit@10",
+    "precision@10",
+    "itemcoverage@10",
+]
+
 CSV_FIELDS = [
     "run_id",
     "model",
     "dataset",
     "config_change",
-    "ndcg@10",
-    "recall@10",
+    *METRIC_FIELDS,
     "valid_metric",
     "run_time",
     "status",
@@ -27,7 +35,7 @@ CSV_FIELDS = [
     "notes",
 ]
 
-ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\-_]|\[[0-?]*[ -/]*[@-~])")
 TIMESTAMP_RE = re.compile(
     r"^(?P<ts>[A-Z][a-z]{2} \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2})\s+"
 )
@@ -124,8 +132,7 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
         return {
             "model": "",
             "dataset": "",
-            "ndcg@10": "",
-            "recall@10": "",
+            **{metric: "" for metric in METRIC_FIELDS},
             "valid_metric": "",
             "run_time": "",
             "status": "crash",
@@ -224,11 +231,12 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
     else:
         status = "incomplete"
 
+    metric_values = {metric: chosen_metrics.get(metric, "") for metric in METRIC_FIELDS}
+
     return {
         "model": model,
         "dataset": dataset,
-        "ndcg@10": chosen_metrics.get("ndcg@10", ""),
-        "recall@10": chosen_metrics.get("recall@10", ""),
+        **metric_values,
         "valid_metric": valid_metric,
         "run_time": run_time_seconds,
         "status": status,
@@ -239,13 +247,16 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
 
 def normalize_result_record(record: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(record)
-    for key in ("ndcg@10", "recall@10", "run_time"):
+    for key in [*METRIC_FIELDS, "run_time"]:
         value = coerce_float(normalized.get(key))
         normalized[key] = value if value is not None else normalized.get(key, "")
+    for key in METRIC_FIELDS:
+        normalized.setdefault(key, "")
     normalized.setdefault("status", "")
     normalized.setdefault("model", "")
     normalized.setdefault("dataset", "")
     normalized.setdefault("valid_metric", "")
+    normalized.setdefault("metric_source", "")
     normalized.setdefault("warnings", [])
     return normalized
 
@@ -306,8 +317,7 @@ def build_csv_row(
         "model": parsed.get("model", ""),
         "dataset": parsed.get("dataset", ""),
         "config_change": config_change,
-        "ndcg@10": parsed.get("ndcg@10", ""),
-        "recall@10": parsed.get("recall@10", ""),
+        **{metric: parsed.get(metric, "") for metric in METRIC_FIELDS},
         "valid_metric": parsed.get("valid_metric", ""),
         "run_time": parsed.get("run_time", ""),
         "status": status,
@@ -348,8 +358,7 @@ def main() -> int:
         "run_id": args.run_id or log_path.stem,
         "model": parsed.get("model", ""),
         "dataset": parsed.get("dataset", ""),
-        "ndcg@10": parsed.get("ndcg@10", ""),
-        "recall@10": parsed.get("recall@10", ""),
+        **{metric: parsed.get(metric, "") for metric in METRIC_FIELDS},
         "valid_metric": parsed.get("valid_metric", ""),
         "run_time": parsed.get("run_time", ""),
         "status": parsed.get("status", ""),

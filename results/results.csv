@@ -1,1 +1,1 @@
-run_id,model,dataset,config_change,ndcg@10,recall@10,valid_metric,run_time,status,log_path,notes
+run_id,model,dataset,config_change,ndcg@10,recall@10,mrr@10,hit@10,precision@10,itemcoverage@10,valid_metric,run_time,status,log_path,notes
