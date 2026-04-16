@@ -13,13 +13,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+METRIC_FIELDS = [
+    "ndcg@10",
+    "recall@10",
+    "mrr@10",
+    "hit@10",
+    "precision@10",
+    "itemcoverage@10",
+]
+
 CSV_FIELDS = [
     "run_id",
     "model",
     "dataset",
     "config_change",
-    "ndcg@10",
-    "recall@10",
+    *METRIC_FIELDS,
     "valid_metric",
     "run_time",
     "status",
@@ -27,7 +35,7 @@ CSV_FIELDS = [
     "notes",
 ]
 
-ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\-_]|\[[0-?]*[ -/]*[@-~])")
 TIMESTAMP_RE = re.compile(
     r"^(?P<ts>[A-Z][a-z]{2} \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2})\s+"
 )
@@ -40,6 +48,17 @@ INLINE_METRIC_RE = re.compile(
 )
 BEST_VALID_LINE_RE = re.compile(r"best valid\s*:\s*(?P<blob>.+)$", re.IGNORECASE)
 TEST_RESULT_LINE_RE = re.compile(r"test result\s*:\s*(?P<blob>.+)$", re.IGNORECASE)
+FINAL_RESULT_KEYS = {
+    "model",
+    "dataset",
+    "valid_metric",
+    "run_time",
+    "status",
+    "test_result",
+    "best_valid_result",
+    *METRIC_FIELDS,
+}
+SUCCESS_STATUS_VALUES = {"success", "completed", "complete", "finished", "done"}
 
 
 def coerce_float(value: Any) -> float | None:
@@ -104,6 +123,55 @@ def parse_timestamp(line: str) -> datetime | None:
         return None
 
 
+def extract_final_json_result(lines: list[str]) -> dict[str, Any] | None:
+    """Parse the last JSON object at the end of a log if it looks like a final result."""
+    cleaned_lines = [ANSI_ESCAPE_RE.sub("", line) for line in lines]
+    for start in range(len(cleaned_lines) - 1, -1, -1):
+        if "{" not in cleaned_lines[start]:
+            continue
+        suffix = "\n".join(cleaned_lines[start:])
+        candidate = suffix[suffix.find("{") :].strip()
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict) and FINAL_RESULT_KEYS.intersection(
+            str(key).lower() for key in parsed.keys()
+        ):
+            return parsed
+    return None
+
+
+def get_json_value(payload: dict[str, Any], key: str) -> Any:
+    target = key.lower()
+    for existing_key, value in payload.items():
+        if str(existing_key).lower() == target:
+            return value
+    return None
+
+
+def extract_json_metric_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    test_result = get_json_value(payload, "test_result")
+    if isinstance(test_result, dict):
+        return test_result
+    best_valid_result = get_json_value(payload, "best_valid_result")
+    if isinstance(best_valid_result, dict):
+        return best_valid_result
+    return payload
+
+
+def parse_final_json_metrics(payload: dict[str, Any]) -> dict[str, float]:
+    metric_payload = extract_json_metric_payload(payload)
+    metrics: dict[str, float] = {}
+    for metric in METRIC_FIELDS:
+        number = coerce_float(get_json_value(metric_payload, metric))
+        if number is not None:
+            metrics[metric] = number
+    return metrics
+
+
 def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
     path = Path(log_path)
     warnings: list[str] = []
@@ -115,6 +183,7 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
     test_metrics: dict[str, float] = {}
     best_valid_metrics: dict[str, float] = {}
     last_valid_metrics: dict[str, float] = {}
+    final_json_result: dict[str, Any] = {}
     waiting_for_valid_metrics = False
     saw_error_marker = False
 
@@ -124,14 +193,15 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
         return {
             "model": "",
             "dataset": "",
-            "ndcg@10": "",
-            "recall@10": "",
+            **{metric: "" for metric in METRIC_FIELDS},
             "valid_metric": "",
             "run_time": "",
             "status": "crash",
             "metric_source": "",
             "warnings": [f"failed to read log file: {exc}"],
         }
+
+    final_json_result = extract_final_json_result(raw_lines) or {}
 
     for raw_line in raw_lines:
         line = ANSI_ESCAPE_RE.sub("", raw_line)
@@ -190,22 +260,33 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
 
     metric_source = ""
     chosen_metrics: dict[str, float] = {}
-    if test_metrics:
+    json_run_time = None
+    if final_json_result:
+        metric_source = "json/final_result"
+        chosen_metrics = parse_final_json_metrics(final_json_result)
+        model = model or str(get_json_value(final_json_result, "model") or "")
+        dataset = dataset or str(get_json_value(final_json_result, "dataset") or "")
+        valid_metric = valid_metric or str(get_json_value(final_json_result, "valid_metric") or "")
+        json_run_time = coerce_float(get_json_value(final_json_result, "run_time"))
+
+    if not chosen_metrics and test_metrics:
         metric_source = "test_result"
         chosen_metrics = test_metrics
-    elif best_valid_metrics:
+    elif not chosen_metrics and best_valid_metrics:
         metric_source = "best_valid"
         chosen_metrics = best_valid_metrics
         warnings.append("test result not found; fell back to best valid metrics")
-    elif last_valid_metrics:
+    elif not chosen_metrics and last_valid_metrics:
         metric_source = "last_valid"
         chosen_metrics = last_valid_metrics
         warnings.append("test result not found; fell back to last valid metrics")
-    else:
+    elif not chosen_metrics:
         warnings.append("no metric block could be parsed from the log")
 
     run_time_seconds: float | str = ""
-    if first_ts is not None and last_ts is not None:
+    if json_run_time is not None:
+        run_time_seconds = json_run_time
+    elif first_ts is not None and last_ts is not None:
         run_time_seconds = round((last_ts - first_ts).total_seconds(), 2)
     else:
         warnings.append("run time could not be inferred from log timestamps")
@@ -217,18 +298,26 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
     if not valid_metric:
         warnings.append("valid_metric could not be inferred from the log")
 
-    if test_metrics:
+    json_status = str(get_json_value(final_json_result, "status") or "").strip().lower()
+    if final_json_result and json_status in SUCCESS_STATUS_VALUES:
+        status = "success"
+    elif final_json_result and json_status:
+        status = json_status
+    elif final_json_result and chosen_metrics:
+        status = "success"
+    elif test_metrics:
         status = "success"
     elif saw_error_marker:
         status = "crash"
     else:
         status = "incomplete"
 
+    metric_values = {metric: chosen_metrics.get(metric, "") for metric in METRIC_FIELDS}
+
     return {
         "model": model,
         "dataset": dataset,
-        "ndcg@10": chosen_metrics.get("ndcg@10", ""),
-        "recall@10": chosen_metrics.get("recall@10", ""),
+        **metric_values,
         "valid_metric": valid_metric,
         "run_time": run_time_seconds,
         "status": status,
@@ -239,13 +328,16 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
 
 def normalize_result_record(record: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(record)
-    for key in ("ndcg@10", "recall@10", "run_time"):
+    for key in [*METRIC_FIELDS, "run_time"]:
         value = coerce_float(normalized.get(key))
         normalized[key] = value if value is not None else normalized.get(key, "")
+    for key in METRIC_FIELDS:
+        normalized.setdefault(key, "")
     normalized.setdefault("status", "")
     normalized.setdefault("model", "")
     normalized.setdefault("dataset", "")
     normalized.setdefault("valid_metric", "")
+    normalized.setdefault("metric_source", "")
     normalized.setdefault("warnings", [])
     return normalized
 
@@ -306,8 +398,7 @@ def build_csv_row(
         "model": parsed.get("model", ""),
         "dataset": parsed.get("dataset", ""),
         "config_change": config_change,
-        "ndcg@10": parsed.get("ndcg@10", ""),
-        "recall@10": parsed.get("recall@10", ""),
+        **{metric: parsed.get(metric, "") for metric in METRIC_FIELDS},
         "valid_metric": parsed.get("valid_metric", ""),
         "run_time": parsed.get("run_time", ""),
         "status": status,
@@ -348,8 +439,7 @@ def main() -> int:
         "run_id": args.run_id or log_path.stem,
         "model": parsed.get("model", ""),
         "dataset": parsed.get("dataset", ""),
-        "ndcg@10": parsed.get("ndcg@10", ""),
-        "recall@10": parsed.get("recall@10", ""),
+        **{metric: parsed.get(metric, "") for metric in METRIC_FIELDS},
         "valid_metric": parsed.get("valid_metric", ""),
         "run_time": parsed.get("run_time", ""),
         "status": parsed.get("status", ""),

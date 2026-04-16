@@ -1,0 +1,3 @@
+metrics: ["Recall", "NDCG", "MRR", "Hit", "Precision", "ItemCoverage"]
+topk: [10]
+valid_metric: NDCG@10

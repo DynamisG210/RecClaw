@@ -90,8 +90,8 @@ run_one_baseline() {
   timestamp="$(date +%Y%m%d_%H%M%S)"
   run_id="baseline_${requested_name,,}_${timestamp}"
   log_path="${RESULT_DIR}/${run_id}.log"
-  config_files="${CONFIG_DIR}/task_ml1m.yaml ${CONFIG_DIR}/${model_config}"
-  config_change="task_ml1m+${model_config}"
+  config_files="${CONFIG_DIR}/task_ml1m.yaml ${CONFIG_DIR}/${model_config} ${CONFIG_DIR}/lightgcn_metrics.yaml"
+  config_change="task_ml1m+${model_config}+lightgcn_metrics.yaml"
 
   echo "Running baseline ${model_name} on ml-1m"
   echo "Log will be copied to ${log_path}"
