@@ -20,6 +20,10 @@ CSV_FIELDS = [
     "config_change",
     "ndcg@10",
     "recall@10",
+    "mrr@10",
+    "hit@10",
+    "precision@10",
+    "itemcoverage@10",
     "valid_metric",
     "run_time",
     "status",
@@ -126,6 +130,10 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
             "dataset": "",
             "ndcg@10": "",
             "recall@10": "",
+            "mrr@10": "",
+            "hit@10": "",
+            "precision@10": "",
+            "itemcoverage@10": "",
             "valid_metric": "",
             "run_time": "",
             "status": "crash",
@@ -229,6 +237,10 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
         "dataset": dataset,
         "ndcg@10": chosen_metrics.get("ndcg@10", ""),
         "recall@10": chosen_metrics.get("recall@10", ""),
+        "mrr@10": chosen_metrics.get("mrr@10", ""),
+        "hit@10": chosen_metrics.get("hit@10", ""),
+        "precision@10": chosen_metrics.get("precision@10", ""),
+        "itemcoverage@10": chosen_metrics.get("itemcoverage@10", ""),
         "valid_metric": valid_metric,
         "run_time": run_time_seconds,
         "status": status,
@@ -239,7 +251,15 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
 
 def normalize_result_record(record: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(record)
-    for key in ("ndcg@10", "recall@10", "run_time"):
+    for key in (
+        "ndcg@10",
+        "recall@10",
+        "mrr@10",
+        "hit@10",
+        "precision@10",
+        "itemcoverage@10",
+        "run_time",
+    ):
         value = coerce_float(normalized.get(key))
         normalized[key] = value if value is not None else normalized.get(key, "")
     normalized.setdefault("status", "")
@@ -308,6 +328,10 @@ def build_csv_row(
         "config_change": config_change,
         "ndcg@10": parsed.get("ndcg@10", ""),
         "recall@10": parsed.get("recall@10", ""),
+        "mrr@10": parsed.get("mrr@10", ""),
+        "hit@10": parsed.get("hit@10", ""),
+        "precision@10": parsed.get("precision@10", ""),
+        "itemcoverage@10": parsed.get("itemcoverage@10", ""),
         "valid_metric": parsed.get("valid_metric", ""),
         "run_time": parsed.get("run_time", ""),
         "status": status,
@@ -350,6 +374,10 @@ def main() -> int:
         "dataset": parsed.get("dataset", ""),
         "ndcg@10": parsed.get("ndcg@10", ""),
         "recall@10": parsed.get("recall@10", ""),
+        "mrr@10": parsed.get("mrr@10", ""),
+        "hit@10": parsed.get("hit@10", ""),
+        "precision@10": parsed.get("precision@10", ""),
+        "itemcoverage@10": parsed.get("itemcoverage@10", ""),
         "valid_metric": parsed.get("valid_metric", ""),
         "run_time": parsed.get("run_time", ""),
         "status": parsed.get("status", ""),
