@@ -20,7 +20,7 @@ eval_args:
   group_by: user
   order: RO
   mode: full
-metrics: ['NDCG', 'Recall']
+metrics: ['NDCG', 'Recall', 'MRR', 'Hit', 'Precision', 'ItemCoverage']
 topk: [10]
 valid_metric: NDCG@10
 metric_decimal_place: 4
