@@ -9,7 +9,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from collect_result import load_result_source
+try:
+    # Package import path (e.g. import scripts.compare_runs)
+    from .collect_result import load_result_source
+except ImportError:
+    # Script execution path (e.g. py scripts/compare_runs.py)
+    from collect_result import load_result_source
 
 
 def to_float(value: Any) -> float | None:
@@ -54,10 +59,9 @@ def compare_results(
     baseline: dict[str, Any],
     candidate: dict[str, Any],
     metric_name: str,
+    multi_metrics: bool = False,
+    metrics_weights: dict[str, float] = None,
 ) -> dict[str, Any]:
-    metric_key = metric_name.lower()
-    baseline_metric = to_float(baseline.get(metric_key))
-    candidate_metric = to_float(candidate.get(metric_key))
     candidate_status = str(candidate.get("status", "")).lower()
 
     if candidate_status != "success":
@@ -65,29 +69,83 @@ def compare_results(
         explanation = (
             f"candidate status is {candidate.get('status') or 'unknown'}, so the run is treated as crash."
         )
-    elif baseline_metric is None or candidate_metric is None:
-        decision = "crash"
-        explanation = f"missing {metric_name} value, so the comparison is not reliable."
-    elif candidate_metric > baseline_metric:
-        decision = "keep"
-        explanation = f"candidate {metric_name} improved over baseline."
+        return {
+            "baseline_metric_name": metric_name,
+            "baseline_metric": None,
+            "candidate_metric_name": metric_name,
+            "candidate_metric": None,
+            "delta": None,
+            "decision": decision,
+            "explanation": explanation,
+        }
+
+    if multi_metrics and metrics_weights:
+        # Multi-objective optimization using weighted sum
+        baseline_score = 0.0
+        candidate_score = 0.0
+        missing_metrics = []
+
+        for metric, weight in metrics_weights.items():
+            metric_key = metric.lower()
+            baseline_metric = to_float(baseline.get(metric_key))
+            candidate_metric = to_float(candidate.get(metric_key))
+
+            if baseline_metric is None or candidate_metric is None:
+                missing_metrics.append(metric)
+            else:
+                baseline_score += baseline_metric * weight
+                candidate_score += candidate_metric * weight
+
+        if missing_metrics:
+            decision = "crash"
+            explanation = f"missing metrics: {', '.join(missing_metrics)}, so the comparison is not reliable."
+        elif candidate_score > baseline_score:
+            decision = "keep"
+            explanation = f"candidate weighted score improved over baseline."
+        else:
+            decision = "discard"
+            explanation = f"candidate weighted score did not improve over baseline."
+
+        delta = round(candidate_score - baseline_score, 6)
+
+        return {
+            "baseline_metric_name": "weighted_score",
+            "baseline_metric": round(baseline_score, 6),
+            "candidate_metric_name": "weighted_score",
+            "candidate_metric": round(candidate_score, 6),
+            "delta": delta,
+            "decision": decision,
+            "explanation": explanation,
+        }
     else:
-        decision = "discard"
-        explanation = f"candidate {metric_name} did not improve over baseline."
+        # Single metric comparison (original behavior)
+        metric_key = metric_name.lower()
+        baseline_metric = to_float(baseline.get(metric_key))
+        candidate_metric = to_float(candidate.get(metric_key))
 
-    delta = None
-    if baseline_metric is not None and candidate_metric is not None:
-        delta = round(candidate_metric - baseline_metric, 6)
+        if baseline_metric is None or candidate_metric is None:
+            decision = "crash"
+            explanation = f"missing {metric_name} value, so the comparison is not reliable."
+        elif candidate_metric > baseline_metric:
+            decision = "keep"
+            explanation = f"candidate {metric_name} improved over baseline."
+        else:
+            decision = "discard"
+            explanation = f"candidate {metric_name} did not improve over baseline."
 
-    return {
-        "baseline_metric_name": metric_name,
-        "baseline_metric": baseline_metric,
-        "candidate_metric_name": metric_name,
-        "candidate_metric": candidate_metric,
-        "delta": delta,
-        "decision": decision,
-        "explanation": explanation,
-    }
+        delta = None
+        if baseline_metric is not None and candidate_metric is not None:
+            delta = round(candidate_metric - baseline_metric, 6)
+
+        return {
+            "baseline_metric_name": metric_name,
+            "baseline_metric": baseline_metric,
+            "candidate_metric_name": metric_name,
+            "candidate_metric": candidate_metric,
+            "delta": delta,
+            "decision": decision,
+            "explanation": explanation,
+        }
 
 
 def main() -> int:
