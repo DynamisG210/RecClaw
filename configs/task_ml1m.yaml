@@ -1,7 +1,7 @@
 dataset: ml-1m
 seed: 2026
 reproducibility: true
-use_gpu: false
+use_gpu: True
 state: INFO
 show_progress: false
 epochs: 100
