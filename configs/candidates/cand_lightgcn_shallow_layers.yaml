@@ -1,0 +1,4 @@
+candidate_id: cand_lightgcn_shallow_layers
+model: LightGCN
+embedding_size: 64
+n_layers: 1

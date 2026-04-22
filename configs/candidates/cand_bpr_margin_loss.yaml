@@ -1,0 +1,4 @@
+candidate_id: cand_bpr_margin_loss
+model: BPR
+loss_type: BPR_MARGIN
+margin: 0.2

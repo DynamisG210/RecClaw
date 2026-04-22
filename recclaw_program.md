@@ -1,5 +1,8 @@
 # RecClaw Program
 
+This file records the original `v0` program scope. For the current method-level
+stage, use `recclaw_program_v0_5.md` as the active project contract.
+
 ## Scope
 
 - Current task: general recommendation on `ml-1m`
