@@ -1,0 +1,4 @@
+candidate_id: cand_lightgcn_rank_aware_loss
+model: LightGCN
+loss_type: LIGHTGCN_RANK_AWARE
+rank_weight_alpha: 0.5

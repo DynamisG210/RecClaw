@@ -1,0 +1,4 @@
+candidate_id: cand_bpr_popularity_aware_negative
+model: BPR
+neg_sampling: popularity_aware
+popularity_alpha: 0.75

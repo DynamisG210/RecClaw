@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Run one candidate configuration on top of the fixed RecClaw task config.
 # Example:
-#   bash scripts/run_candidate.sh bpr configs/bpr_lr_candidate.yaml
+#   bash scripts/run_candidate.sh bpr configs/candidates/cand_bpr_margin_loss.yaml
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -103,8 +103,12 @@ MODEL_CONFIG="$(model_config_name "${MODEL_NAME}")"
 
 mkdir -p "${RESULT_DIR}"
 
-CONFIG_FILES=("${CONFIG_DIR}/task_ml1m.yaml" "${CONFIG_DIR}/${MODEL_CONFIG}")
-CONFIG_LABELS=("task_ml1m" "${MODEL_CONFIG}")
+CONFIG_FILES=(
+  "${CONFIG_DIR}/task_ml1m.yaml"
+  "${CONFIG_DIR}/${MODEL_CONFIG}"
+  "${CONFIG_DIR}/lightgcn_metrics.yaml"
+)
+CONFIG_LABELS=("task_ml1m" "${MODEL_CONFIG}" "lightgcn_metrics.yaml")
 
 for extra_config in "$@"; do
   resolved_config="$(resolve_path "${extra_config}")" || {

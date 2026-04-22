@@ -1,0 +1,4 @@
+candidate_id: cand_lightgcn_aux_alignment_loss
+model: LightGCN
+loss_type: LIGHTGCN_AUX_ALIGNMENT
+lambda_align: 1e-3

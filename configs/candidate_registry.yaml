@@ -1,0 +1,180 @@
+candidates:
+  - candidate_id: cand_bpr_uniform_neg_baseline_note
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "baseline uniform negative sampling reference"
+    hypothesis: "current uniform negatives serve as the reference supervision pattern for later sampling improvements"
+    implementation_type: "config"
+    minimal_change: "no method change; baseline note only"
+    priority: "medium"
+    status: "spec-ready"
+
+  - candidate_id: cand_bpr_hard_negative_mix
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "weak negative sampling"
+    hypothesis: "mixed hard negatives improve ranking signals"
+    implementation_type: "sampler"
+    minimal_change: "sampler extension + config stub"
+    priority: "high"
+    status: "implement-ready"
+
+  - candidate_id: cand_bpr_popularity_aware_negative
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "negative sampling distribution mismatches realistic exposure"
+    hypothesis: "popularity-aware negatives reduce sampling bias"
+    implementation_type: "sampler"
+    minimal_change: "popularity-aware sampler stub + config"
+    priority: "high"
+    status: "implement-ready"
+
+  - candidate_id: cand_bpr_long_tail_reweight
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "head items dominate training and weaken tail sensitivity"
+    hypothesis: "long-tail reweighting improves tail-related learning signals"
+    implementation_type: "loss"
+    minimal_change: "local reweighted BPR loss stub + config"
+    priority: "high"
+    status: "implement-ready"
+
+  - candidate_id: cand_lightgcn_debiased_negative_sampling
+    category: "Bias & Sample Construction"
+    base_model: "LightGCN"
+    rs_problem: "uniform negatives are too weak for graph ranking"
+    hypothesis: "harder or debiased negatives help learn finer ranking boundaries"
+    implementation_type: "sampler"
+    minimal_change: "debiased sampler stub + config"
+    priority: "medium"
+    status: "implement-ready"
+
+  - candidate_id: cand_lightgcn_layer_weighted_agg
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "rigid layer aggregation"
+    hypothesis: "learnable layer weights outperform uniform averaging"
+    implementation_type: "module"
+    minimal_change: "local layer-weighted LightGCN scaffold + config"
+    priority: "high"
+    status: "implemented"
+
+  - candidate_id: cand_lightgcn_residual_layer_mix
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "multi-layer propagation fusion is too rigid"
+    hypothesis: "residual layer mixing improves layer information utilization"
+    implementation_type: "module"
+    minimal_change: "local residual layer-mix scaffold + config"
+    priority: "high"
+    status: "implement-ready"
+
+  - candidate_id: cand_lightgcn_user_item_gate
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "user-item interaction remains too weak"
+    hypothesis: "a lightweight gate can improve matching expressiveness"
+    implementation_type: "module"
+    minimal_change: "interaction head extension"
+    priority: "medium"
+    status: "idea"
+
+  - candidate_id: cand_bpr_mlp_head
+    category: "Representation & Interaction"
+    base_model: "BPR"
+    rs_problem: "pure dot-product scoring is too limited"
+    hypothesis: "a minimal MLP head improves nonlinear matching"
+    implementation_type: "module"
+    minimal_change: "scoring head replacement or extension"
+    priority: "medium"
+    status: "idea"
+
+  - candidate_id: cand_bpr_margin_loss
+    category: "Objective & Optimization"
+    base_model: "BPR"
+    rs_problem: "weak ranking boundary"
+    hypothesis: "margin-aware loss strengthens pairwise separation"
+    implementation_type: "loss"
+    minimal_change: "local margin BPR loss stub + config"
+    priority: "high"
+    status: "implement-ready"
+
+  - candidate_id: cand_bpr_popularity_regularized
+    category: "Objective & Optimization"
+    base_model: "BPR"
+    rs_problem: "popular items dominate optimization"
+    hypothesis: "popularity-aware regularization reduces head dominance"
+    implementation_type: "loss"
+    minimal_change: "local popularity-regularized BPR loss stub + config"
+    priority: "high"
+    status: "implement-ready"
+
+  - candidate_id: cand_bpr_norm_constrained
+    category: "Objective & Optimization"
+    base_model: "BPR"
+    rs_problem: "embedding scale drift"
+    hypothesis: "norm constraints improve optimization stability"
+    implementation_type: "loss"
+    minimal_change: "local norm-constrained BPR loss stub + config"
+    priority: "medium"
+    status: "implement-ready"
+
+  - candidate_id: cand_lightgcn_aux_alignment_loss
+    category: "Objective & Optimization"
+    base_model: "LightGCN"
+    rs_problem: "single objective may not coordinate propagation layers well"
+    hypothesis: "auxiliary alignment loss improves layer consistency"
+    implementation_type: "loss"
+    minimal_change: "local layer-alignment loss stub + config"
+    priority: "medium"
+    status: "implement-ready"
+
+  - candidate_id: cand_lightgcn_rank_aware_loss
+    category: "Objective & Optimization"
+    base_model: "LightGCN"
+    rs_problem: "training objective is insufficiently aligned with NDCG-oriented ranking"
+    hypothesis: "rank-aware objective better matches top-k ranking goals"
+    implementation_type: "loss"
+    minimal_change: "local rank-aware pairwise loss stub + config"
+    priority: "medium"
+    status: "implement-ready"
+
+  - candidate_id: cand_rerank_popularity_penalty
+    category: "Result Distribution Quality"
+    base_model: "BPR / LightGCN"
+    rs_problem: "recommendation outputs are too concentrated on head items"
+    hypothesis: "post-hoc popularity penalty improves output distribution"
+    implementation_type: "rerank"
+    minimal_change: "local score-adjustment stub + config"
+    priority: "low"
+    status: "spec-ready"
+
+  - candidate_id: cand_rerank_coverage_boost
+    category: "Result Distribution Quality"
+    base_model: "BPR / LightGCN"
+    rs_problem: "coverage is too low"
+    hypothesis: "rerank coverage boost improves item spread under limited precision loss"
+    implementation_type: "rerank"
+    minimal_change: "local score-adjustment stub + config"
+    priority: "low"
+    status: "spec-ready"
+
+  - candidate_id: cand_lightgcn_small_embedding
+    category: "Efficiency & Serving Constraints"
+    base_model: "LightGCN"
+    rs_problem: "embedding dimension may be unnecessarily large"
+    hypothesis: "smaller embeddings preserve near-baseline quality with lower complexity"
+    implementation_type: "config"
+    minimal_change: "embedding size config stub"
+    priority: "high"
+    status: "implement-ready"
+
+  - candidate_id: cand_lightgcn_shallow_layers
+    category: "Efficiency & Serving Constraints"
+    base_model: "LightGCN"
+    rs_problem: "graph propagation depth may be unnecessarily high"
+    hypothesis: "shallower propagation achieves similar quality with lower complexity"
+    implementation_type: "config"
+    minimal_change: "layer number config stub"
+    priority: "high"
+    status: "implement-ready"
