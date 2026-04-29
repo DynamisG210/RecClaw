@@ -1,4 +1,3 @@
 candidate_id: cand_lightgcn_debiased_negative_sampling
-model: LightGCN
-neg_sampling: debiased
+model: LightGCNDebiasedNegative
 debias_alpha: 0.5

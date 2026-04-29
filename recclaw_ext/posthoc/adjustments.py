@@ -1,4 +1,4 @@
-"""Rerank score adjustment stubs for local RecClaw experiments."""
+"""Post-training score adjustment candidates for local RecClaw experiments."""
 
 from __future__ import annotations
 

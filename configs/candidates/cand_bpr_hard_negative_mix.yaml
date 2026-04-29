@@ -1,4 +1,3 @@
 candidate_id: cand_bpr_hard_negative_mix
-model: BPR
-neg_sampling: mixed
+model: BPRHardNegative
 hard_negative_ratio: 0.5

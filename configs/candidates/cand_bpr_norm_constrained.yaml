@@ -1,5 +1,4 @@
 candidate_id: cand_bpr_norm_constrained
-model: BPR
-loss_type: BPR_NORM_CONSTRAINED
+model: BPRNormConstrained
 lambda_norm: 1e-4
 max_norm: 1.0

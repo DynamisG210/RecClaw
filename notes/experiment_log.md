@@ -14,6 +14,14 @@ Use candidate ids from `notes/candidate_library.md` and
 - `implement-ready`
 - `implemented`
 
+## Current Layout Decision
+
+- Candidate execution has three runner types: `config_only`, `model`, and `posthoc`.
+- Training-time changes, including loss and sampler ideas, enter through `recclaw_ext.models`.
+- Internal loss and sampler helpers live under `recclaw_ext.models._losses` and `recclaw_ext.models._samplers`.
+- `recclaw_ext.losses`, `recclaw_ext.samplers`, `recclaw_ext.features`, and `recclaw_ext.rerank` have been removed.
+- `posthoc` is reserved for trained-score adjustment flows such as popularity penalty or coverage boost.
+
 ## Entry Template
 
 ```yaml
@@ -21,6 +29,9 @@ candidate_id:
 category:
 base_model:
 current_status:
+runner_type:
+wired:
+entrypoint:
 existing_artifacts:
 current_blocker:
 next_action:
@@ -37,32 +48,69 @@ notes:
 - category: Representation & Interaction
 - base_model: LightGCN
 - current_status: implemented
+- runner_type: model
+- wired: true
+- entrypoint: `recclaw_ext.models:LightGCNLW`
 - existing_artifacts: `recclaw_ext/models/lightgcn_lw.py`, `configs/candidates/cand_lightgcn_layer_weighted_agg.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: local model scaffold exists, but current run path does not register or select `LightGCNLW`
-- next_action: add local model discovery or a candidate-specific runtime path in a later integration task
-- notes: no RecBole core change should be needed; do not treat this as a completed experiment result
+- current_blocker: none at wiring level
+- next_action: tune only under controlled, comparable baseline budgets
+- notes: local model changes layer aggregation in `forward`
+
+### cand_lightgcn_residual_layer_mix
+
+- candidate_id: cand_lightgcn_residual_layer_mix
+- category: Representation & Interaction
+- base_model: LightGCN
+- current_status: implemented
+- runner_type: model
+- wired: true
+- entrypoint: `recclaw_ext.models:LightGCNResidualMix`
+- existing_artifacts: `recclaw_ext/models/lightgcn_residual.py`, `configs/candidates/cand_lightgcn_residual_layer_mix.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: none at wiring level
+- next_action: tune only under controlled, comparable baseline budgets
+- notes: local model mixes ego embeddings into layer aggregation
 
 ### cand_bpr_margin_loss
 
 - candidate_id: cand_bpr_margin_loss
 - category: Objective & Optimization
 - base_model: BPR
-- current_status: implement-ready
-- existing_artifacts: `recclaw_ext/losses/bpr_margin.py`, `configs/candidates/cand_bpr_margin_loss.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: local loss stub exists, but RecBole BPR does not consume `loss_type: BPR_MARGIN`
-- next_action: wire the local loss through a local BPR extension or external training adapter
-- notes: stub only; no training result has been produced
+- current_status: implemented
+- runner_type: model
+- wired: true
+- entrypoint: `recclaw_ext.models:BPRMargin`
+- existing_artifacts: `recclaw_ext/models/bpr_margin.py`, `recclaw_ext/models/_losses.py`, `configs/candidates/cand_bpr_margin_loss.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: none at wiring level
+- next_action: evaluate with a fair BPR baseline budget beyond 1-epoch smoke tests
+- notes: `margin` is consumed by `BPRMargin.calculate_loss`
 
-### cand_bpr_popularity_regularized
+### cand_lightgcn_small_embedding
 
-- candidate_id: cand_bpr_popularity_regularized
-- category: Objective & Optimization
-- base_model: BPR
-- current_status: implement-ready
-- existing_artifacts: `recclaw_ext/losses/bpr_popreg.py`, `configs/candidates/cand_bpr_popularity_regularized.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: popularity signal and loss integration are not connected to the BPR training path
-- next_action: define how negative item popularity is passed into the local loss
-- notes: local experimentation stub; keep the regularization simple until first runnable integration
+- candidate_id: cand_lightgcn_small_embedding
+- category: Efficiency & Serving Constraints
+- base_model: LightGCN
+- current_status: implemented
+- runner_type: config_only
+- wired: true
+- entrypoint: `recbole.model.general_recommender.lightgcn:LightGCN`
+- existing_artifacts: `configs/candidates/cand_lightgcn_small_embedding.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: none at wiring level
+- next_action: run only against a comparable LightGCN baseline budget
+- notes: no local model code is needed
+
+### cand_lightgcn_shallow_layers
+
+- candidate_id: cand_lightgcn_shallow_layers
+- category: Efficiency & Serving Constraints
+- base_model: LightGCN
+- current_status: implemented
+- runner_type: config_only
+- wired: true
+- entrypoint: `recbole.model.general_recommender.lightgcn:LightGCN`
+- existing_artifacts: `configs/candidates/cand_lightgcn_shallow_layers.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: none at wiring level
+- next_action: run only against a comparable LightGCN baseline budget
+- notes: no local model code is needed
 
 ### cand_bpr_hard_negative_mix
 
@@ -70,32 +118,13 @@ notes:
 - category: Bias & Sample Construction
 - base_model: BPR
 - current_status: implement-ready
-- existing_artifacts: `recclaw_ext/samplers/mixed_negative.py`, `configs/candidates/cand_bpr_hard_negative_mix.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: mixed sampler stub is not connected to RecBole sampler or trainer flow
-- next_action: decide whether to integrate through a local sampler wrapper or a local BPR candidate runner
-- notes: does not implement online hard negative mining; current design is uniform plus popularity-biased mixing
-
-### cand_lightgcn_small_embedding
-
-- candidate_id: cand_lightgcn_small_embedding
-- category: Efficiency & Serving Constraints
-- base_model: LightGCN
-- current_status: implement-ready
-- existing_artifacts: `configs/candidates/cand_lightgcn_small_embedding.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: none at artifact level; candidate still needs a controlled run against the fixed LightGCN baseline
-- next_action: run as a config-only LightGCN candidate when experiment execution resumes
-- notes: no local code stub is needed
-
-### cand_lightgcn_shallow_layers
-
-- candidate_id: cand_lightgcn_shallow_layers
-- category: Efficiency & Serving Constraints
-- base_model: LightGCN
-- current_status: implement-ready
-- existing_artifacts: `configs/candidates/cand_lightgcn_shallow_layers.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: none at artifact level; candidate still needs a controlled run against the fixed LightGCN baseline
-- next_action: run as a config-only LightGCN candidate when experiment execution resumes
-- notes: no local code stub is needed
+- runner_type: model
+- wired: false
+- entrypoint: `recclaw_ext.models:BPRHardNegative`
+- existing_artifacts: `recclaw_ext/models/_samplers.py`, `configs/candidates/cand_bpr_hard_negative_mix.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: model subclass does not exist yet
+- next_action: implement `BPRHardNegative` and consume `hard_negative_ratio` inside `calculate_loss`
+- notes: sampler logic should stay internal to the model-entry path
 
 ### cand_bpr_popularity_aware_negative
 
@@ -103,10 +132,13 @@ notes:
 - category: Bias & Sample Construction
 - base_model: BPR
 - current_status: implement-ready
-- existing_artifacts: `recclaw_ext/samplers/popularity_aware.py`, `configs/candidates/cand_bpr_popularity_aware_negative.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: sampler stub exists, but item popularity construction and sampler integration are not wired
-- next_action: define the item-popularity vector source and connect it through a local sampling path
-- notes: stub only; do not modify RecBole core for this step
+- runner_type: model
+- wired: false
+- entrypoint: `recclaw_ext.models:BPRPopularityAwareNegative`
+- existing_artifacts: `recclaw_ext/models/_samplers.py`, `configs/candidates/cand_bpr_popularity_aware_negative.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: model subclass does not exist yet
+- next_action: define item-popularity vector source and consume `popularity_alpha`
+- notes: do not reintroduce a top-level sampler package
 
 ### cand_bpr_long_tail_reweight
 
@@ -114,21 +146,27 @@ notes:
 - category: Bias & Sample Construction
 - base_model: BPR
 - current_status: implement-ready
-- existing_artifacts: `recclaw_ext/losses/bpr_long_tail.py`, `configs/candidates/cand_bpr_long_tail_reweight.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: item weighting signal is not yet connected to BPR loss computation
-- next_action: define tail-aware item weights and pass them into the local loss in a later integration task
-- notes: stub only; keep weighting interpretable for the first runnable version
+- runner_type: model
+- wired: false
+- entrypoint: `recclaw_ext.models:BPRLongTailReweight`
+- existing_artifacts: `recclaw_ext/models/_losses.py`, `configs/candidates/cand_bpr_long_tail_reweight.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: model subclass does not exist yet
+- next_action: implement model-level tail weights and consume `tail_weight_alpha`
+- notes: loss helper exists; executable candidate still needs the model class
 
-### cand_lightgcn_residual_layer_mix
+### cand_bpr_popularity_regularized
 
-- candidate_id: cand_lightgcn_residual_layer_mix
-- category: Representation & Interaction
-- base_model: LightGCN
+- candidate_id: cand_bpr_popularity_regularized
+- category: Objective & Optimization
+- base_model: BPR
 - current_status: implement-ready
-- existing_artifacts: `recclaw_ext/models/lightgcn_residual.py`, `configs/candidates/cand_lightgcn_residual_layer_mix.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: local model scaffold exists, but current run path does not register or select `LightGCNResidualMix`
-- next_action: add local model discovery or a candidate-specific runtime path in a later integration task
-- notes: no RecBole core change should be needed
+- runner_type: model
+- wired: false
+- entrypoint: `recclaw_ext.models:BPRPopularityRegularized`
+- existing_artifacts: `recclaw_ext/models/_losses.py`, `configs/candidates/cand_bpr_popularity_regularized.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: model subclass does not exist yet
+- next_action: implement `calculate_loss` and consume `lambda_pop`
+- notes: loss helper exists; executable candidate still needs the model class
 
 ### cand_lightgcn_rank_aware_loss
 
@@ -136,7 +174,10 @@ notes:
 - category: Objective & Optimization
 - base_model: LightGCN
 - current_status: implement-ready
-- existing_artifacts: `recclaw_ext/losses/rank_aware.py`, `configs/candidates/cand_lightgcn_rank_aware_loss.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
-- current_blocker: rank-aware loss stub exists, but pair weights and LightGCN loss integration are not wired
-- next_action: define the pair-weight signal and connect the loss through a local LightGCN extension
-- notes: stub only; no metric-aligned training result has been produced
+- runner_type: model
+- wired: false
+- entrypoint: `recclaw_ext.models:LightGCNRankAware`
+- existing_artifacts: `recclaw_ext/models/_losses.py`, `configs/candidates/cand_lightgcn_rank_aware_loss.yaml`, `configs/candidate_registry.yaml`, `notes/candidate_library.md`
+- current_blocker: model subclass does not exist yet
+- next_action: implement rank-aware LightGCN loss path and consume `rank_weight_alpha`
+- notes: loss helper exists; executable candidate still needs the model class

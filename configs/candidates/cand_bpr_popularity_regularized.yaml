@@ -1,4 +1,3 @@
 candidate_id: cand_bpr_popularity_regularized
-model: BPR
-loss_type: BPR_POPREG
+model: BPRPopularityRegularized
 lambda_pop: 1e-4
