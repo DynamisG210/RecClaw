@@ -20,9 +20,19 @@ At this stage, the candidate library is centered on:
 
 - `BPR`
 - `LightGCN`
-- lightweight rerank-style post-processing candidates
+- lightweight posthoc score-adjustment candidates
 
 This library should be used as the immediate source for prioritization, specification, and near-term implementation.
+
+## Current Implementation Convention
+
+Candidate entrypoints are intentionally narrow:
+
+- `config_only`: a RecBole-native config change, with no local model class.
+- `model`: a training-time local model class under `recclaw_ext/models`.
+- `posthoc`: a trained-score adjustment under `recclaw_ext/posthoc`.
+
+Loss and sampler ideas are no longer top-level packages. They should be implemented as model-entry candidates, with reusable helpers kept in `recclaw_ext/models/_losses.py` or `recclaw_ext/models/_samplers.py`.
 
 ---
 
@@ -77,16 +87,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: purely random negative samples are often too weak and provide insufficient top-k ranking pressure
 - hypothesis: if BPR is trained with a mixed pool that includes harder negatives, the model may learn a sharper ranking boundary and improve top-k recommendation quality
 - minimal_change: replace purely uniform negative sampling with a mixed negative strategy that combines random negatives and harder negatives
-- implementation_type: sampler
+- implementation_type: model
 - expected_gain: stronger pairwise ranking signal and better top-k discrimination
 - risk: harder negatives may include noisy pseudo-negatives and may make optimization less stable
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/samplers/mixed_negative.py`, `configs/candidates/cand_bpr_hard_negative_mix.yaml`
+- files to edit: `recclaw_ext/models/bpr_hard_negative.py`, `recclaw_ext/models/_samplers.py`, `configs/candidates/cand_bpr_hard_negative_mix.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local candidate stub; full trainer/sampler wiring can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `BPRHardNegative` model class
 - expected experiment comparison: compare the mixed-negative BPR candidate against the fixed BPR uniform-negative baseline on `ml-1m`
 
 ## cand_bpr_popularity_aware_negative
@@ -96,16 +106,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: the negative sampling distribution does not match realistic exposure structure and may introduce sampling bias
 - hypothesis: if negative sampling is adjusted according to item popularity, BPR may learn a less biased preference boundary and reduce exposure-related distortion
 - minimal_change: modify the negative sampler so that item popularity affects negative selection probability
-- implementation_type: sampler
+- implementation_type: model
 - expected_gain: more realistic training negatives and reduced mismatch between training signal and recommendation environment
 - risk: popularity-aware negatives may over-penalize head items and hurt overall relevance if designed too aggressively
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/samplers/popularity_aware.py`, `configs/candidates/cand_bpr_popularity_aware_negative.yaml`
+- files to edit: `recclaw_ext/models/bpr_popularity_aware_negative.py`, `recclaw_ext/models/_samplers.py`, `configs/candidates/cand_bpr_popularity_aware_negative.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local sampler scaffold; trainer/sampler integration can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `BPRPopularityAwareNegative` model class
 - expected experiment comparison: compare popularity-aware BPR negatives against the fixed BPR uniform-negative baseline on `ml-1m`
 
 ## cand_bpr_long_tail_reweight
@@ -115,16 +125,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: head items dominate training, while long-tail items receive too little effective optimization pressure
 - hypothesis: if long-tail-related training cases are reweighted, the model may improve tail sensitivity and reduce head-dominated learning behavior
 - minimal_change: add long-tail-aware weighting to samples or pairwise loss terms
-- implementation_type: loss
+- implementation_type: model
 - expected_gain: better sensitivity to tail items and more balanced learning pressure across the item space
 - risk: excessive reweighting may hurt performance on frequently interacted items and lower the main ranking metric
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/losses/bpr_long_tail.py`, `configs/candidates/cand_bpr_long_tail_reweight.yaml`
+- files to edit: `recclaw_ext/models/bpr_long_tail.py`, `recclaw_ext/models/_losses.py`, `configs/candidates/cand_bpr_long_tail_reweight.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local reweighting loss stub; BPR loss wiring can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `BPRLongTailReweight` model class
 - expected experiment comparison: compare long-tail reweighted BPR against the fixed BPR baseline on `ml-1m`
 
 ## cand_lightgcn_debiased_negative_sampling
@@ -134,16 +144,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: in graph recommendation, uniform negatives are often too weak to teach fine-grained ranking boundaries
 - hypothesis: if LightGCN uses stronger or more debiased negative construction, graph embeddings may separate relevant and irrelevant items more effectively
 - minimal_change: replace the default negative construction with a stronger or more informative sampler for LightGCN training
-- implementation_type: sampler
+- implementation_type: model
 - expected_gain: sharper ranking signal in graph-based recommendation and stronger fine-grained discrimination
 - risk: harder negatives may increase training instability or amplify noisy pseudo-negative effects
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/samplers/debiased_negative.py`, `configs/candidates/cand_lightgcn_debiased_negative_sampling.yaml`
+- files to edit: `recclaw_ext/models/lightgcn_debiased_negative.py`, `recclaw_ext/models/_samplers.py`, `configs/candidates/cand_lightgcn_debiased_negative_sampling.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local sampler scaffold; LightGCN sampler/trainer integration can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `LightGCNDebiasedNegative` model class
 - expected experiment comparison: compare debiased-negative LightGCN against the fixed LightGCN baseline on `ml-1m`
 
 ---
@@ -179,13 +189,13 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - implementation_type: module
 - expected_gain: better layer information utilization and reduced over-smoothing risk
 - risk: the residual path may dominate too strongly and weaken the benefit of propagation
-- status: implement-ready
+- status: implemented
 
 ### Minimal implementation path
 
 - files to edit: `recclaw_ext/models/lightgcn_residual.py`, `configs/candidates/cand_lightgcn_residual_layer_mix.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local model scaffold; model discovery/run wiring can be deferred
+- whether local extension is enough: yes; this candidate is based on the local `LightGCNResidualMix` model class
 - expected experiment comparison: compare residual-mix LightGCN against the fixed LightGCN baseline on `ml-1m`
 
 ## cand_lightgcn_user_item_gate
@@ -223,16 +233,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: the ranking boundary between positive and negative items is often not strong enough
 - hypothesis: if BPR is made margin-aware, the model may enforce clearer positive-negative separation and improve ranking quality
 - minimal_change: add a margin-aware reformulation or explicit margin term on top of the standard BPR loss
-- implementation_type: loss
+- implementation_type: model
 - expected_gain: stronger ranking boundary and potentially better NDCG@10
 - risk: an overly strong margin may reduce optimization smoothness and destabilize training
-- status: implement-ready
+- status: implemented
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/losses/bpr_margin.py`, `configs/candidates/cand_bpr_margin_loss.yaml`
+- files to edit: `recclaw_ext/models/bpr_margin.py`, `recclaw_ext/models/_losses.py`, `configs/candidates/cand_bpr_margin_loss.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local loss stub; runtime selection from RecBole's stock BPR path can be wired later
+- whether local extension is enough: yes; this candidate is wired through the local `BPRMargin` model class
 - expected experiment comparison: compare the margin-aware BPR candidate against the fixed BPR baseline on `ml-1m`
 
 ## cand_bpr_popularity_regularized
@@ -242,16 +252,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: popular items attract too much optimization pressure and dominate training
 - hypothesis: if popularity-aware regularization is added, the model may reduce head dominance and learn more balanced preference signals
 - minimal_change: add a popularity-aware regularization term to the BPR objective
-- implementation_type: loss
+- implementation_type: model
 - expected_gain: less head-item domination and more balanced ranking behavior
 - risk: suppressing popularity too strongly may hurt relevance on genuinely useful head items
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/losses/bpr_popreg.py`, `configs/candidates/cand_bpr_popularity_regularized.yaml`
+- files to edit: `recclaw_ext/models/bpr_popularity_regularized.py`, `recclaw_ext/models/_losses.py`, `configs/candidates/cand_bpr_popularity_regularized.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local loss stub; full model-loss wiring can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `BPRPopularityRegularized` model class
 - expected experiment comparison: compare the popularity-regularized BPR candidate against the fixed BPR baseline on `ml-1m`
 
 ## cand_bpr_norm_constrained
@@ -261,16 +271,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: embedding scale may drift during training and hurt stability or generalization
 - hypothesis: if embedding norms are explicitly constrained, BPR may train more stably and produce more controlled representations
 - minimal_change: add an embedding norm constraint or norm-aware regularization term
-- implementation_type: loss
+- implementation_type: model
 - expected_gain: improved optimization stability and reduced scale drift
 - risk: excessive norm control may weaken useful representation flexibility
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/losses/bpr_norm.py`, `configs/candidates/cand_bpr_norm_constrained.yaml`
+- files to edit: `recclaw_ext/models/bpr_norm_constrained.py`, `recclaw_ext/models/_losses.py`, `configs/candidates/cand_bpr_norm_constrained.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local norm-penalty loss stub; BPR loss wiring can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `BPRNormConstrained` model class
 - expected experiment comparison: compare norm-constrained BPR against the fixed BPR baseline on `ml-1m`
 
 ## cand_lightgcn_aux_alignment_loss
@@ -280,16 +290,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: graph propagation representation learning is optimized under a single objective and may not sufficiently coordinate layer behavior
 - hypothesis: if an auxiliary alignment loss is introduced, LightGCN may learn more coherent propagation-layer representations
 - minimal_change: add an auxiliary alignment loss across layer outputs or representation views during training
-- implementation_type: loss
+- implementation_type: model
 - expected_gain: better propagation consistency and potentially more stable graph representation learning
 - risk: alignment pressure may over-constrain useful diversity across layers
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/losses/alignment.py`, `configs/candidates/cand_lightgcn_aux_alignment_loss.yaml`
+- files to edit: `recclaw_ext/models/lightgcn_aux_alignment.py`, `recclaw_ext/models/_losses.py`, `configs/candidates/cand_lightgcn_aux_alignment_loss.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local auxiliary loss stub; LightGCN training-loss wiring can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `LightGCNAuxAlignment` model class
 - expected experiment comparison: compare auxiliary-alignment LightGCN against the fixed LightGCN baseline on `ml-1m`
 
 ## cand_lightgcn_rank_aware_loss
@@ -299,16 +309,16 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - rs_problem: the training objective is not closely enough aligned with NDCG-oriented top-k ranking behavior
 - hypothesis: if a rank-aware objective is used, LightGCN may optimize more directly for top-k recommendation quality
 - minimal_change: replace or augment the current training loss with a rank-aware ranking objective
-- implementation_type: loss
+- implementation_type: model
 - expected_gain: improved alignment between optimization behavior and evaluation target
 - risk: rank-aware losses may be harder to optimize and more sensitive to design details
 - status: implement-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/losses/rank_aware.py`, `configs/candidates/cand_lightgcn_rank_aware_loss.yaml`
+- files to edit: `recclaw_ext/models/lightgcn_rank_aware.py`, `recclaw_ext/models/_losses.py`, `configs/candidates/cand_lightgcn_rank_aware_loss.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local rank-aware loss stub; LightGCN loss wiring can be deferred
+- whether local extension is enough: yes, but it must be wired through the local `LightGCNRankAware` model class
 - expected experiment comparison: compare rank-aware LightGCN against the fixed LightGCN baseline on `ml-1m`
 
 ---
@@ -320,38 +330,38 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 - category: Result Distribution Quality
 - base_model: BPR / LightGCN
 - rs_problem: recommendation results are too concentrated on head items
-- hypothesis: if a popularity-based penalty is applied during reranking, the final recommendation distribution may become less head-concentrated
-- minimal_change: apply a post-hoc popularity penalty in the rerank stage
-- implementation_type: rerank
+- hypothesis: if a popularity-based penalty is applied after model scoring, the final recommendation distribution may become less head-concentrated
+- minimal_change: apply a posthoc popularity penalty to trained-model scores
+- implementation_type: posthoc
 - expected_gain: broader recommendation distribution and reduced head-item concentration
 - risk: the main relevance metric may drop if popularity is penalized too strongly
 - status: spec-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/features/rerank_adjustments.py`, `configs/candidates/cand_rerank_popularity_penalty.yaml`
+- files to edit: `recclaw_ext/posthoc/adjustments.py`, `configs/candidates/cand_rerank_popularity_penalty.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local score-adjustment stub; rerank evaluation flow is deferred
-- expected experiment comparison: compare popularity-penalty reranking against the fixed BPR and LightGCN baselines on `ml-1m`
+- whether local extension is enough: yes for a local score-adjustment class; posthoc evaluation flow is deferred
+- expected experiment comparison: compare popularity-penalty posthoc adjustment against the fixed BPR and LightGCN baselines on `ml-1m`
 
 ## cand_rerank_coverage_boost
 
 - category: Result Distribution Quality
 - base_model: BPR / LightGCN
 - rs_problem: overall item coverage is low
-- hypothesis: if a coverage-oriented rerank boost is added, the system may improve coverage with only limited precision loss
-- minimal_change: add a rerank-stage score adjustment that boosts under-exposed items when relevance differences are small
-- implementation_type: rerank
+- hypothesis: if a coverage-oriented posthoc boost is added, the system may improve coverage with only limited precision loss
+- minimal_change: add a posthoc score adjustment that boosts under-exposed items when relevance differences are small
+- implementation_type: posthoc
 - expected_gain: improved item coverage and healthier output distribution
-- risk: even mild reranking may still hurt NDCG@10 if the coverage pressure is not well controlled
+- risk: even mild posthoc adjustment may still hurt NDCG@10 if the coverage pressure is not well controlled
 - status: spec-ready
 
 ### Minimal implementation path
 
-- files to edit: `recclaw_ext/features/rerank_adjustments.py`, `configs/candidates/cand_rerank_coverage_boost.yaml`
+- files to edit: `recclaw_ext/posthoc/adjustments.py`, `configs/candidates/cand_rerank_coverage_boost.yaml`
 - whether RecBole core changes are needed: no
-- whether local extension is enough: yes for a local score-adjustment stub; rerank evaluation flow is deferred
-- expected experiment comparison: compare coverage-boost reranking against the fixed BPR and LightGCN baselines on `ml-1m`
+- whether local extension is enough: yes for a local score-adjustment class; posthoc evaluation flow is deferred
+- expected experiment comparison: compare coverage-boost posthoc adjustment against the fixed BPR and LightGCN baselines on `ml-1m`
 
 ---
 
@@ -401,11 +411,11 @@ The `Side Information & Cold Start` category is intentionally deferred in this v
 
 Among the candidates above, the strongest near-term implementation targets are:
 
+- `cand_bpr_long_tail_reweight`
+- `cand_bpr_popularity_regularized`
+- `cand_bpr_margin_loss`
 - `cand_bpr_hard_negative_mix`
 - `cand_bpr_popularity_aware_negative`
-- `cand_bpr_long_tail_reweight`
-- `cand_bpr_margin_loss`
-- `cand_bpr_popularity_regularized`
 - `cand_lightgcn_layer_weighted_agg`
 - `cand_lightgcn_residual_layer_mix`
 - `cand_lightgcn_rank_aware_loss`

@@ -217,6 +217,8 @@ Because these problems appear at the output stage, this category is often realiz
 
 So although this category belongs to the recommendation problem space, it often manifests as **rerank- or output-facing pipeline logic**, optionally supported by lightweight features or auxiliary losses.
 
+In the current RecClaw code layout, these trained-score adjustment ideas use the `posthoc` entrypoint under `recclaw_ext/posthoc`. The word "rerank" remains the method concept, but it is not a top-level package name.
+
 ### Current-stage feasible directions
 
 At the current stage, the most feasible directions include:

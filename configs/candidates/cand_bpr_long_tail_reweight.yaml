@@ -1,4 +1,3 @@
 candidate_id: cand_bpr_long_tail_reweight
-model: BPR
-loss_type: BPR_LONG_TAIL_REWEIGHT
+model: BPRLongTailReweight
 tail_weight_alpha: 0.5
