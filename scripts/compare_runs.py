@@ -61,7 +61,14 @@ def compare_results(
     metric_name: str,
     multi_metrics: bool = False,
     metrics_weights: dict[str, float] = None,
+    metric_directions: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    metric_directions = metric_directions or {}
+
+    def metric_direction(name: str) -> int:
+        value = int(metric_directions.get(name.lower(), 1))
+        return -1 if value < 0 else 1
+
     candidate_status = str(candidate.get("status", "")).lower()
 
     if candidate_status != "success":
@@ -89,12 +96,13 @@ def compare_results(
             metric_key = metric.lower()
             baseline_metric = to_float(baseline.get(metric_key))
             candidate_metric = to_float(candidate.get(metric_key))
+            direction = metric_direction(metric_key)
 
             if baseline_metric is None or candidate_metric is None:
                 missing_metrics.append(metric)
             else:
-                baseline_score += baseline_metric * weight
-                candidate_score += candidate_metric * weight
+                baseline_score += (baseline_metric * direction) * weight
+                candidate_score += (candidate_metric * direction) * weight
 
         if missing_metrics:
             decision = "crash"
@@ -122,11 +130,12 @@ def compare_results(
         metric_key = metric_name.lower()
         baseline_metric = to_float(baseline.get(metric_key))
         candidate_metric = to_float(candidate.get(metric_key))
+        direction = metric_direction(metric_key)
 
         if baseline_metric is None or candidate_metric is None:
             decision = "crash"
             explanation = f"missing {metric_name} value, so the comparison is not reliable."
-        elif candidate_metric > baseline_metric:
+        elif (candidate_metric - baseline_metric) * direction > 0:
             decision = "keep"
             explanation = f"candidate {metric_name} improved over baseline."
         else:
@@ -158,6 +167,12 @@ def main() -> int:
     parser.add_argument("--baseline-id", help="Baseline run_id in CSV")
     parser.add_argument("--candidate-id", help="Candidate run_id in CSV")
     parser.add_argument("--metric", default="ndcg@10", help="Primary metric used for the decision rule")
+    parser.add_argument(
+        "--metric-lower-is-better",
+        action="append",
+        default=[],
+        help="Metric name that should be minimized; repeatable",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON instead of plain text")
     args = parser.parse_args()
 
@@ -170,7 +185,8 @@ def main() -> int:
         baseline = load_result_source(args.baseline)
         candidate = load_result_source(args.candidate)
 
-    result = compare_results(baseline, candidate, args.metric)
+    metric_directions = {str(name).lower(): -1 for name in args.metric_lower_is_better}
+    result = compare_results(baseline, candidate, args.metric, metric_directions=metric_directions)
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=True))
