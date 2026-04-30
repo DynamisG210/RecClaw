@@ -20,6 +20,7 @@ METRIC_FIELDS = [
     "hit@10",
     "precision@10",
     "itemcoverage@10",
+    "latency_ms",
 ]
 
 CSV_FIELDS = [
@@ -54,6 +55,10 @@ FINAL_RESULT_KEYS = {
     "valid_metric",
     "run_time",
     "status",
+    "latency_ms",
+    "inference_time_ms",
+    "avg_latency_ms",
+    "avg_inference_ms",
     "test_result",
     "best_valid_result",
     *METRIC_FIELDS,
@@ -166,7 +171,19 @@ def parse_final_json_metrics(payload: dict[str, Any]) -> dict[str, float]:
     metric_payload = extract_json_metric_payload(payload)
     metrics: dict[str, float] = {}
     for metric in METRIC_FIELDS:
-        number = coerce_float(get_json_value(metric_payload, metric))
+        if metric == "latency_ms":
+            number = (
+                coerce_float(get_json_value(metric_payload, "latency_ms"))
+                or coerce_float(get_json_value(metric_payload, "inference_time_ms"))
+                or coerce_float(get_json_value(metric_payload, "avg_latency_ms"))
+                or coerce_float(get_json_value(metric_payload, "avg_inference_ms"))
+                or coerce_float(get_json_value(payload, "latency_ms"))
+                or coerce_float(get_json_value(payload, "inference_time_ms"))
+                or coerce_float(get_json_value(payload, "avg_latency_ms"))
+                or coerce_float(get_json_value(payload, "avg_inference_ms"))
+            )
+        else:
+            number = coerce_float(get_json_value(metric_payload, metric))
         if number is not None:
             metrics[metric] = number
     return metrics
@@ -313,6 +330,9 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
         status = "incomplete"
 
     metric_values = {metric: chosen_metrics.get(metric, "") for metric in METRIC_FIELDS}
+    if metric_values.get("latency_ms", "") == "" and run_time_seconds != "":
+        metric_values["latency_ms"] = round(float(run_time_seconds) * 1000.0, 3)
+        warnings.append("latency_ms missing; used run_time*1000 as proxy")
 
     return {
         "model": model,
