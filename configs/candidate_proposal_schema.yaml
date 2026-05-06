@@ -1,0 +1,147 @@
+version: 1
+description: >
+  Contract for candidate proposals generated before they are promoted into
+  configs/candidate_registry.yaml. Proposals must be JSON-serializable and
+  should stay runnable through the existing RecClaw runner contract.
+
+required_fields:
+  - proposal_type
+  - candidate_id
+  - parent_candidate_id
+  - base_model
+  - category
+  - hypothesis
+  - runnable_level
+  - runner_type
+  - consumes
+  - expected_effect
+  - risk
+  - decision_rule
+
+allowed_runnable_levels:
+  - parameter_only
+  - config_only
+  - spec_only
+  - code_required
+
+allowed_base_models:
+  - BPR
+  - LightGCN
+
+allowed_runner_types:
+  - config_only
+  - model
+  - posthoc
+
+allowed_proposal_types:
+  - tuning
+  - algorithmic_variant
+  - research_spec
+
+allowed_implementation_roots:
+  - recclaw_ext/models/
+  - recclaw_ext/posthoc/
+  - configs/candidates/
+  - configs/candidate_registry.yaml
+  - notes/experiment_log.md
+  - notes/candidate_library.md
+
+disallowed_changes:
+  - RecBole core source files
+  - evaluation protocol
+  - data split definition
+
+field_contract:
+  proposal_type: "tuning for runnable parameter/config changes, algorithmic_variant for local-code method ideas, research_spec for higher-risk ideas that need design review."
+  candidate_id: "New unique id. Must not already exist in candidate_registry.yaml."
+  parent_candidate_id: "Existing candidate_id used as the executable or conceptual parent."
+  base_model: "Exactly one of BPR or LightGCN."
+  category: "Same style as registry category, for example Objective & Optimization."
+  hypothesis: "One sentence explaining why this proposal should improve a metric or risk dimension."
+  runnable_level: "parameter_only and config_only should be runnable without local code changes."
+  runner_type: "Must stay within the existing RecClaw runner contract."
+  consumes: "List of parameter/config keys the proposal wants to read or override."
+  parameter_overrides: "Optional object with concrete values for consumes keys."
+  expected_effect: "Object describing expected metric direction and rationale."
+  risk: "Object describing quality, runtime, implementation, and evaluation risks."
+  decision_rule: "Object or string describing the keep/revise/discard rule after execution."
+  implementation_plan: "Optional but expected for code_required proposals; describe local files/classes and runner wiring."
+  allowed_files: "Optional list of files/directories the implementation is allowed to touch."
+  new_parameters: "Optional list of new config keys introduced by code_required proposals."
+  promotion_requirements: "Optional checklist for promoting proposal into registry and candidate config."
+
+example_proposal:
+  proposal_type: tuning
+  candidate_id: cand_lightgcn_residual_layer_mix_tune_residual_weight_001
+  parent_candidate_id: cand_lightgcn_residual_layer_mix
+  base_model: LightGCN
+  category: Representation & Interaction
+  hypothesis: Lower residual mixing may reduce over-smoothing while keeping useful ego embedding signal.
+  runnable_level: parameter_only
+  runner_type: model
+  consumes:
+    - residual_weight
+  parameter_overrides:
+    residual_weight: 0.1
+  expected_effect:
+    primary_metric: ndcg@10
+    direction: increase
+    rationale: Existing wired residual model exposes residual_weight as a direct tuning handle.
+  risk:
+    quality: May underuse residual signal if the weight is too small.
+    runtime: No material runtime change expected.
+    implementation: No code change required.
+    recbole_core_change_required: false
+  decision_rule:
+    keep_if: ndcg@10 improves over comparable LightGCN baseline and does not reduce itemcoverage@10 sharply.
+    revise_if: ndcg@10 is near baseline but secondary ranking metrics move in mixed directions.
+    discard_if: candidate crashes or ndcg@10 falls below baseline under comparable budget.
+
+example_algorithmic_variant:
+  proposal_type: algorithmic_variant
+  candidate_id: cand_bpr_adaptive_popularity_margin_001
+  parent_candidate_id: cand_bpr_margin_loss
+  base_model: BPR
+  category: Objective & Optimization
+  hypothesis: Adaptive margins based on item popularity may reduce head-item dominance while preserving pairwise ranking strength.
+  runnable_level: code_required
+  runner_type: model
+  consumes:
+    - margin
+    - popularity_alpha
+  new_parameters:
+    - name: popularity_alpha
+      default: 0.3
+      search_space:
+        - 0.1
+        - 0.3
+        - 0.5
+  implementation_plan:
+    summary: Add a local BPR subclass that scales pairwise margin by negative-item popularity.
+    entrypoint: recclaw_ext.models:BPRAdaptivePopularityMargin
+    files:
+      - recclaw_ext/models/bpr_adaptive_popularity_margin.py
+      - recclaw_ext/models/__init__.py
+      - configs/candidates/cand_bpr_adaptive_popularity_margin.yaml
+      - configs/candidate_registry.yaml
+  allowed_files:
+    - recclaw_ext/models/
+    - configs/candidates/
+    - configs/candidate_registry.yaml
+  expected_effect:
+    primary_metric: ndcg@10
+    direction: increase
+    rationale: Popularity-aware margins add a controlled bias-correction pressure to BPR.
+  risk:
+    quality: May over-penalize popular negatives and reduce precision@10.
+    runtime: Small overhead from popularity lookup.
+    implementation: Requires local model code and registry wiring.
+    recbole_core_change_required: false
+  decision_rule:
+    keep_if: ndcg@10 improves and precision@10 does not drop sharply.
+    revise_if: coverage improves but ranking metrics are flat.
+    discard_if: candidate crashes or ranking metrics regress under comparable BPR budget.
+  promotion_requirements:
+    - local model class imports successfully
+    - candidate config contains all new parameters
+    - registry entry has wired=true only after dry-run succeeds

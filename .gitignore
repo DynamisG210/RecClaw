@@ -15,3 +15,4 @@ results/**/*.err
 results/**/*.tmp
 results/**/*.pth
 results/**/*.pt
+results/candidate_proposals.jsonl
