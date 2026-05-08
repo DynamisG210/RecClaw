@@ -15,6 +15,7 @@ import argparse
 import json
 import re
 from datetime import datetime
+from itertools import product
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,8 @@ EXPERIMENT_LOG_PATH = PROJECT_ROOT / "notes" / "experiment_log.md"
 MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
 OUTPUT_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 
+DEFAULT_VALIDATION_SEEDS = [2026, 2027, 2028]
+
 DEFAULT_PARAMETER_SPACE: dict[str, list[Any]] = {
     "embedding_size": [32, 64, 128],
     "learning_rate": [0.0001, 0.001, 0.005],
@@ -35,7 +38,36 @@ DEFAULT_PARAMETER_SPACE: dict[str, list[Any]] = {
     "margin": [0.1, 0.2, 0.5],
     "residual_weight": [0.05, 0.1, 0.2, 0.3],
     "tail_weight_alpha": [0.2, 0.5, 1.0],
+    "hard_negative_ratio": [0.1, 0.2, 0.3],
+    "popularity_alpha": [0.1, 0.3, 0.5],
+    "lambda_pop": [0.001, 0.01, 0.1],
+    "lambda_norm": [0.001, 0.01, 0.1],
+    "max_norm": [0.5, 1.0, 2.0],
+    "lambda_align": [0.005, 0.01, 0.03],
+    "rank_weight_alpha": [0.1, 0.3, 0.5],
+    "lambda_coverage": [0.05, 0.1, 0.2],
+    "edge_dropout": [0.05, 0.1, 0.2],
+    "cl_temperature": [0.1, 0.2, 0.5],
+    "pareto_temperature": [0.2, 0.5, 1.0],
 }
+
+DEFAULT_PARAMETER_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("residual_weight",),
+    ("margin",),
+    ("tail_weight_alpha",),
+    ("hard_negative_ratio",),
+    ("popularity_alpha",),
+    ("lambda_pop",),
+    ("lambda_norm", "max_norm"),
+    ("lambda_align",),
+    ("rank_weight_alpha",),
+    ("lambda_coverage",),
+    ("embedding_size", "n_layers"),
+    ("learning_rate",),
+    ("reg_weight",),
+)
+
+SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
 
 ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
     {
@@ -81,6 +113,11 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
             "revise_if": "coverage improves but ranking metrics are flat.",
             "discard_if": "candidate crashes or ranking metrics regress under comparable BPR budget.",
         },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        },
     },
     {
         "proposal_type": "algorithmic_variant",
@@ -124,6 +161,11 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
             "keep_if": "ndcg@10 and recall@10 improve without latency regression at inference.",
             "revise_if": "ranking improves only at low dropout values.",
             "discard_if": "training becomes unstable or graph propagation metrics regress.",
+        },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
         },
     },
     {
@@ -171,6 +213,11 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
             "revise_if": "recall improves while precision drops mildly.",
             "discard_if": "auxiliary loss destabilizes training.",
         },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        },
     },
     {
         "proposal_type": "research_spec",
@@ -215,6 +262,11 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
             "keep_if": "coverage improves with bounded ndcg@10 loss.",
             "revise_if": "coverage improves but precision loss is too large.",
             "discard_if": "reranking cannot preserve baseline ranking quality.",
+        },
+        "evaluation_plan": {
+            "primary_metric": "itemcoverage@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
         },
     },
 ]
@@ -262,35 +314,133 @@ def slugify(text: str) -> str:
 
 
 def params_signature(params: dict[str, Any]) -> str:
-    return json.dumps(params, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    normalized = {str(key): value for key, value in params.items() if str(key) not in SIGNATURE_EXCLUDED_KEYS}
+    return json.dumps(normalized, ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def parent_param_signature(parent_id: str, params: dict[str, Any]) -> str:
+    return f"{parent_id}::{params_signature(params)}"
+
+
+def extract_parent_and_params(row: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    parent_id = str(row.get("parent_candidate_id") or row.get("candidate_id") or "")
+    params = row.get("parameter_overrides")
+    if not isinstance(params, dict):
+        params = row.get("params")
+    if not parent_id or not isinstance(params, dict) or not params:
+        return None
+    return parent_id, params
 
 
 def used_parent_param_signatures(memory: list[dict[str, Any]]) -> dict[str, set[str]]:
     used: dict[str, set[str]] = {}
     for row in memory:
-        candidate_id = str(row.get("candidate_id") or "")
-        params = row.get("params")
-        if candidate_id and isinstance(params, dict):
-            used.setdefault(candidate_id, set()).add(params_signature(params))
+        extracted = extract_parent_and_params(row)
+        if extracted is None:
+            continue
+        parent_id, params = extracted
+        used.setdefault(parent_id, set()).add(params_signature(params))
     return used
 
 
-def choose_param_override(
+def merge_used_signatures(*sources: dict[str, set[str]]) -> dict[str, set[str]]:
+    merged: dict[str, set[str]] = {}
+    for source in sources:
+        for parent_id, signatures in source.items():
+            merged.setdefault(parent_id, set()).update(signatures)
+    return merged
+
+
+def parameter_groups_for_parent(parent: dict[str, Any]) -> list[tuple[str, ...]]:
+    consumes = {str(item) for item in parent.get("consumes") or []}
+    groups: list[tuple[str, ...]] = []
+    covered: set[str] = set()
+    for group in DEFAULT_PARAMETER_GROUPS:
+        if all(key in consumes and DEFAULT_PARAMETER_SPACE.get(key) for key in group):
+            groups.append(group)
+            covered.update(group)
+    for key in sorted(consumes - covered):
+        if DEFAULT_PARAMETER_SPACE.get(key):
+            groups.append((key,))
+    return groups
+
+
+def iter_param_overrides(group: tuple[str, ...]) -> list[dict[str, Any]]:
+    value_lists = [DEFAULT_PARAMETER_SPACE.get(key) or [] for key in group]
+    if any(not values for values in value_lists):
+        return []
+    return [dict(zip(group, values, strict=True)) for values in product(*value_lists)]
+
+
+def choose_param_overrides(
     parent: dict[str, Any],
     used_signatures: dict[str, set[str]],
-) -> tuple[str, Any] | None:
+) -> dict[str, Any] | None:
     parent_id = str(parent.get("candidate_id") or "")
-    for key in parent.get("consumes") or []:
-        key = str(key)
-        values = DEFAULT_PARAMETER_SPACE.get(key) or []
-        if not values:
-            continue
-        already_used = used_signatures.get(parent_id, set())
-        for value in values:
-            if params_signature({key: value}) not in already_used:
-                return key, value
-        return key, values[0]
+    already_used = used_signatures.get(parent_id, set())
+    for group in parameter_groups_for_parent(parent):
+        for params in iter_param_overrides(group):
+            if params_signature(params) not in already_used:
+                return params
     return None
+
+
+def default_evaluation_plan(primary_metric: str = "ndcg@10") -> dict[str, Any]:
+    return {
+        "primary_metric": primary_metric,
+        "primary_seed": DEFAULT_VALIDATION_SEEDS[0],
+        "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+        "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        "promote_if": (
+            f"mean {primary_metric} improves over the comparable baseline and the result "
+            "is not explained by a single lucky seed"
+        ),
+    }
+
+
+def override_slug(params: dict[str, Any]) -> str:
+    chunks = []
+    for key, value in sorted(params.items()):
+        chunks.append(f"{slugify(str(key))}_{slugify(str(value))}")
+    return "_".join(chunks) or "params"
+
+
+def describe_overrides(params: dict[str, Any]) -> str:
+    return ", ".join(f"{key}={value}" for key, value in sorted(params.items()))
+
+
+def primary_override_key(params: dict[str, Any]) -> str:
+    if "residual_weight" in params:
+        return "residual_weight"
+    if "margin" in params:
+        return "margin"
+    for key in sorted(params):
+        if key not in {"embedding_size", "n_layers"}:
+            return key
+    return sorted(params)[0] if params else "parameter"
+
+
+def primary_metric_for_param(param_name: str) -> str:
+    return "ndcg@10"
+
+
+def rationale_for_param(parent: dict[str, Any], param_name: str) -> str:
+    if param_name in {"embedding_size", "n_layers", "learning_rate", "reg_weight"}:
+        return "This is a RecBole-native knob already consumed by the wired parent."
+    return "The parent candidate already exposes this local parameter through consumes."
+
+
+def parent_signature_set(
+    rows: list[dict[str, Any]],
+) -> dict[str, set[str]]:
+    used: dict[str, set[str]] = {}
+    for row in rows:
+        extracted = extract_parent_and_params(row)
+        if extracted is None:
+            continue
+        parent_id, params = extracted
+        used.setdefault(parent_id, set()).add(params_signature(params))
+    return used
 
 
 def score_parent(parent: dict[str, Any], memory: list[dict[str, Any]], experiment_log: str) -> float:
@@ -315,19 +465,17 @@ def score_parent(parent: dict[str, Any], memory: list[dict[str, Any]], experimen
 
 def build_parameter_proposal(
     parent: dict[str, Any],
-    param_name: str,
-    param_value: Any,
+    parameter_overrides: dict[str, Any],
     sequence: int,
     stamp: str,
 ) -> dict[str, Any]:
     parent_id = str(parent.get("candidate_id") or "")
     base_model = normalize_base_model(parent.get("base_model"))
-    candidate_id = f"{parent_id}_proposal_{slugify(param_name)}_{stamp}_{sequence:02d}"
-    primary_metric = "ndcg@10"
-    if param_name in {"embedding_size", "n_layers"}:
-        rationale = "This is a RecBole-native knob already consumed by the wired parent."
-    else:
-        rationale = "The parent candidate already exposes this local parameter through consumes."
+    param_name = primary_override_key(parameter_overrides)
+    candidate_id = f"{parent_id}_proposal_{override_slug(parameter_overrides)}_{stamp}_{sequence:02d}"
+    primary_metric = primary_metric_for_param(param_name)
+    rationale = rationale_for_param(parent, param_name)
+    override_text = describe_overrides(parameter_overrides)
     return {
         "proposal_type": "tuning",
         "candidate_id": candidate_id,
@@ -335,13 +483,14 @@ def build_parameter_proposal(
         "base_model": base_model,
         "category": parent.get("category") or "Uncategorized",
         "hypothesis": (
-            f"Tuning {param_name} to {param_value} may improve {primary_metric} "
+            f"Tuning {override_text} may improve {primary_metric} "
             f"without changing the executable candidate path."
         ),
         "runnable_level": "parameter_only",
         "runner_type": parent.get("runner_type") or "config_only",
-        "consumes": [param_name],
-        "parameter_overrides": {param_name: param_value},
+        "consumes": sorted(parameter_overrides),
+        "parameter_overrides": parameter_overrides,
+        "parameter_signature": parent_param_signature(parent_id, parameter_overrides),
         "expected_effect": {
             "primary_metric": primary_metric,
             "direction": "increase",
@@ -358,9 +507,11 @@ def build_parameter_proposal(
             "revise_if": "Primary metric is near baseline but secondary metrics suggest a nearby value may help.",
             "discard_if": "Run crashes or primary metric drops below the comparable baseline.",
         },
+        "evaluation_plan": default_evaluation_plan(primary_metric),
         "promotion_requirements": [
             "validator status is accepted",
             "run through scripts/run_candidate.py with parameter_overrides",
+            "repeat accepted improvements over evaluation_plan.validation_seeds before claiming a stable gain",
             "record result in results/agent_memory.jsonl",
         ],
     }
@@ -373,8 +524,12 @@ def generate_tuning_proposals(
     memory: list[dict[str, Any]],
     count: int,
     stamp: str,
+    proposal_history: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    used_signatures = used_parent_param_signatures(memory)
+    used_signatures = merge_used_signatures(
+        used_parent_param_signatures(memory),
+        parent_signature_set(proposal_history or []),
+    )
     parents = [
         item
         for item in registry
@@ -386,17 +541,13 @@ def generate_tuning_proposals(
     parents.sort(key=lambda item: score_parent(item, memory, experiment_log), reverse=True)
 
     proposals: list[dict[str, Any]] = []
-    seen_parent_param: set[tuple[str, str]] = set()
     for parent in parents:
-        picked = choose_param_override(parent, used_signatures)
+        picked = choose_param_overrides(parent, used_signatures)
         if picked is None:
             continue
-        param_name, param_value = picked
-        key = (str(parent.get("candidate_id") or ""), param_name)
-        if key in seen_parent_param:
-            continue
-        seen_parent_param.add(key)
-        proposals.append(build_parameter_proposal(parent, param_name, param_value, len(proposals) + 1, stamp))
+        parent_id = str(parent.get("candidate_id") or "")
+        used_signatures.setdefault(parent_id, set()).add(params_signature(picked))
+        proposals.append(build_parameter_proposal(parent, picked, len(proposals) + 1, stamp))
         if len(proposals) >= count:
             break
     return proposals
@@ -450,12 +601,14 @@ def generate_proposals(
     count: int,
     memory_limit: int,
     mode: str,
+    proposal_history_path: Path | None = None,
 ) -> list[dict[str, Any]]:
     registry = load_yaml(registry_path).get("candidates", [])
     if not isinstance(registry, list):
         raise ValueError(f"registry candidates must be a list: {registry_path}")
     experiment_log = experiment_log_path.read_text(encoding="utf-8", errors="replace") if experiment_log_path.exists() else ""
     memory = load_jsonl(memory_path, memory_limit)
+    proposal_history = load_jsonl(proposal_history_path, 0) if proposal_history_path else []
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if mode == "conservative":
@@ -465,6 +618,7 @@ def generate_proposals(
             memory=memory,
             count=count,
             stamp=stamp,
+            proposal_history=proposal_history,
         )
 
     if mode == "explore":
@@ -478,6 +632,7 @@ def generate_proposals(
         memory=memory,
         count=tuning_count,
         stamp=stamp,
+        proposal_history=proposal_history,
     )
     proposals.extend(generate_algorithmic_proposals(registry=registry, count=algorithmic_count, stamp=stamp))
     if len(proposals) < count:
@@ -524,6 +679,7 @@ def main() -> int:
         count=max(1, args.count),
         memory_limit=max(0, args.memory_limit),
         mode=args.mode,
+        proposal_history_path=Path(args.output),
     )
     write_jsonl(Path(args.output), proposals, args.append)
     print(

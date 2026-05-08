@@ -62,9 +62,11 @@ field_contract:
   runner_type: "Must stay within the existing RecClaw runner contract."
   consumes: "List of parameter/config keys the proposal wants to read or override."
   parameter_overrides: "Optional object with concrete values for consumes keys."
+  parameter_signature: "Optional normalized signature in the form parent_candidate_id::{sorted parameter_overrides JSON}; used to avoid duplicate tuning runs. Protocol keys such as seed are excluded."
   expected_effect: "Object describing expected metric direction and rationale."
   risk: "Object describing quality, runtime, implementation, and evaluation risks."
   decision_rule: "Object or string describing the keep/revise/discard rule after execution."
+  evaluation_plan: "Optional but recommended for tuning proposals; include primary_metric, validation_seeds, aggregation, and promotion criteria for multi-seed validation."
   implementation_plan: "Optional but expected for code_required proposals; describe local files/classes and runner wiring."
   allowed_files: "Optional list of files/directories the implementation is allowed to touch."
   new_parameters: "Optional list of new config keys introduced by code_required proposals."
@@ -83,6 +85,7 @@ example_proposal:
     - residual_weight
   parameter_overrides:
     residual_weight: 0.1
+  parameter_signature: 'cand_lightgcn_residual_layer_mix::{"residual_weight":0.1}'
   expected_effect:
     primary_metric: ndcg@10
     direction: increase
@@ -96,6 +99,15 @@ example_proposal:
     keep_if: ndcg@10 improves over comparable LightGCN baseline and does not reduce itemcoverage@10 sharply.
     revise_if: ndcg@10 is near baseline but secondary ranking metrics move in mixed directions.
     discard_if: candidate crashes or ndcg@10 falls below baseline under comparable budget.
+  evaluation_plan:
+    primary_metric: ndcg@10
+    primary_seed: 2026
+    validation_seeds:
+      - 2026
+      - 2027
+      - 2028
+    aggregation: report mean and std over validation_seeds before claiming improvement
+    promote_if: mean ndcg@10 improves over the comparable baseline and the result is not explained by a single lucky seed
 
 example_algorithmic_variant:
   proposal_type: algorithmic_variant
@@ -141,6 +153,13 @@ example_algorithmic_variant:
     keep_if: ndcg@10 improves and precision@10 does not drop sharply.
     revise_if: coverage improves but ranking metrics are flat.
     discard_if: candidate crashes or ranking metrics regress under comparable BPR budget.
+  evaluation_plan:
+    primary_metric: ndcg@10
+    validation_seeds:
+      - 2026
+      - 2027
+      - 2028
+    aggregation: report mean and std over validation_seeds before claiming improvement
   promotion_requirements:
     - local model class imports successfully
     - candidate config contains all new parameters

@@ -24,6 +24,11 @@ Important fields:
 - `parent_candidate_id`: an existing registry candidate
 - `consumes`: parameters used or introduced by the proposal
 - `parameter_overrides`: concrete values for runnable tuning proposals
+- `parameter_signature`: normalized duplicate guard, defined as
+  `parent_candidate_id::{sorted parameter_overrides JSON}`. Protocol-only
+  keys such as `seed` are excluded from the signature.
+- `evaluation_plan`: recommended multi-seed validation plan before claiming a
+  stable improvement
 - `implementation_plan`: required in practice for `code_required` proposals
 - `risk.recbole_core_change_required`: must not be true for normal candidates
 
@@ -62,6 +67,12 @@ python3 scripts/validate_candidate_proposal.py \
   --proposals results/candidate_proposals.jsonl
 ```
 
+The validator also rejects duplicate runnable tuning proposals when the same
+`parent_candidate_id + parameter_overrides` signature appears twice in the
+proposal file. If `results/agent_memory.jsonl` exists, the default validation
+also rejects signatures that have already been run. Use `--memory` to point at
+another memory file.
+
 Validation statuses:
 
 - `accepted`: safe to run now
@@ -95,6 +106,22 @@ python3 scripts/run_candidate.py cand_bpr_margin_loss --set margin=0.1
 Only `proposal_type=tuning` with `runnable_level=parameter_only` or
 `config_only` should be run this way. `code_required` proposals must first be
 implemented under the allowed local extension paths.
+
+For any accepted proposal that appears to improve the primary metric, repeat
+the same `parameter_overrides` across the proposal's
+`evaluation_plan.validation_seeds` before claiming a stable improvement. For
+example:
+
+```bash
+python3 scripts/run_candidate.py cand_bpr_margin_loss --set margin=0.1 --set seed=2026
+python3 scripts/run_candidate.py cand_bpr_margin_loss --set margin=0.1 --set seed=2027
+python3 scripts/run_candidate.py cand_bpr_margin_loss --set margin=0.1 --set seed=2028
+```
+
+The current candidate-proposal layer records and validates the seed plan. The
+actual scheduling of repeated seed runs belongs in the agent or benchmark
+runner so that it can aggregate mean/std and avoid blocking normal proposal
+generation.
 
 ## Boundaries
 
