@@ -1,3 +1,1 @@
 run_id,model,dataset,config_change,ndcg@10,recall@10,mrr@10,hit@10,precision@10,itemcoverage@10,valid_metric,run_time,status,log_path,notes
-baseline_lightgcn_20260415_115421,LightGCN,ml-1m,task_ml1m+lightgcn.yaml+lightgcn_metrics.yaml,0.2671,0.1727,0.459,0.7603,0.2083,,,NDCG@10,,success,/root/projects/RecClaw/results/baseline/baseline_lightgcn_20260415_115421.log,baseline | warnings: run time could not be inferred from log timestamps
-baseline_bpr_20260508_170008,BPR,ml-1m,task_ml1m+bpr.yaml+lightgcn_metrics.yaml,0.2567,0.1632,0.4474,0.7411,0.2013,,,NDCG@10,,success,/root/projects/RecClaw/results/baseline/baseline_bpr_20260508_170008.log,baseline | warnings: run time could not be inferred from log timestamps

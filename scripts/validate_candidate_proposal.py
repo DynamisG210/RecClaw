@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -28,6 +28,18 @@ NEXT_ACTIONS = {
 }
 
 SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
+
+
+def normalize_signature_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): normalize_signature_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -102,12 +114,30 @@ def implementation_files(proposal: dict[str, Any]) -> list[str]:
 
 
 def params_signature(params: dict[str, Any]) -> str:
-    normalized = {str(key): value for key, value in params.items() if str(key) not in SIGNATURE_EXCLUDED_KEYS}
+    normalized = {
+        str(key): normalize_signature_value(value)
+        for key, value in params.items()
+        if str(key) not in SIGNATURE_EXCLUDED_KEYS
+    }
     return json.dumps(normalized, ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def parent_param_signature(parent_id: str, params: dict[str, Any]) -> str:
     return f"{parent_id}::{params_signature(params)}"
+
+
+def canonical_parameter_signature_text(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if "::" not in text:
+        return text
+    parent_id, raw_params = text.split("::", 1)
+    try:
+        params = json.loads(raw_params)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(params, dict):
+        return text
+    return parent_param_signature(parent_id, params)
 
 
 def proposal_parameter_signature(proposal: dict[str, Any]) -> str:
@@ -123,6 +153,9 @@ def load_memory_param_signatures(path: Path) -> set[str]:
     for _, row, parse_error in load_jsonl(path):
         if parse_error is not None or row is None:
             continue
+        if not row.get("event") and row.get("parameter_signature"):
+            signatures.add(canonical_parameter_signature_text(row.get("parameter_signature")))
+            continue
         parent_id = str(row.get("parent_candidate_id") or row.get("candidate_id") or "").strip()
         params = row.get("parameter_overrides")
         if not isinstance(params, dict):
@@ -134,6 +167,15 @@ def load_memory_param_signatures(path: Path) -> set[str]:
 
 def path_is_allowed(path: str, allowed_roots: set[str]) -> bool:
     clean = path.strip().replace("\\", "/")
+    while clean.startswith("./"):
+        clean = clean[2:]
+    if not clean or clean.startswith("/") or re.match(r"^[A-Za-z]:", clean):
+        return False
+    parts = PurePosixPath(clean).parts
+    if any(part == ".." for part in parts):
+        return False
+    if PurePosixPath(clean).name == "__init__.py" and parts and parts[0] == "recclaw_ext":
+        return False
     return any(clean == root.rstrip("/") or clean.startswith(root) for root in allowed_roots)
 
 
@@ -301,7 +343,10 @@ def validate_one(
     if proposal_type == "tuning" and runnable_level in {"parameter_only", "config_only"}:
         if not parameter_signature:
             errors.append("tuning proposal must include non-empty parameter_overrides")
-        elif proposal.get("parameter_signature") and str(proposal.get("parameter_signature")) != parameter_signature:
+        elif (
+            proposal.get("parameter_signature")
+            and canonical_parameter_signature_text(proposal.get("parameter_signature")) != parameter_signature
+        ):
             errors.append(
                 "parameter_signature does not match normalized parent_candidate_id + parameter_overrides: "
                 f"expected {parameter_signature}"

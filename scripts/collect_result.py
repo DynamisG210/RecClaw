@@ -331,8 +331,9 @@ def parse_recbole_log(log_path: str | Path) -> dict[str, Any]:
 
     metric_values = {metric: chosen_metrics.get(metric, "") for metric in METRIC_FIELDS}
     if metric_values.get("latency_ms", "") == "" and run_time_seconds != "":
-        metric_values["latency_ms"] = round(float(run_time_seconds) * 1000.0, 3)
-        warnings.append("latency_ms missing; used run_time*1000 as proxy")
+        warnings.append(
+            "latency_ms missing; run_time is wall-clock execution time and was not used as inference latency"
+        )
 
     return {
         "model": model,
@@ -388,11 +389,27 @@ def merge_notes(notes: str, warnings: list[str]) -> str:
 
 def ensure_csv(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
+    if not path.exists():
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
+            writer.writeheader()
         return
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
-        writer.writeheader()
+
+    with path.open("r", newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    if not rows or rows[0] == CSV_FIELDS:
+        return
+
+    legacy_without_latency = [field for field in CSV_FIELDS if field != "latency_ms"]
+    if rows[0] == legacy_without_latency:
+        rows[0] = CSV_FIELDS
+        latency_index = CSV_FIELDS.index("latency_ms")
+        for row in rows[1:]:
+            if len(row) == len(legacy_without_latency):
+                row.insert(latency_index, "")
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerows(rows)
 
 
 def append_row(csv_path: str | Path, row: dict[str, Any]) -> None:

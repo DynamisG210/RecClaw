@@ -15,4 +15,9 @@ results/**/*.err
 results/**/*.tmp
 results/**/*.pth
 results/**/*.pt
+results/candidates/*.json
+results/overrides/*.yaml
+results/checkpoints/
+results/agent_memory.jsonl
 results/candidate_proposals.jsonl
+RecClaw_LabLog/

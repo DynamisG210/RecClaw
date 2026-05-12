@@ -69,6 +69,18 @@ DEFAULT_PARAMETER_GROUPS: tuple[tuple[str, ...], ...] = (
 
 SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
 
+
+def normalize_signature_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): normalize_signature_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
 ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
     {
         "proposal_type": "algorithmic_variant",
@@ -88,15 +100,12 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         ],
         "implementation_plan": {
             "summary": "Add a local BPR subclass that scales pairwise margin by negative-item popularity.",
-            "entrypoint": "recclaw_ext.models:BPRAdaptivePopularityMargin",
+            "entrypoint": "recclaw_ext.models.bpr_adaptive_popularity_margin:BPRAdaptivePopularityMargin",
             "files": [
                 "recclaw_ext/models/bpr_adaptive_popularity_margin.py",
-                "recclaw_ext/models/__init__.py",
-                "configs/candidates/cand_bpr_adaptive_popularity_margin.yaml",
-                "configs/candidate_registry.yaml",
             ],
         },
-        "allowed_files": ["recclaw_ext/models/", "configs/candidates/", "configs/candidate_registry.yaml"],
+        "allowed_files": ["recclaw_ext/models/"],
         "expected_effect": {
             "primary_metric": "ndcg@10",
             "direction": "increase",
@@ -137,15 +146,12 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         ],
         "implementation_plan": {
             "summary": "Extend the local residual LightGCN path with sparse edge dropout during training.",
-            "entrypoint": "recclaw_ext.models:LightGCNEdgeDropoutResidualMix",
+            "entrypoint": "recclaw_ext.models.lightgcn_edge_dropout_residual:LightGCNEdgeDropoutResidualMix",
             "files": [
                 "recclaw_ext/models/lightgcn_edge_dropout_residual.py",
-                "recclaw_ext/models/__init__.py",
-                "configs/candidates/cand_lightgcn_edge_dropout_residual_mix.yaml",
-                "configs/candidate_registry.yaml",
             ],
         },
-        "allowed_files": ["recclaw_ext/models/", "configs/candidates/", "configs/candidate_registry.yaml"],
+        "allowed_files": ["recclaw_ext/models/"],
         "expected_effect": {
             "primary_metric": "ndcg@10",
             "direction": "increase",
@@ -186,17 +192,13 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
             {"name": "cl_temperature", "default": 0.2, "search_space": [0.1, 0.2, 0.5]},
         ],
         "implementation_plan": {
-            "summary": "Add a local LightGCN subclass that augments BPR loss with layer-level contrastive alignment.",
-            "entrypoint": "recclaw_ext.models:LightGCNContrastiveLayerAlignment",
+            "summary": "Add a local LightGCN subclass that augments BPR loss with layer-level contrastive alignment; keep helper logic inside the new module.",
+            "entrypoint": "recclaw_ext.models.lightgcn_contrastive_alignment:LightGCNContrastiveLayerAlignment",
             "files": [
                 "recclaw_ext/models/lightgcn_contrastive_alignment.py",
-                "recclaw_ext/models/_losses.py",
-                "recclaw_ext/models/__init__.py",
-                "configs/candidates/cand_lightgcn_contrastive_layer_alignment.yaml",
-                "configs/candidate_registry.yaml",
             ],
         },
-        "allowed_files": ["recclaw_ext/models/", "configs/candidates/", "configs/candidate_registry.yaml"],
+        "allowed_files": ["recclaw_ext/models/"],
         "expected_effect": {
             "primary_metric": "ndcg@10",
             "direction": "increase",
@@ -238,15 +240,12 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         ],
         "implementation_plan": {
             "summary": "Define a trained-score adjustment flow after run_candidate supports posthoc execution.",
-            "entrypoint": "recclaw_ext.posthoc:ParetoPopularityCoverageReranker",
+            "entrypoint": "recclaw_ext.posthoc.adjustments:ParetoPopularityCoverageReranker",
             "files": [
                 "recclaw_ext/posthoc/adjustments.py",
-                "recclaw_ext/posthoc/__init__.py",
-                "configs/candidates/cand_posthoc_popularity_coverage_pareto_rerank.yaml",
-                "configs/candidate_registry.yaml",
             ],
         },
-        "allowed_files": ["recclaw_ext/posthoc/", "configs/candidates/", "configs/candidate_registry.yaml"],
+        "allowed_files": ["recclaw_ext/posthoc/"],
         "expected_effect": {
             "primary_metric": "itemcoverage@10",
             "direction": "increase",
@@ -314,7 +313,11 @@ def slugify(text: str) -> str:
 
 
 def params_signature(params: dict[str, Any]) -> str:
-    normalized = {str(key): value for key, value in params.items() if str(key) not in SIGNATURE_EXCLUDED_KEYS}
+    normalized = {
+        str(key): normalize_signature_value(value)
+        for key, value in params.items()
+        if str(key) not in SIGNATURE_EXCLUDED_KEYS
+    }
     return json.dumps(normalized, ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
 
 
@@ -369,7 +372,7 @@ def iter_param_overrides(group: tuple[str, ...]) -> list[dict[str, Any]]:
     value_lists = [DEFAULT_PARAMETER_SPACE.get(key) or [] for key in group]
     if any(not values for values in value_lists):
         return []
-    return [dict(zip(group, values, strict=True)) for values in product(*value_lists)]
+    return [dict(zip(group, values)) for values in product(*value_lists)]
 
 
 def choose_param_overrides(

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -163,6 +165,26 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertEqual(result["status"], validate.REJECTED)
         self.assertTrue(any("already run" in error for error in result["errors"]))
 
+    def test_memory_signature_loader_canonicalizes_explicit_trial_signature(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "memory.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "proposal_a",
+                        "parent_candidate_id": "cand_lightgcn_small_embedding",
+                        "decision": "discard",
+                        "parameter_signature": 'cand_lightgcn_small_embedding::{"max_norm":1.0}',
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            signatures = validate.load_memory_param_signatures(path)
+
+        self.assertIn('cand_lightgcn_small_embedding::{"max_norm":1}', signatures)
+
     def test_signature_ignores_protocol_seed(self) -> None:
         plain = validate.parent_param_signature(
             "cand_lightgcn_small_embedding",
@@ -174,6 +196,18 @@ class CandidateProposalTests(unittest.TestCase):
         )
 
         self.assertEqual(plain, seeded)
+
+    def test_signature_canonicalizes_integral_floats(self) -> None:
+        integer = validate.parent_param_signature(
+            "cand_lightgcn_small_embedding",
+            {"max_norm": 1},
+        )
+        floating = validate.parent_param_signature(
+            "cand_lightgcn_small_embedding",
+            {"max_norm": 1.0},
+        )
+
+        self.assertEqual(integer, floating)
 
     def test_validator_rejects_mismatched_declared_signature(self) -> None:
         registry = {
@@ -200,6 +234,31 @@ class CandidateProposalTests(unittest.TestCase):
 
         self.assertEqual(result["status"], validate.REJECTED)
         self.assertTrue(any("does not match" in error for error in result["errors"]))
+
+    def test_validator_accepts_canonical_equivalent_declared_signature(self) -> None:
+        registry = {
+            "cand_lightgcn_small_embedding": {
+                "candidate_id": "cand_lightgcn_small_embedding",
+                "base_model": "LightGCN",
+                "wired": True,
+                "consumes": ["max_norm"],
+            }
+        }
+        proposal = tuning_proposal("proposal_e", {"max_norm": 1})
+        proposal["parameter_signature"] = 'cand_lightgcn_small_embedding::{"max_norm":1.0}'
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+        )
+
+        self.assertEqual(result["status"], validate.ACCEPTED)
 
     def test_generated_proposal_includes_multiseed_evaluation_plan(self) -> None:
         parent = {

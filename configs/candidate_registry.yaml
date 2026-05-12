@@ -55,7 +55,7 @@ candidates:
     status: "implement-ready"
     wired: false
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRLongTailReweight"
+    entrypoint: "recclaw_ext.models.bpr_regularized:BPRLongTailReweight"
     consumes:
       - tail_weight_alpha
 
@@ -85,7 +85,7 @@ candidates:
     status: "implemented"
     wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:LightGCNLW"
+    entrypoint: "recclaw_ext.models.lightgcn_lw:LightGCNLW"
     consumes:
       - embedding_size
       - n_layers
@@ -102,7 +102,7 @@ candidates:
     status: "implemented"
     wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:LightGCNResidualMix"
+    entrypoint: "recclaw_ext.models.lightgcn_residual:LightGCNResidualMix"
     consumes:
       - embedding_size
       - n_layers
@@ -147,7 +147,7 @@ candidates:
     status: "implemented"
     wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRMargin"
+    entrypoint: "recclaw_ext.models.bpr_margin:BPRMargin"
     consumes:
       - margin
 
@@ -162,7 +162,7 @@ candidates:
     status: "implement-ready"
     wired: false
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRPopularityRegularized"
+    entrypoint: "recclaw_ext.models.bpr_regularized:BPRPopularityRegularized"
     consumes:
       - lambda_pop
 
@@ -177,7 +177,7 @@ candidates:
     status: "implement-ready"
     wired: false
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRNormConstrained"
+    entrypoint: "recclaw_ext.models.bpr_regularized:BPRNormConstrained"
     consumes:
       - lambda_norm
       - max_norm
