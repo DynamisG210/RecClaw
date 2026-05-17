@@ -1,4 +1,4 @@
 # Shared top-k observation metrics for baseline and candidate runs.
-metrics: ["Recall", "NDCG", "MRR", "Hit", "Precision", "ItemCoverage"]
+metrics: ["Recall", "NDCG", "MRR", "Hit", "Precision"]
 topk: [10]
 valid_metric: NDCG@10

@@ -10,14 +10,21 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import random
 import re
+import shutil
+import ssl
+import statistics
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
 import yaml
 
@@ -33,7 +40,15 @@ REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
 RESULTS_CSV = PROJECT_ROOT / "results" / "results.csv"
 BASELINE_DIR = PROJECT_ROOT / "results" / "baseline"
 MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
+STATE_SUMMARY_PATH = PROJECT_ROOT / "results" / "agent_state_summary.json"
 NOTES_DIR = PROJECT_ROOT / "notes"
+PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
+PROPOSAL_SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
+AUTO_PROMOTABLE_PARENT_IDS = {
+    "cand_bpr_long_tail_reweight",
+    "cand_bpr_popularity_regularized",
+    "cand_bpr_norm_constrained",
+}
 
 REQUIRED_MULTI_METRICS = (
     "ndcg@10",
@@ -61,6 +76,206 @@ EVALUATION_DIMENSIONS = (
 
 PRIORITY_SCORE = {"high": 1.0, "medium": 0.5, "low": 0.2}
 STATUS_SCORE = {"implemented": 1.0, "implement-ready": 0.7, "spec-ready": 0.3, "idea": 0.1}
+SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
+TERMINAL_IMPLEMENTATION_SKIP_REASONS = {
+    "known parent was auto-promoted and is runnable",
+    "dry_run",
+}
+DEFAULT_VALIDATION_SEEDS = [2026, 2027, 2028]
+IMPLEMENTATION_RUNNABLE_STATUSES = {
+    "implemented_and_runnable",
+    "implemented_and_importable",
+    "implemented_and_smoke_passed",
+}
+LOOP_MODE_POLICIES = {
+    "tuning": {
+        "proposal_mode": "conservative",
+        "auto_promote": False,
+        "auto_implement": False,
+        "llm_plan": False,
+    },
+    "mixed": {
+        "proposal_mode": "mixed",
+        "auto_promote": True,
+        "auto_implement": False,
+        "llm_plan": False,
+    },
+    "explore": {
+        "proposal_mode": "explore",
+        "auto_promote": True,
+        "auto_implement": True,
+        "llm_plan": False,
+    },
+    "auto": {
+        "proposal_mode": "mixed",
+        "auto_promote": True,
+        "auto_implement": True,
+        "llm_plan": True,
+    },
+}
+AUTO_PLANNER_ACTIONS = {
+    "run_available",
+    "propose_tuning",
+    "propose_mixed",
+    "propose_explore",
+    "implement_needs_review",
+    "multi_seed_verify",
+    "report",
+}
+PROPOSAL_PARAMETER_KEYS = (
+    "embedding_size",
+    "learning_rate",
+    "n_layers",
+    "reg_weight",
+    "margin",
+    "residual_weight",
+    "tail_weight_alpha",
+    "lambda_pop",
+    "lambda_norm",
+    "max_norm",
+    "hard_negative_ratio",
+    "popularity_alpha",
+    "debias_alpha",
+    "lambda_align",
+    "rank_weight_alpha",
+    "lambda_coverage",
+    "edge_dropout",
+    "cl_temperature",
+    "pareto_temperature",
+)
+
+
+def normalize_signature_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): normalize_signature_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+PROPOSAL_PARAMETER_SCHEMA = {key: {"type": ["number", "null"]} for key in PROPOSAL_PARAMETER_KEYS}
+SELF_REG_LOSS_PATTERN = re.compile(r"\bself\.reg_loss\s*\(")
+LIGHTGCN_BASE_CLASS_PATTERN = re.compile(r"class\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*LightGCN[^)]*\)")
+REG_LOSS_GUARD_PATTERN = re.compile(r"hasattr\s*\(\s*self\s*,\s*[\"']reg_weight[\"']\s*\)")
+SOFT_L2_POSITIONAL_MAX_NORM_PATTERN = re.compile(
+    r"soft_l2_norm_penalty\s*\([^)\n]+,\s*(?:self\.)?(?:max_norm|lambda_norm)\b"
+)
+
+PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "proposals": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "proposal_type": {"type": "string", "enum": ["tuning", "algorithmic_variant", "research_spec"]},
+                    "candidate_id": {"type": "string"},
+                    "parent_candidate_id": {"type": "string"},
+                    "base_model": {"type": "string", "enum": ["BPR", "LightGCN"]},
+                    "category": {"type": "string"},
+                    "hypothesis": {"type": "string"},
+                    "runnable_level": {
+                        "type": "string",
+                        "enum": ["parameter_only", "config_only", "spec_only", "code_required"],
+                    },
+                    "runner_type": {"type": "string", "enum": ["config_only", "model", "posthoc"]},
+                    "consumes": {"type": "array", "items": {"type": "string"}},
+                    "parameter_overrides": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": PROPOSAL_PARAMETER_SCHEMA,
+                        "required": list(PROPOSAL_PARAMETER_KEYS),
+                    },
+                    "parameter_signature": {"type": "string"},
+                    "expected_effect": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "primary_metric": {"type": "string"},
+                            "direction": {"type": "string"},
+                            "rationale": {"type": "string"},
+                        },
+                        "required": ["primary_metric", "direction", "rationale"],
+                    },
+                    "risk": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "quality": {"type": "string"},
+                            "runtime": {"type": "string"},
+                            "implementation": {"type": "string"},
+                            "recbole_core_change_required": {"type": "boolean"},
+                        },
+                        "required": ["quality", "runtime", "implementation", "recbole_core_change_required"],
+                    },
+                    "decision_rule": {"type": "string"},
+                    "evaluation_plan": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "primary_metric": {"type": "string"},
+                            "validation_seeds": {"type": "array", "items": {"type": "integer"}},
+                            "aggregation": {"type": "string"},
+                            "promote_if": {"type": "string"},
+                        },
+                        "required": ["primary_metric", "validation_seeds", "aggregation", "promote_if"],
+                    },
+                    "implementation_plan": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "summary": {"type": "string"},
+                            "entrypoint": {"type": "string"},
+                            "files": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["summary", "entrypoint", "files"],
+                    },
+                    "allowed_files": {"type": "array", "items": {"type": "string"}},
+                    "new_parameters": {"type": "array", "items": {"type": "string"}},
+                    "promotion_requirements": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": [
+                    "proposal_type",
+                    "candidate_id",
+                    "parent_candidate_id",
+                    "base_model",
+                    "category",
+                    "hypothesis",
+                    "runnable_level",
+                    "runner_type",
+                    "consumes",
+                    "expected_effect",
+                    "risk",
+                    "decision_rule",
+                    "parameter_overrides",
+                    "parameter_signature",
+                    "evaluation_plan",
+                    "implementation_plan",
+                    "allowed_files",
+                    "new_parameters",
+                    "promotion_requirements",
+                ],
+            },
+        }
+    },
+    "required": ["proposals"],
+}
+
+PLANNER_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "action": {"type": "string", "enum": sorted(AUTO_PLANNER_ACTIONS)},
+        "reason": {"type": "string"},
+        "proposal_count": {"type": "integer", "minimum": 1, "maximum": 20},
+    },
+    "required": ["action", "reason", "proposal_count"],
+}
 
 
 @dataclass
@@ -78,10 +293,41 @@ class AgentConfig:
     seed: int = 42
     dry_run: bool = False
     memory_read_limit: int = 2000
+    prompt_memory_tail: int = 120
     memory_path: Path = MEMORY_PATH
+    state_summary_path: Path = STATE_SUMMARY_PATH
     results_csv: Path = RESULTS_CSV
     baseline_dir: Path = BASELINE_DIR
     registry_path: Path = REGISTRY_PATH
+    loop_mode: str = "mixed"
+    enable_candidate_proposals: bool = True
+    proposal_path: Path = PROPOSAL_PATH
+    proposal_mode: str = "mixed"
+    proposal_count: int = 5
+    proposal_every: int = 3
+    proposal_bonus: float = 0.35
+    proposal_source: str = "llm"
+    proposal_schema_path: Path = PROPOSAL_SCHEMA_PATH
+    auto_promote_needs_review: bool = True
+    auto_implement_code_required: bool = False
+    max_pending_implemented: int = 3
+    max_implement_per_round: int = 1
+    implementation_smoke_run: bool = True
+    exploitation_window_rounds: int = 8
+    global_overrides: list[str] = field(default_factory=list)
+    checkpoint_dir: str = ""
+    checkpoint_policy: str = "none"
+    enable_seed_validation: bool = False
+    validation_seeds: list[int] = field(default_factory=lambda: list(DEFAULT_VALIDATION_SEEDS))
+    llm_provider: str = "deepseek"
+    llm_model: str = "deepseek-chat"
+    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_api_key_env: str = "DEEPSEEK_API_KEY"
+    llm_temperature: float = 0.2
+    llm_timeout: int = 120
+    llm_max_tokens: int = 4096
+    llm_retries: int = 2
+    allow_llm_fallback: bool = False
     metrics_weights: dict[str, float] = field(
         default_factory=lambda: {
             "ndcg@10": 0.2,
@@ -103,6 +349,18 @@ class AgentConfig:
             "margin": [0.1, 0.2, 0.5],
             "residual_weight": [0.05, 0.1, 0.2, 0.3],
             "tail_weight_alpha": [0.2, 0.5, 1.0],
+            "lambda_pop": [1e-4, 1e-3, 1e-2],
+            "lambda_norm": [1e-5, 1e-4, 1e-3],
+            "max_norm": [0.5, 1.0, 2.0],
+            "hard_negative_ratio": [0.25, 0.5, 0.75],
+            "popularity_alpha": [0.2, 0.5, 1.0],
+            "debias_alpha": [0.1, 0.2, 0.5],
+            "lambda_align": [1e-4, 1e-3, 1e-2],
+            "rank_weight_alpha": [0.1, 0.2, 0.5],
+            "lambda_coverage": [1e-4, 1e-3, 1e-2],
+            "edge_dropout": [0.05, 0.1, 0.2],
+            "cl_temperature": [0.1, 0.2, 0.5],
+            "pareto_temperature": [0.2, 0.5, 1.0],
         }
     )
 
@@ -121,6 +379,14 @@ class TrialRecord:
     decision: str
     reason: str
     next_action: str
+    parent_candidate_id: str = ""
+    proposal_id: str = ""
+    parameter_signature: str = ""
+    execution_signature: str = ""
+    proposal_source: str = ""
+    is_baseline_improvement: bool = False
+    is_history_best: bool = False
+    seed_validation: dict[str, Any] = field(default_factory=dict)
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -156,9 +422,31 @@ class RecClawAgent:
         self.history_by_candidate: dict[str, list[dict[str, Any]]] = {}
         self.best_by_model: dict[str, dict[str, Any]] = {}
         self.results_rows: list[dict[str, Any]] = []
+        self.candidate_proposals: list[dict[str, Any]] = []
+        self.proposal_validation_report: dict[str, Any] = {}
+        self.scheduled_candidate_ids: set[str] = set()
+        self.scheduled_param_signatures: set[str] = set()
+        self.scheduled_execution_signatures: set[str] = set()
+        self.recorded_proposal_events: set[str] = set()
+        self.last_planner_action: dict[str, Any] = {}
+        self.agent_state_summary: dict[str, Any] = {}
+        self.candidate_health_issues: dict[str, list[str]] = {}
+        self.quarantined_candidate_ids: set[str] = set()
+        self.current_proposal_source: str = config.proposal_source
+        self.skip_current_round: bool = False
+        self.skip_proposal_generation: bool = False
 
     # ===== Observe =====
     def observe(self) -> None:
+        self.memory = []
+        self.registry = []
+        self.baselines_by_model = {}
+        self.history_by_candidate = {}
+        self.best_by_model = {}
+        self.results_rows = []
+        self.scheduled_param_signatures = set()
+        self.scheduled_execution_signatures = set()
+        self.recorded_proposal_events = set()
         payload = load_yaml(self.config.registry_path)
         self.registry = payload.get("candidates", [])
         if not isinstance(self.registry, list):
@@ -168,11 +456,24 @@ class RecClawAgent:
             lines = self.config.memory_path.read_text(encoding="utf-8", errors="replace").splitlines()
             if self.config.memory_read_limit > 0:
                 lines = lines[-self.config.memory_read_limit :]
-            for line in lines:
+            skipped_memory_lines = 0
+            for line_no, line in enumerate(lines, start=1):
                 line = line.strip()
                 if not line:
                     continue
-                self.memory.append(json.loads(line))
+                try:
+                    self.memory.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    skipped_memory_lines += 1
+                    print(
+                        f"[Observe] skip invalid memory line {line_no}: {exc}",
+                        file=sys.stderr,
+                    )
+            if skipped_memory_lines:
+                print(
+                    f"[Observe] skipped_invalid_memory_lines={skipped_memory_lines}",
+                    file=sys.stderr,
+                )
 
         if self.config.results_csv.exists():
             with self.config.results_csv.open("r", encoding="utf-8", newline="") as handle:
@@ -185,22 +486,111 @@ class RecClawAgent:
 
         for log_file in self.config.baseline_dir.glob("*.log"):
             parsed = load_result_source(log_file)
-            model = str(parsed.get("model") or "").strip()
+            model = self._normalize_model_key(parsed.get("model"))
             if model:
-                if model in self.baselines_by_model:
-                    print(f"Warning: duplicate baseline for model '{model}', overwriting with {log_file.name}")
-                self.baselines_by_model[model] = parsed
+                existing = self.baselines_by_model.get(model)
+                if existing is not None:
+                    print(f"Warning: duplicate baseline for model '{model}', keeping best-scoring baseline")
+                if existing is None or self._should_replace_result(existing, parsed):
+                    self.baselines_by_model[model] = parsed
 
         for row in self.results_rows:
-            model = str(row.get("model") or "").strip()
+            model = self._normalize_model_key(row.get("model"))
             status = str(row.get("status") or "").lower()
             if not model or status != "success":
                 continue
             if model not in self.best_by_model:
                 self.best_by_model[model] = dict(row)
                 continue
-            if self._score(row) > self._score(self.best_by_model[model]):
+            if self._should_replace_result(self.best_by_model[model], row):
                 self.best_by_model[model] = dict(row)
+        self.candidate_health_issues = self._build_candidate_health_issues()
+        self.quarantined_candidate_ids = {
+            candidate_id for candidate_id, issues in self.candidate_health_issues.items() if issues
+        }
+        self.agent_state_summary = self._build_agent_state_summary()
+        self._write_agent_state_summary(self.agent_state_summary)
+
+    def _reload_registry(self) -> None:
+        payload = load_yaml(self.config.registry_path)
+        registry = payload.get("candidates", [])
+        if not isinstance(registry, list):
+            raise ValueError("registry candidates must be a list")
+        self.registry = registry
+        self.candidate_health_issues = self._build_candidate_health_issues()
+        self.quarantined_candidate_ids = {
+            candidate_id for candidate_id, issues in self.candidate_health_issues.items() if issues
+        }
+
+    def _build_candidate_health_issues(self) -> dict[str, list[str]]:
+        crash_counts: dict[str, int] = {}
+        for row in self._trial_memory_rows():
+            candidate_id = str(row.get("candidate_id") or "")
+            if candidate_id and (str(row.get("decision") or "") == "crash" or str(row.get("status") or "") == "crash"):
+                crash_counts[candidate_id] = crash_counts.get(candidate_id, 0) + 1
+
+        issues: dict[str, list[str]] = {}
+        for candidate in self.registry:
+            candidate_id = str(candidate.get("candidate_id") or "")
+            if not candidate_id or not bool(candidate.get("wired")):
+                continue
+            candidate_issues: list[str] = []
+            candidate_config_path = PROJECT_ROOT / "configs" / "candidates" / f"{candidate_id}.yaml"
+            if not candidate_config_path.exists():
+                candidate_issues.append(f"candidate config is missing: {candidate_config_path.relative_to(PROJECT_ROOT)}")
+            entrypoint = str(candidate.get("entrypoint") or "")
+            module = entrypoint.split(":", 1)[0]
+            if module in {"recclaw_ext.models", "recclaw_ext.posthoc"}:
+                candidate_issues.append("package-level local entrypoint is not concrete")
+            elif module.startswith("recclaw_ext.models."):
+                source_path = PROJECT_ROOT / (module.replace(".", "/") + ".py")
+                if not source_path.exists():
+                    candidate_issues.append(f"local model source is missing: {source_path.relative_to(PROJECT_ROOT)}")
+                else:
+                    text = source_path.read_text(encoding="utf-8", errors="replace")
+                    if "config.get" in text:
+                        candidate_issues.append("local model source uses RecBole-unsafe config.get")
+                    if (
+                        SELF_REG_LOSS_PATTERN.search(text)
+                        and "def reg_loss" not in text
+                        and "self.reg_loss =" not in text
+                        and not LIGHTGCN_BASE_CLASS_PATTERN.search(text)
+                        and not REG_LOSS_GUARD_PATTERN.search(text)
+                    ):
+                        candidate_issues.append("local model source calls undefined self.reg_loss")
+                    if SOFT_L2_POSITIONAL_MAX_NORM_PATTERN.search(text):
+                        candidate_issues.append("local model source passes max_norm/lambda_norm positionally to soft_l2_norm_penalty")
+            if crash_counts.get(candidate_id, 0) >= 2:
+                candidate_issues.append(f"candidate has {crash_counts[candidate_id]} crash records in agent memory")
+            if candidate_issues:
+                issues[candidate_id] = candidate_issues
+        return issues
+
+    @staticmethod
+    def _normalize_model_key(raw: Any) -> str:
+        text = str(raw or "").strip()
+        lowered = text.lower()
+        if "lightgcn" in lowered:
+            return "LightGCN"
+        if "bpr" in lowered:
+            return "BPR"
+        return text
+
+    def _should_replace_result(self, current: dict[str, Any], candidate: dict[str, Any]) -> bool:
+        current_success = str(current.get("status") or "").lower() == "success"
+        candidate_success = str(candidate.get("status") or "").lower() == "success"
+        if candidate_success != current_success:
+            return candidate_success
+        return self._score(candidate) > self._score(current)
+
+    def _update_history_best(self, model_key: str, result: dict[str, Any]) -> None:
+        key = self._normalize_model_key(model_key or result.get("model"))
+        if not key or str(result.get("status") or "").lower() != "success":
+            return
+        self.results_rows.append(dict(result))
+        current_best = self.best_by_model.get(key)
+        if current_best is None or self._should_replace_result(current_best, result):
+            self.best_by_model[key] = dict(result)
 
     def _load_optional_context(self, candidate: dict[str, Any], force: bool = False) -> dict[str, str]:
         context: dict[str, str] = {}
@@ -227,7 +617,98 @@ class RecClawAgent:
     def _params_signature(params: dict[str, Any]) -> str:
         if not params:
             return "{}"
-        return json.dumps(params, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        normalized = {
+            str(key): normalize_signature_value(value)
+            for key, value in params.items()
+            if str(key) not in SIGNATURE_EXCLUDED_KEYS
+        }
+        return json.dumps(normalized, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+    def _parameter_signature(self, parent_id: str, params: dict[str, Any]) -> str:
+        if not parent_id or not params:
+            return ""
+        return f"{parent_id}::{self._params_signature(params)}"
+
+    def _canonical_parameter_signature_text(self, raw: Any) -> str:
+        text = str(raw or "").strip()
+        if "::" not in text:
+            return text
+        parent_id, raw_params = text.split("::", 1)
+        try:
+            params = json.loads(raw_params)
+        except json.JSONDecodeError:
+            return text
+        if not isinstance(params, dict):
+            return text
+        return self._parameter_signature(parent_id, params)
+
+    def _execution_signature_from_values(
+        self,
+        *,
+        model_key: str,
+        runner_type: str,
+        entrypoint: str,
+        params: dict[str, Any],
+    ) -> str:
+        normalized_model = self._normalize_model_key(model_key)
+        normalized_params = self._params_signature(params)
+        normalized_entrypoint = str(entrypoint or "").strip()
+        normalized_runner = str(runner_type or "").strip()
+        lowered_entrypoint = normalized_entrypoint.lower()
+        if normalized_model == "LightGCN" and (
+            normalized_runner == "config_only" or "general_recommender.lightgcn" in lowered_entrypoint
+        ):
+            executable = "LightGCN/native"
+        elif normalized_entrypoint:
+            executable = normalized_entrypoint
+        elif normalized_model:
+            executable = normalized_model
+        else:
+            return ""
+        return f"{executable}::{normalized_params}"
+
+    def _execution_signature(self, candidate: dict[str, Any], params: dict[str, Any]) -> str:
+        return self._execution_signature_from_values(
+            model_key=str(candidate.get("base_model") or candidate.get("model") or ""),
+            runner_type=str(candidate.get("runner_type") or ""),
+            entrypoint=str(candidate.get("entrypoint") or ""),
+            params=params,
+        )
+
+    def _used_parent_param_signatures(self) -> set[str]:
+        signatures: set[str] = set()
+        for row in self.memory:
+            explicit = str(row.get("parameter_signature") or "")
+            if explicit:
+                signatures.add(self._canonical_parameter_signature_text(explicit))
+                continue
+            parent_id = str(row.get("parent_candidate_id") or row.get("candidate_id") or "")
+            params = row.get("params") or row.get("parameter_overrides")
+            if parent_id and isinstance(params, dict) and params:
+                signatures.add(self._parameter_signature(parent_id, params))
+        return signatures
+
+    def _used_execution_signatures(self) -> set[str]:
+        signatures: set[str] = set()
+        for row in self.memory:
+            explicit = str(row.get("execution_signature") or "")
+            if explicit:
+                signatures.add(explicit)
+                continue
+            params = row.get("params")
+            if not isinstance(params, dict):
+                continue
+            result = row.get("result") if isinstance(row.get("result"), dict) else {}
+            model_key = str(result.get("model") or row.get("base_model") or "")
+            fallback = self._execution_signature_from_values(
+                model_key=model_key,
+                runner_type="config_only" if self._normalize_model_key(model_key) == "LightGCN" else "",
+                entrypoint="",
+                params=dict(params),
+            )
+            if fallback:
+                signatures.add(fallback)
+        return signatures
 
     def _used_param_signatures(self, candidate_id: str) -> set[str]:
         signatures: set[str] = set()
@@ -263,41 +744,257 @@ class RecClawAgent:
                 return proposal
         return params
 
+    def _choose_execution_unique_params(
+        self,
+        candidate: dict[str, Any],
+        used_execution_signatures: set[str],
+    ) -> dict[str, Any]:
+        params = self._choose_params(candidate)
+        execution_signature = self._execution_signature(candidate, params)
+        if not execution_signature or (
+            execution_signature not in used_execution_signatures
+            and execution_signature not in self.scheduled_execution_signatures
+        ):
+            return params
+
+        consumes = candidate.get("consumes") or []
+        param_values: list[tuple[str, list[Any]]] = []
+        for key in consumes:
+            values = self.config.parameter_space.get(str(key), [])
+            if values:
+                param_values.append((str(key), values))
+        max_tries = max(30, 6 * len(param_values))
+        for _ in range(max_tries):
+            proposal = {key: self.rng.choice(values) for key, values in param_values}
+            execution_signature = self._execution_signature(candidate, proposal)
+            if execution_signature and (
+                execution_signature in used_execution_signatures
+                or execution_signature in self.scheduled_execution_signatures
+            ):
+                continue
+            if self._params_signature(proposal) in self._used_param_signatures(str(candidate.get("candidate_id") or "")):
+                continue
+            return proposal
+        return params
+
     # ===== Plan =====
+    def _find_registry_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        for candidate in self.registry:
+            if str(candidate.get("candidate_id") or "") == candidate_id:
+                return candidate
+        return None
+
+    def _proposal_status_by_id(self) -> dict[str, dict[str, Any]]:
+        results = self.proposal_validation_report.get("results", [])
+        if not isinstance(results, list):
+            return {}
+        return {str(item.get("candidate_id") or ""): item for item in results if isinstance(item, dict)}
+
+    def _accepted_proposal_options(self) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        statuses = self._proposal_status_by_id()
+        options: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for proposal in self.candidate_proposals:
+            proposal_id = str(proposal.get("candidate_id") or "")
+            status = statuses.get(proposal_id, {})
+            status_name = str(status.get("status") or "")
+            proposal_type = str(proposal.get("proposal_type") or "")
+            runnable_level = str(proposal.get("runnable_level") or "")
+            parent_id = str(proposal.get("parent_candidate_id") or "")
+            accepted_tuning = (
+                status_name == "accepted"
+                and proposal_type == "tuning"
+                and runnable_level in {"parameter_only", "config_only"}
+            )
+            promoted_code = (
+                status_name == "needs_review"
+                and proposal_type == "algorithmic_variant"
+                and runnable_level == "code_required"
+                and parent_id in AUTO_PROMOTABLE_PARENT_IDS
+            )
+            if not accepted_tuning and not promoted_code:
+                continue
+            if proposal_id in self.scheduled_candidate_ids:
+                continue
+            if self.history_by_candidate.get(proposal_id):
+                continue
+            parent = self._find_registry_candidate(parent_id)
+            if parent is None or not bool(parent.get("wired")):
+                continue
+            if parent_id in self.quarantined_candidate_ids:
+                continue
+            if str(parent.get("runner_type") or "") not in {"config_only", "model"}:
+                continue
+            overrides = proposal.get("parameter_overrides") or {}
+            if not isinstance(overrides, dict):
+                continue
+            parameter_signature = str(status.get("parameter_signature") or "")
+            if not parameter_signature and overrides:
+                parameter_signature = self._parameter_signature(parent_id, dict(overrides))
+            if parameter_signature and (
+                parameter_signature in self._used_parent_param_signatures()
+                or parameter_signature in self.scheduled_param_signatures
+            ):
+                continue
+            execution_signature = self._execution_signature(parent, dict(overrides))
+            if execution_signature and (
+                execution_signature in self._used_execution_signatures()
+                or execution_signature in self.scheduled_execution_signatures
+            ):
+                continue
+            if promoted_code and not overrides:
+                continue
+            parent_consumes = {str(item) for item in (parent.get("consumes") or [])}
+            if promoted_code and not set(map(str, overrides.keys())).issubset(parent_consumes):
+                continue
+            candidate = {
+                **parent,
+                "candidate_id": proposal_id,
+                "run_candidate_id": parent_id,
+                "parent_candidate_id": parent_id,
+                "proposal_type": proposal.get("proposal_type"),
+                "runnable_level": runnable_level,
+                "hypothesis": proposal.get("hypothesis") or parent.get("hypothesis"),
+                "consumes": proposal.get("consumes") or parent.get("consumes") or [],
+                "proposal_id": proposal_id,
+                "proposal_source": self.current_proposal_source,
+                "parameter_signature": parameter_signature,
+                "execution_signature": execution_signature,
+            }
+            options.append((candidate, dict(overrides)))
+        return options
+
+    def _has_candidate_run(self, candidate_id: str) -> bool:
+        if self.history_by_candidate.get(candidate_id):
+            return True
+        for row in self.memory:
+            if row.get("event"):
+                continue
+            if str(row.get("parent_candidate_id") or "") == candidate_id:
+                return True
+        return False
+
+    def _pending_implemented_candidate_ids(self) -> set[str]:
+        implemented_ids = {
+            str(row.get("candidate_id") or "")
+            for row in self.memory
+            if row.get("event") == "implementation_result"
+            and str(row.get("status") or "") in IMPLEMENTATION_RUNNABLE_STATUSES
+            and row.get("candidate_id")
+        }
+        pending: set[str] = set()
+        for candidate_id in implemented_ids:
+            if candidate_id in self.quarantined_candidate_ids:
+                continue
+            if candidate_id in self.scheduled_candidate_ids or self._has_candidate_run(candidate_id):
+                continue
+            candidate = self._find_registry_candidate(candidate_id)
+            if candidate is None:
+                continue
+            if not bool(candidate.get("wired")):
+                continue
+            if str(candidate.get("runner_type") or "") not in {"config_only", "model"}:
+                continue
+            pending.add(candidate_id)
+        return pending
+
+    def _candidate_plan_score(self, candidate: dict[str, Any]) -> float:
+        cid = str(candidate.get("candidate_id") or "")
+        runs = self.history_by_candidate.get(cid, [])
+        explored = len(runs)
+        crashes = sum(1 for r in runs if str(r.get("decision")) == "crash")
+        recently_scheduled = bool(self.memory) and str(self.memory[-1].get("candidate_id") or "") == cid
+        priority = PRIORITY_SCORE.get(str(candidate.get("priority", "")).lower(), 0.0)
+        status = STATUS_SCORE.get(str(candidate.get("status", "")).lower(), 0.0)
+        novelty = 1.0 / (1.0 + explored)
+        proposal_bonus = self.config.proposal_bonus if candidate.get("parent_candidate_id") else 0.0
+        family_credit = self._family_plan_credit(str(candidate.get("parent_candidate_id") or cid))
+        return (
+            self.config.novelty_weight * novelty
+            + self.config.priority_weight * priority
+            + self.config.status_weight * status
+            + proposal_bonus
+            + family_credit
+            - self.config.revisit_penalty * explored
+            - self.config.crash_penalty * crashes
+            - (self.config.recent_schedule_penalty if recently_scheduled else 0.0)
+        )
+
+    def _family_plan_credit(self, candidate_id: str) -> float:
+        keeps = 0
+        revises = 0
+        discards = 0
+        crashes = 0
+        collapses = 0
+        for row in self._trial_memory_rows():
+            if self._family_key(row) != candidate_id and str(row.get("candidate_id") or "") != candidate_id:
+                continue
+            decision = str(row.get("decision") or "")
+            keeps += int(decision == "keep")
+            revises += int(decision == "revise")
+            discards += int(decision == "discard")
+            crashes += int(decision == "crash")
+            collapses += int(self._is_extreme_quality_collapse(row))
+        return (
+            min(0.45, 0.2 * keeps + 0.04 * revises)
+            - min(0.45, 0.15 * crashes + 0.04 * discards + 0.18 * collapses)
+        )
+
     def plan(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
-        runnable = [
-            item
+        plan_options: list[tuple[dict[str, Any], dict[str, Any] | None]] = [
+            (item, None)
             for item in self.registry
             if bool(item.get("wired")) and str(item.get("runner_type") or "") in {"config_only", "model"}
+            and str(item.get("candidate_id") or "") not in self.quarantined_candidate_ids
         ]
-        if not runnable:
+        plan_options.extend(self._accepted_proposal_options())
+        if not plan_options:
             raise RuntimeError("no runnable candidates found in registry")
+        pending_ids = self._pending_implemented_candidate_ids()
+        if len(pending_ids) >= self.config.max_pending_implemented:
+            pending_options = [
+                (candidate, params)
+                for candidate, params in plan_options
+                if str(candidate.get("candidate_id") or "") in pending_ids
+            ]
+            if pending_options:
+                plan_options = pending_options
 
-        best_score = float("-inf")
-        chosen = runnable[0]
-        for candidate in runnable:
-            cid = str(candidate.get("candidate_id") or "")
-            runs = self.history_by_candidate.get(cid, [])
-            explored = len(runs)
-            crashes = sum(1 for r in runs if str(r.get("decision")) == "crash")
-            recently_scheduled = bool(self.memory) and str(self.memory[-1].get("candidate_id") or "") == cid
-            priority = PRIORITY_SCORE.get(str(candidate.get("priority", "")).lower(), 0.0)
-            status = STATUS_SCORE.get(str(candidate.get("status", "")).lower(), 0.0)
-            novelty = 1.0 / (1.0 + explored)
-            score = (
-                self.config.novelty_weight * novelty
-                + self.config.priority_weight * priority
-                + self.config.status_weight * status
-                - self.config.revisit_penalty * explored
-                - self.config.crash_penalty * crashes
-                - (self.config.recent_schedule_penalty if recently_scheduled else 0.0)
+        scored_options = sorted(
+            (
+                (
+                    self._candidate_plan_score(candidate)
+                    + (1.0 if str(candidate.get("candidate_id") or "") in pending_ids else 0.0),
+                    candidate,
+                    params_override,
+                )
+                for candidate, params_override in plan_options
+            ),
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        used_execution_signatures = self._used_execution_signatures()
+        fallback_choice: tuple[dict[str, Any], dict[str, Any]] | None = None
+        chosen, params = scored_options[0][1], scored_options[0][2] or {}
+        for _, candidate, params_override in scored_options:
+            candidate_params = (
+                params_override
+                if params_override is not None
+                else self._choose_execution_unique_params(candidate, used_execution_signatures)
             )
-            if score > best_score:
-                best_score = score
-                chosen = candidate
-
-        params = self._choose_params(chosen)
-
+            if fallback_choice is None:
+                fallback_choice = (candidate, candidate_params)
+            execution_signature = self._execution_signature(candidate, candidate_params)
+            if execution_signature and (
+                execution_signature in used_execution_signatures
+                or execution_signature in self.scheduled_execution_signatures
+            ):
+                continue
+            chosen, params = candidate, candidate_params
+            chosen["execution_signature"] = execution_signature
+            break
+        else:
+            chosen, params = fallback_choice or (scored_options[0][1], scored_options[0][2] or {})
+            chosen["execution_signature"] = self._execution_signature(chosen, params)
         need_context = not self.history_by_candidate.get(str(chosen.get("candidate_id") or ""))
         context = self._load_optional_context(chosen, force=need_context)
         return chosen, params, context
@@ -305,7 +1002,14 @@ class RecClawAgent:
     # ===== Act =====
     def act(self, candidate: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
         candidate_id = str(candidate.get("candidate_id"))
-        cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "run_candidate.py"), candidate_id]
+        run_candidate_id = str(candidate.get("run_candidate_id") or candidate_id)
+        cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "run_candidate.py"), run_candidate_id]
+        if self.config.checkpoint_dir:
+            cmd.extend(["--checkpoint-dir", self.config.checkpoint_dir])
+        if self.config.checkpoint_policy != "none":
+            cmd.append("--checkpoint-per-run")
+        for item in self.config.global_overrides:
+            cmd.extend(["--set", item])
         for key, value in params.items():
             cmd.extend(["--set", f"{key}={value}"])
 
@@ -323,7 +1027,84 @@ class RecClawAgent:
             "stdout": completed.stdout,
             "stderr": completed.stderr,
             "summary": summary,
+            "run_candidate_id": run_candidate_id,
         }
+
+    def _checkpoint_root(self) -> Path:
+        if self.config.checkpoint_dir:
+            return Path(self.config.checkpoint_dir).expanduser().resolve()
+        return PROJECT_ROOT / "results" / "checkpoints"
+
+    def cleanup_run_checkpoints(self, run_ids: list[str]) -> None:
+        if self.config.checkpoint_policy == "none":
+            return
+        root = self._checkpoint_root()
+        for run_id in run_ids:
+            if not run_id:
+                continue
+            path = root / run_id
+            try:
+                resolved_path = path.resolve()
+                resolved_root = root.resolve()
+                resolved_path.relative_to(resolved_root)
+                if resolved_path != resolved_root and resolved_path.exists():
+                    shutil.rmtree(resolved_path)
+            except OSError as exc:
+                print(f"[Checkpoint] cleanup skipped for {run_id}: {exc}", file=sys.stderr)
+            except ValueError:
+                print(f"[Checkpoint] refuse cleanup outside checkpoint root: {path}", file=sys.stderr)
+
+    def retain_checkpoints_for_result(
+        self,
+        *,
+        decision: str,
+        run_id: str,
+        seed_validation: dict[str, Any],
+    ) -> None:
+        policy = self.config.checkpoint_policy
+        if policy == "none":
+            return
+        validation_run_ids = [
+            str(item)
+            for item in seed_validation.get("run_ids", [])
+            if isinstance(item, str) and item
+        ]
+        all_run_ids = [run_id, *validation_run_ids]
+        validation_status = str(seed_validation.get("status") or "")
+        retained_run_ids: set[str] = set()
+        if policy == "keep_any":
+            if decision == "keep":
+                retained_run_ids.update(item for item in all_run_ids if item)
+        elif policy == "keep_validated":
+            if decision == "keep" and validation_status == "passed":
+                best_run_id = self._best_seed_validation_run_id(seed_validation)
+                if best_run_id:
+                    retained_run_ids.add(best_run_id)
+            elif decision == "keep" and not self.config.enable_seed_validation and run_id:
+                retained_run_ids.add(run_id)
+        for item in sorted(retained_run_ids):
+            print(f"[Checkpoint] retained={item}")
+        self.cleanup_run_checkpoints(
+            [item for item in all_run_ids if item not in retained_run_ids],
+        )
+
+    def _best_seed_validation_run_id(self, seed_validation: dict[str, Any]) -> str:
+        runs = seed_validation.get("runs")
+        if not isinstance(runs, list):
+            return ""
+        scored: list[tuple[float, str]] = []
+        direction = self.config.metric_directions.get(self.config.metric, 1)
+        for item in runs:
+            if not isinstance(item, dict):
+                continue
+            run_id = str(item.get("run_id") or "")
+            value = self._to_float(item.get("value"))
+            if not run_id or value is None:
+                continue
+            scored.append((direction * value, run_id))
+        if not scored:
+            return ""
+        return max(scored, key=lambda item: item[0])[1]
 
     @staticmethod
     def _extract_last_json(text: str) -> dict[str, Any]:
@@ -338,11 +1119,1202 @@ class RecClawAgent:
                 return parsed
         return {}
 
+    def _load_candidate_proposals(self) -> list[dict[str, Any]]:
+        if not self.config.proposal_path.exists():
+            return []
+        proposals: list[dict[str, Any]] = []
+        for line in self.config.proposal_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                proposals.append(parsed)
+        return proposals
+
+    def _notes_excerpt(self, names: tuple[str, ...], limit: int = 12000) -> dict[str, str]:
+        excerpts: dict[str, str] = {}
+        for name in names:
+            path = NOTES_DIR / name
+            if path.exists():
+                excerpts[name] = path.read_text(encoding="utf-8", errors="replace")[-limit:]
+        return excerpts
+
+    def _trial_memory_rows(self) -> list[dict[str, Any]]:
+        return [row for row in self.memory if not row.get("event") and "decision" in row]
+
+    @staticmethod
+    def _family_key(row: dict[str, Any]) -> str:
+        return str(row.get("parent_candidate_id") or row.get("candidate_id") or "unknown")
+
+    def _unverified_keep_rows(self) -> list[dict[str, Any]]:
+        return [
+            row
+            for row in self._trial_memory_rows()
+            if row.get("decision") == "keep" and not row.get("seed_validation")
+        ]
+
+    def _best_validated_keep(self) -> dict[str, Any]:
+        candidates: list[tuple[float, int, dict[str, Any]]] = []
+        for idx, row in enumerate(self._trial_memory_rows()):
+            validation = row.get("seed_validation")
+            if not isinstance(validation, dict) or validation.get("status") != "passed":
+                continue
+            value = self._to_float(validation.get("mean"))
+            if value is None:
+                value = self._to_float((row.get("result") or {}).get(self.config.metric))
+            if value is None:
+                continue
+            candidates.append((value, idx, row))
+        if not candidates:
+            return {}
+        return max(candidates, key=lambda item: item[0])[2]
+
+    def _recent_parameter_signatures(self, limit: int = 120) -> list[str]:
+        signatures: list[str] = []
+        seen: set[str] = set()
+        for row in reversed(self.memory):
+            signature = str(row.get("parameter_signature") or "")
+            signature = self._canonical_parameter_signature_text(signature)
+            if not signature or signature in seen:
+                continue
+            signatures.append(signature)
+            seen.add(signature)
+            if len(signatures) >= limit:
+                break
+        return list(reversed(signatures))
+
+    @staticmethod
+    def _crash_taxonomy(row: dict[str, Any]) -> str:
+        text = " ".join(
+            str(value)
+            for value in (
+                row.get("reason"),
+                (row.get("compare_baseline") or {}).get("explanation")
+                if isinstance(row.get("compare_baseline"), dict)
+                else "",
+            )
+        ).lower()
+        if "config.get" in text or "has no attribute 'get'" in text:
+            return "recbole_config_get"
+        if "reg_loss" in text:
+            return "missing_reg_loss"
+        if "entrypoint" in text or "import" in text or "attributeerror" in text:
+            return "implementation_wiring"
+        if "timeout" in text:
+            return "timeout"
+        return "other"
+
+    def _is_extreme_quality_collapse(self, row: dict[str, Any]) -> bool:
+        result = row.get("result") if isinstance(row.get("result"), dict) else {}
+        value = self._to_float(result.get(self.config.metric))
+        if value is None:
+            return False
+        compare = row.get("compare_baseline") if isinstance(row.get("compare_baseline"), dict) else {}
+        baseline = self._to_float(compare.get("baseline_metric"))
+        if baseline is None:
+            return value < 0.05
+        return value < max(0.05, baseline * 0.60)
+
+    def _family_stats_summary(self) -> list[dict[str, Any]]:
+        stats: dict[str, dict[str, Any]] = {}
+        for row in self._trial_memory_rows():
+            family = self._family_key(row)
+            item = stats.setdefault(
+                family,
+                {
+                    "family": family,
+                    "trials": 0,
+                    "success": 0,
+                    "keep": 0,
+                    "revise": 0,
+                    "discard": 0,
+                    "crash": 0,
+                    "collapse": 0,
+                    "baseline_win": 0,
+                    "best_metric": None,
+                    "avg_metric": None,
+                    "_metric_sum": 0.0,
+                    "_metric_count": 0,
+                    "last_error_type": "",
+                },
+            )
+            item["trials"] += 1
+            decision = str(row.get("decision") or "")
+            if decision in {"keep", "revise", "discard", "crash"}:
+                item[decision] += 1
+            if str(row.get("status") or "").lower() == "success":
+                item["success"] += 1
+            if decision == "crash":
+                item["last_error_type"] = self._crash_taxonomy(row)
+            if self._is_extreme_quality_collapse(row):
+                item["collapse"] += 1
+            value = self._to_float((row.get("result") or {}).get(self.config.metric))
+            if value is not None:
+                item["_metric_sum"] += value
+                item["_metric_count"] += 1
+                compare = row.get("compare_baseline") if isinstance(row.get("compare_baseline"), dict) else {}
+                delta = self._to_float(compare.get("delta"))
+                if delta is not None and delta > self.config.min_keep_delta:
+                    item["baseline_win"] += 1
+                if item["best_metric"] is None or value > item["best_metric"]:
+                    item["best_metric"] = round(value, 6)
+        summaries = []
+        for item in stats.values():
+            if item["_metric_count"]:
+                item["avg_metric"] = round(item["_metric_sum"] / item["_metric_count"], 6)
+            item.pop("_metric_sum", None)
+            item.pop("_metric_count", None)
+            summaries.append(item)
+        return sorted(summaries, key=lambda item: (item.get("best_metric") is not None, item.get("best_metric") or -1), reverse=True)
+
+    def _build_agent_state_summary(self) -> dict[str, Any]:
+        trials = self._trial_memory_rows()
+        decision_counts: dict[str, int] = {}
+        for row in trials:
+            decision = str(row.get("decision") or "unknown")
+            decision_counts[decision] = decision_counts.get(decision, 0) + 1
+
+        scored_trials: list[tuple[float, dict[str, Any]]] = []
+        for row in trials:
+            if str(row.get("status") or "").lower() != "success":
+                continue
+            value = self._to_float((row.get("result") or {}).get(self.config.metric))
+            if value is not None:
+                scored_trials.append((value, row))
+        top_frontier = [
+            {
+                "candidate_id": row.get("candidate_id", ""),
+                "parent_candidate_id": row.get("parent_candidate_id", ""),
+                "params": row.get("params", {}),
+                "run_id": row.get("run_id", ""),
+                "decision": row.get("decision", ""),
+                self.config.metric: round(value, 6),
+            }
+            for value, row in sorted(scored_trials, key=lambda item: item[0], reverse=True)[:10]
+        ]
+        best_by_model_summary = {
+            model: {
+                "run_id": row.get("run_id", ""),
+                "model": row.get("model", model),
+                self.config.metric: self._to_float(row.get(self.config.metric)),
+                "status": row.get("status", ""),
+            }
+            for model, row in sorted(self.best_by_model.items())
+        }
+
+        validated_best = self._best_validated_keep()
+        focused_context: dict[str, Any] = {}
+        if validated_best:
+            round_id = int(validated_best.get("round_id") or 0)
+            latest_round = max([int(row.get("round_id") or 0) for row in trials] or [0])
+            if latest_round - round_id <= self.config.exploitation_window_rounds:
+                focused_context = {
+                    "parent_candidate_id": validated_best.get("parent_candidate_id") or validated_best.get("candidate_id", ""),
+                    "candidate_id": validated_best.get("candidate_id", ""),
+                    "params": validated_best.get("params", {}),
+                    "seed_validation": validated_best.get("seed_validation", {}),
+                    "guidance": "Prioritize local exploitation around this validated best while keeping at least one genuinely novel proposal.",
+                }
+
+        proposal_rejections = [
+            row
+            for row in self.memory
+            if row.get("event") == "proposal_rejected"
+        ][-30:]
+        duplicate_rejections = [
+            row.get("parameter_signature")
+            for row in proposal_rejections
+            if any("already run" in str(error) for error in (row.get("errors") or []))
+        ]
+        family_stats = self._family_stats_summary()
+        bad_families = [
+            item
+            for item in family_stats
+            if item.get("crash", 0) >= 2
+            or item.get("collapse", 0) >= 2
+            or (
+                item.get("trials", 0) >= 4
+                and item.get("keep", 0) == 0
+                and item.get("baseline_win", 0) == 0
+            )
+        ][:10]
+        pending_implemented = sorted(self._pending_implemented_candidate_ids())
+        summary = {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "metric": self.config.metric,
+            "trial_count": len(trials),
+            "decision_counts": decision_counts,
+            "validated_best": {
+                "candidate_id": validated_best.get("candidate_id", ""),
+                "parent_candidate_id": validated_best.get("parent_candidate_id", ""),
+                "params": validated_best.get("params", {}),
+                "run_id": validated_best.get("run_id", ""),
+                "seed_validation": validated_best.get("seed_validation", {}),
+            }
+            if validated_best
+            else {},
+            "focused_exploitation": focused_context,
+            "top_frontier": top_frontier,
+            "best_by_model": best_by_model_summary,
+            "family_stats": family_stats[:20],
+            "bad_families": bad_families,
+            "quarantined_candidates": [
+                {"candidate_id": candidate_id, "issues": issues}
+                for candidate_id, issues in sorted(self.candidate_health_issues.items())
+            ][:50],
+            "pending_implemented_candidates": pending_implemented[:50],
+            "recent_forbidden_parameter_signatures": self._recent_parameter_signatures(limit=120),
+            "recent_duplicate_rejections": [item for item in duplicate_rejections if item][-30:],
+            "planner_gates": {
+                "unverified_keep_count": len(self._unverified_keep_rows()),
+                "pending_implemented_count": len(pending_implemented),
+                "quarantined_count": len(self.quarantined_candidate_ids),
+                "max_pending_implemented": self.config.max_pending_implemented,
+            },
+        }
+        return summary
+
+    def _write_agent_state_summary(self, summary: dict[str, Any]) -> None:
+        try:
+            self.config.state_summary_path.parent.mkdir(parents=True, exist_ok=True)
+            self.config.state_summary_path.write_text(
+                json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            print(f"[StateSummary] write skipped: {exc}", file=sys.stderr)
+
+    def _llm_proposal_context(self) -> dict[str, Any]:
+        schema = load_yaml(self.config.proposal_schema_path)
+        self.agent_state_summary = self._build_agent_state_summary()
+        self._write_agent_state_summary(self.agent_state_summary)
+        tail_limit = max(0, min(self.config.memory_read_limit or len(self.memory), self.config.prompt_memory_tail))
+        memory = self.memory[-tail_limit:] if tail_limit > 0 else []
+        results_tail = self.results_rows[-50:]
+        pending_implemented = sorted(self._pending_implemented_candidate_ids())
+        return {
+            "task": "Generate RecClaw candidate proposals.",
+            "loop_mode": self.config.loop_mode,
+            "proposal_mode": self.config.proposal_mode,
+            "proposal_count": self.config.proposal_count,
+            "pending_implemented_count": len(pending_implemented),
+            "pending_implemented_candidates": pending_implemented[:50],
+            "parameter_space": self.config.parameter_space,
+            "schema": schema,
+            "registry": self.registry,
+            "agent_state_summary": self.agent_state_summary,
+            "recent_agent_memory": memory,
+            "recent_results": results_tail,
+            "notes": self._notes_excerpt(
+                (
+                    "candidate_proposal_workflow.md",
+                    "experiment_log.md",
+                    "candidate_library.md",
+                    "method_change_space.md",
+                )
+            ),
+            "hard_constraints": [
+                "Return only JSON, no Markdown.",
+                "Return an object with a proposals list, or a JSON array.",
+                "Each proposal must satisfy configs/candidate_proposal_schema.yaml.",
+                "Do not require RecBole core changes.",
+                "For mixed mode, include both runnable tuning proposals and code_required/spec_only exploration when useful.",
+                "Runnable tuning proposals must use parameter_overrides and an existing wired parent candidate.",
+                "Runnable tuning parameter_overrides must use values from parameter_space.",
+                "Do not propose exact parameter signatures listed in agent_state_summary.recent_forbidden_parameter_signatures.",
+                "If agent_state_summary.focused_exploitation is non-empty, include focused local variants around it unless the planner explicitly asks only for reporting.",
+                "Do not propose or run candidates listed in agent_state_summary.quarantined_candidates unless explicitly proposing a repair.",
+                "Avoid families listed in agent_state_summary.bad_families unless the proposal is an explicit minimal repair or ablation.",
+                "For code_required proposals, include a concrete implementation_plan and only local extension files.",
+                "For code_required proposals, do not list configs, registry files, notes, or any __init__.py in implementation_plan.files or allowed_files.",
+                "For code_required/spec_only proposals, every consumed parameter not exposed by the parent must be declared in new_parameters.",
+                "Use concrete local entrypoints like recclaw_ext.models.my_model:MyModel instead of package-level recclaw_ext.models:MyModel.",
+                "Do not change configs/task_ml1m.yaml, base model configs, data split, or evaluation protocol.",
+            ],
+        }
+
+    @staticmethod
+    def _strip_json_fence(text: str) -> str:
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE)
+            stripped = re.sub(r"\s*```$", "", stripped)
+        return stripped.strip()
+
+    @classmethod
+    def _parse_json_loose(cls, text: str) -> Any:
+        stripped = cls._strip_json_fence(text)
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+
+        starts = [idx for idx, char in enumerate(stripped) if char in "[{"]
+        for start in starts:
+            stack = ["}" if stripped[start] == "{" else "]"]
+            in_string = False
+            escape = False
+            for idx in range(start + 1, len(stripped)):
+                char = stripped[idx]
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif char == "\\":
+                        escape = True
+                    elif char == '"':
+                        in_string = False
+                    continue
+                if char == '"':
+                    in_string = True
+                elif char in "{[":
+                    stack.append("}" if char == "{" else "]")
+                elif stack and char == stack[-1]:
+                    stack.pop()
+                    if not stack:
+                        try:
+                            return json.loads(stripped[start : idx + 1])
+                        except json.JSONDecodeError:
+                            break
+        raise ValueError("LLM output does not contain a parseable JSON object or array")
+
+    def _parse_llm_proposals(self, text: str) -> list[dict[str, Any]]:
+        if not text.strip():
+            return []
+        try:
+            parsed = self._parse_json_loose(text)
+            if isinstance(parsed, dict) and isinstance(parsed.get("proposals"), list):
+                parsed = parsed["proposals"]
+            elif isinstance(parsed, dict):
+                parsed = [parsed]
+            if not isinstance(parsed, list):
+                raise ValueError("LLM proposal output must be a JSON object, array, or object with proposals")
+            proposals = parsed
+        except ValueError:
+            stripped = self._strip_json_fence(text)
+            proposals = []
+            for line_no, line in enumerate(stripped.splitlines(), start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    proposals.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"invalid LLM JSONL at line {line_no}: {exc}") from exc
+        invalid = [idx for idx, item in enumerate(proposals, start=1) if not isinstance(item, dict)]
+        if invalid:
+            raise ValueError(f"LLM proposals must be objects; invalid rows: {invalid}")
+        registry_ids = {str(item.get("candidate_id") or "") for item in self.registry if item.get("candidate_id")}
+        registry_by_id = {str(item.get("candidate_id") or ""): item for item in self.registry if item.get("candidate_id")}
+        used_ids = set(registry_ids)
+        for proposal in proposals:
+            overrides = proposal.get("parameter_overrides")
+            if isinstance(overrides, dict):
+                proposal["parameter_overrides"] = {
+                    key: value for key, value in overrides.items() if value is not None and str(value).strip() != ""
+                }
+                parent_id = str(proposal.get("parent_candidate_id") or "")
+                if parent_id:
+                    proposal["parameter_signature"] = self._parameter_signature(parent_id, proposal["parameter_overrides"])
+            self._repair_llm_proposal_metadata(proposal, registry_by_id, used_ids)
+        return proposals[: max(1, self.config.proposal_count)]
+
+    def _repair_llm_proposal_metadata(
+        self,
+        proposal: dict[str, Any],
+        registry_by_id: dict[str, dict[str, Any]],
+        used_ids: set[str],
+    ) -> None:
+        candidate_id = str(proposal.get("candidate_id") or "").strip()
+        if candidate_id:
+            base_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", candidate_id).strip("_.-") or "cand_llm_proposal"
+            next_id = base_id
+            suffix = 1
+            while next_id in used_ids:
+                next_id = f"{base_id}_r{suffix:02d}"
+                suffix += 1
+            proposal["candidate_id"] = next_id
+            used_ids.add(next_id)
+
+        runnable_level = str(proposal.get("runnable_level") or "")
+        if runnable_level not in {"code_required", "spec_only"}:
+            return
+        parent_id = str(proposal.get("parent_candidate_id") or "")
+        parent = registry_by_id.get(parent_id)
+        if parent is None:
+            return
+        consumes = [str(item) for item in (proposal.get("consumes") or [])]
+        parent_consumes = {str(item) for item in (parent.get("consumes") or [])}
+        new_names: set[str] = set()
+        new_parameters = proposal.get("new_parameters")
+        if isinstance(new_parameters, list):
+            for item in new_parameters:
+                if isinstance(item, str):
+                    new_names.add(item)
+                elif isinstance(item, dict) and item.get("name"):
+                    new_names.add(str(item["name"]))
+        else:
+            proposal["new_parameters"] = []
+            new_parameters = proposal["new_parameters"]
+        missing = sorted(set(consumes) - parent_consumes - new_names)
+        if missing and isinstance(new_parameters, list):
+            new_parameters.extend(missing)
+
+    @staticmethod
+    def _find_action_payload(value: Any) -> dict[str, Any]:
+        if isinstance(value, dict):
+            action = str(value.get("action") or "").strip()
+            if action:
+                return value
+            for nested in value.values():
+                found = RecClawAgent._find_action_payload(nested)
+                if found:
+                    return found
+        elif isinstance(value, list):
+            for item in value:
+                found = RecClawAgent._find_action_payload(item)
+                if found:
+                    return found
+        return {}
+
+    def _sanitize_planner_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+        ignored_fields = sorted(set(payload) - {"action", "reason", "proposal_count"})
+        sanitized = {
+            "action": str(payload.get("action") or "propose_mixed").strip(),
+            "reason": str(payload.get("reason") or "").strip(),
+            "proposal_count": payload.get("proposal_count", self.config.proposal_count),
+        }
+        try:
+            sanitized["proposal_count"] = max(1, int(sanitized["proposal_count"]))
+        except (TypeError, ValueError):
+            sanitized["proposal_count"] = self.config.proposal_count
+        return sanitized, ignored_fields
+
+    def _recent_planner_actions(self, limit: int = 4) -> list[str]:
+        actions: list[str] = []
+        for row in reversed(self.memory):
+            if row.get("event") != "planner_action":
+                continue
+            actions.append(str(row.get("action") or ""))
+            if len(actions) >= limit:
+                break
+        return list(reversed(actions))
+
+    def _recent_trial_decisions(self, limit: int = 4) -> list[str]:
+        decisions: list[str] = []
+        for row in reversed(self.memory):
+            if row.get("event") or "decision" not in row:
+                continue
+            decisions.append(str(row.get("decision") or ""))
+            if len(decisions) >= limit:
+                break
+        return list(reversed(decisions))
+
+    def _has_pending_code_required_review(self) -> bool:
+        handled = {
+            str(row.get("proposal_id") or "")
+            for row in self.memory
+            if row.get("event") == "implementation_result"
+        }
+        handled.update(
+            str(row.get("proposal_id") or "")
+            for row in self.memory
+            if row.get("event") == "implementation_skipped"
+            and str(row.get("reason") or "") in TERMINAL_IMPLEMENTATION_SKIP_REASONS
+        )
+        for row in reversed(self.memory):
+            if row.get("event") != "proposal_needs_review":
+                continue
+            proposal_id = str(row.get("proposal_id") or "")
+            if not proposal_id or proposal_id in handled:
+                continue
+            if row.get("next_action") == "promote_to_implementation_queue":
+                return True
+        return False
+
+    def _maybe_override_auto_action(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        action = str(payload.get("action") or "")
+        if action == "multi_seed_verify" and not self._unverified_keep_rows():
+            pending_count = len(self._pending_implemented_candidate_ids())
+            updated = dict(payload)
+            updated["action"] = "run_available" if pending_count else "propose_mixed"
+            updated["reason"] = (
+                f"auto override because multi_seed_verify has no unverified keep; "
+                f"{payload.get('reason', '')}"
+            ).strip()
+            return updated, "no_unverified_keep_for_seed_verify"
+        if action in {"multi_seed_verify", "report"}:
+            return payload, ""
+        if action == "implement_needs_review" and not self._has_pending_code_required_review():
+            pending_count = len(self._pending_implemented_candidate_ids())
+            updated = dict(payload)
+            updated["action"] = "run_available" if pending_count else "propose_mixed"
+            updated["reason"] = (
+                f"auto override because no actionable code_required review is pending; "
+                f"{payload.get('reason', '')}"
+            ).strip()
+            return updated, "no_actionable_code_review_pending"
+        pending_count = len(self._pending_implemented_candidate_ids())
+        if pending_count >= self.config.max_pending_implemented and (
+            action.startswith("propose") or action == "implement_needs_review"
+        ):
+            updated = dict(payload)
+            updated["action"] = "run_available"
+            updated["reason"] = (
+                f"auto override to run pending implemented candidates before adding more code; "
+                f"pending_implemented_count={pending_count}; {payload.get('reason', '')}"
+            ).strip()
+            return updated, "pending_implemented_backlog"
+        recent_actions = self._recent_planner_actions(limit=4)
+        recent_decisions = self._recent_trial_decisions(limit=4)
+        repeated_mixed = len(recent_actions) >= 3 and all(item == "propose_mixed" for item in recent_actions[-3:])
+        no_recent_keep = recent_decisions and all(item != "keep" for item in recent_decisions)
+        if repeated_mixed and self._has_pending_code_required_review():
+            updated = dict(payload)
+            updated["action"] = "implement_needs_review"
+            updated["reason"] = (
+                f"auto override after repeated propose_mixed actions; {payload.get('reason', '')}"
+            ).strip()
+            return updated, "repeated_mixed_pending_code_required"
+        if repeated_mixed and no_recent_keep:
+            updated = dict(payload)
+            updated["action"] = "propose_explore"
+            updated["reason"] = (
+                f"auto override to broaden exploration after repeated mixed/discard rounds; {payload.get('reason', '')}"
+            ).strip()
+            return updated, "repeated_mixed_no_recent_keep"
+        return payload, ""
+
+    def reset_round_policy(self) -> None:
+        self.skip_current_round = False
+        self.skip_proposal_generation = False
+        if self.config.loop_mode != "auto":
+            return
+        policy = LOOP_MODE_POLICIES[self.config.loop_mode]
+        self.config.enable_candidate_proposals = True
+        self.config.proposal_mode = str(policy["proposal_mode"])
+        self.config.auto_promote_needs_review = bool(policy["auto_promote"])
+        self.config.auto_implement_code_required = bool(policy["auto_implement"])
+
+    @staticmethod
+    def _https_context() -> ssl.SSLContext:
+        context = ssl.create_default_context()
+        ignore_unexpected_eof = getattr(ssl, "OP_IGNORE_UNEXPECTED_EOF", 0)
+        if ignore_unexpected_eof:
+            context.options |= ignore_unexpected_eof
+        return context
+
+    def _chat_completion(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        schema_name: str = "",
+        response_schema: dict[str, Any] | None = None,
+    ) -> str:
+        model = self.config.llm_model or os.environ.get("DEEPSEEK_MODEL", "") or os.environ.get("OPENAI_MODEL", "")
+        if not model:
+            raise ValueError("LLM proposal source requires --llm-model or OPENAI_MODEL")
+        api_key = os.environ.get(self.config.llm_api_key_env, "")
+        if not api_key:
+            raise ValueError(f"missing LLM API key env var: {self.config.llm_api_key_env}")
+
+        base_url = (
+            self.config.llm_base_url
+            or os.environ.get("DEEPSEEK_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+            or ""
+        ).rstrip("/")
+        if not base_url:
+            base_url = "https://api.deepseek.com/v1"
+        url = f"{base_url}/chat/completions"
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": self.config.llm_temperature,
+            "max_tokens": self.config.llm_max_tokens,
+        }
+        if self.config.llm_provider == "openai" and response_schema is not None:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name or "recclaw_response",
+                    "strict": True,
+                    "schema": response_schema,
+                },
+            }
+        data = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+        req = urlrequest.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        raw = ""
+        max_attempts = max(1, self.config.llm_retries + 1)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with urlrequest.urlopen(
+                    req,
+                    timeout=self.config.llm_timeout,
+                    context=self._https_context(),
+                ) as response:
+                    raw = response.read().decode("utf-8", errors="replace")
+                break
+            except urlerror.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                raise RuntimeError(f"LLM API HTTP {exc.code}: {body}") from exc
+            except (urlerror.URLError, TimeoutError, ssl.SSLError) as exc:
+                if attempt >= max_attempts:
+                    raise RuntimeError(f"LLM API request failed after {attempt} attempts: {exc}") from exc
+                time.sleep(min(2.0 * attempt, 5.0))
+
+        parsed = json.loads(raw)
+        choices = parsed.get("choices") or []
+        if not choices:
+            raise ValueError("LLM API response has no choices")
+        message = choices[0].get("message") or {}
+        content = message.get("content")
+        if isinstance(content, list):
+            chunks = []
+            for item in content:
+                if isinstance(item, dict):
+                    chunks.append(str(item.get("text") or item.get("content") or ""))
+                else:
+                    chunks.append(str(item))
+            content = "".join(chunks)
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("LLM API response has empty message content")
+        return content
+
+    def generate_llm_candidate_proposals(self) -> dict[str, Any]:
+        context = self._llm_proposal_context()
+        system_prompt = (
+            "You are RecClaw's candidate proposal generator. "
+            "Generate valid recommender-system candidate proposals only. "
+            "Do not modify RecBole core. Return strict JSON only."
+        )
+        user_prompt = (
+            "Generate candidate proposals from this context. "
+            "Return a JSON object shaped as {\"proposals\": [...]}.\n\n"
+            + json.dumps(context, ensure_ascii=True)
+        )
+        content = self._chat_completion(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            schema_name="recclaw_candidate_proposals",
+            response_schema=PROPOSAL_RESPONSE_SCHEMA,
+        )
+        proposals = self._parse_llm_proposals(content)
+        self.config.proposal_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.config.proposal_path.open("w", encoding="utf-8") as handle:
+            for proposal in proposals:
+                handle.write(json.dumps(proposal, ensure_ascii=True, sort_keys=True) + "\n")
+        return {
+            "output": str(self.config.proposal_path),
+            "mode": self.config.proposal_mode,
+            "proposal_source": "llm",
+            "proposal_count": len(proposals),
+        }
+
+    def apply_auto_planner(self, round_id: int) -> None:
+        self.skip_current_round = False
+        self.skip_proposal_generation = False
+        if self.config.loop_mode != "auto":
+            return
+        context = {
+            **self._llm_proposal_context(),
+            "planner_actions": sorted(AUTO_PLANNER_ACTIONS),
+            "instruction": (
+                "Choose exactly one next action for this RecClaw round. "
+                "Prefer multi_seed_verify only when there is an unverified keep. "
+                "Return strict JSON with action, reason, and optional proposal_count."
+            ),
+        }
+        try:
+            content = self._chat_completion(
+                [
+                    {
+                        "role": "system",
+                        "content": "You are RecClaw's loop planner. Return strict JSON only.",
+                    },
+                    {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
+                ],
+                schema_name="recclaw_planner_action",
+                response_schema=PLANNER_RESPONSE_SCHEMA,
+            )
+            parsed = self._parse_json_loose(content)
+            if not isinstance(parsed, dict):
+                parsed = self._find_action_payload(parsed)
+            else:
+                parsed = self._find_action_payload(parsed) or parsed
+            if not isinstance(parsed, dict):
+                raise ValueError("planner output must be a JSON object")
+            action = str(parsed.get("action") or "").strip()
+            if action not in AUTO_PLANNER_ACTIONS:
+                raise ValueError(f"unsupported planner action: {action}")
+            parsed, ignored_fields = self._sanitize_planner_payload(parsed)
+        except Exception as exc:  # noqa: BLE001
+            if not self.config.allow_llm_fallback:
+                raise RuntimeError(f"auto planner LLM failed: {type(exc).__name__}: {exc}") from exc
+            parsed = {
+                "action": "propose_mixed",
+                "reason": f"planner fallback after {type(exc).__name__}: {exc}",
+                "proposal_count": self.config.proposal_count,
+            }
+            ignored_fields = []
+        parsed, override_reason = self._maybe_override_auto_action(parsed)
+        action = str(parsed.get("action") or "propose_mixed")
+        self.last_planner_action = parsed
+        event = {
+            "event": "planner_action",
+            "round_id": round_id,
+            "action": action,
+            "reason": parsed.get("reason", ""),
+        }
+        if ignored_fields:
+            event["ignored_fields"] = ignored_fields
+        if override_reason:
+            event["override_reason"] = override_reason
+        self.remember_event(event)
+        print(f"[Round {round_id}] planner_action={json.dumps(parsed, ensure_ascii=True, sort_keys=True)}")
+
+        if action == "multi_seed_verify":
+            self.verify_last_keep(round_id)
+            self.skip_current_round = True
+            return
+        if action == "report":
+            self.remember_event(
+                {
+                    "event": "planner_report",
+                    "round_id": round_id,
+                    "reason": parsed.get("reason", ""),
+                    "memory_rows": len(self.memory),
+                    "registered_candidates": len(self.registry),
+                    "proposal_rows": len(self.candidate_proposals),
+                }
+            )
+            self.skip_current_round = True
+            return
+
+        if action == "propose_tuning":
+            self.config.enable_candidate_proposals = True
+            self.config.proposal_mode = "conservative"
+            self.config.auto_promote_needs_review = False
+            self.config.auto_implement_code_required = False
+        elif action == "propose_explore" or action == "implement_needs_review":
+            self.config.enable_candidate_proposals = True
+            self.config.proposal_mode = "explore"
+            self.config.auto_promote_needs_review = True
+            self.config.auto_implement_code_required = True
+            self.skip_proposal_generation = action == "implement_needs_review"
+        elif action == "run_available":
+            self.config.enable_candidate_proposals = False
+        else:
+            self.config.enable_candidate_proposals = True
+            self.config.proposal_mode = "mixed"
+            self.config.auto_promote_needs_review = True
+            self.config.auto_implement_code_required = action != "propose_mixed"
+        if parsed.get("proposal_count") is not None:
+            try:
+                self.config.proposal_count = max(1, int(parsed["proposal_count"]))
+            except (TypeError, ValueError):
+                pass
+
+    def verify_last_keep(self, round_id: int) -> None:
+        if self.config.dry_run:
+            self.remember_event(
+                {
+                    "event": "seed_validation_skipped",
+                    "round_id": round_id,
+                    "reason": "dry_run",
+                }
+            )
+            return
+        target = None
+        for row in reversed(self.memory):
+            if row.get("decision") == "keep" and not row.get("seed_validation"):
+                target = row
+                break
+        if target is None:
+            self.remember_event(
+                {
+                    "event": "seed_validation_skipped",
+                    "round_id": round_id,
+                    "reason": "no unverified keep found",
+                }
+            )
+            return
+        candidate_id = str(target.get("candidate_id") or "")
+        parent_id = str(target.get("parent_candidate_id") or "")
+        base = self._find_registry_candidate(parent_id or candidate_id)
+        if base is None:
+            self.remember_event(
+                {
+                    "event": "seed_validation_skipped",
+                    "round_id": round_id,
+                    "candidate_id": candidate_id,
+                    "reason": "candidate not found in registry",
+                }
+            )
+            return
+        candidate = dict(base)
+        if parent_id:
+            candidate["candidate_id"] = candidate_id
+            candidate["run_candidate_id"] = parent_id
+            candidate["parent_candidate_id"] = parent_id
+        params = target.get("params") if isinstance(target.get("params"), dict) else {}
+        compare_baseline = target.get("compare_baseline") if isinstance(target.get("compare_baseline"), dict) else {}
+        validation = self.run_seed_validation(candidate, dict(params), self._to_float(compare_baseline.get("baseline_metric")))
+        self.remember_event(
+            {
+                "event": "seed_validation",
+                "round_id": round_id,
+                "candidate_id": candidate_id,
+                "parent_candidate_id": parent_id,
+                "seed_validation": validation,
+            }
+        )
+
+    def _run_json_command(self, cmd: list[str], *, allow_json_failure: bool = False) -> dict[str, Any]:
+        completed = subprocess.run(
+            cmd,
+            cwd=PROJECT_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if allow_json_failure and completed.stdout.strip():
+            try:
+                parsed = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                parsed["_exit_code"] = completed.returncode
+                if completed.stderr:
+                    parsed["_stderr"] = completed.stderr
+                return parsed
+        if completed.returncode != 0:
+            message = completed.stderr.strip() or completed.stdout.strip()
+            raise RuntimeError(f"command failed ({completed.returncode}): {' '.join(cmd)}\n{message}")
+        parsed = json.loads(completed.stdout)
+        if not isinstance(parsed, dict):
+            raise ValueError(f"command did not return a JSON object: {' '.join(cmd)}")
+        return parsed
+
+    def remember_event(self, payload: dict[str, Any]) -> None:
+        self.config.memory_path.parent.mkdir(parents=True, exist_ok=True)
+        event = {"timestamp": datetime.now().isoformat(timespec="seconds"), **payload}
+        with self.config.memory_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=True) + "\n")
+        self.memory.append(event)
+        self.agent_state_summary = self._build_agent_state_summary()
+        self._write_agent_state_summary(self.agent_state_summary)
+
+    def refresh_candidate_proposals(self, round_id: int) -> None:
+        if not self.config.enable_candidate_proposals:
+            return
+        every = max(1, self.config.proposal_every)
+        should_generate = (
+            not self.skip_proposal_generation
+            and (round_id == 1 or (round_id - 1) % every == 0 or not self.config.proposal_path.exists())
+        )
+        if should_generate:
+            try:
+                self.skip_proposal_generation = False
+                if self.config.proposal_source == "llm":
+                    generated = self.generate_llm_candidate_proposals()
+                else:
+                    generated = self.generate_heuristic_candidate_proposals()
+            except Exception as exc:  # noqa: BLE001
+                if self.config.proposal_source == "llm" and not self.config.allow_llm_fallback:
+                    raise
+                self.remember_event(
+                    {
+                        "event": "proposal_generation_failed",
+                        "round_id": round_id,
+                        "proposal_source": self.config.proposal_source,
+                        "reason": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+                print(f"[Round {round_id}] proposal_generation_failed={type(exc).__name__}: {exc}")
+                generated = self.generate_heuristic_candidate_proposals()
+                generated["proposal_source"] = "heuristic_fallback"
+            print(
+                f"[Round {round_id}] proposals_generated="
+                f"{generated.get('proposal_count')} mode={generated.get('mode')} "
+                f"source={generated.get('proposal_source', self.config.proposal_source)}"
+            )
+            self.current_proposal_source = str(generated.get("proposal_source") or self.config.proposal_source)
+            self.remember_event(
+                {
+                    "event": "proposal_generated",
+                    "round_id": round_id,
+                    "proposal_source": self.current_proposal_source,
+                    "proposal_mode": generated.get("mode", self.config.proposal_mode),
+                    "proposal_count": generated.get("proposal_count", 0),
+                }
+            )
+
+        self.candidate_proposals = self._load_candidate_proposals()
+        if not self.candidate_proposals:
+            self.proposal_validation_report = {}
+            print(f"[Round {round_id}] proposals_available=0")
+            return
+
+        self.proposal_validation_report = self._run_json_command(
+            [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts" / "validate_candidate_proposal.py"),
+                "--proposals",
+                str(self.config.proposal_path),
+                "--registry",
+                str(self.config.registry_path),
+                "--schema",
+                str(self.config.proposal_schema_path),
+                "--memory",
+                str(self.config.memory_path),
+            ],
+            allow_json_failure=True,
+        )
+        summary = self.proposal_validation_report.get("summary", {})
+        next_actions = self.proposal_validation_report.get("next_actions", {})
+        print(
+            f"[Round {round_id}] proposals_validation="
+            f"{json.dumps(summary, ensure_ascii=True, sort_keys=True)} "
+            f"next_actions={json.dumps(next_actions, ensure_ascii=True, sort_keys=True)}"
+        )
+        self.record_proposal_routes(round_id)
+        if not self.config.auto_promote_needs_review:
+            return
+
+        promotion_report = self._run_json_command(
+            [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts" / "promote_candidate_proposal.py"),
+                "--proposals",
+                str(self.config.proposal_path),
+                "--registry",
+                str(self.config.registry_path),
+                "--schema",
+                str(self.config.proposal_schema_path),
+                "--memory",
+                str(self.config.memory_path),
+            ]
+            + (["--dry-run"] if self.config.dry_run else []),
+            allow_json_failure=True,
+        )
+        promoted = promotion_report.get("promoted_parent_candidate_ids", [])
+        if promoted:
+            self._reload_registry()
+            print(
+                f"[Round {round_id}] proposals_promoted="
+                f"{json.dumps(promoted, ensure_ascii=True, sort_keys=True)}"
+            )
+        blocked = promotion_report.get("blocked", {})
+        if blocked:
+            print(
+                f"[Round {round_id}] proposals_promotion_blocked="
+                f"{json.dumps(blocked, ensure_ascii=True, sort_keys=True)}"
+            )
+        pending_implemented = sorted(self._pending_implemented_candidate_ids())
+        if (
+            self.config.auto_implement_code_required
+            and len(pending_implemented) >= self.config.max_pending_implemented
+        ):
+            self.remember_event(
+                {
+                    "event": "implementation_skipped",
+                    "round_id": round_id,
+                    "reason": "pending_implemented_backlog",
+                    "pending_implemented_count": len(pending_implemented),
+                    "pending_implemented_candidates": pending_implemented[:20],
+                }
+            )
+            print(
+                f"[Round {round_id}] implementation_skipped="
+                f"pending_implemented_backlog count={len(pending_implemented)}"
+            )
+            return
+        if self.config.auto_implement_code_required and self.config.dry_run:
+            self.remember_event(
+                {
+                    "event": "implementation_skipped",
+                    "round_id": round_id,
+                    "reason": "dry_run",
+                }
+            )
+        elif self.config.auto_implement_code_required:
+            self.implement_needs_review_proposals(round_id)
+
+    def generate_heuristic_candidate_proposals(self) -> dict[str, Any]:
+        return self._run_json_command(
+            [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts" / "propose_candidate.py"),
+                "--mode",
+                self.config.proposal_mode,
+                "--count",
+                str(max(1, self.config.proposal_count)),
+                "--output",
+                str(self.config.proposal_path),
+                "--memory",
+                str(self.config.memory_path),
+                "--memory-limit",
+                str(max(0, self.config.memory_read_limit)),
+            ]
+        )
+
+    def record_proposal_routes(self, round_id: int) -> None:
+        by_id = {str(item.get("candidate_id") or ""): item for item in self.candidate_proposals}
+        for row in self.proposal_validation_report.get("results", []):
+            if not isinstance(row, dict):
+                continue
+            proposal_id = str(row.get("candidate_id") or "")
+            status = str(row.get("status") or "")
+            event_key = f"{proposal_id}:{status}"
+            if not proposal_id or event_key in self.recorded_proposal_events:
+                continue
+            if status not in {"rejected", "needs_review"}:
+                continue
+            proposal = by_id.get(proposal_id, {})
+            self.recorded_proposal_events.add(event_key)
+            self.remember_event(
+                {
+                    "event": f"proposal_{status}",
+                    "round_id": round_id,
+                    "proposal_id": proposal_id,
+                    "parent_candidate_id": proposal.get("parent_candidate_id", ""),
+                    "parameter_signature": row.get("parameter_signature", ""),
+                    "proposal_source": self.current_proposal_source,
+                    "errors": row.get("errors", []),
+                    "review_reasons": row.get("review_reasons", []),
+                    "next_action": row.get("next_action", ""),
+                }
+            )
+
+    def implement_needs_review_proposals(self, round_id: int) -> None:
+        implemented_this_round = 0
+        for row in self.proposal_validation_report.get("results", []):
+            if not isinstance(row, dict):
+                continue
+            proposal_id = str(row.get("candidate_id") or "")
+            if row.get("status") != "needs_review" or row.get("runnable_level") != "code_required":
+                continue
+            if implemented_this_round >= self.config.max_implement_per_round:
+                self.remember_event(
+                    {
+                        "event": "implementation_skipped",
+                        "round_id": round_id,
+                        "proposal_id": proposal_id,
+                        "reason": "max_implement_per_round",
+                        "max_implement_per_round": self.config.max_implement_per_round,
+                    }
+                )
+                continue
+            if not proposal_id or proposal_id in self.scheduled_candidate_ids:
+                continue
+            proposal = next(
+                (
+                    item
+                    for item in self.candidate_proposals
+                    if str(item.get("candidate_id") or "") == proposal_id
+                ),
+                {},
+            )
+            parent_id = str(proposal.get("parent_candidate_id") or "")
+            parent = self._find_registry_candidate(parent_id)
+            if (
+                parent_id in AUTO_PROMOTABLE_PARENT_IDS
+                and parent is not None
+                and bool(parent.get("wired"))
+                and str(parent.get("status") or "") == "implemented"
+            ):
+                self.remember_event(
+                    {
+                        "event": "implementation_skipped",
+                        "round_id": round_id,
+                        "proposal_id": proposal_id,
+                        "parent_candidate_id": parent_id,
+                        "reason": "known parent was auto-promoted and is runnable",
+                    }
+                )
+                continue
+            report = self._run_json_command(
+                [
+                    sys.executable,
+                    str(PROJECT_ROOT / "scripts" / "implement_candidate_proposal.py"),
+                    "--proposal-id",
+                    proposal_id,
+                    "--proposals",
+                    str(self.config.proposal_path),
+                    "--registry",
+                    str(self.config.registry_path),
+                    "--llm-provider",
+                    self.config.llm_provider,
+                    "--llm-base-url",
+                    self.config.llm_base_url,
+                    "--llm-model",
+                    self.config.llm_model,
+                    "--llm-api-key-env",
+                    self.config.llm_api_key_env,
+                    "--llm-temperature",
+                    str(self.config.llm_temperature),
+                    "--llm-timeout",
+                    str(self.config.llm_timeout),
+                    "--llm-max-tokens",
+                    str(self.config.llm_max_tokens),
+                    "--llm-retries",
+                    str(self.config.llm_retries),
+                ]
+                + (
+                    []
+                    if self.config.implementation_smoke_run
+                    else ["--skip-smoke-run"]
+                )
+                + [
+                    item
+                    for override in self.config.global_overrides
+                    for item in ("--smoke-set", override)
+                ]
+                + (["--dry-run"] if self.config.dry_run else []),
+                allow_json_failure=True,
+            )
+            review_errors = report.get("review_errors", [])
+            if not isinstance(review_errors, list):
+                review_errors = []
+            self.remember_event(
+                {
+                    "event": "implementation_result",
+                    "round_id": round_id,
+                    "proposal_id": proposal_id,
+                    "status": report.get("status", "implementation_failed"),
+                    "candidate_id": report.get("candidate_id", ""),
+                    "reason": report.get("reason", ""),
+                    "entrypoint": report.get("entrypoint", ""),
+                    "files": report.get("files", []),
+                    "smoke": report.get("smoke", {}),
+                    "review_errors": review_errors[-5:],
+                }
+            )
+            print(f"[Round {round_id}] implementation_result={json.dumps(report, ensure_ascii=True, sort_keys=True)}")
+            implemented_this_round += 1
+            if str(report.get("status") or "") in IMPLEMENTATION_RUNNABLE_STATUSES:
+                self._reload_registry()
+
     # ===== Evaluate =====
     def evaluate(self, candidate: dict[str, Any], action_out: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
         summary = action_out.get("summary", {})
         run_id = str(summary.get("run_id") or "")
-        model_name = str(summary.get("model") or candidate.get("base_model") or "")
+        model_name = self._normalize_model_key(summary.get("model") or candidate.get("base_model") or "")
         if "/" in model_name:
             model_name = model_name.split("/", 1)[0].strip()
 
@@ -439,13 +2411,21 @@ class RecClawAgent:
         status = str(candidate_result.get("status") or "").lower()
         if action_out.get("exit_code", 1) != 0 or status != "success":
             return "crash", "candidate run crashed or result status is not success", "check candidate wiring and dependencies"
+        if compare_baseline.get("delta") is None:
+            return "revise", "baseline comparison is missing or incomplete", "complete same-protocol baseline before drawing conclusions"
+        if self._is_extreme_quality_collapse({"result": candidate_result, "compare_baseline": compare_baseline}):
+            return (
+                "discard",
+                "candidate shows extreme early-quality collapse versus baseline",
+                "quarantine this parameter region and prefer simpler ablations",
+            )
 
         baseline_delta = float(compare_baseline.get("delta") or 0.0)
         history_delta = float(compare_history.get("delta") or 0.0)
         if baseline_delta > self.config.min_keep_delta and history_delta > self.config.min_keep_delta:
             return "keep", "candidate improves both baseline and current history best", "schedule follow-up around this candidate"
         if baseline_delta >= 0 and history_delta <= self.config.min_keep_delta:
-            return "revise", "candidate is near baseline but does not beat history best", self._revise_suggestion(candidate, params)
+            return "revise", "candidate improves baseline but does not beat history best", self._revise_suggestion(candidate, params)
         if -self.config.min_keep_delta < baseline_delta < 0:
             return "revise", "candidate is slightly below baseline and needs parameter refinement", self._revise_suggestion(candidate, params)
         return "discard", "candidate does not beat baseline under current settings", "de-prioritize this configuration and explore another candidate"
@@ -468,6 +2448,88 @@ class RecClawAgent:
             return f"adjust {key} to another value in configured parameter_space"
         return "refine implementation details or move to a related candidate"
 
+    def run_seed_validation(
+        self,
+        candidate: dict[str, Any],
+        params: dict[str, Any],
+        baseline_metric: float | None,
+    ) -> dict[str, Any]:
+        if baseline_metric is None:
+            return {
+                "status": "inconclusive",
+                "reason": "baseline metric is missing",
+                "metric": self.config.metric,
+                "seeds": self.config.validation_seeds,
+            }
+        values: list[float] = []
+        run_ids: list[str] = []
+        seed_runs: list[dict[str, Any]] = []
+        crashes = 0
+        for seed in self.config.validation_seeds:
+            seed_params = {**params, "seed": seed}
+            action_out = self.act(candidate, seed_params)
+            candidate_result, _, _, _ = self.evaluate(candidate, action_out)
+            run_id = str((action_out.get("summary") or {}).get("run_id") or "")
+            if run_id:
+                run_ids.append(run_id)
+            value = self._to_float(candidate_result.get(self.config.metric))
+            if action_out.get("exit_code", 1) != 0 or str(candidate_result.get("status") or "").lower() != "success" or value is None:
+                crashes += 1
+                seed_runs.append(
+                    {
+                        "seed": seed,
+                        "run_id": run_id,
+                        "status": str(candidate_result.get("status") or "crash"),
+                        "value": None,
+                    }
+                )
+                continue
+            values.append(value)
+            seed_runs.append(
+                {
+                    "seed": seed,
+                    "run_id": run_id,
+                    "status": "success",
+                    "value": round(value, 6),
+                }
+            )
+
+        if not values:
+            status = "inconclusive"
+            mean_value = None
+            std_value = None
+            wins = 0
+        else:
+            mean_value = statistics.mean(values)
+            std_value = statistics.pstdev(values) if len(values) > 1 else 0.0
+            wins = sum(1 for value in values if value > baseline_metric + self.config.min_keep_delta)
+            required_wins = max(1, (2 * len(self.config.validation_seeds) + 2) // 3)
+            status = (
+                "passed"
+                if mean_value > baseline_metric + self.config.min_keep_delta and wins >= required_wins
+                else "failed"
+            )
+            if crashes:
+                status = "inconclusive"
+        required_wins = max(1, (2 * len(self.config.validation_seeds) + 2) // 3)
+
+        return {
+            "status": status,
+            "metric": self.config.metric,
+            "seeds": self.config.validation_seeds,
+            "values": values,
+            "mean": None if mean_value is None else round(mean_value, 6),
+            "std": None if std_value is None else round(std_value, 6),
+            "baseline_reference": "single_seed",
+            "baseline_metric": baseline_metric,
+            "wins": wins,
+            "required_wins": required_wins,
+            "total": len(self.config.validation_seeds),
+            "crashes": crashes,
+            "run_ids": run_ids,
+            "runs": seed_runs,
+        }
+
     # ===== Remember =====
     def remember(self, record: TrialRecord) -> None:
         self.config.memory_path.parent.mkdir(parents=True, exist_ok=True)
@@ -485,11 +2547,27 @@ class RecClawAgent:
             "decision": record.decision,
             "reason": record.reason,
             "next_action": record.next_action,
+            "is_baseline_improvement": record.is_baseline_improvement,
+            "is_history_best": record.is_history_best,
         }
+        if record.parent_candidate_id:
+            payload["parent_candidate_id"] = record.parent_candidate_id
+        if record.proposal_id:
+            payload["proposal_id"] = record.proposal_id
+        if record.parameter_signature:
+            payload["parameter_signature"] = record.parameter_signature
+        if record.execution_signature:
+            payload["execution_signature"] = record.execution_signature
+        if record.proposal_source:
+            payload["proposal_source"] = record.proposal_source
+        if record.seed_validation:
+            payload["seed_validation"] = record.seed_validation
         with self.config.memory_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
         self.memory.append(payload)
         self.history_by_candidate.setdefault(record.candidate_id, []).append(payload)
+        self.agent_state_summary = self._build_agent_state_summary()
+        self._write_agent_state_summary(self.agent_state_summary)
 
     def _score(self, item: dict[str, Any]) -> float:
         if self.config.multi_metrics:
@@ -504,9 +2582,27 @@ class RecClawAgent:
         self.observe()
         for round_id in range(1, self.config.rounds + 1):
             try:
+                self.reset_round_policy()
+                self.apply_auto_planner(round_id)
+                if self.skip_current_round:
+                    print(f"[Round {round_id}] planner requested no candidate run")
+                    continue
+                self.refresh_candidate_proposals(round_id)
                 candidate, params, context = self.plan()
                 candidate_id = str(candidate.get("candidate_id"))
+                self.scheduled_candidate_ids.add(candidate_id)
+                parameter_signature = str(candidate.get("parameter_signature") or "")
+                if parameter_signature:
+                    self.scheduled_param_signatures.add(parameter_signature)
+                execution_signature = str(candidate.get("execution_signature") or self._execution_signature(candidate, params))
+                if execution_signature:
+                    self.scheduled_execution_signatures.add(execution_signature)
                 print(f"\n[Round {round_id}] candidate={candidate_id} params={json.dumps(params, ensure_ascii=True)}")
+                if candidate.get("parent_candidate_id"):
+                    print(
+                        f"[Round {round_id}] proposal_parent={candidate.get('parent_candidate_id')} "
+                        f"run_candidate_id={candidate.get('run_candidate_id')}"
+                    )
                 if context:
                     print(f"[Round {round_id}] optional_context_loaded={list(context.keys())}")
                 if self.config.dry_run:
@@ -518,6 +2614,27 @@ class RecClawAgent:
                     candidate, params, action_out, candidate_result, compare_baseline, compare_history
                 )
                 run_id = str((action_out.get("summary") or {}).get("run_id") or "")
+                baseline_delta = self._to_float(compare_baseline.get("delta"))
+                history_delta = self._to_float(compare_history.get("delta"))
+                is_baseline_improvement = baseline_delta is not None and baseline_delta > self.config.min_keep_delta
+                is_history_best = history_delta is not None and history_delta > self.config.min_keep_delta
+                seed_validation: dict[str, Any] = {}
+                if self.config.enable_seed_validation and decision == "keep":
+                    seed_validation = self.run_seed_validation(
+                        candidate,
+                        params,
+                        self._to_float(compare_baseline.get("baseline_metric")),
+                    )
+                    validation_status = str(seed_validation.get("status") or "inconclusive")
+                    if validation_status != "passed":
+                        decision = "revise"
+                        reason = f"{reason}; seed validation {validation_status}"
+                        next_action = f"revise because seed validation {validation_status}"
+                self.retain_checkpoints_for_result(
+                    decision=decision,
+                    run_id=run_id,
+                    seed_validation=seed_validation,
+                )
                 record = TrialRecord(
                     round_id=round_id,
                     candidate_id=candidate_id,
@@ -531,8 +2648,17 @@ class RecClawAgent:
                     decision=decision,
                     reason=reason,
                     next_action=next_action,
+                    parent_candidate_id=str(candidate.get("parent_candidate_id") or ""),
+                    proposal_id=str(candidate.get("proposal_id") or ""),
+                    parameter_signature=parameter_signature,
+                    execution_signature=execution_signature,
+                    proposal_source=str(candidate.get("proposal_source") or ""),
+                    is_baseline_improvement=is_baseline_improvement,
+                    is_history_best=is_history_best,
+                    seed_validation=seed_validation,
                 )
                 self.remember(record)
+                self._update_history_best(candidate.get("base_model") or candidate_result.get("model"), candidate_result)
                 print(
                     json.dumps(
                         {
@@ -543,6 +2669,7 @@ class RecClawAgent:
                             "reason": reason,
                             "next_action": next_action,
                             "latency_ms": candidate_result.get("latency_ms", ""),
+                            "seed_validation": seed_validation.get("status", ""),
                         },
                         ensure_ascii=True,
                         indent=2,
@@ -573,14 +2700,128 @@ class RecClawAgent:
 def main() -> int:
     parser = argparse.ArgumentParser(description="RecClaw Observe->Plan->Act->Evaluate->Reflect->Remember agent")
     parser.add_argument("--rounds", type=int, default=5, help="Number of scheduling rounds")
+    parser.add_argument(
+        "--loop-mode",
+        choices=("tuning", "mixed", "explore", "auto"),
+        default="mixed",
+        help="Agent loop mode controlling proposal type and implementation autonomy",
+    )
     parser.add_argument("--metric", default="ndcg@10", help="Primary metric for single-objective mode")
     parser.add_argument("--multi-metrics", action="store_true", help="Enable weighted multi-metric scoring")
     parser.add_argument("--metrics-weights-json", help="Weights JSON for multi-metrics")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--dry-run", action="store_true", help="Run Observe+Plan only")
+    parser.add_argument(
+        "--set",
+        dest="global_overrides",
+        action="append",
+        default=[],
+        help="Append a temporary run_candidate.py override key=value to every run",
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        default=os.environ.get("RECCLAW_CHECKPOINT_DIR", ""),
+        help="Directory passed to run_candidate.py for RecBole checkpoints",
+    )
+    parser.add_argument(
+        "--checkpoint-policy",
+        choices=("none", "cleanup_all", "keep_validated", "keep_any"),
+        default=os.environ.get("RECCLAW_CHECKPOINT_POLICY", "none"),
+        help=(
+            "Agent-level checkpoint retention policy. keep_validated keeps checkpoints only "
+            "for final keep decisions that pass seed validation."
+        ),
+    )
     parser.add_argument("--memory-path", default=str(MEMORY_PATH), help="Agent memory jsonl path")
     parser.add_argument("--memory-read-limit", type=int, default=2000, help="Read only latest N memory rows (0 means all)")
+    parser.add_argument(
+        "--state-summary-path",
+        default=str(STATE_SUMMARY_PATH),
+        help="Write compact agent state summary for LLM planning/proposal context",
+    )
+    parser.add_argument(
+        "--prompt-memory-tail",
+        type=int,
+        default=120,
+        help="Maximum recent memory rows included verbatim in LLM prompts; summary still sees loaded memory",
+    )
     parser.add_argument("--recent-schedule-penalty", type=float, default=0.15, help="Penalty if candidate was scheduled in previous round")
+    parser.add_argument(
+        "--enable-candidate-proposals",
+        action="store_true",
+        help="Generate/validate candidate proposals and include accepted tuning proposals in planning",
+    )
+    parser.add_argument(
+        "--disable-candidate-proposals",
+        action="store_true",
+        help="Disable proposal generation/validation and only schedule already-runnable registry candidates",
+    )
+    parser.add_argument("--proposal-path", default=str(PROPOSAL_PATH), help="Candidate proposal JSONL path")
+    parser.add_argument(
+        "--proposal-mode",
+        choices=("conservative", "mixed", "explore"),
+        default=None,
+        help="Override the proposal generation mode selected by --loop-mode",
+    )
+    parser.add_argument(
+        "--proposal-source",
+        choices=("heuristic", "llm"),
+        default=os.environ.get("RECCLAW_PROPOSAL_SOURCE", "llm"),
+        help="Proposal source: heuristic fallback or direct LLM API from agent.py",
+    )
+    parser.add_argument("--proposal-count", type=int, default=5, help="Number of proposals to generate per refresh")
+    parser.add_argument("--proposal-every", type=int, default=3, help="Refresh proposals every N rounds")
+    parser.add_argument("--proposal-bonus", type=float, default=0.35, help="Planning score bonus for accepted proposals")
+    parser.add_argument(
+        "--auto-promote-needs-review",
+        action="store_true",
+        help="Promote known implementation-ready needs_review proposals into runnable registry candidates",
+    )
+    parser.add_argument(
+        "--max-pending-implemented",
+        type=int,
+        default=3,
+        help="Pause new auto-implementations and prioritize running implemented candidates at this backlog size",
+    )
+    parser.add_argument(
+        "--max-implement-per-round",
+        type=int,
+        default=1,
+        help="Maximum code_required proposals to auto-implement in one round",
+    )
+    parser.add_argument(
+        "--disable-implementation-smoke",
+        action="store_true",
+        help="Skip short smoke training after auto-implementing code_required proposals",
+    )
+    parser.add_argument(
+        "--llm-provider",
+        choices=("deepseek", "openai", "compatible"),
+        default=os.environ.get("RECCLAW_LLM_PROVIDER", "deepseek"),
+        help="LLM provider. openai enables strict JSON schema responses for planner/proposals.",
+    )
+    parser.add_argument("--llm-model", default="", help="Model for --proposal-source llm")
+    parser.add_argument(
+        "--llm-base-url",
+        default="",
+        help="OpenAI-compatible API base URL",
+    )
+    parser.add_argument("--llm-api-key-env", default="", help="Environment variable containing API key")
+    parser.add_argument("--llm-temperature", type=float, default=0.2, help="LLM proposal sampling temperature")
+    parser.add_argument("--llm-timeout", type=int, default=120, help="LLM API timeout in seconds")
+    parser.add_argument("--llm-max-tokens", type=int, default=4096, help="Maximum LLM output tokens")
+    parser.add_argument("--llm-retries", type=int, default=2, help="Retry count for transient LLM API transport errors")
+    parser.add_argument(
+        "--allow-llm-fallback",
+        action="store_true",
+        help="Allow heuristic fallback if DeepSeek-compatible LLM planning/proposal generation fails",
+    )
+    parser.add_argument("--enable-seed-validation", action="store_true", help="Run multi-seed validation for keep decisions")
+    parser.add_argument(
+        "--validation-seeds",
+        default="2026,2027,2028",
+        help="Comma-separated seeds for keep validation",
+    )
     parser.add_argument(
         "--metric-lower-is-better",
         action="append",
@@ -592,6 +2833,28 @@ def main() -> int:
     metrics_weights = AgentConfig().metrics_weights
     if args.metrics_weights_json:
         metrics_weights = normalize_weights(args.metrics_weights_json)
+    policy = LOOP_MODE_POLICIES[args.loop_mode]
+    selected_proposal_mode = args.proposal_mode or str(policy["proposal_mode"])
+    enable_candidate_proposals = not args.disable_candidate_proposals and (
+        args.enable_candidate_proposals or args.loop_mode in LOOP_MODE_POLICIES
+    )
+    validation_seeds = [int(item.strip()) for item in str(args.validation_seeds).split(",") if item.strip()]
+    llm_provider = str(args.llm_provider)
+    if llm_provider == "openai":
+        default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
+        default_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        default_key_env = "OPENAI_API_KEY"
+    elif llm_provider == "deepseek":
+        default_model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+        default_base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        default_key_env = "DEEPSEEK_API_KEY"
+    else:
+        default_model = os.environ.get("OPENAI_MODEL") or os.environ.get("DEEPSEEK_MODEL", "")
+        default_base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL", "")
+        default_key_env = os.environ.get("RECCLAW_LLM_API_KEY_ENV", "OPENAI_API_KEY")
+    llm_model = args.llm_model or default_model
+    llm_base_url = args.llm_base_url or default_base_url
+    llm_api_key_env = args.llm_api_key_env or default_key_env
 
     config = AgentConfig(
         rounds=max(1, args.rounds),
@@ -600,14 +2863,50 @@ def main() -> int:
         metrics_weights=metrics_weights,
         seed=args.seed,
         dry_run=args.dry_run,
+        loop_mode=args.loop_mode,
         memory_path=Path(args.memory_path),
+        state_summary_path=Path(args.state_summary_path),
         memory_read_limit=max(0, args.memory_read_limit),
+        prompt_memory_tail=max(0, args.prompt_memory_tail),
         recent_schedule_penalty=max(0.0, args.recent_schedule_penalty),
+        enable_candidate_proposals=enable_candidate_proposals,
+        proposal_path=Path(args.proposal_path),
+        proposal_mode=selected_proposal_mode,
+        proposal_count=max(1, args.proposal_count),
+        proposal_every=max(1, args.proposal_every),
+        proposal_bonus=max(0.0, args.proposal_bonus),
+        proposal_source=args.proposal_source,
+        auto_promote_needs_review=bool(policy["auto_promote"] or args.auto_promote_needs_review),
+        auto_implement_code_required=bool(policy["auto_implement"]),
+        max_pending_implemented=max(1, args.max_pending_implemented),
+        max_implement_per_round=max(0, args.max_implement_per_round),
+        implementation_smoke_run=not bool(args.disable_implementation_smoke),
+        global_overrides=list(args.global_overrides),
+        checkpoint_dir=str(args.checkpoint_dir or ""),
+        checkpoint_policy=str(args.checkpoint_policy),
+        enable_seed_validation=bool(args.enable_seed_validation),
+        validation_seeds=validation_seeds or list(DEFAULT_VALIDATION_SEEDS),
+        llm_provider=llm_provider,
+        llm_model=llm_model,
+        llm_base_url=llm_base_url,
+        llm_api_key_env=llm_api_key_env,
+        llm_temperature=max(0.0, args.llm_temperature),
+        llm_timeout=max(1, args.llm_timeout),
+        llm_max_tokens=max(256, args.llm_max_tokens),
+        llm_retries=max(0, args.llm_retries),
+        allow_llm_fallback=bool(args.allow_llm_fallback),
         metric_directions={
             **DEFAULT_METRIC_DIRECTIONS,
             **{str(name).lower(): -1 for name in args.metric_lower_is_better},
         },
     )
+    needs_llm = (
+        (config.enable_candidate_proposals and config.proposal_source == "llm")
+        or config.loop_mode == "auto"
+        or (config.auto_implement_code_required and not config.dry_run)
+    )
+    if needs_llm and not config.allow_llm_fallback and not os.environ.get(config.llm_api_key_env, ""):
+        raise SystemExit(f"missing LLM API key env var: {config.llm_api_key_env}")
     RecClawAgent(config).run()
     return 0
 

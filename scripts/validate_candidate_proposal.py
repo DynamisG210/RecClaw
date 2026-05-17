@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
 SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
+MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
 
 ACCEPTED = "accepted"
 REJECTED = "rejected"
@@ -26,6 +27,20 @@ NEXT_ACTIONS = {
     REJECTED: "revise_or_drop",
 }
 
+SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
+
+
+def normalize_signature_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): normalize_signature_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [normalize_signature_value(item) for item in value]
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
 
 def load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
@@ -35,6 +50,8 @@ def load_yaml(path: Path) -> dict[str, Any]:
 
 
 def load_jsonl(path: Path) -> list[tuple[int, dict[str, Any] | None, str | None]]:
+    if not path.exists():
+        return []
     rows: list[tuple[int, dict[str, Any] | None, str | None]] = []
     for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
         line = line.strip()
@@ -96,8 +113,69 @@ def implementation_files(proposal: dict[str, Any]) -> list[str]:
     return [item for item in files if item and item != "None"]
 
 
+def params_signature(params: dict[str, Any]) -> str:
+    normalized = {
+        str(key): normalize_signature_value(value)
+        for key, value in params.items()
+        if str(key) not in SIGNATURE_EXCLUDED_KEYS
+    }
+    return json.dumps(normalized, ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def parent_param_signature(parent_id: str, params: dict[str, Any]) -> str:
+    return f"{parent_id}::{params_signature(params)}"
+
+
+def canonical_parameter_signature_text(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if "::" not in text:
+        return text
+    parent_id, raw_params = text.split("::", 1)
+    try:
+        params = json.loads(raw_params)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(params, dict):
+        return text
+    return parent_param_signature(parent_id, params)
+
+
+def proposal_parameter_signature(proposal: dict[str, Any]) -> str:
+    parent_id = str(proposal.get("parent_candidate_id") or "").strip()
+    overrides = proposal.get("parameter_overrides") or {}
+    if not parent_id or not isinstance(overrides, dict) or not overrides:
+        return ""
+    return parent_param_signature(parent_id, overrides)
+
+
+def load_memory_param_signatures(path: Path) -> set[str]:
+    signatures: set[str] = set()
+    for _, row, parse_error in load_jsonl(path):
+        if parse_error is not None or row is None:
+            continue
+        if not row.get("event") and row.get("parameter_signature"):
+            signatures.add(canonical_parameter_signature_text(row.get("parameter_signature")))
+            continue
+        parent_id = str(row.get("parent_candidate_id") or row.get("candidate_id") or "").strip()
+        params = row.get("parameter_overrides")
+        if not isinstance(params, dict):
+            params = row.get("params")
+        if parent_id and isinstance(params, dict) and params:
+            signatures.add(parent_param_signature(parent_id, params))
+    return signatures
+
+
 def path_is_allowed(path: str, allowed_roots: set[str]) -> bool:
     clean = path.strip().replace("\\", "/")
+    while clean.startswith("./"):
+        clean = clean[2:]
+    if not clean or clean.startswith("/") or re.match(r"^[A-Za-z]:", clean):
+        return False
+    parts = PurePosixPath(clean).parts
+    if any(part == ".." for part in parts):
+        return False
+    if PurePosixPath(clean).name == "__init__.py" and parts and parts[0] == "recclaw_ext":
+        return False
     return any(clean == root.rstrip("/") or clean.startswith(root) for root in allowed_roots)
 
 
@@ -133,6 +211,26 @@ def next_action_for(status: str, runnable_level: str, runner_type: str) -> str:
     return NEXT_ACTIONS[REJECTED]
 
 
+def multiseed_warnings(proposal: dict[str, Any], runnable_level: str) -> list[str]:
+    if str(proposal.get("proposal_type") or "") != "tuning":
+        return []
+    if runnable_level not in {"parameter_only", "config_only"}:
+        return []
+    plan = proposal.get("evaluation_plan")
+    if not isinstance(plan, dict):
+        return ["evaluation_plan is missing; use multi-seed validation before claiming improvement"]
+    seeds = plan.get("validation_seeds")
+    if not isinstance(seeds, list):
+        return ["evaluation_plan.validation_seeds must be a list for multi-seed validation"]
+    unique_seeds = {str(seed) for seed in seeds}
+    if len(unique_seeds) < 3:
+        return ["evaluation_plan.validation_seeds should contain at least 3 unique seeds"]
+    aggregation = str(plan.get("aggregation") or "").lower()
+    if "mean" not in aggregation or "std" not in aggregation:
+        return ["evaluation_plan.aggregation should report mean and std across seeds"]
+    return []
+
+
 def validate_one(
     proposal: dict[str, Any],
     *,
@@ -141,9 +239,13 @@ def validate_one(
     registry_by_id: dict[str, dict[str, Any]],
     registry_ids: set[str],
     seen_ids: set[str],
+    seen_param_signatures: set[str],
+    memory_param_signatures: set[str],
+    require_multiseed: bool = False,
 ) -> dict[str, Any]:
     errors: list[str] = []
     review_reasons: list[str] = []
+    warnings: list[str] = []
 
     required_fields = [str(item) for item in schema.get("required_fields", [])]
     allowed_levels = {str(item) for item in schema.get("allowed_runnable_levels", [])}
@@ -237,6 +339,28 @@ def validate_one(
         elif runnable_level == "config_only" and not bool(parent.get("wired")):
             review_reasons.append(f"parent is not wired yet: {parent_id}")
 
+    parameter_signature = proposal_parameter_signature(proposal)
+    if proposal_type == "tuning" and runnable_level in {"parameter_only", "config_only"}:
+        if not parameter_signature:
+            errors.append("tuning proposal must include non-empty parameter_overrides")
+        elif (
+            proposal.get("parameter_signature")
+            and canonical_parameter_signature_text(proposal.get("parameter_signature")) != parameter_signature
+        ):
+            errors.append(
+                "parameter_signature does not match normalized parent_candidate_id + parameter_overrides: "
+                f"expected {parameter_signature}"
+            )
+        elif parameter_signature in memory_param_signatures:
+            errors.append(f"parameter signature was already run in agent memory: {parameter_signature}")
+        elif parameter_signature in seen_param_signatures:
+            errors.append(f"parameter signature is duplicated in proposal file: {parameter_signature}")
+        seen_param_signatures.add(parameter_signature)
+
+    warnings.extend(multiseed_warnings(proposal, runnable_level))
+    if require_multiseed:
+        review_reasons.extend(f"multi-seed validation plan: {warning}" for warning in warnings)
+
     if mentions_recbole_core_change(proposal):
         errors.append("proposal appears to require modifying RecBole core")
 
@@ -279,6 +403,7 @@ def validate_one(
     return {
         "line": line_no,
         "candidate_id": candidate_id,
+        "parameter_signature": parameter_signature,
         "proposal_type": proposal_type,
         "runnable_level": runnable_level,
         "runner_type": runner_type,
@@ -286,6 +411,7 @@ def validate_one(
         "next_action": next_action_for(status, runnable_level, runner_type),
         "errors": errors,
         "review_reasons": review_reasons,
+        "warnings": warnings,
     }
 
 
@@ -294,6 +420,16 @@ def main() -> int:
     parser.add_argument("--proposals", default=str(PROPOSAL_PATH), help="Path to candidate proposal JSONL")
     parser.add_argument("--registry", default=str(REGISTRY_PATH), help="Path to candidate_registry.yaml")
     parser.add_argument("--schema", default=str(SCHEMA_PATH), help="Path to candidate_proposal_schema.yaml")
+    parser.add_argument(
+        "--memory",
+        default=str(MEMORY_PATH),
+        help="Optional agent memory JSONL used to reject already-run parameter signatures",
+    )
+    parser.add_argument(
+        "--require-multiseed",
+        action="store_true",
+        help="Route runnable tuning proposals without a 3-seed evaluation plan to needs_review",
+    )
     parser.add_argument("--output", help="Optional JSON report path")
     args = parser.parse_args()
 
@@ -303,12 +439,14 @@ def main() -> int:
         raise ValueError(f"registry candidates must be a list: {args.registry}")
     registry_by_id = {str(item.get("candidate_id")): item for item in registry if item.get("candidate_id")}
     registry_ids = set(registry_by_id)
+    memory_param_signatures = load_memory_param_signatures(Path(args.memory))
 
     proposal_path = Path(args.proposals)
     if not proposal_path.exists():
         raise FileNotFoundError(f"proposal file does not exist: {proposal_path}")
 
     seen_ids: set[str] = set()
+    seen_param_signatures: set[str] = set()
     results: list[dict[str, Any]] = []
     for line_no, proposal, parse_error in load_jsonl(proposal_path):
         if parse_error is not None:
@@ -316,6 +454,7 @@ def main() -> int:
                 {
                     "line": line_no,
                     "candidate_id": "",
+                    "parameter_signature": "",
                     "proposal_type": "",
                     "runnable_level": "",
                     "runner_type": "",
@@ -323,6 +462,7 @@ def main() -> int:
                     "next_action": NEXT_ACTIONS[REJECTED],
                     "errors": [parse_error],
                     "review_reasons": [],
+                    "warnings": [],
                 }
             )
             continue
@@ -335,6 +475,9 @@ def main() -> int:
                 registry_by_id=registry_by_id,
                 registry_ids=registry_ids,
                 seen_ids=seen_ids,
+                seen_param_signatures=seen_param_signatures,
+                memory_param_signatures=memory_param_signatures,
+                require_multiseed=bool(args.require_multiseed),
             )
         )
 
@@ -342,6 +485,7 @@ def main() -> int:
         ACCEPTED: sum(1 for item in results if item["status"] == ACCEPTED),
         REJECTED: sum(1 for item in results if item["status"] == REJECTED),
         NEEDS_REVIEW: sum(1 for item in results if item["status"] == NEEDS_REVIEW),
+        "warnings": sum(len(item.get("warnings") or []) for item in results),
         "total": len(results),
     }
     next_actions: dict[str, int] = {}

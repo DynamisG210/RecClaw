@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import traceback
@@ -111,14 +112,21 @@ def resolve_recbole_root(explicit: str | None = None) -> Path:
         os.environ.get("RECBole_ROOT"),
         str(PROJECT_ROOT.parent / "RecBole"),
     ]
+    skipped: list[str] = []
     for value in candidates:
         if not value:
             continue
-        path = Path(value).expanduser().resolve()
-        if (path / "run_recbole.py").exists():
-            return path
+        try:
+            path = Path(value).expanduser().resolve()
+            if (path / "run_recbole.py").exists():
+                return path
+        except OSError as exc:
+            skipped.append(f"{value} ({type(exc).__name__}: {exc})")
+            continue
+    detail = f"; skipped inaccessible candidates: {', '.join(skipped)}" if skipped else ""
     raise FileNotFoundError(
         "could not find RecBole. Set RECBOLE_ROOT to a checkout containing run_recbole.py"
+        + detail
     )
 
 
@@ -311,6 +319,7 @@ def run_recbole_in_process(
     config_files: list[Path],
     log_path: Path,
     local_model_entrypoint: str | None,
+    checkpoint_dir: Path,
 ) -> int:
     sys.path.insert(0, str(PROJECT_ROOT))
     sys.path.insert(0, str(recbole_root))
@@ -343,7 +352,6 @@ def run_recbole_in_process(
         f"--model={model_name}",
         f"--dataset={dataset}",
     ]
-    checkpoint_dir = PROJECT_ROOT / "results" / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     try:
         os.chdir(PROJECT_ROOT)
@@ -412,6 +420,19 @@ def collect_result(
         handle.write("\n")
     parsed["result_json_path"] = str(result_json_path)
     return parsed
+
+
+def cleanup_checkpoint_dir(run_checkpoint_dir: Path, checkpoint_root: Path) -> None:
+    try:
+        resolved_run_dir = run_checkpoint_dir.resolve()
+        resolved_root = checkpoint_root.resolve()
+        resolved_run_dir.relative_to(resolved_root)
+    except (OSError, ValueError):
+        raise RuntimeError(f"refuse to cleanup checkpoint dir outside root: {run_checkpoint_dir}")
+    if resolved_run_dir == resolved_root:
+        raise RuntimeError(f"refuse to cleanup checkpoint root directly: {checkpoint_root}")
+    if resolved_run_dir.exists():
+        shutil.rmtree(resolved_run_dir)
 
 
 def validate_candidate(candidate_id: str, candidate: dict[str, Any]) -> tuple[str, str]:
@@ -495,6 +516,29 @@ def main() -> int:
     parser.add_argument("--base-model", choices=sorted(BASE_CONFIGS), help="Override ambiguous base_model")
     parser.add_argument("--recbole-root", help="Path to the adjacent RecBole checkout")
     parser.add_argument(
+        "--checkpoint-dir",
+        default=os.environ.get("RECCLAW_CHECKPOINT_DIR"),
+        help=(
+            "Directory for RecBole checkpoints. Defaults to results/checkpoints; "
+            "can also be set with RECCLAW_CHECKPOINT_DIR."
+        ),
+    )
+    parser.add_argument(
+        "--cleanup-checkpoints",
+        action="store_true",
+        default=os.environ.get("RECCLAW_CLEANUP_CHECKPOINTS", "").lower() in {"1", "true", "yes"},
+        help=(
+            "Write this run's checkpoints into a run-specific subdirectory and delete it "
+            "after result collection."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-per-run",
+        action="store_true",
+        default=os.environ.get("RECCLAW_CHECKPOINT_PER_RUN", "").lower() in {"1", "true", "yes"},
+        help="Write this run's checkpoints into a run-specific subdirectory without deleting it.",
+    )
+    parser.add_argument(
         "--set",
         dest="overrides",
         action="append",
@@ -517,6 +561,13 @@ def main() -> int:
         return 2
 
     recbole_root = resolve_recbole_root(args.recbole_root)
+    checkpoint_root = (
+        Path(args.checkpoint_dir).expanduser().resolve()
+        if args.checkpoint_dir
+        else PROJECT_ROOT / "results" / "checkpoints"
+    )
+    use_run_checkpoint_dir = bool(args.cleanup_checkpoints or args.checkpoint_per_run)
+    run_checkpoint_dir = checkpoint_root / plan["run_id"] if use_run_checkpoint_dir else checkpoint_root
     printable_plan = {
         "candidate_id": args.candidate_id,
         "base_model": plan["base_model"],
@@ -531,6 +582,9 @@ def main() -> int:
         "config_files": [str(path) for path in plan["config_files"]],
         "overrides": plan["overrides"],
         "recbole_root": str(recbole_root),
+        "checkpoint_dir": str(run_checkpoint_dir),
+        "cleanup_checkpoints": bool(args.cleanup_checkpoints),
+        "checkpoint_per_run": bool(use_run_checkpoint_dir),
     }
     print(json.dumps(printable_plan, ensure_ascii=True, indent=2))
     if args.dry_run:
@@ -545,6 +599,7 @@ def main() -> int:
             config_files=plan["config_files"],
             log_path=plan["log_path"],
             local_model_entrypoint=plan["local_model_entrypoint"],
+            checkpoint_dir=run_checkpoint_dir,
         )
     except Exception as exc:  # noqa: BLE001 - capture crash details into the run log.
         exit_code = 1
@@ -560,6 +615,8 @@ def main() -> int:
         candidate_id=args.candidate_id,
         exit_code=exit_code,
     )
+    if args.cleanup_checkpoints:
+        cleanup_checkpoint_dir(run_checkpoint_dir, checkpoint_root)
     summary = {
         "candidate_id": args.candidate_id,
         "run_id": plan["run_id"],
