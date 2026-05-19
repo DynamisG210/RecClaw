@@ -21,51 +21,31 @@ from typing import Any
 
 import yaml
 
+try:
+    from .action_space import (
+        load_action_space,
+        parameter_groups_from_action_space,
+        parameter_space_from_action_space,
+    )
+except ImportError:
+    from action_space import (
+        load_action_space,
+        parameter_groups_from_action_space,
+        parameter_space_from_action_space,
+    )
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
 SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
 EXPERIMENT_LOG_PATH = PROJECT_ROOT / "notes" / "experiment_log.md"
 MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
 OUTPUT_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
+ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
 
 DEFAULT_VALIDATION_SEEDS = [2026, 2027, 2028]
-
-DEFAULT_PARAMETER_SPACE: dict[str, list[Any]] = {
-    "embedding_size": [32, 64, 128],
-    "learning_rate": [0.0001, 0.001, 0.005],
-    "n_layers": [1, 2, 3],
-    "reg_weight": [1e-6, 1e-5, 1e-4],
-    "margin": [0.1, 0.2, 0.5],
-    "residual_weight": [0.05, 0.1, 0.2, 0.3],
-    "tail_weight_alpha": [0.2, 0.5, 1.0],
-    "hard_negative_ratio": [0.1, 0.2, 0.3],
-    "popularity_alpha": [0.1, 0.3, 0.5],
-    "lambda_pop": [0.001, 0.01, 0.1],
-    "lambda_norm": [0.001, 0.01, 0.1],
-    "max_norm": [0.5, 1.0, 2.0],
-    "lambda_align": [0.005, 0.01, 0.03],
-    "rank_weight_alpha": [0.1, 0.3, 0.5],
-    "lambda_coverage": [0.05, 0.1, 0.2],
-    "edge_dropout": [0.05, 0.1, 0.2],
-    "cl_temperature": [0.1, 0.2, 0.5],
-    "pareto_temperature": [0.2, 0.5, 1.0],
-}
-
-DEFAULT_PARAMETER_GROUPS: tuple[tuple[str, ...], ...] = (
-    ("residual_weight",),
-    ("margin",),
-    ("tail_weight_alpha",),
-    ("hard_negative_ratio",),
-    ("popularity_alpha",),
-    ("lambda_pop",),
-    ("lambda_norm", "max_norm"),
-    ("lambda_align",),
-    ("rank_weight_alpha",),
-    ("lambda_coverage",),
-    ("embedding_size", "n_layers"),
-    ("learning_rate",),
-    ("reg_weight",),
-)
+ACTION_SPACE = load_action_space(ACTION_SPACE_PATH)
+DEFAULT_PARAMETER_SPACE: dict[str, list[Any]] = parameter_space_from_action_space(ACTION_SPACE)
+DEFAULT_PARAMETER_GROUPS: tuple[tuple[str, ...], ...] = parameter_groups_from_action_space(ACTION_SPACE)
 
 SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
 
@@ -88,6 +68,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "parent_candidate_id": "cand_bpr_margin_loss",
         "base_model": "BPR",
         "category": "Objective & Optimization",
+        "action_type": "local_loss",
         "hypothesis": (
             "Adaptive margins based on negative-item popularity may reduce head-item dominance "
             "while preserving pairwise ranking strength."
@@ -96,7 +77,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "runner_type": "model",
         "consumes": ["margin", "popularity_alpha"],
         "new_parameters": [
-            {"name": "popularity_alpha", "default": 0.3, "search_space": [0.1, 0.3, 0.5]},
+            {"name": "popularity_alpha", "default": 0.5, "search_space": [0.2, 0.5, 1.0]},
         ],
         "implementation_plan": {
             "summary": "Add a local BPR subclass that scales pairwise margin by negative-item popularity.",
@@ -134,6 +115,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "parent_candidate_id": "cand_lightgcn_residual_layer_mix",
         "base_model": "LightGCN",
         "category": "Representation & Interaction",
+        "action_type": "aggregation",
         "hypothesis": (
             "Applying light edge dropout before residual layer mixing may reduce over-smoothing "
             "and improve top-k generalization."
@@ -180,6 +162,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "parent_candidate_id": "cand_lightgcn_layer_weighted_agg",
         "base_model": "LightGCN",
         "category": "Objective & Optimization",
+        "action_type": "local_loss",
         "hypothesis": (
             "A small contrastive alignment term between shallow and final embeddings may improve "
             "layer consistency without replacing LightGCN propagation."
@@ -188,7 +171,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "runner_type": "model",
         "consumes": ["embedding_size", "n_layers", "lambda_align", "cl_temperature"],
         "new_parameters": [
-            {"name": "lambda_align", "default": 0.01, "search_space": [0.005, 0.01, 0.03]},
+            {"name": "lambda_align", "default": 0.001, "search_space": [1e-4, 1e-3, 1e-2]},
             {"name": "cl_temperature", "default": 0.2, "search_space": [0.1, 0.2, 0.5]},
         ],
         "implementation_plan": {
@@ -227,6 +210,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "parent_candidate_id": "cand_rerank_coverage_boost",
         "base_model": "LightGCN",
         "category": "Result Distribution Quality",
+        "action_type": "posthoc_rerank",
         "hypothesis": (
             "A Pareto-style posthoc reranker may improve coverage and popularity balance with "
             "a bounded NDCG tradeoff."
@@ -235,7 +219,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "runner_type": "posthoc",
         "consumes": ["lambda_coverage", "lambda_pop", "pareto_temperature"],
         "new_parameters": [
-            {"name": "lambda_pop", "default": 0.1, "search_space": [0.05, 0.1, 0.2]},
+            {"name": "lambda_pop", "default": 0.001, "search_space": [1e-4, 1e-3, 1e-2]},
             {"name": "pareto_temperature", "default": 0.5, "search_space": [0.2, 0.5, 1.0]},
         ],
         "implementation_plan": {
@@ -485,6 +469,7 @@ def build_parameter_proposal(
         "parent_candidate_id": parent_id,
         "base_model": base_model,
         "category": parent.get("category") or "Uncategorized",
+        "action_type": "parameter_tuning",
         "hypothesis": (
             f"Tuning {override_text} may improve {primary_metric} "
             f"without changing the executable candidate path."

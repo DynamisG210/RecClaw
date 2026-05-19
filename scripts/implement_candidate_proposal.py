@@ -21,8 +21,18 @@ from urllib import request as urlrequest
 import yaml
 
 try:
+    from action_space import (
+        allowed_implementation_roots,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from validate_candidate_proposal import load_jsonl, load_yaml
 except ImportError:
+    from .action_space import (
+        allowed_implementation_roots,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from .validate_candidate_proposal import load_jsonl, load_yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -30,11 +40,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
+ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
+ACTION_SPACE = load_action_space(ACTION_SPACE_PATH)
 
-ALLOWED_WRITE_ROOTS = (
-    "recclaw_ext/models/",
-    "recclaw_ext/posthoc/",
-)
+ALLOWED_WRITE_ROOTS = tuple(sorted(allowed_implementation_roots(ACTION_SPACE)))
 FORBIDDEN_PATHS = {
     "configs/task_ml1m.yaml",
     "configs/lightgcn.yaml",
@@ -43,27 +52,7 @@ FORBIDDEN_PATHS = {
     "recclaw_ext/models/__init__.py",
     "recclaw_ext/posthoc/__init__.py",
 }
-IMPLEMENTATION_PARAMETER_KEYS = (
-    "embedding_size",
-    "learning_rate",
-    "n_layers",
-    "reg_weight",
-    "margin",
-    "residual_weight",
-    "tail_weight_alpha",
-    "lambda_pop",
-    "lambda_norm",
-    "max_norm",
-    "hard_negative_ratio",
-    "popularity_alpha",
-    "debias_alpha",
-    "lambda_align",
-    "rank_weight_alpha",
-    "lambda_coverage",
-    "edge_dropout",
-    "cl_temperature",
-    "pareto_temperature",
-)
+IMPLEMENTATION_PARAMETER_KEYS = tuple(parameter_space_from_action_space(ACTION_SPACE))
 IMPLEMENTATION_PARAMETER_SCHEMA = {
     key: {"type": ["number", "null"]} for key in IMPLEMENTATION_PARAMETER_KEYS
 }
@@ -574,11 +563,26 @@ def cleanup_artifacts(prepared: PreparedImplementation, registry_path: Path, pre
         registry_path.write_text(previous_registry_text, encoding="utf-8")
 
 
-def build_implementation_context(proposal: dict[str, Any], registry: dict[str, Any]) -> dict[str, Any]:
-    return {
+def build_implementation_context(
+    proposal: dict[str, Any],
+    registry: dict[str, Any],
+    experiment_directive: str = "",
+) -> dict[str, Any]:
+    directive = str(experiment_directive or "").strip()
+    context = {
         "task": "Implement one RecClaw code_required candidate proposal under strict local allowlists.",
         "proposal": proposal,
         "registry": registry,
+        "steering_priority": [
+            "forbidden and allowlists",
+            "experiment_directive when enabled",
+            "proposal specification",
+        ],
+        "experiment_directive": {
+            "enabled": bool(directive),
+            "priority": "highest user steering instruction below forbidden and allowlists",
+            "text": directive,
+        },
         "required_json_shape": {
             "files": [{"path": "recclaw_ext/models/example.py", "content": "complete file content"}],
             "candidate_config": {"candidate_id": proposal.get("candidate_id"), "model": "LocalModelName"},
@@ -591,6 +595,7 @@ def build_implementation_context(proposal: dict[str, Any], registry: dict[str, A
                 "consumes": proposal.get("consumes") or [],
             },
         },
+        "action_space": ACTION_SPACE,
         "allowed_write_roots": list(ALLOWED_WRITE_ROOTS),
         "config_update": "Use candidate_config only; do not include configs/candidates/*.yaml in files.",
         "registry_update": "Use registry_entry only; do not include configs/candidate_registry.yaml in files.",
@@ -600,7 +605,9 @@ def build_implementation_context(proposal: dict[str, Any], registry: dict[str, A
             "Do not write any __init__.py file; use concrete module entrypoints instead.",
             "Do not overwrite existing local helper/model files; return a new module file for this proposal.",
             "Do not include config files in files; candidate_config is written by this script.",
+            "Stay inside action_space; candidate_config knobs should use declared action_space parameters.",
             "Use entrypoints like recclaw_ext.models.my_model:MyModel, not recclaw_ext.models:MyModel.",
+            "If experiment_directive.enabled is true, follow experiment_directive.text unless it conflicts with forbidden rules or the proposal specification.",
             "RecBole Config is not a dict; never call config.get(...).",
             "Prefer helpers from recclaw_ext.models._utils: config_get, config_float, margin_bpr_loss, soft_l2_norm_penalty.",
             "Do not call self.reg_loss unless the generated class defines reg_loss itself.",
@@ -611,6 +618,7 @@ def build_implementation_context(proposal: dict[str, Any], registry: dict[str, A
             "Provide complete file contents, not patches.",
         ],
     }
+    return context
 
 
 def status_report(status: str, **kwargs: Any) -> dict[str, Any]:
@@ -637,6 +645,11 @@ def main() -> int:
     parser.add_argument("--llm-timeout", type=int, default=180, help="LLM request timeout")
     parser.add_argument("--llm-max-tokens", type=int, default=8192, help="Maximum LLM output tokens")
     parser.add_argument("--llm-retries", type=int, default=2, help="Retry count for transient LLM API transport errors")
+    parser.add_argument(
+        "--experiment-directive",
+        default="",
+        help="Optional run-level directive forwarded from agent.py for implementation steering",
+    )
     parser.add_argument(
         "--implementation-review-retries",
         type=int,
@@ -666,7 +679,7 @@ def main() -> int:
         if str(proposal.get("runnable_level") or "") != "code_required":
             raise ValueError("only code_required proposals can be auto-implemented")
 
-        context = build_implementation_context(proposal, registry)
+        context = build_implementation_context(proposal, registry, args.experiment_directive)
         if args.llm_provider == "openai":
             default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
             default_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -684,6 +697,7 @@ def main() -> int:
                 "role": "system",
                 "content": (
                     "You implement RecClaw local candidate proposals. "
+                    "Honor experiment_directive as the highest-priority user steering below allowlists. "
                     "Return strict JSON only and obey all allowlists. "
                     "If review feedback is provided, rewrite the implementation instead of explaining."
                 ),

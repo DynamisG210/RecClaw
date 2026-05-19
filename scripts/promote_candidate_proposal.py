@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 try:
+    from action_space import load_action_space
     from validate_candidate_proposal import (
         NEEDS_REVIEW,
         load_jsonl,
@@ -26,6 +27,7 @@ try:
         validate_one,
     )
 except ImportError:
+    from .action_space import load_action_space
     from .validate_candidate_proposal import (
         NEEDS_REVIEW,
         load_jsonl,
@@ -40,6 +42,7 @@ REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
 SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
+ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
 
 AUTO_PROMOTABLE_PARENTS: dict[str, dict[str, Any]] = {
     "cand_bpr_long_tail_reweight": {
@@ -71,8 +74,10 @@ def validate_proposals(
     registry_path: Path,
     schema_path: Path,
     memory_path: Path,
+    action_space_path: Path = ACTION_SPACE_PATH,
 ) -> list[dict[str, Any]]:
     schema = load_yaml(schema_path)
+    action_space = load_action_space(action_space_path)
     registry = load_yaml(registry_path).get("candidates", [])
     if not isinstance(registry, list):
         raise ValueError(f"registry candidates must be a list: {registry_path}")
@@ -96,6 +101,7 @@ def validate_proposals(
             seen_ids=seen_ids,
             seen_param_signatures=seen_param_signatures,
             memory_param_signatures=memory_param_signatures,
+            action_space=action_space,
         )
         result["proposal"] = proposal
         results.append(result)
@@ -169,6 +175,7 @@ def main() -> int:
     parser.add_argument("--proposals", default=str(PROPOSAL_PATH), help="Candidate proposal JSONL path")
     parser.add_argument("--registry", default=str(REGISTRY_PATH), help="candidate_registry.yaml path")
     parser.add_argument("--schema", default=str(SCHEMA_PATH), help="candidate_proposal_schema.yaml path")
+    parser.add_argument("--action-space", default=str(ACTION_SPACE_PATH), help="action_space.yaml path")
     parser.add_argument("--memory", default=str(MEMORY_PATH), help="agent_memory.jsonl path")
     parser.add_argument("--dry-run", action="store_true", help="Report promotable parents without editing registry")
     args = parser.parse_args()
@@ -182,6 +189,7 @@ def main() -> int:
         registry_path=Path(args.registry),
         schema_path=Path(args.schema),
         memory_path=Path(args.memory),
+        action_space_path=Path(args.action_space),
     )
     parent_ids = parent_candidate_ids_for_promotion(validation_rows)
 

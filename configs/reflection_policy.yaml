@@ -1,0 +1,33 @@
+version: 1
+description: >
+  Policy for building short runtime experience summaries from current
+  results/ memory. This file is agent-runtime configuration, not LabLog
+  evidence.
+
+metric: ndcg@10
+minimum_successful_runs: 3
+minimum_family_runs_for_policy: 2
+baseline_reference:
+  BPR: 0.2567
+  LightGCN: 0.2671
+
+thresholds:
+  strong_lift: 0.01
+  weak_lift: 0.003
+  collapse_ndcg: 0.2171
+  high_collapse_rate: 0.25
+
+summary_limits:
+  encourage: 5
+  caution: 5
+  avoid: 5
+
+output_contract:
+  required_sections:
+    - Encourage
+    - Caution
+    - Avoid
+    - Next Proposal Policy
+  max_lines: 80
+  include_raw_tables: false
+

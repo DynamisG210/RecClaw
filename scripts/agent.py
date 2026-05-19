@@ -29,9 +29,19 @@ from urllib import request as urlrequest
 import yaml
 
 try:
+    from .action_space import (
+        allowed_action_types,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from .collect_result import load_result_source
     from .compare_runs import compare_results
 except ImportError:
+    from action_space import (
+        allowed_action_types,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from collect_result import load_result_source
     from compare_runs import compare_results
 
@@ -44,6 +54,7 @@ STATE_SUMMARY_PATH = PROJECT_ROOT / "results" / "agent_state_summary.json"
 NOTES_DIR = PROJECT_ROOT / "notes"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 PROPOSAL_SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
+ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
 AUTO_PROMOTABLE_PARENT_IDS = {
     "cand_bpr_long_tail_reweight",
     "cand_bpr_popularity_regularized",
@@ -82,6 +93,7 @@ TERMINAL_IMPLEMENTATION_SKIP_REASONS = {
     "dry_run",
 }
 DEFAULT_VALIDATION_SEEDS = [2026, 2027, 2028]
+MAX_EXPERIMENT_DIRECTIVE_CHARS = 4000
 IMPLEMENTATION_RUNNABLE_STATUSES = {
     "implemented_and_runnable",
     "implemented_and_importable",
@@ -122,27 +134,10 @@ AUTO_PLANNER_ACTIONS = {
     "multi_seed_verify",
     "report",
 }
-PROPOSAL_PARAMETER_KEYS = (
-    "embedding_size",
-    "learning_rate",
-    "n_layers",
-    "reg_weight",
-    "margin",
-    "residual_weight",
-    "tail_weight_alpha",
-    "lambda_pop",
-    "lambda_norm",
-    "max_norm",
-    "hard_negative_ratio",
-    "popularity_alpha",
-    "debias_alpha",
-    "lambda_align",
-    "rank_weight_alpha",
-    "lambda_coverage",
-    "edge_dropout",
-    "cl_temperature",
-    "pareto_temperature",
-)
+ACTION_SPACE = load_action_space(ACTION_SPACE_PATH)
+DEFAULT_PARAMETER_SPACE = parameter_space_from_action_space(ACTION_SPACE)
+PROPOSAL_PARAMETER_KEYS = tuple(DEFAULT_PARAMETER_SPACE)
+PROPOSAL_ACTION_TYPES = tuple(sorted(allowed_action_types(ACTION_SPACE)))
 
 
 def normalize_signature_value(value: Any) -> Any:
@@ -178,6 +173,7 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                     "parent_candidate_id": {"type": "string"},
                     "base_model": {"type": "string", "enum": ["BPR", "LightGCN"]},
                     "category": {"type": "string"},
+                    "action_type": {"type": "string", "enum": list(PROPOSAL_ACTION_TYPES)},
                     "hypothesis": {"type": "string"},
                     "runnable_level": {
                         "type": "string",
@@ -245,6 +241,7 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                     "parent_candidate_id",
                     "base_model",
                     "category",
+                    "action_type",
                     "hypothesis",
                     "runnable_level",
                     "runner_type",
@@ -294,6 +291,8 @@ class AgentConfig:
     dry_run: bool = False
     memory_read_limit: int = 2000
     prompt_memory_tail: int = 120
+    use_experiment_directive: bool = False
+    experiment_directive: str = ""
     memory_path: Path = MEMORY_PATH
     state_summary_path: Path = STATE_SUMMARY_PATH
     results_csv: Path = RESULTS_CSV
@@ -340,29 +339,7 @@ class AgentConfig:
         }
     )
     metric_directions: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_METRIC_DIRECTIONS))
-    parameter_space: dict[str, list[Any]] = field(
-        default_factory=lambda: {
-            "embedding_size": [32, 64, 128],
-            "learning_rate": [0.0001, 0.001, 0.005],
-            "n_layers": [1, 2, 3],
-            "reg_weight": [1e-6, 1e-5, 1e-4],
-            "margin": [0.1, 0.2, 0.5],
-            "residual_weight": [0.05, 0.1, 0.2, 0.3],
-            "tail_weight_alpha": [0.2, 0.5, 1.0],
-            "lambda_pop": [1e-4, 1e-3, 1e-2],
-            "lambda_norm": [1e-5, 1e-4, 1e-3],
-            "max_norm": [0.5, 1.0, 2.0],
-            "hard_negative_ratio": [0.25, 0.5, 0.75],
-            "popularity_alpha": [0.2, 0.5, 1.0],
-            "debias_alpha": [0.1, 0.2, 0.5],
-            "lambda_align": [1e-4, 1e-3, 1e-2],
-            "rank_weight_alpha": [0.1, 0.2, 0.5],
-            "lambda_coverage": [1e-4, 1e-3, 1e-2],
-            "edge_dropout": [0.05, 0.1, 0.2],
-            "cl_temperature": [0.1, 0.2, 0.5],
-            "pareto_temperature": [0.2, 0.5, 1.0],
-        }
-    )
+    parameter_space: dict[str, list[Any]] = field(default_factory=lambda: dict(DEFAULT_PARAMETER_SPACE))
 
 
 @dataclass
@@ -410,6 +387,31 @@ def normalize_weights(weights_json: str) -> dict[str, float]:
     if total <= 0:
         raise argparse.ArgumentTypeError("sum(weights) must be > 0")
     return {k: v / total for k, v in normalized.items()}
+
+
+def resolve_experiment_directive(
+    directive: str = "",
+    directive_file: str | Path = "",
+    *,
+    disabled: bool = False,
+) -> str:
+    if disabled:
+        return ""
+    parts: list[str] = []
+    if directive_file:
+        path = Path(directive_file)
+        if not path.exists():
+            raise FileNotFoundError(f"experiment directive file does not exist: {path}")
+        file_text = path.read_text(encoding="utf-8", errors="replace").strip()
+        if file_text:
+            parts.append(file_text)
+    directive_text = str(directive or "").strip()
+    if directive_text:
+        parts.append(directive_text)
+    text = "\n\n".join(parts).strip()
+    if len(text) <= MAX_EXPERIMENT_DIRECTIVE_CHARS:
+        return text
+    return text[:MAX_EXPERIMENT_DIRECTIVE_CHARS].rstrip() + "\n[truncated by RecClaw]"
 
 
 class RecClawAgent:
@@ -1346,6 +1348,7 @@ class RecClawAgent:
         summary = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "metric": self.config.metric,
+            "experiment_directive": self._experiment_directive_context(),
             "trial_count": len(trials),
             "decision_counts": decision_counts,
             "validated_best": {
@@ -1388,6 +1391,33 @@ class RecClawAgent:
         except OSError as exc:
             print(f"[StateSummary] write skipped: {exc}", file=sys.stderr)
 
+    def _active_experiment_directive(self) -> str:
+        if not self.config.use_experiment_directive:
+            return ""
+        return str(self.config.experiment_directive or "").strip()
+
+    def _experiment_directive_context(self) -> dict[str, Any]:
+        directive = self._active_experiment_directive()
+        if not directive:
+            return {"enabled": False}
+        return {
+            "enabled": True,
+            "priority": "highest user steering instruction below hard_constraints and schema validity",
+            "text": directive,
+        }
+
+    def remember_experiment_directive(self) -> None:
+        directive = self._active_experiment_directive()
+        if not directive:
+            return
+        self.remember_event(
+            {
+                "event": "experiment_directive",
+                "priority": "highest_user_steering_below_hard_constraints",
+                "text": directive,
+            }
+        )
+
     def _llm_proposal_context(self) -> dict[str, Any]:
         schema = load_yaml(self.config.proposal_schema_path)
         self.agent_state_summary = self._build_agent_state_summary()
@@ -1401,8 +1431,16 @@ class RecClawAgent:
             "loop_mode": self.config.loop_mode,
             "proposal_mode": self.config.proposal_mode,
             "proposal_count": self.config.proposal_count,
+            "steering_priority": [
+                "hard_constraints and schema validity",
+                "experiment_directive when enabled",
+                "agent_state_summary and memory",
+                "default proposal/search policy",
+            ],
+            "experiment_directive": self._experiment_directive_context(),
             "pending_implemented_count": len(pending_implemented),
             "pending_implemented_candidates": pending_implemented[:50],
+            "action_space": ACTION_SPACE,
             "parameter_space": self.config.parameter_space,
             "schema": schema,
             "registry": self.registry,
@@ -1413,8 +1451,6 @@ class RecClawAgent:
                 (
                     "candidate_proposal_workflow.md",
                     "experiment_log.md",
-                    "candidate_library.md",
-                    "method_change_space.md",
                 )
             ),
             "hard_constraints": [
@@ -1422,9 +1458,11 @@ class RecClawAgent:
                 "Return an object with a proposals list, or a JSON array.",
                 "Each proposal must satisfy configs/candidate_proposal_schema.yaml.",
                 "Do not require RecBole core changes.",
+                "If experiment_directive.enabled is true, follow experiment_directive.text as the highest-priority user steering instruction unless it conflicts with these hard constraints.",
                 "For mixed mode, include both runnable tuning proposals and code_required/spec_only exploration when useful.",
                 "Runnable tuning proposals must use parameter_overrides and an existing wired parent candidate.",
                 "Runnable tuning parameter_overrides must use values from parameter_space.",
+                "Every proposal must stay inside action_space; use action_space.method_space_projection as the compact method-space guide.",
                 "Do not propose exact parameter signatures listed in agent_state_summary.recent_forbidden_parameter_signatures.",
                 "If agent_state_summary.focused_exploitation is non-empty, include focused local variants around it unless the planner explicitly asks only for reporting.",
                 "Do not propose or run candidates listed in agent_state_summary.quarantined_candidates unless explicitly proposing a repair.",
@@ -1539,6 +1577,9 @@ class RecClawAgent:
             proposal["candidate_id"] = next_id
             used_ids.add(next_id)
 
+        if not proposal.get("action_type"):
+            proposal["action_type"] = self._infer_action_type(proposal)
+
         runnable_level = str(proposal.get("runnable_level") or "")
         if runnable_level not in {"code_required", "spec_only"}:
             return
@@ -1562,6 +1603,24 @@ class RecClawAgent:
         missing = sorted(set(consumes) - parent_consumes - new_names)
         if missing and isinstance(new_parameters, list):
             new_parameters.extend(missing)
+
+    @staticmethod
+    def _infer_action_type(proposal: dict[str, Any]) -> str:
+        proposal_type = str(proposal.get("proposal_type") or "")
+        runner_type = str(proposal.get("runner_type") or "")
+        category = str(proposal.get("category") or "").lower()
+        consumes = {str(item) for item in (proposal.get("consumes") or [])}
+        if proposal_type == "tuning":
+            return "parameter_tuning"
+        if runner_type == "posthoc":
+            return "posthoc_rerank"
+        if consumes.intersection({"hard_negative_ratio", "popularity_alpha", "debias_alpha"}):
+            return "sampling_wrapper"
+        if consumes.intersection({"lambda_norm", "max_norm", "reg_weight"}):
+            return "regularization"
+        if "representation" in category or consumes.intersection({"residual_weight", "edge_dropout"}):
+            return "aggregation"
+        return "local_loss"
 
     @staticmethod
     def _find_action_payload(value: Any) -> dict[str, Any]:
@@ -1797,6 +1856,7 @@ class RecClawAgent:
         system_prompt = (
             "You are RecClaw's candidate proposal generator. "
             "Generate valid recommender-system candidate proposals only. "
+            "Honor experiment_directive as the highest-priority user steering below hard constraints. "
             "Do not modify RecBole core. Return strict JSON only."
         )
         user_prompt = (
@@ -1843,7 +1903,11 @@ class RecClawAgent:
                 [
                     {
                         "role": "system",
-                        "content": "You are RecClaw's loop planner. Return strict JSON only.",
+                        "content": (
+                            "You are RecClaw's loop planner. "
+                            "Honor experiment_directive as the highest-priority user steering below hard constraints. "
+                            "Return strict JSON only."
+                        ),
                     },
                     {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
                 ],
@@ -2248,46 +2312,45 @@ class RecClawAgent:
                     }
                 )
                 continue
-            report = self._run_json_command(
-                [
-                    sys.executable,
-                    str(PROJECT_ROOT / "scripts" / "implement_candidate_proposal.py"),
-                    "--proposal-id",
-                    proposal_id,
-                    "--proposals",
-                    str(self.config.proposal_path),
-                    "--registry",
-                    str(self.config.registry_path),
-                    "--llm-provider",
-                    self.config.llm_provider,
-                    "--llm-base-url",
-                    self.config.llm_base_url,
-                    "--llm-model",
-                    self.config.llm_model,
-                    "--llm-api-key-env",
-                    self.config.llm_api_key_env,
-                    "--llm-temperature",
-                    str(self.config.llm_temperature),
-                    "--llm-timeout",
-                    str(self.config.llm_timeout),
-                    "--llm-max-tokens",
-                    str(self.config.llm_max_tokens),
-                    "--llm-retries",
-                    str(self.config.llm_retries),
-                ]
-                + (
-                    []
-                    if self.config.implementation_smoke_run
-                    else ["--skip-smoke-run"]
-                )
-                + [
-                    item
-                    for override in self.config.global_overrides
-                    for item in ("--smoke-set", override)
-                ]
-                + (["--dry-run"] if self.config.dry_run else []),
-                allow_json_failure=True,
+            command = [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts" / "implement_candidate_proposal.py"),
+                "--proposal-id",
+                proposal_id,
+                "--proposals",
+                str(self.config.proposal_path),
+                "--registry",
+                str(self.config.registry_path),
+                "--llm-provider",
+                self.config.llm_provider,
+                "--llm-base-url",
+                self.config.llm_base_url,
+                "--llm-model",
+                self.config.llm_model,
+                "--llm-api-key-env",
+                self.config.llm_api_key_env,
+                "--llm-temperature",
+                str(self.config.llm_temperature),
+                "--llm-timeout",
+                str(self.config.llm_timeout),
+                "--llm-max-tokens",
+                str(self.config.llm_max_tokens),
+                "--llm-retries",
+                str(self.config.llm_retries),
+            ]
+            directive = self._active_experiment_directive()
+            if directive:
+                command.extend(["--experiment-directive", directive])
+            if not self.config.implementation_smoke_run:
+                command.append("--skip-smoke-run")
+            command.extend(
+                item
+                for override in self.config.global_overrides
+                for item in ("--smoke-set", override)
             )
+            if self.config.dry_run:
+                command.append("--dry-run")
+            report = self._run_json_command(command, allow_json_failure=True)
             review_errors = report.get("review_errors", [])
             if not isinstance(review_errors, list):
                 review_errors = []
@@ -2580,6 +2643,7 @@ class RecClawAgent:
 
     def run(self) -> None:
         self.observe()
+        self.remember_experiment_directive()
         for round_id in range(1, self.config.rounds + 1):
             try:
                 self.reset_round_policy()
@@ -2745,6 +2809,24 @@ def main() -> int:
         default=120,
         help="Maximum recent memory rows included verbatim in LLM prompts; summary still sees loaded memory",
     )
+    parser.add_argument(
+        "--experiment-directive",
+        default=os.environ.get("RECCLAW_EXPERIMENT_DIRECTIVE", ""),
+        help=(
+            "Optional run-level user steering prompt. When provided, it is injected into "
+            "planner/proposal prompts below hard safety constraints."
+        ),
+    )
+    parser.add_argument(
+        "--experiment-directive-file",
+        default=os.environ.get("RECCLAW_EXPERIMENT_DIRECTIVE_FILE", ""),
+        help="Optional UTF-8 text file containing the run-level experiment directive",
+    )
+    parser.add_argument(
+        "--disable-experiment-directive",
+        action="store_true",
+        help="Ignore --experiment-directive, --experiment-directive-file, and directive environment variables",
+    )
     parser.add_argument("--recent-schedule-penalty", type=float, default=0.15, help="Penalty if candidate was scheduled in previous round")
     parser.add_argument(
         "--enable-candidate-proposals",
@@ -2855,6 +2937,11 @@ def main() -> int:
     llm_model = args.llm_model or default_model
     llm_base_url = args.llm_base_url or default_base_url
     llm_api_key_env = args.llm_api_key_env or default_key_env
+    experiment_directive = resolve_experiment_directive(
+        directive=args.experiment_directive,
+        directive_file=args.experiment_directive_file,
+        disabled=bool(args.disable_experiment_directive),
+    )
 
     config = AgentConfig(
         rounds=max(1, args.rounds),
@@ -2868,6 +2955,8 @@ def main() -> int:
         state_summary_path=Path(args.state_summary_path),
         memory_read_limit=max(0, args.memory_read_limit),
         prompt_memory_tail=max(0, args.prompt_memory_tail),
+        use_experiment_directive=bool(experiment_directive),
+        experiment_directive=experiment_directive,
         recent_schedule_penalty=max(0.0, args.recent_schedule_penalty),
         enable_candidate_proposals=enable_candidate_proposals,
         proposal_path=Path(args.proposal_path),

@@ -1,0 +1,78 @@
+version: 1
+description: >
+  Runtime search-steering policy for RecClaw. This file does not expand the
+  action space; it prioritizes, budgets, and freezes exploration inside
+  configs/action_space.yaml.
+
+protocol_lock:
+  dataset: ml-1m
+  split: configs/task_ml1m.yaml
+  eval_mode: fixed top-k evaluation
+  primary_metric: ndcg@10
+  immutable:
+    - dataset split definition
+    - evaluation protocol
+    - baseline task config
+    - RecBole core source files
+
+search_stages:
+  exploit:
+    description: Prefer small parameter or local variants around families with stable gains.
+    priority_families:
+      - cand_lightgcn_residual_layer_mix
+      - cand_bpr_margin_loss
+      - cand_lightgcn_layer_weighted_agg
+      - cand_lightgcn_small_embedding
+    preferred_actions:
+      - parameter_tuning
+      - regularization
+      - aggregation
+  repair:
+    description: Revisit failed families only as minimal repairs or ablations.
+    max_repair_depth: 1
+    preferred_actions:
+      - parameter_tuning
+      - regularization
+  explore:
+    description: Introduce sparse code_required families when the current frontier stagnates.
+    max_code_required_per_window: 1
+    window_rounds: 5
+    preferred_actions:
+      - local_loss
+      - aggregation
+
+composition_rules:
+  max_mechanisms_per_proposal: 2
+  discourage_combinations:
+    - [debias, pareto]
+    - [debias, contrastive]
+    - [pareto, contrastive]
+    - [debias, pareto, contrastive]
+  require_declared_search_space: true
+  prefer_single_axis_tuning: true
+
+family_budget:
+  consecutive_failures_before_downweight: 2
+  crashes_before_freeze: 2
+  collapse_rate_before_freeze: 0.25
+  max_active_families_per_stage: 4
+  max_code_required_per_window: 1
+  window_rounds: 5
+
+validation_gates:
+  keep_requires_multiseed: true
+  minimum_validation_seeds: 3
+  strong_claim_requires:
+    - tuned_baseline_comparison
+    - random_baseline_comparison
+    - no_history_or_weak_memory_ablation
+
+freeze_rules:
+  freeze_if:
+    - repeated_crash
+    - high_collapse_rate
+    - repeated_duplicate_signature
+    - no_gain_after_budget
+  thaw_only_for:
+    - minimal_repair
+    - targeted_ablation

@@ -1,0 +1,174 @@
+version: 1
+description: >
+  Runtime action-space contract for RecClaw. This file is the compact,
+  agent-readable boundary of what can be tuned or locally implemented. It is
+  derived from the method space, candidate registry, proposal schema, and
+  validator rules, but it is the runtime source of truth for parameter values.
+
+base_models:
+  - BPR
+  - LightGCN
+
+runner_types:
+  - config_only
+  - model
+  - posthoc
+
+action_types:
+  parameter_tuning:
+    description: Tune parameters already exposed by a wired parent candidate.
+  local_loss:
+    description: Add or modify a local training objective under recclaw_ext/models.
+  aggregation:
+    description: Change local representation aggregation or propagation behavior.
+  regularization:
+    description: Add local regularization or norm-control terms.
+  sampling_wrapper:
+    description: Modify local negative/sample construction inside a model-entry path.
+  posthoc_rerank:
+    description: Adjust trained scores after model evaluation through recclaw_ext/posthoc.
+
+method_space_projection:
+  Bias & Sample Construction:
+    executable_actions:
+      - sampling_wrapper
+      - local_loss
+    example_parameters:
+      - hard_negative_ratio
+      - popularity_alpha
+      - debias_alpha
+      - tail_weight_alpha
+  Representation & Interaction:
+    executable_actions:
+      - aggregation
+      - parameter_tuning
+    example_parameters:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+      - gate_dropout
+      - residual_gate_scale
+  Objective & Optimization:
+    executable_actions:
+      - local_loss
+      - regularization
+      - parameter_tuning
+    example_parameters:
+      - margin
+      - reg_weight
+      - learning_rate
+      - lambda_norm
+      - max_norm
+      - lambda_align
+      - rank_weight_alpha
+      - cl_temperature
+      - pareto_temperature
+  Result Distribution Quality:
+    executable_actions:
+      - posthoc_rerank
+      - local_loss
+    example_parameters:
+      - lambda_coverage
+      - lambda_pop
+      - pareto_temperature
+  Efficiency & Serving Constraints:
+    executable_actions:
+      - parameter_tuning
+      - aggregation
+    example_parameters:
+      - embedding_size
+      - n_layers
+
+parameter_space:
+  embedding_size:
+    values: [32, 64, 128]
+    action_types: [parameter_tuning]
+  learning_rate:
+    values: [0.0001, 0.001, 0.005]
+    action_types: [parameter_tuning]
+  n_layers:
+    values: [1, 2, 3]
+    action_types: [parameter_tuning, aggregation]
+  reg_weight:
+    values: [0.000001, 0.00001, 0.0001]
+    action_types: [parameter_tuning, regularization]
+  margin:
+    values: [0.1, 0.2, 0.5]
+    action_types: [parameter_tuning, local_loss]
+  residual_weight:
+    values: [0.05, 0.1, 0.2, 0.3]
+    action_types: [parameter_tuning, aggregation]
+  tail_weight_alpha:
+    values: [0.2, 0.5, 1.0]
+    action_types: [parameter_tuning, local_loss]
+  lambda_pop:
+    values: [0.0001, 0.001, 0.01]
+    action_types: [parameter_tuning, regularization, posthoc_rerank]
+  lambda_norm:
+    values: [0.00001, 0.0001, 0.001]
+    action_types: [parameter_tuning, regularization]
+  max_norm:
+    values: [0.5, 1.0, 2.0]
+    action_types: [parameter_tuning, regularization]
+  hard_negative_ratio:
+    values: [0.25, 0.5, 0.75]
+    action_types: [parameter_tuning, sampling_wrapper]
+  popularity_alpha:
+    values: [0.2, 0.5, 1.0]
+    action_types: [parameter_tuning, sampling_wrapper]
+  debias_alpha:
+    values: [0.1, 0.2, 0.5]
+    action_types: [parameter_tuning, sampling_wrapper, local_loss]
+  lambda_align:
+    values: [0.0001, 0.001, 0.01]
+    action_types: [parameter_tuning, local_loss]
+  rank_weight_alpha:
+    values: [0.1, 0.2, 0.5]
+    action_types: [parameter_tuning, local_loss]
+  lambda_coverage:
+    values: [0.0001, 0.001, 0.01]
+    action_types: [parameter_tuning, local_loss, posthoc_rerank]
+  edge_dropout:
+    values: [0.05, 0.1, 0.2]
+    action_types: [parameter_tuning, aggregation, regularization]
+  gate_dropout:
+    values: [0.0, 0.05, 0.1]
+    action_types: [parameter_tuning, aggregation]
+  residual_gate_scale:
+    values: [0.25, 0.5, 1.0]
+    action_types: [parameter_tuning, aggregation]
+  cl_temperature:
+    values: [0.1, 0.2, 0.5]
+    action_types: [parameter_tuning, local_loss]
+  pareto_temperature:
+    values: [0.2, 0.5, 1.0]
+    action_types: [parameter_tuning, local_loss, posthoc_rerank]
+
+parameter_groups:
+  - [residual_weight]
+  - [margin]
+  - [tail_weight_alpha]
+  - [hard_negative_ratio]
+  - [popularity_alpha]
+  - [lambda_pop]
+  - [lambda_norm, max_norm]
+  - [lambda_align]
+  - [rank_weight_alpha]
+  - [lambda_coverage]
+  - [embedding_size, n_layers]
+  - [residual_gate_scale, gate_dropout]
+  - [learning_rate]
+  - [reg_weight]
+
+allowed_implementation_roots:
+  - recclaw_ext/models/
+  - recclaw_ext/posthoc/
+
+forbidden_changes:
+  - RecBole core source files
+  - data split definition
+  - evaluation protocol
+  - undeclared parameters
+  - uncontrolled pipeline changes
+

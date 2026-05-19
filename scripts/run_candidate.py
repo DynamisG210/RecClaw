@@ -37,6 +37,7 @@ CONFIG_DIR = PROJECT_ROOT / "configs"
 CANDIDATE_DIR = CONFIG_DIR / "candidates"
 RESULT_DIR = PROJECT_ROOT / "results" / "candidates"
 RESULTS_CSV = PROJECT_ROOT / "results" / "results.csv"
+OVERRIDE_DIR = PROJECT_ROOT / "results" / "overrides"
 REGISTRY_PATH = CONFIG_DIR / "candidate_registry.yaml"
 COLLECT_SCRIPT = SCRIPT_DIR / "collect_result.py"
 
@@ -83,8 +84,8 @@ def load_registry(path: Path = REGISTRY_PATH) -> list[dict[str, Any]]:
     return candidates
 
 
-def find_candidate(candidate_id: str) -> dict[str, Any]:
-    for candidate in load_registry():
+def find_candidate(candidate_id: str, registry_path: Path = REGISTRY_PATH) -> dict[str, Any]:
+    for candidate in load_registry(registry_path):
         if candidate.get("candidate_id") == candidate_id:
             return dict(candidate)
     raise KeyError(f"candidate_id not found in registry: {candidate_id}")
@@ -140,11 +141,10 @@ def parse_override(value: str) -> tuple[str, Any]:
     return key, yaml.safe_load(raw)
 
 
-def write_override_file(run_id: str, overrides: list[str]) -> Path | None:
+def write_override_file(run_id: str, overrides: list[str], override_dir: Path = OVERRIDE_DIR) -> Path | None:
     if not overrides:
         return None
     payload = dict(parse_override(item) for item in overrides)
-    override_dir = PROJECT_ROOT / "results" / "overrides"
     override_dir.mkdir(parents=True, exist_ok=True)
     path = override_dir / f"{run_id}.yaml"
     with path.open("w", encoding="utf-8") as handle:
@@ -381,13 +381,17 @@ def collect_result(
     config_change: str,
     candidate_id: str,
     exit_code: int,
+    result_dir: Path = RESULT_DIR,
+    results_csv: Path = RESULTS_CSV,
 ) -> dict[str, Any]:
+    result_dir.mkdir(parents=True, exist_ok=True)
+    results_csv.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
         str(COLLECT_SCRIPT),
         str(log_path),
         "--append-csv",
-        str(RESULTS_CSV),
+        str(results_csv),
         "--run-id",
         run_id,
         "--config-change",
@@ -414,7 +418,7 @@ def collect_result(
     if completed.returncode != 0:
         raise RuntimeError(f"collect_result.py failed with code {completed.returncode}")
     parsed = json.loads(completed.stdout)
-    result_json_path = RESULT_DIR / f"{run_id}.json"
+    result_json_path = result_dir / f"{run_id}.json"
     with result_json_path.open("w", encoding="utf-8") as handle:
         json.dump(parsed, handle, ensure_ascii=True, indent=2)
         handle.write("\n")
@@ -459,8 +463,11 @@ def build_plan(
     base_model_override: str | None,
     overrides: list[str],
     create_override: bool = True,
+    result_dir: Path = RESULT_DIR,
+    override_dir: Path = OVERRIDE_DIR,
+    registry_path: Path = REGISTRY_PATH,
 ) -> dict[str, Any]:
-    candidate = find_candidate(candidate_id)
+    candidate = find_candidate(candidate_id, registry_path)
     runner_type, entrypoint = validate_candidate(candidate_id, candidate)
     candidate_config_path = CANDIDATE_DIR / f"{candidate_id}.yaml"
     candidate_config = load_yaml(candidate_config_path)
@@ -477,7 +484,7 @@ def build_plan(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = f"candidate_{candidate_id}_{timestamp}"
-    override_path = write_override_file(run_id, overrides) if create_override else None
+    override_path = write_override_file(run_id, overrides, override_dir) if create_override else None
 
     config_files = [
         CONFIG_DIR / "task_ml1m.yaml",
@@ -503,7 +510,7 @@ def build_plan(
         "model_name": model_name,
         "dataset": dataset,
         "run_id": run_id,
-        "log_path": RESULT_DIR / f"{run_id}.log",
+        "log_path": result_dir / f"{run_id}.log",
         "config_files": config_files,
         "config_change": config_change,
         "overrides": overrides,
@@ -513,8 +520,40 @@ def build_plan(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a RecClaw candidate by candidate_id.")
     parser.add_argument("candidate_id", help="candidate_id from configs/candidate_registry.yaml")
+    parser.add_argument(
+        "--registry-path",
+        default=os.environ.get("RECCLAW_REGISTRY_PATH"),
+        help=(
+            "Optional candidate registry YAML. Defaults to configs/candidate_registry.yaml; "
+            "random baselines can pass a temporary registry containing replayable agent candidates."
+        ),
+    )
     parser.add_argument("--base-model", choices=sorted(BASE_CONFIGS), help="Override ambiguous base_model")
     parser.add_argument("--recbole-root", help="Path to the adjacent RecBole checkout")
+    parser.add_argument(
+        "--result-dir",
+        default=os.environ.get("RECCLAW_RESULT_DIR"),
+        help=(
+            "Directory for candidate logs and per-run JSON files. Defaults to "
+            "results/candidates; can also be set with RECCLAW_RESULT_DIR."
+        ),
+    )
+    parser.add_argument(
+        "--results-csv",
+        default=os.environ.get("RECCLAW_RESULTS_CSV"),
+        help=(
+            "CSV file to append collected results to. Defaults to results/results.csv, "
+            "or result-dir/../results.csv when --result-dir is customized."
+        ),
+    )
+    parser.add_argument(
+        "--override-dir",
+        default=os.environ.get("RECCLAW_OVERRIDE_DIR"),
+        help=(
+            "Directory for temporary override YAML files. Defaults to results/overrides; "
+            "can also be set with RECCLAW_OVERRIDE_DIR."
+        ),
+    )
     parser.add_argument(
         "--checkpoint-dir",
         default=os.environ.get("RECCLAW_CHECKPOINT_DIR"),
@@ -548,13 +587,26 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Print the resolved run plan only")
     args = parser.parse_args()
 
-    RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    custom_result_dir = bool(args.result_dir)
+    result_dir = Path(args.result_dir).expanduser().resolve() if args.result_dir else RESULT_DIR
+    results_csv = (
+        Path(args.results_csv).expanduser().resolve()
+        if args.results_csv
+        else (result_dir.parent / RESULTS_CSV.name if custom_result_dir else RESULTS_CSV)
+    )
+    override_dir = Path(args.override_dir).expanduser().resolve() if args.override_dir else OVERRIDE_DIR
+    registry_path = Path(args.registry_path).expanduser().resolve() if args.registry_path else REGISTRY_PATH
+
+    result_dir.mkdir(parents=True, exist_ok=True)
     try:
         plan = build_plan(
             args.candidate_id,
             args.base_model,
             args.overrides,
             create_override=not args.dry_run,
+            result_dir=result_dir,
+            override_dir=override_dir,
+            registry_path=registry_path,
         )
     except NotImplementedError as exc:
         print(f"Candidate is not runnable yet: {exc}", file=sys.stderr)
@@ -579,6 +631,10 @@ def main() -> int:
         "dataset": plan["dataset"],
         "run_id": plan["run_id"],
         "log_path": str(plan["log_path"]),
+        "result_dir": str(result_dir),
+        "results_csv": str(results_csv),
+        "override_dir": str(override_dir),
+        "registry_path": str(registry_path),
         "config_files": [str(path) for path in plan["config_files"]],
         "overrides": plan["overrides"],
         "recbole_root": str(recbole_root),
@@ -614,6 +670,8 @@ def main() -> int:
         config_change=plan["config_change"],
         candidate_id=args.candidate_id,
         exit_code=exit_code,
+        result_dir=result_dir,
+        results_csv=results_csv,
     )
     if args.cleanup_checkpoints:
         cleanup_checkpoint_dir(run_checkpoint_dir, checkpoint_root)

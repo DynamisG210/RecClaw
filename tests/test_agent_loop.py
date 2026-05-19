@@ -4,13 +4,17 @@ import sys
 import tempfile
 import unittest
 import csv
+import json
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "analysis"))
 
 import agent  # noqa: E402
+import build_candidate_search_tree as search_tree  # noqa: E402
+import build_experience_summary as experience  # noqa: E402
 import collect_result  # noqa: E402
 import implement_candidate_proposal as implement  # noqa: E402
 import validate_candidate_proposal as validate  # noqa: E402
@@ -97,6 +101,19 @@ class AgentLoopTests(unittest.TestCase):
         self.assertEqual(missing_from_space, set())
         self.assertEqual(missing_from_schema, set())
 
+    def test_agent_parameter_space_loads_from_action_space(self) -> None:
+        self.assertIn("lambda_norm", agent.DEFAULT_PARAMETER_SPACE)
+        self.assertEqual(agent.DEFAULT_PARAMETER_SPACE["hard_negative_ratio"], [0.25, 0.5, 0.75])
+
+    def test_search_policy_loads_runtime_budget(self) -> None:
+        policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
+        registry = agent.load_yaml(ROOT / "configs" / "candidate_registry.yaml")
+        registry_ids = {str(item.get("candidate_id")) for item in registry.get("candidates", [])}
+        priority_families = set(policy["search_stages"]["exploit"]["priority_families"])
+        self.assertEqual(policy["protocol_lock"]["primary_metric"], "ndcg@10")
+        self.assertEqual(policy["family_budget"]["max_code_required_per_window"], 1)
+        self.assertEqual(priority_families - registry_ids, set())
+
     def test_wired_local_model_entrypoints_are_concrete_modules(self) -> None:
         registry = agent.load_yaml(ROOT / "configs" / "candidate_registry.yaml")
         package_level = []
@@ -148,6 +165,279 @@ class AgentLoopTests(unittest.TestCase):
         self.assertTrue(rec_agent.config.enable_candidate_proposals)
         self.assertTrue(rec_agent.config.auto_implement_code_required)
 
+    def test_experiment_directive_resolves_file_and_disable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directive_path = Path(tmp) / "directive.txt"
+            directive_path.write_text("Focus LightGCNResidualNorm.", encoding="utf-8")
+            resolved = agent.resolve_experiment_directive(
+                "Avoid complex debias proposals.",
+                directive_path,
+            )
+            self.assertIn("Focus LightGCNResidualNorm", resolved)
+            self.assertIn("Avoid complex debias", resolved)
+            self.assertEqual(
+                agent.resolve_experiment_directive("Use this", directive_path, disabled=True),
+                "",
+            )
+
+    def test_experience_builder_rejects_lablog_runtime_input(self) -> None:
+        with self.assertRaisesRegex(ValueError, "refuses LabLog path"):
+            experience.reject_lablog_path("RecClaw_LabLog/2026.05.17/summary.md")
+
+    def test_experience_builder_outputs_insufficient_evidence(self) -> None:
+        summary = experience.summarize_memory(
+            [],
+            action_space={},
+            policy={"metric": "ndcg@10", "minimum_successful_runs": 3},
+        )
+        text = experience.build_markdown(summary, {"minimum_successful_runs": 3})
+        self.assertIn("insufficient evidence", text)
+
+    def test_experience_builder_tracks_crash_only_family(self) -> None:
+        summary = experience.summarize_memory(
+            [
+                {
+                    "candidate_id": "cand_lightgcn_residual_norm_trial",
+                    "base_model": "LightGCN",
+                    "status": "crash",
+                    "decision": "revise",
+                    "params": {"lambda_norm": 0.001, "max_norm": 1.0},
+                }
+            ],
+            action_space={},
+            policy={"metric": "ndcg@10", "minimum_successful_runs": 1},
+        )
+        family = summary["family_summaries"][0]
+        self.assertEqual(family["policy_bucket"], "avoid")
+        self.assertEqual(family["crash_count"], 1)
+        self.assertIsNone(family["best"])
+        self.assertEqual(family["action_type"], "regularization")
+
+    def test_experience_builder_outputs_planner_policy(self) -> None:
+        search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
+        summary = experience.summarize_memory(
+            [
+                {
+                    "candidate_id": "cand_lightgcn_residual_norm_trial_a",
+                    "parent_candidate_id": "cand_lightgcn_residual_norm",
+                    "base_model": "LightGCN",
+                    "status": "success",
+                    "decision": "keep",
+                    "params": {"lambda_norm": 0.001, "max_norm": 1.0},
+                    "result": {"ndcg@10": 0.292},
+                    "parameter_signature": 'cand_lightgcn_residual_norm::{"lambda_norm":0.001,"max_norm":1.0}',
+                    "seed_validation": {"status": "passed", "mean": 0.291, "std": 0.001},
+                },
+                {
+                    "candidate_id": "cand_lightgcn_residual_norm_trial_b",
+                    "parent_candidate_id": "cand_lightgcn_residual_norm",
+                    "base_model": "LightGCN",
+                    "status": "success",
+                    "decision": "keep",
+                    "params": {"lambda_norm": 0.001, "max_norm": 0.5},
+                    "result": {"ndcg@10": 0.289},
+                    "parameter_signature": 'cand_lightgcn_residual_norm::{"lambda_norm":0.001,"max_norm":0.5}',
+                },
+                {
+                    "candidate_id": "cand_lightgcn_debias_pareto_contrastive",
+                    "base_model": "LightGCN",
+                    "status": "success",
+                    "decision": "discard",
+                    "params": {"debias_alpha": 0.5, "pareto_temperature": 1.0, "cl_temperature": 0.5},
+                    "result": {"ndcg@10": 0.19},
+                },
+            ],
+            action_space={},
+            policy=experience.load_yaml(ROOT / "configs" / "reflection_policy.yaml"),
+            search_policy=search_policy,
+        )
+        policy = experience.build_experience_policy(summary, search_policy=search_policy, tree_summary={})
+        self.assertIn("cand_lightgcn_residual_norm", policy["encourage_families"])
+        self.assertTrue(policy["promising_parameter_regions"])
+        self.assertTrue(policy["failed_compositions"])
+        self.assertIn("do_not_repeat_signatures", policy)
+        text = experience.build_markdown({**summary, "experience_policy": policy}, {"minimum_successful_runs": 1}, policy)
+        self.assertIn("Prefer families", text)
+
+    def test_experience_builder_dedupes_results_csv_by_run_id(self) -> None:
+        memory_rows = [
+            {
+                "candidate_id": "cand_x",
+                "run_id": "run_same",
+                "status": "success",
+                "decision": "keep",
+                "result": {"ndcg@10": 0.3},
+                "params": {"a": 1},
+            }
+        ]
+        results_rows = [{"candidate_id": "cand_x", "run_id": "run_same", "status": "success", "ndcg@10": "0.3"}]
+        combined = experience.combine_evidence_rows(memory_rows, results_rows)
+        self.assertEqual(len(combined), 1)
+        self.assertEqual(combined[0]["params"], {"a": 1})
+
+    def test_experience_builder_enriches_memory_metric_from_results_csv(self) -> None:
+        memory_rows = [{"candidate_id": "cand_x", "run_id": "run_same", "result": {}, "params": {"a": 1}}]
+        results_rows = [{"candidate_id": "cand_x", "run_id": "run_same", "status": "success", "ndcg@10": "0.31"}]
+        combined = experience.combine_evidence_rows(memory_rows, results_rows)
+        self.assertEqual(len(combined), 1)
+        self.assertEqual(combined[0]["result"]["ndcg@10"], "0.31")
+
+    def test_experience_builder_matches_pairwise_failed_compositions(self) -> None:
+        search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
+        summary = experience.summarize_memory(
+            [
+                {
+                    "candidate_id": "cand_debias_pareto",
+                    "base_model": "LightGCN",
+                    "status": "success",
+                    "decision": "discard",
+                    "params": {"debias_alpha": 0.5, "pareto_temperature": 1.0},
+                    "result": {"ndcg@10": 0.19},
+                }
+            ],
+            action_space={},
+            policy=experience.load_yaml(ROOT / "configs" / "reflection_policy.yaml"),
+            search_policy=search_policy,
+        )
+        self.assertIn({"composition": "debias + pareto", "failures": 1}, summary["failed_compositions"])
+
+    def test_results_csv_rows_can_feed_experience_summary(self) -> None:
+        rows = [
+            {
+                "run_id": "candidate_cand_lightgcn_residual_layer_mix_20260518_010101",
+                "model": "LightGCN",
+                "status": "success",
+                "ndcg@10": "0.281",
+            }
+        ]
+        converted = experience.result_rows_to_memory_rows(rows)
+        self.assertEqual(converted[0]["candidate_id"], "cand_lightgcn_residual_layer_mix")
+        summary = experience.summarize_memory(
+            converted,
+            action_space={},
+            policy={"metric": "ndcg@10", "minimum_successful_runs": 1},
+        )
+        self.assertEqual(summary["successful_metric_rows"], 1)
+
+    def test_candidate_search_tree_builds_parent_child_metric_summary(self) -> None:
+        tree = search_tree.build_tree(
+            registry={
+                "candidates": [
+                    {
+                        "candidate_id": "cand_parent",
+                        "base_model": "LightGCN",
+                        "status": "implemented",
+                        "consumes": ["residual_weight"],
+                    }
+                ]
+            },
+            proposals=[
+                {
+                    "candidate_id": "cand_child",
+                    "parent_candidate_id": "cand_parent",
+                    "base_model": "LightGCN",
+                    "action_type": "parameter_tuning",
+                    "parameter_overrides": {"residual_weight": 0.1},
+                }
+            ],
+            memory_rows=[
+                {
+                    "candidate_id": "cand_child",
+                    "parent_candidate_id": "cand_parent",
+                    "base_model": "LightGCN",
+                    "status": "success",
+                    "decision": "keep",
+                    "result": {"ndcg@10": 0.3},
+                    "seed_validation": {"status": "passed", "mean": 0.299},
+                }
+            ],
+            results_rows=[],
+            metric="ndcg@10",
+        )
+        by_id = {node["candidate_id"]: node for node in tree["nodes"]}
+        self.assertIn("cand_child", by_id["cand_parent"]["children"])
+        self.assertEqual(by_id["cand_child"]["best_ndcg@10"], 0.3)
+        self.assertEqual(by_id["cand_child"]["decision_counts"]["keep"], 1)
+        self.assertIn("cand_parent", search_tree.build_markdown(tree))
+        self.assertIn("cand_child", search_tree.build_mermaid(tree))
+
+    def test_candidate_search_tree_handles_missing_parent(self) -> None:
+        tree = search_tree.build_tree(
+            registry={"candidates": []},
+            proposals=[{"candidate_id": "cand_child", "parent_candidate_id": "cand_missing_parent"}],
+            memory_rows=[],
+            results_rows=[],
+            metric="ndcg@10",
+        )
+        by_id = {node["candidate_id"]: node for node in tree["nodes"]}
+        self.assertIn("cand_missing_parent", by_id)
+        self.assertIn("cand_child", by_id["cand_missing_parent"]["children"])
+
+    def test_candidate_search_tree_non_ndcg_metric_does_not_fill_ndcg_alias(self) -> None:
+        tree = search_tree.build_tree(
+            registry={"candidates": [{"candidate_id": "cand_parent"}]},
+            proposals=[{"candidate_id": "cand_child", "parent_candidate_id": "cand_parent"}],
+            memory_rows=[{"candidate_id": "cand_child", "result": {"recall@10": 0.8}}],
+            results_rows=[],
+            metric="recall@10",
+        )
+        by_id = {node["candidate_id"]: node for node in tree["nodes"]}
+        self.assertEqual(by_id["cand_child"]["best_recall_at_10"], 0.8)
+        self.assertIsNone(by_id["cand_child"]["best_ndcg@10"])
+
+    def test_candidate_search_tree_dedupes_results_csv_by_memory_run_id(self) -> None:
+        tree = search_tree.build_tree(
+            registry={"candidates": [{"candidate_id": "cand_x"}]},
+            proposals=[],
+            memory_rows=[
+                {
+                    "candidate_id": "cand_x",
+                    "run_id": "run_same",
+                    "status": "success",
+                    "result": {"ndcg@10": 0.3},
+                }
+            ],
+            results_rows=[
+                {"candidate_id": "cand_x", "run_id": "run_same", "status": "success", "ndcg@10": "0.3"}
+            ],
+            metric="ndcg@10",
+        )
+        by_id = {node["candidate_id"]: node for node in tree["nodes"]}
+        self.assertEqual(by_id["cand_x"]["run_count"], 1)
+
+    def test_experience_tree_hints_use_child_metrics(self) -> None:
+        hints = experience.tree_policy_hints(
+            {
+                "metric": "ndcg@10",
+                "nodes": [
+                    {"candidate_id": "parent", "children": ["child"], "best_ndcg@10": None},
+                    {"candidate_id": "child", "children": [], "best_ndcg@10": 0.31},
+                ],
+            }
+        )
+        self.assertEqual(hints["high_yield_parents"][0]["family"], "parent")
+        self.assertEqual(hints["high_yield_parents"][0]["best"], 0.31)
+
+    def test_experiment_directive_enters_llm_context_and_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            summary_path = Path(tmp) / "agent_state_summary.json"
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    state_summary_path=summary_path,
+                    use_experiment_directive=True,
+                    experiment_directive="Focus on validating LightGCNResidualNorm; avoid broad new code_required ideas.",
+                )
+            )
+            rec_agent.observe()
+            context = rec_agent._llm_proposal_context()
+            self.assertTrue(context["experiment_directive"]["enabled"])
+            self.assertIn("LightGCNResidualNorm", context["experiment_directive"]["text"])
+            self.assertIn("experiment_directive", context["steering_priority"][1])
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertTrue(summary["experiment_directive"]["enabled"])
+            self.assertIn("avoid broad", summary["experiment_directive"]["text"])
+
     def test_reflect_revises_baseline_win_without_history_best(self) -> None:
         rec_agent = agent.RecClawAgent(agent.AgentConfig(min_keep_delta=1e-5))
         decision, reason, _ = rec_agent.reflect(
@@ -170,6 +460,15 @@ class AgentLoopTests(unittest.TestCase):
         self.assertFalse(implement.path_is_allowed("/tmp/new_model.py"))
         self.assertFalse(implement.path_is_allowed("configs/task_ml1m.yaml"))
         self.assertFalse(implement.path_is_allowed("configs/candidate_registry.yaml"))
+
+    def test_implementation_context_receives_experiment_directive(self) -> None:
+        context = implement.build_implementation_context(
+            {"candidate_id": "cand_x", "base_model": "LightGCN"},
+            {"candidates": []},
+            "Keep implementation minimal and avoid broad new mechanisms.",
+        )
+        self.assertTrue(context["experiment_directive"]["enabled"])
+        self.assertIn("minimal", context["experiment_directive"]["text"])
 
     def test_proposal_validator_rejects_unsafe_implementation_paths(self) -> None:
         allowed = {"recclaw_ext/models/", "recclaw_ext/posthoc/"}

@@ -10,6 +10,7 @@ required_fields:
   - parent_candidate_id
   - base_model
   - category
+  - action_type
   - hypothesis
   - runnable_level
   - runner_type
@@ -38,6 +39,14 @@ allowed_proposal_types:
   - algorithmic_variant
   - research_spec
 
+allowed_action_types:
+  - parameter_tuning
+  - local_loss
+  - aggregation
+  - regularization
+  - sampling_wrapper
+  - posthoc_rerank
+
 allowed_implementation_roots:
   - recclaw_ext/models/
   - recclaw_ext/posthoc/
@@ -53,6 +62,7 @@ field_contract:
   parent_candidate_id: "Existing candidate_id used as the executable or conceptual parent."
   base_model: "Exactly one of BPR or LightGCN."
   category: "Same style as registry category, for example Objective & Optimization."
+  action_type: "Executable action kind from configs/action_space.yaml, for example parameter_tuning, local_loss, aggregation, regularization, sampling_wrapper, or posthoc_rerank."
   hypothesis: "One sentence explaining why this proposal should improve a metric or risk dimension."
   runnable_level: "parameter_only and config_only should be runnable without local code changes."
   runner_type: "Must stay within the existing RecClaw runner contract."
@@ -74,6 +84,7 @@ example_proposal:
   parent_candidate_id: cand_lightgcn_residual_layer_mix
   base_model: LightGCN
   category: Representation & Interaction
+  action_type: parameter_tuning
   hypothesis: Lower residual mixing may reduce over-smoothing while keeping useful ego embedding signal.
   runnable_level: parameter_only
   runner_type: model
@@ -111,6 +122,7 @@ example_algorithmic_variant:
   parent_candidate_id: cand_bpr_margin_loss
   base_model: BPR
   category: Objective & Optimization
+  action_type: local_loss
   hypothesis: Adaptive margins based on item popularity may reduce head-item dominance while preserving pairwise ranking strength.
   runnable_level: code_required
   runner_type: model
@@ -119,11 +131,11 @@ example_algorithmic_variant:
     - popularity_alpha
   new_parameters:
     - name: popularity_alpha
-      default: 0.3
+      default: 0.5
       search_space:
-        - 0.1
-        - 0.3
+        - 0.2
         - 0.5
+        - 1.0
   implementation_plan:
     summary: Add a local BPR subclass that scales pairwise margin by negative-item popularity.
     entrypoint: recclaw_ext.models.bpr_adaptive_popularity_margin:BPRAdaptivePopularityMargin
