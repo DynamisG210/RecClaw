@@ -46,6 +46,13 @@ allowed_action_types:
   - regularization
   - sampling_wrapper
   - posthoc_rerank
+  - negative_sampling
+  - pairwise_loss
+  - graph_propagation
+  - graph_augmentation
+  - layer_interaction
+  - auxiliary_loss
+  - rank_aware_loss
 
 allowed_implementation_roots:
   - recclaw_ext/models/
@@ -62,7 +69,7 @@ field_contract:
   parent_candidate_id: "Existing candidate_id used as the executable or conceptual parent."
   base_model: "Exactly one of BPR or LightGCN."
   category: "Same style as registry category, for example Objective & Optimization."
-  action_type: "Executable action kind from configs/action_space.yaml, for example parameter_tuning, local_loss, aggregation, regularization, sampling_wrapper, or posthoc_rerank."
+  action_type: "Executable action kind from configs/action_space.yaml, for example parameter_tuning, local_loss, aggregation, regularization, sampling_wrapper, negative_sampling, pairwise_loss, graph_propagation, graph_augmentation, layer_interaction, auxiliary_loss, rank_aware_loss, or posthoc_rerank."
   hypothesis: "One sentence explaining why this proposal should improve a metric or risk dimension."
   runnable_level: "parameter_only and config_only should be runnable without local code changes."
   runner_type: "Must stay within the existing RecClaw runner contract."
@@ -122,7 +129,7 @@ example_algorithmic_variant:
   parent_candidate_id: cand_bpr_margin_loss
   base_model: BPR
   category: Objective & Optimization
-  action_type: local_loss
+  action_type: pairwise_loss
   hypothesis: Adaptive margins based on item popularity may reduce head-item dominance while preserving pairwise ranking strength.
   runnable_level: code_required
   runner_type: model

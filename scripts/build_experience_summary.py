@@ -154,6 +154,94 @@ def std(values: list[float]) -> float:
     return math.sqrt(sum((item - mean) ** 2 for item in values) / (len(values) - 1))
 
 
+def coefficient_of_variation(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    mean = sum(values) / len(values)
+    if mean == 0:
+        return 0.0
+    return std(values) / mean
+
+
+def linear_slope(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    x_mean = (len(values) - 1) / 2.0
+    y_mean = sum(values) / len(values)
+    numerator = sum((index - x_mean) * (value - y_mean) for index, value in enumerate(values))
+    denominator = sum((index - x_mean) ** 2 for index in range(len(values)))
+    return numerator / denominator if denominator else 0.0
+
+
+def convergence_trend(rows: list[dict[str, Any]], metric: str, policy: dict[str, Any]) -> dict[str, Any]:
+    trend_policy = policy.get("convergence_trend") if isinstance(policy.get("convergence_trend"), dict) else {}
+    if not bool(trend_policy.get("enable", False)):
+        return {"trend": "disabled", "slope": 0.0, "cv": 0.0, "high_variance": False}
+    min_runs = int(trend_policy.get("min_runs_for_trend", 3))
+    improving = float(trend_policy.get("improving_slope_threshold", 0.001))
+    degrading = float(trend_policy.get("degrading_slope_threshold", -0.001))
+    high_variance = float(trend_policy.get("high_variance_cv_threshold", 0.10))
+    sorted_rows = sorted(rows, key=lambda row: int(row.get("round_id") or 0))
+    values = [metric_value(row, metric) for row in sorted_rows]
+    values = [value for value in values if value is not None]
+    if len(values) < min_runs:
+        return {"trend": "insufficient_data", "slope": 0.0, "cv": 0.0, "high_variance": False}
+    slope = linear_slope(values)
+    cv = coefficient_of_variation(values)
+    if slope >= improving:
+        trend = "improving"
+    elif slope <= degrading:
+        trend = "degrading"
+    else:
+        trend = "stable"
+    return {
+        "trend": trend,
+        "slope": round(slope, 6),
+        "cv": round(cv, 6),
+        "high_variance": cv >= high_variance,
+    }
+
+
+def domain_prior_warnings(
+    *,
+    base_model: str,
+    params: dict[str, Any],
+    policy: dict[str, Any],
+) -> list[str]:
+    priors = policy.get("domain_priors") if isinstance(policy.get("domain_priors"), dict) else {}
+    warnings: list[str] = []
+    model_priors = priors.get(base_model) if isinstance(priors, dict) else {}
+    model_priors = model_priors if isinstance(model_priors, dict) else {}
+    n_layers = to_float(params.get("n_layers"))
+    if base_model == "LightGCN":
+        optimal = model_priors.get("optimal_layers_range")
+        if n_layers is not None and isinstance(optimal, list) and len(optimal) == 2:
+            upper = to_float(optimal[1])
+            if upper is not None and n_layers > upper:
+                warnings.append(f"n_layers={n_layers:g} exceeds LightGCN typical range {optimal}; over-smoothing risk")
+        threshold = to_float(model_priors.get("over_smoothing_threshold"))
+        if n_layers is not None and threshold is not None and n_layers >= threshold:
+            warnings.append(f"n_layers={n_layers:g} reaches LightGCN over-smoothing threshold {threshold:g}")
+        edge_dropout = to_float(params.get("edge_dropout"))
+        if edge_dropout is not None and edge_dropout > 0.2:
+            warnings.append("edge_dropout exceeds the current action-space maximum used for stable graph regularization")
+    if base_model == "BPR":
+        if n_layers is not None:
+            warnings.append("n_layers is a graph propagation parameter and should not be used with BPR")
+        margin = to_float(params.get("margin"))
+        if margin is not None and margin >= 0.5:
+            warnings.append("margin is at the high end for BPR; monitor instability and collapse")
+        hard_ratio = to_float(params.get("hard_negative_ratio"))
+        if hard_ratio is not None and hard_ratio > 0.5:
+            warnings.append("hard_negative_ratio above 0.5 can increase BPR training variance")
+    general = priors.get("general") if isinstance(priors, dict) else {}
+    if isinstance(general, dict):
+        lambda_coverage = to_float(params.get("lambda_coverage"))
+        if lambda_coverage is not None:
+            warnings.append(str(general.get("coverage_note") or "Treat coverage changes as tie-breakers under NDCG guard."))
+    return warnings
+
+
 def infer_base_model(record: dict[str, Any]) -> str:
     for value in (
         record.get("base_model"),
@@ -327,6 +415,8 @@ def summarize_memory(
         params = best_row.get("params") if isinstance(best_row.get("params"), dict) else {}
         lift = best - baseline if best is not None and baseline is not None else None
         collapse_rate = collapse_count / len(values) if values else 0.0
+        trend = convergence_trend(rows, metric, policy)
+        domain_warnings = domain_prior_warnings(base_model=base_model, params=params, policy=policy)
         if not values:
             policy_bucket = "avoid"
         elif len(values) < minimum_family_runs:
@@ -355,6 +445,8 @@ def summarize_memory(
                 "crash_count": crash_count,
                 "decisions": dict(decisions),
                 "effective_region": params,
+                "trend": trend,
+                "domain_warnings": domain_warnings,
                 "policy_bucket": policy_bucket,
             }
         )
@@ -484,6 +576,24 @@ def build_experience_policy(
     encourage = family_ids(family_summaries, "encourage")
     caution = family_ids(family_summaries, "caution")
     avoid = family_ids(family_summaries, "avoid")
+    domain_prior_notes = []
+    trend_notes = []
+    for item in family_summaries:
+        warnings = item.get("domain_warnings") if isinstance(item.get("domain_warnings"), list) else []
+        for warning in warnings[:2]:
+            domain_prior_notes.append({"family": item.get("family"), "note": warning})
+        trend = item.get("trend") if isinstance(item.get("trend"), dict) else {}
+        trend_name = str(trend.get("trend") or "")
+        if trend_name in {"improving", "degrading"} or bool(trend.get("high_variance")):
+            trend_notes.append(
+                {
+                    "family": item.get("family"),
+                    "trend": trend_name,
+                    "slope": trend.get("slope"),
+                    "cv": trend.get("cv"),
+                    "high_variance": bool(trend.get("high_variance")),
+                }
+            )
     search_stages = search_policy.get("search_stages") if isinstance(search_policy.get("search_stages"), dict) else {}
     exploit_defaults = []
     exploit_stage = search_stages.get("exploit") if isinstance(search_stages.get("exploit"), dict) else {}
@@ -499,6 +609,8 @@ def build_experience_policy(
         "promising_parameter_regions": promising_parameter_regions(family_summaries),
         "failed_compositions": summary.get("failed_compositions", []),
         "do_not_repeat_signatures": summary.get("do_not_repeat_signatures", []),
+        "domain_prior_notes": domain_prior_notes[:10],
+        "trend_notes": trend_notes[:10],
         "budget_hints": {
             "max_code_required_per_window": int(family_budget.get("max_code_required_per_window", 1)),
             "window_rounds": int(family_budget.get("window_rounds", 5)),
@@ -554,6 +666,12 @@ def build_markdown(
                 f"Only {summary['successful_metric_rows']} successful metric rows were available.",
                 "Do not infer family preferences yet. Continue with the declared action space only.",
                 "",
+                "## Domain Prior Notes",
+                "- none",
+                "",
+                "## Trend Notes",
+                "- none",
+                "",
                 "## Next Proposal Policy",
                 f"- Prefer families: {', '.join(prefer) if prefer else 'use search_policy defaults'}",
                 "- Keep all proposals inside configs/action_space.yaml and configs/search_policy.yaml.",
@@ -567,9 +685,25 @@ def build_markdown(
     avoid = limited(summary["family_summaries"], "avoid", int(limits.get("avoid", 5)))
     next_policy = experience_policy.get("next_proposal_policy") if isinstance(experience_policy, dict) else {}
     budget_hints = experience_policy.get("budget_hints") if isinstance(experience_policy, dict) else {}
+    domain_notes = experience_policy.get("domain_prior_notes") if isinstance(experience_policy, dict) else []
+    trend_notes = experience_policy.get("trend_notes") if isinstance(experience_policy, dict) else []
     prefer = next_policy.get("prefer_families") if isinstance(next_policy, dict) else []
     repair = next_policy.get("repair_families") if isinstance(next_policy, dict) else []
     avoid_policy = next_policy.get("avoid_families") if isinstance(next_policy, dict) else []
+    domain_lines = [
+        f"- {item.get('family')}: {item.get('note')}"
+        for item in domain_notes
+        if isinstance(item, dict) and item.get("note")
+    ]
+    trend_lines = [
+        (
+            f"- {item.get('family')}: trend={item.get('trend')}, "
+            f"slope={item.get('slope')}, cv={item.get('cv')}"
+            f"{', high_variance' if item.get('high_variance') else ''}"
+        )
+        for item in trend_notes
+        if isinstance(item, dict) and item.get("trend")
+    ]
 
     lines = [
         "# RecClaw Experience Summary",
@@ -584,6 +718,12 @@ def build_markdown(
         "",
         "## Avoid",
         *(format_family_line(item) for item in avoid),
+        "",
+        "## Domain Prior Notes",
+        *(domain_lines or ["- none"]),
+        "",
+        "## Trend Notes",
+        *(trend_lines or ["- none"]),
         "",
         "## Next Proposal Policy",
         f"- Prefer families: {', '.join(prefer) if prefer else 'none yet'}",

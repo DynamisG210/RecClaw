@@ -1,8 +1,12 @@
-version: 1
+version: 2
 description: >
   Policy for building short runtime experience summaries from current
   results/ memory. This file is agent-runtime configuration, not LabLog
   evidence.
+
+  v2 adds conservative recommender-system domain priors and trend notes. NDCG@10
+  remains the primary metric; secondary metrics can provide caution/tie-break
+  context but must not override clear NDCG regression.
 
 metric: ndcg@10
 minimum_successful_runs: 3
@@ -17,6 +21,38 @@ thresholds:
   collapse_ndcg: 0.2171
   high_collapse_rate: 0.25
 
+decision_guards:
+  primary_metric_hard_guard: true
+  secondary_metrics_tie_break_only: true
+  do_not_encourage_below_baseline: true
+
+domain_priors:
+  LightGCN:
+    optimal_layers_range: [2, 3]
+    over_smoothing_threshold: 4
+    known_failure_modes:
+      - n_layers above the declared action space often over-smooths.
+      - edge_dropout above the declared action space can destroy useful multi-hop signal.
+      - residual mechanisms require multi-hop propagation to be meaningful.
+  BPR:
+    margin_sensitivity: high
+    hard_negative_risk: unstable_training
+    known_failure_modes:
+      - high margin values can destabilize pairwise ranking.
+      - high hard_negative_ratio can increase training variance.
+      - graph propagation parameters such as n_layers do not apply to BPR.
+  general:
+    coverage_note: Coverage or diversity gains are useful only when NDCG is near baseline or improving.
+    batch_note: Do not mix train_batch_size changes into formal comparison results.
+
+convergence_trend:
+  enable: true
+  min_runs_for_trend: 3
+  improving_slope_threshold: 0.001
+  degrading_slope_threshold: -0.001
+  high_variance_cv_threshold: 0.10
+  trend_influence_on_bucket: false
+
 summary_limits:
   encourage: 5
   caution: 5
@@ -27,7 +63,8 @@ output_contract:
     - Encourage
     - Caution
     - Avoid
+    - Domain Prior Notes
+    - Trend Notes
     - Next Proposal Policy
   max_lines: 80
   include_raw_tables: false
-

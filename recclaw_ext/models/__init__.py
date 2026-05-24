@@ -6,6 +6,7 @@ from .bpr_regularized import (
     BPRNormConstrained,
     BPRPopularityRegularized,
 )
+from .bpr_sampling import BPRHardNegative, BPRPopularityAwareNegative
 from ._losses import (
     BPRLongTailReweightLoss,
     BPRMarginLoss,
@@ -22,22 +23,29 @@ from ._samplers import (
     PopularityAwareNegativeSampler,
 )
 from .lightgcn_lw import LightGCNLW
+from .lightgcn_edge_dropout_residual import LightGCNEdgeDropoutResidualMix
+from .lightgcn_objectives import LightGCNAuxAlignment, LightGCNRankAware
 from .lightgcn_residual import LightGCNResidualMix
 
 __all__ = [
+    "BPRHardNegative",
     "BPRMargin",
     "BPRLongTailReweight",
     "BPRLongTailReweightLoss",
     "BPRMarginLoss",
     "BPRNormConstrained",
     "BPRNormConstrainedLoss",
+    "BPRPopularityAwareNegative",
     "BPRPopularityRegularized",
     "BPRPopularityRegularizedLoss",
     "config_float",
     "config_get",
     "DebiasedNegativeSampler",
     "LayerAlignmentLoss",
+    "LightGCNAuxAlignment",
+    "LightGCNEdgeDropoutResidualMix",
     "LightGCNLW",
+    "LightGCNRankAware",
     "LightGCNResidualMix",
     "margin_bpr_loss",
     "MixedNegativeSampler",

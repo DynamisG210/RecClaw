@@ -55,10 +55,21 @@ NOTES_DIR = PROJECT_ROOT / "notes"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 PROPOSAL_SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
 ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
+CANDIDATE_TREE_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.json"
+CANDIDATE_TREE_MD_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.md"
+CANDIDATE_TREE_MMD_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.mmd"
+EXPERIENCE_SUMMARY_PATH = PROJECT_ROOT / "results" / "experience_summary.md"
+EXPERIENCE_SUMMARY_JSON_PATH = PROJECT_ROOT / "results" / "experience_summary.json"
+REFLECTION_MEMORY_PATH = PROJECT_ROOT / "results" / "reflection_memory.jsonl"
 AUTO_PROMOTABLE_PARENT_IDS = {
     "cand_bpr_long_tail_reweight",
     "cand_bpr_popularity_regularized",
     "cand_bpr_norm_constrained",
+    "cand_bpr_hard_negative_mix",
+    "cand_bpr_popularity_aware_negative",
+    "cand_lightgcn_edge_dropout_residual_mix",
+    "cand_lightgcn_aux_alignment_loss",
+    "cand_lightgcn_rank_aware_loss",
 }
 
 REQUIRED_MULTI_METRICS = (
@@ -293,11 +304,19 @@ class AgentConfig:
     prompt_memory_tail: int = 120
     use_experiment_directive: bool = False
     experiment_directive: str = ""
+    static_experiment_directive: str = ""
     memory_path: Path = MEMORY_PATH
     state_summary_path: Path = STATE_SUMMARY_PATH
     results_csv: Path = RESULTS_CSV
     baseline_dir: Path = BASELINE_DIR
     registry_path: Path = REGISTRY_PATH
+    candidate_tree_path: Path = CANDIDATE_TREE_PATH
+    candidate_tree_md_path: Path = CANDIDATE_TREE_MD_PATH
+    candidate_tree_mmd_path: Path = CANDIDATE_TREE_MMD_PATH
+    experience_summary_path: Path = EXPERIENCE_SUMMARY_PATH
+    experience_summary_json_path: Path = EXPERIENCE_SUMMARY_JSON_PATH
+    reflection_memory_path: Path = REFLECTION_MEMORY_PATH
+    refresh_experience_every: int = 0
     loop_mode: str = "mixed"
     enable_candidate_proposals: bool = True
     proposal_path: Path = PROPOSAL_PATH
@@ -414,6 +433,12 @@ def resolve_experiment_directive(
     return text[:MAX_EXPERIMENT_DIRECTIVE_CHARS].rstrip() + "\n[truncated by RecClaw]"
 
 
+def reject_runtime_lablog_path(path: str | Path) -> None:
+    text = str(path).replace("\\", "/").lower()
+    if "recclaw_lablog" in text:
+        raise ValueError(f"agent runtime refuses LabLog path: {path}")
+
+
 class RecClawAgent:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
@@ -437,6 +462,7 @@ class RecClawAgent:
         self.current_proposal_source: str = config.proposal_source
         self.skip_current_round: bool = False
         self.skip_proposal_generation: bool = False
+        self.last_experiment_directive_digest: str = ""
 
     # ===== Observe =====
     def observe(self) -> None:
@@ -1006,6 +1032,8 @@ class RecClawAgent:
         candidate_id = str(candidate.get("candidate_id"))
         run_candidate_id = str(candidate.get("run_candidate_id") or candidate_id)
         cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "run_candidate.py"), run_candidate_id]
+        cmd.extend(["--registry-path", str(self.config.registry_path)])
+        cmd.extend(["--results-csv", str(self.config.results_csv)])
         if self.config.checkpoint_dir:
             cmd.extend(["--checkpoint-dir", self.config.checkpoint_dir])
         if self.config.checkpoint_policy != "none":
@@ -1391,6 +1419,16 @@ class RecClawAgent:
         except OSError as exc:
             print(f"[StateSummary] write skipped: {exc}", file=sys.stderr)
 
+    def remember_event(self, payload: dict[str, Any]) -> None:
+        event = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            **payload,
+        }
+        self.config.memory_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.config.memory_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+        self.memory.append(event)
+
     def _active_experiment_directive(self) -> str:
         if not self.config.use_experiment_directive:
             return ""
@@ -1410,6 +1448,8 @@ class RecClawAgent:
         directive = self._active_experiment_directive()
         if not directive:
             return
+        if directive == self.last_experiment_directive_digest:
+            return
         self.remember_event(
             {
                 "event": "experiment_directive",
@@ -1417,6 +1457,103 @@ class RecClawAgent:
                 "text": directive,
             }
         )
+        self.last_experiment_directive_digest = directive
+
+    def _refresh_experience_artifacts(self, round_id: int, *, reason: str) -> bool:
+        if self.config.refresh_experience_every <= 0:
+            return False
+        if not self.config.use_experiment_directive:
+            return False
+        if self.config.dry_run:
+            print(f"[Reflection] dry-run skip refresh round={round_id} reason={reason}")
+            return False
+
+        runtime_paths = (
+            self.config.registry_path,
+            self.config.proposal_path,
+            self.config.memory_path,
+            self.config.results_csv,
+            self.config.candidate_tree_path,
+            self.config.candidate_tree_md_path,
+            self.config.candidate_tree_mmd_path,
+            self.config.experience_summary_path,
+            self.config.experience_summary_json_path,
+            self.config.reflection_memory_path,
+        )
+        for path in runtime_paths:
+            reject_runtime_lablog_path(path)
+
+        tree_cmd = [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "analysis" / "build_candidate_search_tree.py"),
+            "--registry",
+            str(self.config.registry_path),
+            "--proposals",
+            str(self.config.proposal_path),
+            "--memory",
+            str(self.config.memory_path),
+            "--results",
+            str(self.config.results_csv),
+            "--metric",
+            self.config.metric,
+            "--out-json",
+            str(self.config.candidate_tree_path),
+            "--out-md",
+            str(self.config.candidate_tree_md_path),
+            "--out-mmd",
+            str(self.config.candidate_tree_mmd_path),
+        ]
+        summary_cmd = [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "build_experience_summary.py"),
+            "--memory",
+            str(self.config.memory_path),
+            "--results",
+            str(self.config.results_csv),
+            "--tree",
+            str(self.config.candidate_tree_path),
+            "--out-md",
+            str(self.config.experience_summary_path),
+            "--out-json",
+            str(self.config.experience_summary_json_path),
+            "--out-jsonl",
+            str(self.config.reflection_memory_path),
+        ]
+
+        print(f"[Reflection] refresh round={round_id} reason={reason}")
+        for cmd in (tree_cmd, summary_cmd):
+            completed = subprocess.run(
+                cmd,
+                cwd=PROJECT_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.stdout.strip():
+                print(completed.stdout.strip())
+            if completed.returncode != 0:
+                if completed.stderr.strip():
+                    print(completed.stderr.strip(), file=sys.stderr)
+                raise RuntimeError(f"experience refresh failed: {' '.join(cmd)}")
+
+        self.config.experiment_directive = resolve_experiment_directive(
+            directive=self.config.static_experiment_directive,
+            directive_file=self.config.experience_summary_path,
+            disabled=False,
+        )
+        self.config.use_experiment_directive = bool(self.config.experiment_directive)
+        self.remember_event(
+            {
+                "event": "experience_refresh",
+                "round_id": round_id,
+                "reason": reason,
+                "tree": str(self.config.candidate_tree_path),
+                "summary": str(self.config.experience_summary_path),
+            }
+        )
+        self.remember_experiment_directive()
+        return True
 
     def _llm_proposal_context(self) -> dict[str, Any]:
         schema = load_yaml(self.config.proposal_schema_path)
@@ -1615,10 +1752,18 @@ class RecClawAgent:
         if runner_type == "posthoc":
             return "posthoc_rerank"
         if consumes.intersection({"hard_negative_ratio", "popularity_alpha", "debias_alpha"}):
-            return "sampling_wrapper"
+            return "negative_sampling"
+        if consumes.intersection({"margin", "tail_weight_alpha"}):
+            return "pairwise_loss"
         if consumes.intersection({"lambda_norm", "max_norm", "reg_weight"}):
             return "regularization"
-        if "representation" in category or consumes.intersection({"residual_weight", "edge_dropout"}):
+        if consumes.intersection({"lambda_align"}):
+            return "auxiliary_loss"
+        if consumes.intersection({"rank_weight_alpha"}):
+            return "rank_aware_loss"
+        if consumes.intersection({"edge_dropout"}):
+            return "graph_augmentation"
+        if "representation" in category or consumes.intersection({"residual_weight"}):
             return "aggregation"
         return "local_loss"
 
@@ -2643,6 +2788,7 @@ class RecClawAgent:
 
     def run(self) -> None:
         self.observe()
+        self._refresh_experience_artifacts(0, reason="initial")
         self.remember_experiment_directive()
         for round_id in range(1, self.config.rounds + 1):
             try:
@@ -2723,6 +2869,8 @@ class RecClawAgent:
                 )
                 self.remember(record)
                 self._update_history_best(candidate.get("base_model") or candidate_result.get("model"), candidate_result)
+                if self.config.refresh_experience_every > 0 and round_id % self.config.refresh_experience_every == 0:
+                    self._refresh_experience_artifacts(round_id, reason=f"round_{round_id}")
                 print(
                     json.dumps(
                         {
@@ -2758,6 +2906,8 @@ class RecClawAgent:
                     next_action="inspect agent pipeline/runtime environment and retry",
                 )
                 self.remember(fallback_record)
+                if self.config.refresh_experience_every > 0 and round_id % self.config.refresh_experience_every == 0:
+                    self._refresh_experience_artifacts(round_id, reason=f"round_{round_id}_crash")
                 print(f"[Round {round_id}] crash: {reason}")
 
 
@@ -2797,6 +2947,9 @@ def main() -> int:
         ),
     )
     parser.add_argument("--memory-path", default=str(MEMORY_PATH), help="Agent memory jsonl path")
+    parser.add_argument("--results-csv", default=str(RESULTS_CSV), help="Candidate results.csv path used for evaluation")
+    parser.add_argument("--baseline-dir", default=str(BASELINE_DIR), help="Directory containing baseline log files")
+    parser.add_argument("--registry-path", default=str(REGISTRY_PATH), help="Candidate registry yaml path")
     parser.add_argument("--memory-read-limit", type=int, default=2000, help="Read only latest N memory rows (0 means all)")
     parser.add_argument(
         "--state-summary-path",
@@ -2827,6 +2980,30 @@ def main() -> int:
         action="store_true",
         help="Ignore --experiment-directive, --experiment-directive-file, and directive environment variables",
     )
+    parser.add_argument(
+        "--refresh-experience-every",
+        type=int,
+        default=0,
+        help="Refresh candidate tree and experience summary every N completed rounds when directives are enabled",
+    )
+    parser.add_argument("--candidate-tree-path", default=str(CANDIDATE_TREE_PATH), help="Output JSON path for candidate search tree")
+    parser.add_argument(
+        "--candidate-tree-md-path",
+        default=str(CANDIDATE_TREE_MD_PATH),
+        help="Output Markdown path for candidate search tree",
+    )
+    parser.add_argument(
+        "--candidate-tree-mmd-path",
+        default=str(CANDIDATE_TREE_MMD_PATH),
+        help="Output Mermaid path for candidate search tree",
+    )
+    parser.add_argument("--experience-summary-path", default=str(EXPERIENCE_SUMMARY_PATH), help="Output Markdown path for experience summary")
+    parser.add_argument(
+        "--experience-summary-json-path",
+        default=str(EXPERIENCE_SUMMARY_JSON_PATH),
+        help="Output JSON path for experience summary",
+    )
+    parser.add_argument("--reflection-memory-path", default=str(REFLECTION_MEMORY_PATH), help="Append-only reflection memory JSONL path")
     parser.add_argument("--recent-schedule-penalty", type=float, default=0.15, help="Penalty if candidate was scheduled in previous round")
     parser.add_argument(
         "--enable-candidate-proposals",
@@ -2953,10 +3130,21 @@ def main() -> int:
         loop_mode=args.loop_mode,
         memory_path=Path(args.memory_path),
         state_summary_path=Path(args.state_summary_path),
+        results_csv=Path(args.results_csv),
+        baseline_dir=Path(args.baseline_dir),
+        registry_path=Path(args.registry_path),
         memory_read_limit=max(0, args.memory_read_limit),
         prompt_memory_tail=max(0, args.prompt_memory_tail),
         use_experiment_directive=bool(experiment_directive),
         experiment_directive=experiment_directive,
+        static_experiment_directive="" if args.disable_experiment_directive else str(args.experiment_directive or ""),
+        candidate_tree_path=Path(args.candidate_tree_path),
+        candidate_tree_md_path=Path(args.candidate_tree_md_path),
+        candidate_tree_mmd_path=Path(args.candidate_tree_mmd_path),
+        experience_summary_path=Path(args.experience_summary_path),
+        experience_summary_json_path=Path(args.experience_summary_json_path),
+        reflection_memory_path=Path(args.reflection_memory_path),
+        refresh_experience_every=max(0, args.refresh_experience_every),
         recent_schedule_penalty=max(0.0, args.recent_schedule_penalty),
         enable_candidate_proposals=enable_candidate_proposals,
         proposal_path=Path(args.proposal_path),

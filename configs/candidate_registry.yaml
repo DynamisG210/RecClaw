@@ -22,10 +22,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "model-level negative sampling inside a local BPR subclass"
     priority: "high"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRHardNegative"
+    entrypoint: "recclaw_ext.models.bpr_sampling:BPRHardNegative"
     consumes:
       - hard_negative_ratio
 
@@ -37,10 +37,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "model-level popularity-aware negative sampling inside a local BPR subclass"
     priority: "high"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRPopularityAwareNegative"
+    entrypoint: "recclaw_ext.models.bpr_sampling:BPRPopularityAwareNegative"
     consumes:
       - popularity_alpha
 
@@ -122,6 +122,24 @@ candidates:
     entrypoint: "recclaw_ext.models:LightGCNUserItemGate"
     consumes: []
 
+  - candidate_id: cand_lightgcn_edge_dropout_residual_mix
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "over-smoothing and brittle propagation"
+    hypothesis: "training-time sparse edge dropout regularizes residual propagation while preserving the full-sort protocol"
+    implementation_type: "model"
+    minimal_change: "local LightGCN residual subclass applies sparse edge dropout during training"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_edge_dropout_residual:LightGCNEdgeDropoutResidualMix"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+
   - candidate_id: cand_bpr_mlp_head
     category: "Representation & Interaction"
     base_model: "BPR"
@@ -190,10 +208,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "local LightGCN subclass returns layer embeddings and adds alignment loss"
     priority: "medium"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:LightGCNAuxAlignment"
+    entrypoint: "recclaw_ext.models.lightgcn_objectives:LightGCNAuxAlignment"
     consumes:
       - lambda_align
 
@@ -205,10 +223,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "local LightGCN subclass reads rank_weight_alpha and calls an internal loss helper"
     priority: "medium"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:LightGCNRankAware"
+    entrypoint: "recclaw_ext.models.lightgcn_objectives:LightGCNRankAware"
     consumes:
       - rank_weight_alpha
 

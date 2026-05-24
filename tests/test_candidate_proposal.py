@@ -165,6 +165,93 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertEqual(result["status"], validate.REJECTED)
         self.assertTrue(any("already run" in error for error in result["errors"]))
 
+    def test_validator_rejects_model_incompatible_action_space_parameter(self) -> None:
+        action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
+        registry = {
+            "cand_bpr_bad_layers": {
+                "candidate_id": "cand_bpr_bad_layers",
+                "base_model": "BPR",
+                "wired": True,
+                "consumes": ["n_layers"],
+            }
+        }
+        proposal = tuning_proposal("proposal_bad_layers", {"n_layers": 2})
+        proposal["parent_candidate_id"] = "cand_bpr_bad_layers"
+        proposal["base_model"] = "BPR"
+        proposal["action_type"] = "parameter_tuning"
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space=action_space,
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("n_layers is not compatible" in error for error in result["errors"]))
+
+    def test_validator_rejects_explicit_conditional_validity_violation(self) -> None:
+        action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
+        registry = {
+            "cand_lightgcn_residual": {
+                "candidate_id": "cand_lightgcn_residual",
+                "base_model": "LightGCN",
+                "wired": True,
+                "consumes": ["residual_weight", "n_layers"],
+            }
+        }
+        proposal = tuning_proposal("proposal_bad_residual", {"residual_weight": 0.1, "n_layers": 1})
+        proposal["parent_candidate_id"] = "cand_lightgcn_residual"
+        proposal["action_type"] = "parameter_tuning"
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space=action_space,
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("residual_weight requires n_layers >=2" in error for error in result["errors"]))
+
+    def test_validator_allows_single_axis_tuning_when_parent_context_is_implicit(self) -> None:
+        action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
+        registry = {
+            "cand_lightgcn_residual": {
+                "candidate_id": "cand_lightgcn_residual",
+                "base_model": "LightGCN",
+                "wired": True,
+                "consumes": ["residual_weight", "n_layers"],
+            }
+        }
+        proposal = tuning_proposal("proposal_residual_only", {"residual_weight": 0.1})
+        proposal["parent_candidate_id"] = "cand_lightgcn_residual"
+        proposal["action_type"] = "parameter_tuning"
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space=action_space,
+        )
+
+        self.assertEqual(result["status"], validate.ACCEPTED)
+
     def test_memory_signature_loader_canonicalizes_explicit_trial_signature(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "memory.jsonl"

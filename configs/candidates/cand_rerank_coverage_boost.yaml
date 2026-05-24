@@ -1,4 +1,4 @@
 candidate_id: cand_rerank_coverage_boost
 base_model: BPR / LightGCN
 posthoc: coverage_boost
-lambda_coverage: 0.05
+lambda_coverage: 0.01

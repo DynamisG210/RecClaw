@@ -27,12 +27,16 @@ search_stages:
       - parameter_tuning
       - regularization
       - aggregation
+      - layer_interaction
+      - auxiliary_loss
+      - rank_aware_loss
   repair:
     description: Revisit failed families only as minimal repairs or ablations.
     max_repair_depth: 1
     preferred_actions:
       - parameter_tuning
       - regularization
+      - pairwise_loss
   explore:
     description: Introduce sparse code_required families when the current frontier stagnates.
     max_code_required_per_window: 1
@@ -40,6 +44,10 @@ search_stages:
     preferred_actions:
       - local_loss
       - aggregation
+      - negative_sampling
+      - graph_augmentation
+      - auxiliary_loss
+      - rank_aware_loss
 
 composition_rules:
   max_mechanisms_per_proposal: 2

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 import csv
+import importlib
 import json
 import subprocess
 from pathlib import Path
@@ -126,6 +127,31 @@ class AgentLoopTests(unittest.TestCase):
                 package_level.append(candidate.get("candidate_id"))
         self.assertEqual(package_level, [])
 
+    def test_new_candidate_entrypoints_are_importable_when_recbole_is_available(self) -> None:
+        registry = agent.load_yaml(ROOT / "configs" / "candidate_registry.yaml")
+        target_ids = {
+            "cand_bpr_hard_negative_mix",
+            "cand_bpr_popularity_aware_negative",
+            "cand_lightgcn_edge_dropout_residual_mix",
+            "cand_lightgcn_aux_alignment_loss",
+            "cand_lightgcn_rank_aware_loss",
+        }
+        rows = {
+            str(item.get("candidate_id")): item
+            for item in registry.get("candidates", [])
+            if str(item.get("candidate_id")) in target_ids
+        }
+        self.assertEqual(set(rows), target_ids)
+        for candidate_id, row in rows.items():
+            module_name, attr = str(row["entrypoint"]).split(":", 1)
+            try:
+                module = importlib.import_module(module_name)
+            except ModuleNotFoundError as exc:
+                if exc.name in {"recbole", "torch"}:
+                    self.skipTest("RecBole is not installed in this local test environment")
+                raise
+            self.assertTrue(hasattr(module, attr), candidate_id)
+
     def test_loose_json_parser_handles_nested_arrays(self) -> None:
         parsed = agent.RecClawAgent._parse_json_loose('prefix [{"a": [1, 2], "b": {"c": 3}}] suffix')
         self.assertEqual(parsed, [{"a": [1, 2], "b": {"c": 3}}])
@@ -179,6 +205,62 @@ class AgentLoopTests(unittest.TestCase):
                 agent.resolve_experiment_directive("Use this", directive_path, disabled=True),
                 "",
             )
+
+    def test_auto_experience_refresh_updates_directive_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            summary_path = root / "experience_summary.md"
+            summary_path.write_text("initial summary", encoding="utf-8")
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    use_experiment_directive=True,
+                    experiment_directive="initial summary",
+                    refresh_experience_every=10,
+                    memory_path=root / "agent_memory.jsonl",
+                    state_summary_path=root / "agent_state_summary.json",
+                    results_csv=root / "results.csv",
+                    proposal_path=root / "candidate_proposals.jsonl",
+                    candidate_tree_path=root / "candidate_search_tree.json",
+                    candidate_tree_md_path=root / "candidate_search_tree.md",
+                    candidate_tree_mmd_path=root / "candidate_search_tree.mmd",
+                    experience_summary_path=summary_path,
+                    experience_summary_json_path=root / "experience_summary.json",
+                    reflection_memory_path=root / "reflection_memory.jsonl",
+                )
+            )
+            calls: list[list[str]] = []
+
+            class Completed:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            def fake_run(cmd: list[str], **_kwargs: object) -> Completed:
+                calls.append(cmd)
+                if "build_experience_summary.py" in str(cmd[1]):
+                    summary_path.write_text("updated summary", encoding="utf-8")
+                return Completed()
+
+            original_run = agent.subprocess.run
+            agent.subprocess.run = fake_run  # type: ignore[assignment]
+            try:
+                refreshed = rec_agent._refresh_experience_artifacts(10, reason="unit_test")
+            finally:
+                agent.subprocess.run = original_run  # type: ignore[assignment]
+
+            self.assertTrue(refreshed)
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(rec_agent.config.experiment_directive, "updated summary")
+            self.assertTrue(any(row.get("event") == "experience_refresh" for row in rec_agent.memory))
+
+    def test_auto_experience_refresh_is_disabled_with_no_directive(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                use_experiment_directive=False,
+                refresh_experience_every=10,
+            )
+        )
+        self.assertFalse(rec_agent._refresh_experience_artifacts(10, reason="unit_test"))
 
     def test_experience_builder_rejects_lablog_runtime_input(self) -> None:
         with self.assertRaisesRegex(ValueError, "refuses LabLog path"):
@@ -258,6 +340,51 @@ class AgentLoopTests(unittest.TestCase):
         self.assertIn("do_not_repeat_signatures", policy)
         text = experience.build_markdown({**summary, "experience_policy": policy}, {"minimum_successful_runs": 1}, policy)
         self.assertIn("Prefer families", text)
+
+    def test_experience_builder_outputs_domain_and_trend_notes(self) -> None:
+        search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
+        reflection_policy = experience.load_yaml(ROOT / "configs" / "reflection_policy.yaml")
+        rows = [
+            {
+                "round_id": 1,
+                "candidate_id": "cand_lightgcn_deep_trial",
+                "base_model": "LightGCN",
+                "status": "success",
+                "decision": "revise",
+                "params": {"n_layers": 4},
+                "result": {"ndcg@10": 0.268},
+            },
+            {
+                "round_id": 2,
+                "candidate_id": "cand_lightgcn_deep_trial",
+                "base_model": "LightGCN",
+                "status": "success",
+                "decision": "revise",
+                "params": {"n_layers": 4},
+                "result": {"ndcg@10": 0.27},
+            },
+            {
+                "round_id": 3,
+                "candidate_id": "cand_lightgcn_deep_trial",
+                "base_model": "LightGCN",
+                "status": "success",
+                "decision": "revise",
+                "params": {"n_layers": 4},
+                "result": {"ndcg@10": 0.272},
+            },
+        ]
+        summary = experience.summarize_memory(
+            rows,
+            action_space={},
+            policy=reflection_policy,
+            search_policy=search_policy,
+        )
+        family = summary["family_summaries"][0]
+        self.assertEqual(family["trend"]["trend"], "improving")
+        self.assertTrue(family["domain_warnings"])
+        policy = experience.build_experience_policy(summary, search_policy=search_policy, tree_summary={})
+        self.assertTrue(policy["domain_prior_notes"])
+        self.assertTrue(policy["trend_notes"])
 
     def test_experience_builder_dedupes_results_csv_by_run_id(self) -> None:
         memory_rows = [
@@ -765,11 +892,34 @@ class AgentLoopTests(unittest.TestCase):
         self.assertIsNotNone(spec)
         module = importlib.util.module_from_spec(spec)
         assert spec is not None and spec.loader is not None
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         emb = torch.tensor([[3.0, 4.0]])
         legacy = module.soft_l2_norm_penalty(emb, 2.0)
         keyword = module.soft_l2_norm_penalty(emb, max_norm=2.0)
         self.assertAlmostEqual(float(legacy), float(keyword))
+
+    def test_negative_samplers_can_avoid_padding_item_zero(self) -> None:
+        try:
+            import importlib.util
+            import torch
+        except ModuleNotFoundError:
+            self.skipTest("torch is not installed in this local test environment")
+
+        spec = importlib.util.spec_from_file_location(
+            "recclaw_test_samplers",
+            ROOT / "recclaw_ext" / "models" / "_samplers.py",
+        )
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec is not None and spec.loader is not None
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        popularity = torch.ones(8)
+        mixed = module.MixedNegativeSampler(8, popularity=popularity, hard_negative_ratio=0.5, avoid_zero=True)
+        pop = module.PopularityAwareNegativeSampler(popularity, alpha=0.5, avoid_zero=True)
+        self.assertTrue(bool((mixed.sample((256,)) > 0).all()))
+        self.assertTrue(bool((pop.sample((256,)) > 0).all()))
 
     def test_health_scan_quarantines_unsafe_local_model_source(self) -> None:
         temp_source = ROOT / "recclaw_ext" / "models" / "_tmp_bad_health.py"

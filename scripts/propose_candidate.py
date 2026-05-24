@@ -68,7 +68,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "parent_candidate_id": "cand_bpr_margin_loss",
         "base_model": "BPR",
         "category": "Objective & Optimization",
-        "action_type": "local_loss",
+        "action_type": "pairwise_loss",
         "hypothesis": (
             "Adaptive margins based on negative-item popularity may reduce head-item dominance "
             "while preserving pairwise ranking strength."
@@ -115,7 +115,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         "parent_candidate_id": "cand_lightgcn_residual_layer_mix",
         "base_model": "LightGCN",
         "category": "Representation & Interaction",
-        "action_type": "aggregation",
+        "action_type": "graph_augmentation",
         "hypothesis": (
             "Applying light edge dropout before residual layer mixing may reduce over-smoothing "
             "and improve top-k generalization."
@@ -158,27 +158,26 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
     },
     {
         "proposal_type": "algorithmic_variant",
-        "candidate_stub": "cand_lightgcn_contrastive_layer_alignment",
+        "candidate_stub": "cand_lightgcn_aux_layer_alignment",
         "parent_candidate_id": "cand_lightgcn_layer_weighted_agg",
         "base_model": "LightGCN",
         "category": "Objective & Optimization",
-        "action_type": "local_loss",
+        "action_type": "auxiliary_loss",
         "hypothesis": (
-            "A small contrastive alignment term between shallow and final embeddings may improve "
+            "A small auxiliary alignment term between shallow and final embeddings may improve "
             "layer consistency without replacing LightGCN propagation."
         ),
         "runnable_level": "code_required",
         "runner_type": "model",
-        "consumes": ["embedding_size", "n_layers", "lambda_align", "cl_temperature"],
+        "consumes": ["embedding_size", "n_layers", "lambda_align"],
         "new_parameters": [
             {"name": "lambda_align", "default": 0.001, "search_space": [1e-4, 1e-3, 1e-2]},
-            {"name": "cl_temperature", "default": 0.2, "search_space": [0.1, 0.2, 0.5]},
         ],
         "implementation_plan": {
-            "summary": "Add a local LightGCN subclass that augments BPR loss with layer-level contrastive alignment; keep helper logic inside the new module.",
-            "entrypoint": "recclaw_ext.models.lightgcn_contrastive_alignment:LightGCNContrastiveLayerAlignment",
+            "summary": "Add a local LightGCN subclass that augments BPR loss with layer-level alignment; keep helper logic inside the new module.",
+            "entrypoint": "recclaw_ext.models.lightgcn_objectives:LightGCNAuxAlignment",
             "files": [
-                "recclaw_ext/models/lightgcn_contrastive_alignment.py",
+                "recclaw_ext/models/lightgcn_objectives.py",
             ],
         },
         "allowed_files": ["recclaw_ext/models/"],
@@ -189,7 +188,7 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
         },
         "risk": {
             "quality": "Auxiliary loss can conflict with pairwise ranking if overweighted.",
-            "runtime": "Moderate training overhead from contrastive similarity computation.",
+            "runtime": "Small training overhead from an extra layer-distance term.",
             "implementation": "Requires local loss helper and model subclass only.",
             "recbole_core_change_required": False,
         },
