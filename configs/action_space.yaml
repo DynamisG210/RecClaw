@@ -249,10 +249,16 @@ parameter_space:
 
 parameter_groups:
   - [residual_weight]
+  - [residual_weight, lambda_norm, max_norm]
+  - [residual_weight, edge_dropout]
+  - [residual_weight, edge_dropout, lambda_norm, max_norm]
   - [margin]
+  - [margin, hard_negative_ratio]
+  - [margin, popularity_alpha]
   - [tail_weight_alpha]
   - [hard_negative_ratio]
   - [popularity_alpha]
+  - [debias_alpha]
   - [lambda_pop]
   - [lambda_norm, max_norm]
   - [lambda_align]

@@ -1,0 +1,7 @@
+candidate_id: cand_lightgcn_residual_norm_constrained
+model: LightGCNResidualNormConstrained
+embedding_size: 128
+n_layers: 3
+residual_weight: 0.2
+lambda_norm: 1e-4
+max_norm: 1.0

@@ -258,6 +258,143 @@ class PreparedImplementation:
     registry_entry: dict[str, Any]
     config_path: Path
     entrypoint: str
+    source: str = "llm"
+
+
+TEMPLATE_IMPLEMENTATIONS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "bpr_hard_negative_margin",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_hard_negative_mix", "cand_bpr_margin_loss"},
+        "required_consumes": {"hard_negative_ratio", "margin"},
+        "model": "BPRHardNegativeMargin",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRHardNegativeMargin",
+        "defaults": {"hard_negative_ratio": 0.5, "margin": 0.2},
+        "category": "Bias & Sample Construction",
+        "priority": "high",
+        "rs_problem": "negative sampling is weak and the pairwise boundary is soft",
+        "minimal_change": "reuse existing hard-negative sampler and margin loss helper",
+    },
+    {
+        "name": "bpr_popularity_aware_margin",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_popularity_aware_negative", "cand_bpr_margin_loss"},
+        "required_consumes": {"popularity_alpha", "margin"},
+        "model": "BPRPopularityAwareMargin",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRPopularityAwareMargin",
+        "defaults": {"popularity_alpha": 0.5, "margin": 0.2},
+        "category": "Bias & Sample Construction",
+        "priority": "medium",
+        "rs_problem": "negative sampling and pairwise separation are both under-constrained",
+        "minimal_change": "reuse existing popularity-aware sampler and margin loss helper",
+    },
+    {
+        "name": "lightgcn_edge_dropout_residual_norm",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_edge_dropout_residual_mix", "cand_lightgcn_residual_layer_mix"},
+        "required_consumes": {"residual_weight", "edge_dropout", "lambda_norm", "max_norm"},
+        "model": "LightGCNEdgeDropoutResidualNorm",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNorm",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "edge_dropout": 0.1,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+        },
+        "category": "Representation & Interaction",
+        "priority": "high",
+        "rs_problem": "residual graph propagation needs structural and scale regularization",
+        "minimal_change": "reuse existing edge-dropout residual propagation and norm-control loss mixin",
+    },
+    {
+        "name": "lightgcn_residual_norm",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_residual_layer_mix"},
+        "required_consumes": {"residual_weight", "lambda_norm", "max_norm"},
+        "forbidden_consumes": {"edge_dropout"},
+        "model": "LightGCNResidualNormConstrained",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormConstrained",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+        },
+        "category": "Representation & Interaction",
+        "priority": "high",
+        "rs_problem": "residual propagation can drift in embedding scale",
+        "minimal_change": "reuse existing residual propagation and add soft norm control",
+    },
+)
+
+
+def template_implementation_for_proposal(proposal: dict[str, Any]) -> PreparedImplementation | None:
+    """Map known safe code_required proposals to reusable local classes.
+
+    This lets the agent turn compatible, unseen composition proposals into
+    runnable candidate configs without asking an LLM to rewrite code that already
+    exists in the repository.
+    """
+
+    candidate_id = str(proposal.get("candidate_id") or "")
+    parent_id = str(proposal.get("parent_candidate_id") or "")
+    base_model = str(proposal.get("base_model") or "")
+    consumes = {str(item) for item in (proposal.get("consumes") or [])}
+    if not candidate_id or not consumes:
+        return None
+
+    for spec in TEMPLATE_IMPLEMENTATIONS:
+        required = set(spec["required_consumes"])
+        forbidden = set(spec.get("forbidden_consumes") or set())
+        if base_model != spec["base_model"]:
+            continue
+        if parent_id not in spec["parents"]:
+            continue
+        if not required.issubset(consumes):
+            continue
+        if forbidden & consumes:
+            continue
+
+        candidate_config = {"candidate_id": candidate_id, "model": spec["model"]}
+        defaults = dict(spec["defaults"])
+        for key, value in defaults.items():
+            if key in consumes or key in required or key in {"embedding_size", "n_layers"}:
+                candidate_config[key] = value
+        candidate_config = enforce_proposal_parameter_defaults(candidate_config, proposal)
+        candidate_config = {key: value for key, value in candidate_config.items() if value is not None}
+        validate_candidate_config_matches_proposal(candidate_config, proposal)
+
+        registry_entry = {
+            "candidate_id": candidate_id,
+            "category": proposal.get("category") or spec["category"],
+            "base_model": base_model,
+            "rs_problem": spec["rs_problem"],
+            "hypothesis": proposal.get("hypothesis") or "Known safe template implementation.",
+            "implementation_type": "model",
+            "minimal_change": spec["minimal_change"],
+            "priority": spec["priority"],
+            "status": "implemented",
+            "wired": True,
+            "runner_type": "model",
+            "entrypoint": spec["entrypoint"],
+            "consumes": [key for key in defaults if key in candidate_config and key not in {"candidate_id", "model"}],
+        }
+        config_path = PROJECT_ROOT / "configs" / "candidates" / f"{candidate_id}.yaml"
+        if config_path.exists():
+            raise ValueError(f"refusing to overwrite existing candidate config: {config_path.relative_to(PROJECT_ROOT)}")
+        return PreparedImplementation(
+            candidate_id=candidate_id,
+            files=[],
+            candidate_config=candidate_config,
+            registry_entry=registry_entry,
+            config_path=config_path,
+            entrypoint=str(spec["entrypoint"]),
+            source=f"template:{spec['name']}",
+        )
+    return None
 
 
 def validate_files(files: Any) -> list[dict[str, str]]:
@@ -679,74 +816,75 @@ def main() -> int:
         if str(proposal.get("runnable_level") or "") != "code_required":
             raise ValueError("only code_required proposals can be auto-implemented")
 
-        context = build_implementation_context(proposal, registry, args.experiment_directive)
-        if args.llm_provider == "openai":
-            default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
-            default_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-            default_key_env = "OPENAI_API_KEY"
-        elif args.llm_provider == "deepseek":
-            default_model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-            default_base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-            default_key_env = "DEEPSEEK_API_KEY"
-        else:
-            default_model = os.environ.get("OPENAI_MODEL") or os.environ.get("DEEPSEEK_MODEL", "")
-            default_base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL", "")
-            default_key_env = os.environ.get("RECCLAW_LLM_API_KEY_ENV", "OPENAI_API_KEY")
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You implement RecClaw local candidate proposals. "
-                    "Honor experiment_directive as the highest-priority user steering below allowlists. "
-                    "Return strict JSON only and obey all allowlists. "
-                    "If review feedback is provided, rewrite the implementation instead of explaining."
-                ),
-            },
-            {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
-        ]
-        prepared: PreparedImplementation | None = None
+        prepared: PreparedImplementation | None = template_implementation_for_proposal(proposal)
         review_errors: list[str] = []
-        attempts = max(1, int(args.implementation_review_retries) + 1)
-        for attempt in range(1, attempts + 1):
-            if review_errors:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            {
-                                "implementation_review_failed": True,
-                                "attempt": attempt - 1,
-                                "errors": review_errors[-5:],
-                                "rewrite_requirements": [
-                                    "Return the full strict JSON object again.",
-                                    "Do not call config.get(...).",
-                                    "Do not call self.reg_loss unless this generated class defines it.",
-                                    "Do not pass scalar knobs positionally to soft_l2_norm_penalty.",
-                                    "Preserve proposal.parameter_overrides in candidate_config.",
-                                    "Keep entrypoint in a concrete generated recclaw_ext module.",
-                                ],
-                            },
-                            ensure_ascii=True,
-                        ),
-                    }
+        if prepared is None:
+            context = build_implementation_context(proposal, registry, args.experiment_directive)
+            if args.llm_provider == "openai":
+                default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
+                default_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+                default_key_env = "OPENAI_API_KEY"
+            elif args.llm_provider == "deepseek":
+                default_model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+                default_base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+                default_key_env = "DEEPSEEK_API_KEY"
+            else:
+                default_model = os.environ.get("OPENAI_MODEL") or os.environ.get("DEEPSEEK_MODEL", "")
+                default_base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL", "")
+                default_key_env = os.environ.get("RECCLAW_LLM_API_KEY_ENV", "OPENAI_API_KEY")
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You implement RecClaw local candidate proposals. "
+                        "Honor experiment_directive as the highest-priority user steering below allowlists. "
+                        "Return strict JSON only and obey all allowlists. "
+                        "If review feedback is provided, rewrite the implementation instead of explaining."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
+            ]
+            attempts = max(1, int(args.implementation_review_retries) + 1)
+            for attempt in range(1, attempts + 1):
+                if review_errors:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                {
+                                    "implementation_review_failed": True,
+                                    "attempt": attempt - 1,
+                                    "errors": review_errors[-5:],
+                                    "rewrite_requirements": [
+                                        "Return the full strict JSON object again.",
+                                        "Do not call config.get(...).",
+                                        "Do not call self.reg_loss unless this generated class defines it.",
+                                        "Do not pass scalar knobs positionally to soft_l2_norm_penalty.",
+                                        "Preserve proposal.parameter_overrides in candidate_config.",
+                                        "Keep entrypoint in a concrete generated recclaw_ext module.",
+                                    ],
+                                },
+                                ensure_ascii=True,
+                            ),
+                        }
+                    )
+                content = chat_completion(
+                    provider=args.llm_provider,
+                    base_url=args.llm_base_url or default_base_url,
+                    model=args.llm_model or default_model,
+                    api_key_env=args.llm_api_key_env or default_key_env,
+                    temperature=max(0.0, args.llm_temperature),
+                    max_tokens=max(512, args.llm_max_tokens),
+                    timeout=max(1, args.llm_timeout),
+                    retries=max(0, args.llm_retries),
+                    messages=messages,
                 )
-            content = chat_completion(
-                provider=args.llm_provider,
-                base_url=args.llm_base_url or default_base_url,
-                model=args.llm_model or default_model,
-                api_key_env=args.llm_api_key_env or default_key_env,
-                temperature=max(0.0, args.llm_temperature),
-                max_tokens=max(512, args.llm_max_tokens),
-                timeout=max(1, args.llm_timeout),
-                retries=max(0, args.llm_retries),
-                messages=messages,
-            )
-            try:
-                implementation = parse_json_object(content)
-                prepared = prepare_implementation(implementation, proposal)
-                break
-            except Exception as exc:  # noqa: BLE001
-                review_errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
+                try:
+                    implementation = parse_json_object(content)
+                    prepared = prepare_implementation(implementation, proposal)
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    review_errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
         if prepared is None:
             print(
                 json.dumps(
@@ -779,6 +917,7 @@ def main() -> int:
                         files=[item["path"] for item in files],
                         config_path=str(config_path.relative_to(PROJECT_ROOT)),
                         entrypoint=entrypoint,
+                        source=prepared.source,
                     ),
                     ensure_ascii=True,
                     indent=2,
@@ -877,6 +1016,7 @@ def main() -> int:
                     files=[item["path"] for item in files],
                     config_path=str(config_path.relative_to(PROJECT_ROOT)),
                     entrypoint=entrypoint,
+                    source=prepared.source,
                     smoke=smoke_summary,
                 ),
                 ensure_ascii=True,

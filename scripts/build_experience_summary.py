@@ -599,7 +599,10 @@ def build_experience_policy(
     exploit_stage = search_stages.get("exploit") if isinstance(search_stages.get("exploit"), dict) else {}
     if isinstance(exploit_stage.get("priority_families"), list):
         exploit_defaults = [str(item) for item in exploit_stage.get("priority_families") if str(item)]
-    prefer_families = encourage or exploit_defaults
+    frozen_or_avoid = {family for family in [*avoid, *freeze_families] if family}
+    prefer_candidates = encourage or exploit_defaults
+    prefer_families = [family for family in prefer_candidates if family not in frozen_or_avoid]
+    repair_families = [family for family in caution if family not in frozen_or_avoid]
     hints = tree_policy_hints(tree_summary)
     return {
         "encourage_families": encourage,
@@ -621,8 +624,8 @@ def build_experience_policy(
         "next_proposal_policy": {
             "stage_order": ["exploit", "repair", "explore"],
             "prefer_families": prefer_families[:8],
-            "repair_families": caution[:8],
-            "avoid_families": sorted(set([*avoid, *freeze_families]))[:12],
+            "repair_families": repair_families[:8],
+            "avoid_families": sorted(frozen_or_avoid)[:12],
             "composition_rules": composition_rules,
             "tree_hints": hints,
             "instruction": (

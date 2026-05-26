@@ -131,10 +131,18 @@ class AgentLoopTests(unittest.TestCase):
         registry = agent.load_yaml(ROOT / "configs" / "candidate_registry.yaml")
         target_ids = {
             "cand_bpr_hard_negative_mix",
+            "cand_bpr_hard_negative_margin",
+            "cand_bpr_long_tail_reweight",
+            "cand_bpr_norm_constrained",
             "cand_bpr_popularity_aware_negative",
+            "cand_bpr_popularity_aware_margin",
+            "cand_bpr_popularity_regularized",
             "cand_lightgcn_edge_dropout_residual_mix",
+            "cand_lightgcn_edge_dropout_residual_norm",
+            "cand_lightgcn_debiased_negative_sampling",
             "cand_lightgcn_aux_alignment_loss",
             "cand_lightgcn_rank_aware_loss",
+            "cand_lightgcn_residual_norm_constrained",
         }
         rows = {
             str(item.get("candidate_id")): item
@@ -180,6 +188,26 @@ class AgentLoopTests(unittest.TestCase):
         )
         self.assertEqual(payload, {"action": "propose_mixed", "reason": "ok", "proposal_count": 4})
         self.assertEqual(ignored, ["proposals"])
+
+    def test_auto_planner_sanitizes_empty_action_before_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    loop_mode="auto",
+                    allow_llm_fallback=False,
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    state_summary_path=Path(tmp) / "agent_state_summary.json",
+                )
+            )
+
+            def empty_action(*_args: object, **_kwargs: object) -> str:
+                return '{"action": "", "reason": "blank from provider", "proposal_count": 1}'
+
+            rec_agent._chat_completion = empty_action  # type: ignore[method-assign]
+            rec_agent.apply_auto_planner(round_id=1)
+            self.assertEqual(rec_agent.last_planner_action["action"], "propose_mixed")
+            self.assertTrue(rec_agent.force_proposal_refresh)
+            self.assertTrue(rec_agent.config.auto_implement_code_required)
 
     def test_auto_round_policy_resets_mutated_explore_state(self) -> None:
         rec_agent = agent.RecClawAgent(agent.AgentConfig(loop_mode="auto"))
@@ -340,6 +368,41 @@ class AgentLoopTests(unittest.TestCase):
         self.assertIn("do_not_repeat_signatures", policy)
         text = experience.build_markdown({**summary, "experience_policy": policy}, {"minimum_successful_runs": 1}, policy)
         self.assertIn("Prefer families", text)
+
+    def test_experience_policy_removes_avoid_families_from_prefer_and_repair(self) -> None:
+        summary = {
+            "family_summaries": [
+                {
+                    "family": "cand_bad_default",
+                    "policy_bucket": "avoid",
+                    "crash_count": 0,
+                    "collapse_rate": 0.0,
+                    "decisions": {"discard": 2},
+                    "best": 0.1,
+                },
+                {
+                    "family": "cand_caution_frozen",
+                    "policy_bucket": "caution",
+                    "crash_count": 0,
+                    "collapse_rate": 0.0,
+                    "decisions": {"discard": 2},
+                    "best": 0.27,
+                },
+            ],
+            "failed_compositions": [],
+            "do_not_repeat_signatures": [],
+        }
+        search_policy = {
+            "family_budget": {"crashes_before_freeze": 2, "collapse_rate_before_freeze": 0.25},
+            "search_stages": {"exploit": {"priority_families": ["cand_bad_default", "cand_good_default"]}},
+        }
+        policy = experience.build_experience_policy(summary, search_policy=search_policy, tree_summary={})
+        next_policy = policy["next_proposal_policy"]
+        self.assertEqual(next_policy["prefer_families"], ["cand_good_default"])
+        self.assertNotIn("cand_bad_default", next_policy["prefer_families"])
+        self.assertNotIn("cand_caution_frozen", next_policy["repair_families"])
+        self.assertIn("cand_bad_default", next_policy["avoid_families"])
+        self.assertIn("cand_caution_frozen", next_policy["avoid_families"])
 
     def test_experience_builder_outputs_domain_and_trend_notes(self) -> None:
         search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
@@ -610,6 +673,60 @@ class AgentLoopTests(unittest.TestCase):
             implement.validate_files(
                 [{"path": "recclaw_ext/models/bpr_margin.py", "content": "# accidental overwrite"}]
             )
+
+    def test_template_implementation_maps_known_hard_negative_margin(self) -> None:
+        proposal = {
+            "candidate_id": "cand_bpr_hard_negative_margin_generated",
+            "parent_candidate_id": "cand_bpr_hard_negative_mix",
+            "base_model": "BPR",
+            "category": "Bias & Sample Construction",
+            "hypothesis": "Try hard negatives with a small margin.",
+            "runner_type": "model",
+            "consumes": ["hard_negative_ratio", "margin"],
+            "parameter_overrides": {"hard_negative_ratio": 0.25, "margin": 0.1},
+        }
+
+        prepared = implement.template_implementation_for_proposal(proposal)
+
+        self.assertIsNotNone(prepared)
+        assert prepared is not None
+        self.assertEqual(prepared.files, [])
+        self.assertEqual(prepared.source, "template:bpr_hard_negative_margin")
+        self.assertEqual(prepared.entrypoint, "recclaw_ext.models.bpr_composed:BPRHardNegativeMargin")
+        self.assertEqual(prepared.candidate_config["hard_negative_ratio"], 0.25)
+        self.assertEqual(prepared.candidate_config["margin"], 0.1)
+
+    def test_template_implementation_prefers_edge_dropout_residual_norm(self) -> None:
+        proposal = {
+            "candidate_id": "cand_lightgcn_edge_dropout_residual_norm_generated",
+            "parent_candidate_id": "cand_lightgcn_edge_dropout_residual_mix",
+            "base_model": "LightGCN",
+            "category": "Representation & Interaction",
+            "hypothesis": "Compose edge dropout with norm control.",
+            "runner_type": "model",
+            "consumes": [
+                "embedding_size",
+                "n_layers",
+                "residual_weight",
+                "edge_dropout",
+                "lambda_norm",
+                "max_norm",
+            ],
+            "parameter_overrides": {"edge_dropout": 0.05, "lambda_norm": 1e-5, "max_norm": 2.0},
+        }
+
+        prepared = implement.template_implementation_for_proposal(proposal)
+
+        self.assertIsNotNone(prepared)
+        assert prepared is not None
+        self.assertEqual(prepared.source, "template:lightgcn_edge_dropout_residual_norm")
+        self.assertEqual(
+            prepared.entrypoint,
+            "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNorm",
+        )
+        self.assertEqual(prepared.candidate_config["edge_dropout"], 0.05)
+        self.assertEqual(prepared.candidate_config["lambda_norm"], 1e-5)
+        self.assertEqual(prepared.candidate_config["max_norm"], 2.0)
 
     def test_auto_implementation_rejects_config_get_in_generated_files(self) -> None:
         with self.assertRaisesRegex(ValueError, "config.get"):

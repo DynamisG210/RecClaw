@@ -478,6 +478,65 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertIn("parameter_signature", proposal)
         self.assertEqual(proposal["action_type"], "parameter_tuning")
 
+    def test_algorithmic_generator_skips_already_wired_template_stub(self) -> None:
+        registry = [
+            {
+                "candidate_id": "cand_bpr_hard_negative_mix",
+                "base_model": "BPR",
+                "category": "Bias & Sample Construction",
+                "status": "implemented",
+                "wired": True,
+                "runner_type": "model",
+                "consumes": ["hard_negative_ratio"],
+            },
+            {
+                "candidate_id": "cand_bpr_hard_negative_margin",
+                "base_model": "BPR",
+                "category": "Bias & Sample Construction",
+                "status": "implemented",
+                "wired": True,
+                "runner_type": "model",
+                "consumes": ["hard_negative_ratio", "margin"],
+            },
+        ]
+
+        proposals = propose.generate_algorithmic_proposals(
+            registry=registry,
+            count=1,
+            stamp="20260526_000000",
+        )
+
+        self.assertEqual(proposals, [])
+
+    def test_algorithmic_generator_skips_spec_only_by_default(self) -> None:
+        registry = [
+            {
+                "candidate_id": "cand_rerank_coverage_boost",
+                "base_model": "LightGCN",
+                "category": "Result Distribution Quality",
+                "status": "implement-ready",
+                "wired": False,
+                "runner_type": "posthoc",
+                "consumes": ["lambda_coverage"],
+            }
+        ]
+
+        proposals = propose.generate_algorithmic_proposals(
+            registry=registry,
+            count=1,
+            stamp="20260526_000000",
+        )
+        spec_proposals = propose.generate_algorithmic_proposals(
+            registry=registry,
+            count=1,
+            stamp="20260526_000000",
+            include_spec_only=True,
+        )
+
+        self.assertEqual(proposals, [])
+        self.assertEqual(len(spec_proposals), 1)
+        self.assertEqual(spec_proposals[0]["runnable_level"], "spec_only")
+
 
 if __name__ == "__main__":
     unittest.main()

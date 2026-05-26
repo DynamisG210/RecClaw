@@ -1,0 +1,4 @@
+candidate_id: cand_bpr_hard_negative_margin
+model: BPRHardNegativeMargin
+hard_negative_ratio: 0.5
+margin: 0.2

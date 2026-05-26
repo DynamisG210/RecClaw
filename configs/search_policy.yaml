@@ -19,10 +19,12 @@ search_stages:
   exploit:
     description: Prefer small parameter or local variants around families with stable gains.
     priority_families:
+      - cand_lightgcn_residual_norm_constrained
+      - cand_bpr_hard_negative_margin
       - cand_lightgcn_residual_layer_mix
       - cand_bpr_margin_loss
+      - cand_lightgcn_edge_dropout_residual_norm
       - cand_lightgcn_layer_weighted_agg
-      - cand_lightgcn_small_embedding
     preferred_actions:
       - parameter_tuning
       - regularization

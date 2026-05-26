@@ -1,0 +1,8 @@
+candidate_id: cand_lightgcn_edge_dropout_residual_norm
+model: LightGCNEdgeDropoutResidualNorm
+embedding_size: 128
+n_layers: 3
+residual_weight: 0.2
+edge_dropout: 0.1
+lambda_norm: 1e-4
+max_norm: 1.0

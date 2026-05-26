@@ -64,38 +64,85 @@ def normalize_signature_value(value: Any) -> Any:
 ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
     {
         "proposal_type": "algorithmic_variant",
-        "candidate_stub": "cand_bpr_adaptive_popularity_margin",
-        "parent_candidate_id": "cand_bpr_margin_loss",
+        "candidate_stub": "cand_bpr_hard_negative_margin",
+        "parent_candidate_id": "cand_bpr_hard_negative_mix",
         "base_model": "BPR",
-        "category": "Objective & Optimization",
+        "category": "Bias & Sample Construction",
         "action_type": "pairwise_loss",
         "hypothesis": (
-            "Adaptive margins based on negative-item popularity may reduce head-item dominance "
-            "while preserving pairwise ranking strength."
+            "Combining hard-negative sampling with a small pairwise margin may strengthen the "
+            "early BPR ranking signal without changing the evaluation protocol."
         ),
         "runnable_level": "code_required",
         "runner_type": "model",
-        "consumes": ["margin", "popularity_alpha"],
+        "consumes": ["hard_negative_ratio", "margin"],
         "new_parameters": [
-            {"name": "popularity_alpha", "default": 0.5, "search_space": [0.2, 0.5, 1.0]},
+            {"name": "margin", "default": 0.2, "search_space": [0.1, 0.2, 0.5]},
         ],
         "implementation_plan": {
-            "summary": "Add a local BPR subclass that scales pairwise margin by negative-item popularity.",
-            "entrypoint": "recclaw_ext.models.bpr_adaptive_popularity_margin:BPRAdaptivePopularityMargin",
+            "summary": "Reuse the local hard-negative sampler and margin loss helper in a composed BPR subclass.",
+            "entrypoint": "recclaw_ext.models.bpr_composed:BPRHardNegativeMargin",
             "files": [
-                "recclaw_ext/models/bpr_adaptive_popularity_margin.py",
+                "recclaw_ext/models/bpr_composed.py",
             ],
         },
         "allowed_files": ["recclaw_ext/models/"],
         "expected_effect": {
             "primary_metric": "ndcg@10",
             "direction": "increase",
-            "rationale": "Combines BPR's margin signal with popularity-aware pressure against head dominance.",
+            "rationale": "Historical first-50 results favored a hard-negative plus margin family.",
+        },
+        "risk": {
+            "quality": "Hard negatives and margin can over-sharpen ranking if both are too strong.",
+            "runtime": "Small overhead from replacement negative sampling.",
+            "implementation": "Uses an existing local template class when available.",
+            "recbole_core_change_required": False,
+        },
+        "decision_rule": {
+            "keep_if": "ndcg@10 improves over the comparable BPR candidate and precision@10 does not drop sharply.",
+            "revise_if": "ranking improves only for lower margin or lower hard_negative_ratio.",
+            "discard_if": "candidate crashes or ranking metrics regress under comparable BPR budget.",
+        },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        },
+    },
+    {
+        "proposal_type": "algorithmic_variant",
+        "candidate_stub": "cand_bpr_popularity_aware_margin",
+        "parent_candidate_id": "cand_bpr_popularity_aware_negative",
+        "base_model": "BPR",
+        "category": "Bias & Sample Construction",
+        "action_type": "pairwise_loss",
+        "hypothesis": (
+            "Popularity-aware negatives with a small pairwise margin may improve exposure-robust "
+            "ranking without introducing post-hoc reranking."
+        ),
+        "runnable_level": "code_required",
+        "runner_type": "model",
+        "consumes": ["popularity_alpha", "margin"],
+        "new_parameters": [
+            {"name": "margin", "default": 0.2, "search_space": [0.1, 0.2, 0.5]},
+        ],
+        "implementation_plan": {
+            "summary": "Reuse the local popularity-aware sampler and margin loss helper in a composed BPR subclass.",
+            "entrypoint": "recclaw_ext.models.bpr_composed:BPRPopularityAwareMargin",
+            "files": [
+                "recclaw_ext/models/bpr_composed.py",
+            ],
+        },
+        "allowed_files": ["recclaw_ext/models/"],
+        "expected_effect": {
+            "primary_metric": "ndcg@10",
+            "direction": "increase",
+            "rationale": "This tests whether exposure-aware sampling benefits from a clearer pairwise boundary.",
         },
         "risk": {
             "quality": "May over-penalize popular negatives and reduce precision@10.",
-            "runtime": "Small overhead from item popularity lookup.",
-            "implementation": "Requires local model code and registry wiring.",
+            "runtime": "Small overhead from popularity-shaped replacement sampling.",
+            "implementation": "Uses an existing local template class when available.",
             "recbole_core_change_required": False,
         },
         "decision_rule": {
@@ -111,44 +158,45 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
     },
     {
         "proposal_type": "algorithmic_variant",
-        "candidate_stub": "cand_lightgcn_edge_dropout_residual_mix",
+        "candidate_stub": "cand_lightgcn_residual_norm_constrained",
         "parent_candidate_id": "cand_lightgcn_residual_layer_mix",
         "base_model": "LightGCN",
         "category": "Representation & Interaction",
-        "action_type": "graph_augmentation",
+        "action_type": "regularization",
         "hypothesis": (
-            "Applying light edge dropout before residual layer mixing may reduce over-smoothing "
-            "and improve top-k generalization."
+            "Residual layer mixing plus soft norm control may reproduce the strongest historical "
+            "LightGCNResidualNorm family and stabilize late-stage search."
         ),
         "runnable_level": "code_required",
         "runner_type": "model",
-        "consumes": ["embedding_size", "n_layers", "residual_weight", "edge_dropout"],
+        "consumes": ["embedding_size", "n_layers", "residual_weight", "lambda_norm", "max_norm"],
         "new_parameters": [
-            {"name": "edge_dropout", "default": 0.1, "search_space": [0.05, 0.1, 0.2]},
+            {"name": "lambda_norm", "default": 0.0001, "search_space": [1e-5, 1e-4, 1e-3]},
+            {"name": "max_norm", "default": 1.0, "search_space": [0.5, 1.0, 2.0]},
         ],
         "implementation_plan": {
-            "summary": "Extend the local residual LightGCN path with sparse edge dropout during training.",
-            "entrypoint": "recclaw_ext.models.lightgcn_edge_dropout_residual:LightGCNEdgeDropoutResidualMix",
+            "summary": "Reuse the local residual LightGCN path and add a soft propagated-embedding norm penalty.",
+            "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormConstrained",
             "files": [
-                "recclaw_ext/models/lightgcn_edge_dropout_residual.py",
+                "recclaw_ext/models/lightgcn_residual_norm.py",
             ],
         },
         "allowed_files": ["recclaw_ext/models/"],
         "expected_effect": {
             "primary_metric": "ndcg@10",
             "direction": "increase",
-            "rationale": "Graph perturbation can regularize LightGCN without changing RecBole core.",
+            "rationale": "The historical best family used residual LightGCN with norm control.",
         },
         "risk": {
-            "quality": "Too much dropout may damage high-order collaborative signal.",
-            "runtime": "Small training overhead from sampled adjacency masking.",
-            "implementation": "Needs careful local handling of sparse graph tensors.",
+            "quality": "Overly tight norm constraints may suppress useful graph signal.",
+            "runtime": "Small training overhead from one extra norm penalty.",
+            "implementation": "Uses an existing local template class when available.",
             "recbole_core_change_required": False,
         },
         "decision_rule": {
-            "keep_if": "ndcg@10 and recall@10 improve without latency regression at inference.",
-            "revise_if": "ranking improves only at low dropout values.",
-            "discard_if": "training becomes unstable or graph propagation metrics regress.",
+            "keep_if": "ndcg@10 improves over comparable residual LightGCN candidates.",
+            "revise_if": "result is near baseline but suggests lower lambda_norm or looser max_norm.",
+            "discard_if": "norm control suppresses ranking quality or training becomes unstable.",
         },
         "evaluation_plan": {
             "primary_metric": "ndcg@10",
@@ -158,44 +206,52 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
     },
     {
         "proposal_type": "algorithmic_variant",
-        "candidate_stub": "cand_lightgcn_aux_layer_alignment",
-        "parent_candidate_id": "cand_lightgcn_layer_weighted_agg",
+        "candidate_stub": "cand_lightgcn_edge_dropout_residual_norm",
+        "parent_candidate_id": "cand_lightgcn_edge_dropout_residual_mix",
         "base_model": "LightGCN",
-        "category": "Objective & Optimization",
-        "action_type": "auxiliary_loss",
+        "category": "Representation & Interaction",
+        "action_type": "graph_augmentation",
         "hypothesis": (
-            "A small auxiliary alignment term between shallow and final embeddings may improve "
-            "layer consistency without replacing LightGCN propagation."
+            "Edge-dropout residual propagation plus soft norm control may combine structural "
+            "regularization with the historical residual-norm advantage."
         ),
         "runnable_level": "code_required",
         "runner_type": "model",
-        "consumes": ["embedding_size", "n_layers", "lambda_align"],
+        "consumes": [
+            "embedding_size",
+            "n_layers",
+            "residual_weight",
+            "edge_dropout",
+            "lambda_norm",
+            "max_norm",
+        ],
         "new_parameters": [
-            {"name": "lambda_align", "default": 0.001, "search_space": [1e-4, 1e-3, 1e-2]},
+            {"name": "lambda_norm", "default": 0.0001, "search_space": [1e-5, 1e-4, 1e-3]},
+            {"name": "max_norm", "default": 1.0, "search_space": [0.5, 1.0, 2.0]},
         ],
         "implementation_plan": {
-            "summary": "Add a local LightGCN subclass that augments BPR loss with layer-level alignment; keep helper logic inside the new module.",
-            "entrypoint": "recclaw_ext.models.lightgcn_objectives:LightGCNAuxAlignment",
+            "summary": "Reuse the edge-dropout residual LightGCN path with the residual-norm loss mixin.",
+            "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNorm",
             "files": [
-                "recclaw_ext/models/lightgcn_objectives.py",
+                "recclaw_ext/models/lightgcn_residual_norm.py",
             ],
         },
         "allowed_files": ["recclaw_ext/models/"],
         "expected_effect": {
             "primary_metric": "ndcg@10",
             "direction": "increase",
-            "rationale": "Layer alignment may improve representation stability for top-k ranking.",
+            "rationale": "This is the strongest safe composition now supported by local LightGCN extensions.",
         },
         "risk": {
-            "quality": "Auxiliary loss can conflict with pairwise ranking if overweighted.",
-            "runtime": "Small training overhead from an extra layer-distance term.",
-            "implementation": "Requires local loss helper and model subclass only.",
+            "quality": "Dropout and norm control can over-regularize if both are too strong.",
+            "runtime": "Small training overhead from sparse edge dropout and norm penalty.",
+            "implementation": "Uses an existing local template class when available.",
             "recbole_core_change_required": False,
         },
         "decision_rule": {
-            "keep_if": "ndcg@10 improves and training runtime remains acceptable.",
-            "revise_if": "recall improves while precision drops mildly.",
-            "discard_if": "auxiliary loss destabilizes training.",
+            "keep_if": "ndcg@10 improves over residual-norm and edge-dropout parents.",
+            "revise_if": "only one regularizer appears beneficial.",
+            "discard_if": "combined regularization lowers ranking quality or destabilizes training.",
         },
         "evaluation_plan": {
             "primary_metric": "ndcg@10",
@@ -544,6 +600,16 @@ def existing_candidate_ids(registry: list[dict[str, Any]]) -> set[str]:
     return {str(item.get("candidate_id")) for item in registry if item.get("candidate_id")}
 
 
+def wired_candidate_ids(registry: list[dict[str, Any]]) -> set[str]:
+    return {
+        str(item.get("candidate_id"))
+        for item in registry
+        if item.get("candidate_id")
+        and bool(item.get("wired"))
+        and str(item.get("status") or "") == "implemented"
+    }
+
+
 def template_parent_exists(template: dict[str, Any], registry_ids: set[str]) -> bool:
     return str(template.get("parent_candidate_id") or "") in registry_ids
 
@@ -568,10 +634,16 @@ def generate_algorithmic_proposals(
     registry: list[dict[str, Any]],
     count: int,
     stamp: str,
+    include_spec_only: bool = False,
 ) -> list[dict[str, Any]]:
     registry_ids = existing_candidate_ids(registry)
+    wired_ids = wired_candidate_ids(registry)
     proposals: list[dict[str, Any]] = []
     for template in ALGORITHM_TEMPLATES:
+        if str(template.get("runnable_level") or "") == "spec_only" and not include_spec_only:
+            continue
+        if str(template.get("candidate_stub") or "") in wired_ids:
+            continue
         if not template_parent_exists(template, registry_ids):
             continue
         proposals.append(build_algorithmic_proposal(template, len(proposals) + 1, stamp))

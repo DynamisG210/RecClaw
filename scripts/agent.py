@@ -462,6 +462,7 @@ class RecClawAgent:
         self.current_proposal_source: str = config.proposal_source
         self.skip_current_round: bool = False
         self.skip_proposal_generation: bool = False
+        self.force_proposal_refresh: bool = False
         self.last_experiment_directive_digest: str = ""
 
     # ===== Observe =====
@@ -1895,6 +1896,7 @@ class RecClawAgent:
     def reset_round_policy(self) -> None:
         self.skip_current_round = False
         self.skip_proposal_generation = False
+        self.force_proposal_refresh = False
         if self.config.loop_mode != "auto":
             return
         policy = LOOP_MODE_POLICIES[self.config.loop_mode]
@@ -2066,10 +2068,10 @@ class RecClawAgent:
                 parsed = self._find_action_payload(parsed) or parsed
             if not isinstance(parsed, dict):
                 raise ValueError("planner output must be a JSON object")
+            parsed, ignored_fields = self._sanitize_planner_payload(parsed)
             action = str(parsed.get("action") or "").strip()
             if action not in AUTO_PLANNER_ACTIONS:
                 raise ValueError(f"unsupported planner action: {action}")
-            parsed, ignored_fields = self._sanitize_planner_payload(parsed)
         except Exception as exc:  # noqa: BLE001
             if not self.config.allow_llm_fallback:
                 raise RuntimeError(f"auto planner LLM failed: {type(exc).__name__}: {exc}") from exc
@@ -2130,7 +2132,9 @@ class RecClawAgent:
             self.config.enable_candidate_proposals = True
             self.config.proposal_mode = "mixed"
             self.config.auto_promote_needs_review = True
-            self.config.auto_implement_code_required = action != "propose_mixed"
+            self.config.auto_implement_code_required = True
+        if action.startswith("propose"):
+            self.force_proposal_refresh = True
         if parsed.get("proposal_count") is not None:
             try:
                 self.config.proposal_count = max(1, int(parsed["proposal_count"]))
@@ -2234,7 +2238,12 @@ class RecClawAgent:
         every = max(1, self.config.proposal_every)
         should_generate = (
             not self.skip_proposal_generation
-            and (round_id == 1 or (round_id - 1) % every == 0 or not self.config.proposal_path.exists())
+            and (
+                self.force_proposal_refresh
+                or round_id == 1
+                or (round_id - 1) % every == 0
+                or not self.config.proposal_path.exists()
+            )
         )
         if should_generate:
             try:
@@ -2441,11 +2450,14 @@ class RecClawAgent:
             )
             parent_id = str(proposal.get("parent_candidate_id") or "")
             parent = self._find_registry_candidate(parent_id)
+            proposal_consumes = {str(item) for item in (proposal.get("consumes") or [])}
+            parent_consumes = {str(item) for item in ((parent or {}).get("consumes") or [])}
             if (
                 parent_id in AUTO_PROMOTABLE_PARENT_IDS
                 and parent is not None
                 and bool(parent.get("wired"))
                 and str(parent.get("status") or "") == "implemented"
+                and proposal_consumes.issubset(parent_consumes)
             ):
                 self.remember_event(
                     {
@@ -2508,6 +2520,7 @@ class RecClawAgent:
                     "candidate_id": report.get("candidate_id", ""),
                     "reason": report.get("reason", ""),
                     "entrypoint": report.get("entrypoint", ""),
+                    "source": report.get("source", ""),
                     "files": report.get("files", []),
                     "smoke": report.get("smoke", {}),
                     "review_errors": review_errors[-5:],
