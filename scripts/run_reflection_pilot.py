@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import shlex
 import subprocess
 import sys
@@ -25,6 +26,17 @@ SAFE_OVERRIDES = (
     "train_batch_size=2048",
     "eval_batch_size=65536",
     "worker=8",
+)
+SEED_ARTIFACT_NAMES = (
+    "agent_memory.jsonl",
+    "results.csv",
+    "candidate_proposals.jsonl",
+    "candidate_search_tree.json",
+    "candidate_search_tree.md",
+    "candidate_search_tree.mmd",
+    "experience_summary.md",
+    "experience_summary.json",
+    "reflection_memory.jsonl",
 )
 
 
@@ -154,10 +166,35 @@ def ensure_runtime_dirs(paths: PilotPaths) -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
+def seed_runtime_artifacts(paths: PilotPaths, seed_from: Path | None) -> list[str]:
+    if seed_from is None:
+        return []
+    seed_from = seed_from.expanduser().resolve()
+    reject_lablog_path(seed_from)
+    if not seed_from.exists() or not seed_from.is_dir():
+        raise ValueError(f"--seed-from must be an existing pilot run directory: {seed_from}")
+    if seed_from == paths.run_dir.resolve():
+        raise ValueError("--seed-from must differ from the target pilot run directory")
+    copied: list[str] = []
+    for name in SEED_ARTIFACT_NAMES:
+        source = seed_from / name
+        target = paths.run_dir / name
+        if not source.exists():
+            continue
+        if target.exists():
+            raise ValueError(f"refusing to overwrite seeded runtime artifact: {target}")
+        shutil.copy2(source, target)
+        copied.append(name)
+    if not copied:
+        raise ValueError(f"--seed-from did not contain any known runtime artifacts: {seed_from}")
+    return copied
+
+
 def build_commands(
     *,
     paths: PilotPaths,
     rounds: int,
+    start_round: int,
     gpu_id: int,
     proposal_source: str,
     loop_mode: str,
@@ -165,8 +202,14 @@ def build_commands(
     llm_api_key_env: str,
     llm_model: str,
     llm_base_url: str,
+    llm_timeout: int,
+    llm_retries: int,
     refresh_every: int,
     baseline_dir: Path,
+    search_intensity: str,
+    algorithm_budget_per_window: int,
+    anchor_families: list[str],
+    allow_llm_fallback: bool,
 ) -> dict[str, list[str]]:
     lint_cmd = [
         sys.executable,
@@ -209,6 +252,8 @@ def build_commands(
         str(PROJECT_ROOT / "scripts" / "agent.py"),
         "--rounds",
         str(rounds),
+        "--start-round",
+        str(start_round),
         "--loop-mode",
         loop_mode,
         "--proposal-source",
@@ -218,9 +263,15 @@ def build_commands(
         "--llm-api-key-env",
         llm_api_key_env,
         "--proposal-count",
-        "5",
+        "6" if search_intensity == "algorithm_first" else "5",
         "--proposal-every",
         "3",
+        "--search-intensity",
+        search_intensity,
+        "--algorithm-budget-per-window",
+        str(algorithm_budget_per_window),
+        "--anchor-families",
+        ",".join(anchor_families),
         "--memory-path",
         str(paths.memory),
         "--state-summary-path",
@@ -235,9 +286,10 @@ def build_commands(
         str(paths.experience_summary_md),
         "--experiment-directive",
         (
-            "Reflection pilot constraints: keep the ML-1M full-sort general-rec protocol unchanged; "
-            "do not propose sequential, posthoc, SSL, diversity, or planned-parameter mechanisms; "
-            "prioritize wired registry candidates and tuning around the first-batch BPR/LightGCN candidates."
+            "RecClaw v4 algorithm-first pilot: keep the ML-1M full-sort general-rec protocol unchanged; "
+            "prioritize LLM-driven algorithm discovery, mechanism composition, local extension implementation, "
+            "smoke verification, and formal runs. Parameter-only tuning is allowed only as a small sanity/refinement "
+            "budget after credible algorithm signal. Do not propose sequential recommendation in this experiment line."
         ),
         "--refresh-experience-every",
         str(refresh_every),
@@ -257,6 +309,14 @@ def build_commands(
         str(paths.checkpoint_dir),
         "--checkpoint-policy",
         "cleanup_all",
+        "--max-pending-implemented",
+        "6" if search_intensity == "algorithm_first" else "3",
+        "--max-implement-per-round",
+        "2" if search_intensity == "algorithm_first" else "1",
+        "--algorithm-first-explore-rounds",
+        "20" if search_intensity == "algorithm_first" else "0",
+        "--seed-validation-min-metric",
+        "0.274" if search_intensity == "algorithm_first" else "0",
     ]
     for override in (*SAFE_OVERRIDES, f"gpu_id={gpu_id}"):
         agent_cmd.extend(["--set", override])
@@ -264,7 +324,9 @@ def build_commands(
         agent_cmd.extend(["--llm-model", llm_model])
     if llm_base_url:
         agent_cmd.extend(["--llm-base-url", llm_base_url])
-    if proposal_source == "llm" or loop_mode == "auto":
+    agent_cmd.extend(["--llm-timeout", str(llm_timeout)])
+    agent_cmd.extend(["--llm-retries", str(llm_retries)])
+    if allow_llm_fallback:
         agent_cmd.append("--allow-llm-fallback")
     return {
         "lint": lint_cmd,
@@ -283,6 +345,7 @@ def build_env(paths: PilotPaths) -> dict[str, str]:
             "RECCLAW_OVERRIDE_DIR": str(paths.override_dir),
             "RECCLAW_CHECKPOINT_DIR": str(paths.checkpoint_dir),
             "RECCLAW_CHECKPOINT_POLICY": "cleanup_all",
+            "RECCLAW_SMOKE_RESULTS_CSV": str(paths.run_dir / "results.smoke.csv"),
         }
     )
     return env
@@ -304,15 +367,25 @@ def plan_payload(
     llm_api_key_env: str,
     gpu_id: int,
     baseline_dir: Path,
+    start_round: int,
+    search_intensity: str,
+    algorithm_budget_per_window: int,
+    anchor_families: list[str],
+    seeded_artifacts: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "run_dir": str(paths.run_dir),
+        "start_round": start_round,
         "proposal_source": proposal_source,
         "loop_mode": loop_mode,
         "llm_provider": llm_provider,
         "llm_api_key_env": llm_api_key_env,
         "gpu_id": gpu_id,
         "baseline_dir": str(baseline_dir),
+        "search_intensity": search_intensity,
+        "algorithm_budget_per_window": algorithm_budget_per_window,
+        "anchor_families": list(anchor_families),
+        "seeded_artifacts": list(seeded_artifacts or []),
         "safe_overrides": list(SAFE_OVERRIDES),
         "commands": {name: shlex.join(cmd) for name, cmd in commands.items()},
         "env": {
@@ -320,6 +393,7 @@ def plan_payload(
             "RECCLAW_RESULTS_CSV": str(paths.results_csv),
             "RECCLAW_OVERRIDE_DIR": str(paths.override_dir),
             "RECCLAW_CHECKPOINT_DIR": str(paths.checkpoint_dir),
+            "RECCLAW_SMOKE_RESULTS_CSV": str(paths.run_dir / "results.smoke.csv"),
         },
     }
 
@@ -327,7 +401,13 @@ def plan_payload(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run a 50-round full-memory reflection pilot.")
     parser.add_argument("--gpu-id", type=int, default=0, help="RecBole gpu_id override for candidate runs")
-    parser.add_argument("--rounds", type=int, default=50, help="Number of agent rounds")
+    parser.add_argument("--rounds", type=int, default=50, help="Final agent round id")
+    parser.add_argument(
+        "--start-round",
+        type=int,
+        default=1,
+        help="First agent round id for continuation runs; use 51 with --rounds 200 after a 50-round pilot",
+    )
     parser.add_argument("--refresh-experience-every", type=int, default=10, help="Refresh cadence in rounds")
     parser.add_argument("--proposal-source", choices=("llm", "heuristic"), default=None)
     parser.add_argument(
@@ -349,9 +429,37 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--llm-model", default="", help="Optional LLM model passed through to agent.py")
     parser.add_argument("--llm-base-url", default="", help="Optional OpenAI-compatible API base URL")
+    parser.add_argument("--llm-timeout", type=int, default=300, help="LLM API timeout in seconds")
+    parser.add_argument("--llm-retries", type=int, default=3, help="Transient LLM API retry count")
     parser.add_argument("--llm-api-key-env", default="", help="Environment variable containing the LLM API key")
+    parser.add_argument(
+        "--allow-llm-fallback",
+        action="store_true",
+        help="Allow heuristic planner/proposal fallback if the LLM transport fails. Formal LLM pilots leave this off by default.",
+    )
     parser.add_argument("--pilot-root", default=str(DEFAULT_PILOT_ROOT), help="Root directory for isolated pilot runs")
     parser.add_argument("--stamp", default="", help="Optional deterministic run directory suffix")
+    parser.add_argument("--seed-from", default="", help="Existing pilot run directory used to seed continuation artifacts")
+    parser.add_argument(
+        "--search-intensity",
+        choices=("balanced", "algorithm_first"),
+        default="algorithm_first",
+        help="Search posture passed through to agent.py",
+    )
+    parser.add_argument(
+        "--algorithm-budget-per-window",
+        type=int,
+        default=3,
+        help="Target code_required algorithmic budget per short search window",
+    )
+    parser.add_argument(
+        "--anchor-families",
+        default=(
+            "cand_bpr_hard_negative_margin,cand_lightgcn_shallow_layers,"
+            "cand_lightgcn_residual_norm_constrained,cand_lightgcn_edge_dropout_residual_norm"
+        ),
+        help="Comma-separated high-potential families to keep available for repair/revisit",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print commands and paths without running them")
     args = parser.parse_args(argv)
 
@@ -362,13 +470,20 @@ def main(argv: list[str] | None = None) -> int:
         reject_lablog_path(value)
     baseline_dir = resolve_baseline_dir(args.baseline_dir)
     reject_lablog_path(baseline_dir)
+    seed_from = Path(args.seed_from).expanduser().resolve() if args.seed_from else None
+    if seed_from is not None:
+        reject_lablog_path(seed_from)
     proposal_source = choose_proposal_source(args.proposal_source)
     loop_mode = choose_loop_mode(args.loop_mode, proposal_source)
     llm_provider = choose_llm_provider(args.llm_provider)
     llm_api_key_env = default_llm_key_env(llm_provider, args.llm_api_key_env or None)
+    anchor_families = [item.strip() for item in str(args.anchor_families).split(",") if item.strip()]
+    start_round = max(1, int(args.start_round))
+    rounds = max(start_round, int(args.rounds))
     commands = build_commands(
         paths=paths,
-        rounds=max(1, args.rounds),
+        rounds=rounds,
+        start_round=start_round,
         gpu_id=int(args.gpu_id),
         proposal_source=proposal_source,
         loop_mode=loop_mode,
@@ -376,8 +491,14 @@ def main(argv: list[str] | None = None) -> int:
         llm_api_key_env=llm_api_key_env,
         llm_model=str(args.llm_model or ""),
         llm_base_url=str(args.llm_base_url or ""),
+        llm_timeout=max(1, int(args.llm_timeout)),
+        llm_retries=max(0, int(args.llm_retries)),
         refresh_every=max(1, args.refresh_experience_every),
         baseline_dir=baseline_dir,
+        search_intensity=str(args.search_intensity),
+        algorithm_budget_per_window=max(0, int(args.algorithm_budget_per_window)),
+        anchor_families=anchor_families,
+        allow_llm_fallback=bool(args.allow_llm_fallback),
     )
 
     payload = plan_payload(
@@ -389,6 +510,10 @@ def main(argv: list[str] | None = None) -> int:
         llm_api_key_env,
         int(args.gpu_id),
         baseline_dir,
+        start_round,
+        str(args.search_intensity),
+        max(0, int(args.algorithm_budget_per_window)),
+        anchor_families,
     )
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=True, indent=2))
@@ -400,9 +525,11 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     ensure_runtime_dirs(paths)
+    seeded_artifacts = seed_runtime_artifacts(paths, seed_from)
     env = build_env(paths)
     for name in ("lint", "initial_tree", "initial_summary", "agent"):
         run_checked(commands[name], env=env)
+    payload["seeded_artifacts"] = seeded_artifacts
     print(json.dumps(payload, ensure_ascii=True, indent=2))
     return 0
 

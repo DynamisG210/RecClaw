@@ -7,6 +7,8 @@ fallback/reference path. It supports three proposal modes:
 - conservative: only immediately runnable parameter/config tuning proposals
 - mixed: a blend of runnable tuning and new local-code algorithm ideas
 - explore: algorithmic variants and research specs that expand the search space
+- algorithm_first: mostly algorithmic/code_required proposals, with a small
+  amount of runnable algorithm-family sanity tuning
 """
 
 from __future__ import annotations
@@ -64,7 +66,205 @@ def normalize_signature_value(value: Any) -> Any:
 ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
     {
         "proposal_type": "algorithmic_variant",
+        "candidate_stub": "cand_bpr_hard_negative_margin_tail_reweight",
+        "parent_candidate_id": "cand_bpr_hard_negative_margin",
+        "base_model": "BPR",
+        "category": "Bias & Sample Construction",
+        "action_type": "pairwise_loss",
+        "mechanism": "hard_negative_margin_tail_reweight",
+        "mechanism_composition": ["hard_negative", "pairwise_margin", "tail_reweight"],
+        "novelty_claim": "compose hard-negative sampling, pairwise margin, and long-tail loss reweighting in one local BPR objective",
+        "expected_failure_mode": "tail weighting can over-correct popularity and reduce precision@10 if combined too strongly with hard negatives",
+        "ablation_parent": "cand_bpr_hard_negative_margin",
+        "implementation_complexity": "medium",
+        "hypothesis": (
+            "A tail-aware hard-negative margin objective may keep the historical BPR margin strength "
+            "while reducing head-item dominance."
+        ),
+        "runnable_level": "code_required",
+        "runner_type": "model",
+        "consumes": ["hard_negative_ratio", "margin", "tail_weight_alpha"],
+        "new_parameters": [
+            {"name": "tail_weight_alpha", "default": 0.2, "search_space": [0.2, 0.5, 1.0]},
+        ],
+        "implementation_plan": {
+            "summary": "Add a BPR subclass that combines the hard-negative margin objective with the long-tail reweight helper.",
+            "entrypoint": "recclaw_ext.models.bpr_algorithmic:BPRHardNegativeMarginTailReweight",
+            "files": ["recclaw_ext/models/bpr_algorithmic.py"],
+        },
+        "allowed_files": ["recclaw_ext/models/bpr_algorithmic.py"],
+        "expected_effect": {
+            "primary_metric": "ndcg@10",
+            "direction": "increase",
+            "rationale": "The historical BPR hard-negative margin family was strong; tail reweighting changes the algorithmic objective rather than only tuning margins.",
+        },
+        "risk": {
+            "quality": "May trade off head-item precision for tail sensitivity.",
+            "runtime": "Small overhead from sample reweighting.",
+            "implementation": "Requires a local composed BPR subclass but can reuse existing helper code.",
+            "recbole_core_change_required": False,
+        },
+        "decision_rule": {
+            "keep_if": "ndcg@10 improves over cand_bpr_hard_negative_margin and precision@10 does not collapse.",
+            "revise_if": "ndcg@10 is near the parent but tail/popularity-sensitive metrics improve.",
+            "discard_if": "ranking metrics regress below BPR baseline or training becomes unstable.",
+        },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        },
+    },
+    {
+        "proposal_type": "algorithmic_variant",
+        "candidate_stub": "cand_bpr_rank_aware_hard_negative_margin",
+        "parent_candidate_id": "cand_bpr_hard_negative_margin",
+        "base_model": "BPR",
+        "category": "Objective & Optimization",
+        "action_type": "rank_aware_loss",
+        "mechanism": "rank_aware_hard_negative_margin",
+        "mechanism_composition": ["hard_negative", "pairwise_margin", "rank_aware"],
+        "novelty_claim": "adds a top-k rank-aware weighting signal to the historical hard-negative margin family",
+        "expected_failure_mode": "rank weighting can destabilize pairwise optimization if scaled too aggressively",
+        "ablation_parent": "cand_bpr_hard_negative_margin",
+        "implementation_complexity": "medium",
+        "hypothesis": "Rank-aware weighting may align hard-negative margin training more directly with NDCG@10.",
+        "runnable_level": "code_required",
+        "runner_type": "model",
+        "consumes": ["hard_negative_ratio", "margin", "rank_weight_alpha"],
+        "new_parameters": [
+            {"name": "rank_weight_alpha", "default": 0.1, "search_space": [0.1, 0.2, 0.5]},
+        ],
+        "implementation_plan": {
+            "summary": "Add a local BPR subclass that weights hard-negative margin loss terms by a rank-aware surrogate.",
+            "entrypoint": "recclaw_ext.models.bpr_algorithmic:BPRRankAwareHardNegativeMargin",
+            "files": ["recclaw_ext/models/bpr_algorithmic.py"],
+        },
+        "allowed_files": ["recclaw_ext/models/bpr_algorithmic.py"],
+        "expected_effect": {
+            "primary_metric": "ndcg@10",
+            "direction": "increase",
+            "rationale": "A rank-aware hard-negative objective directly targets top-k ordering rather than just pairwise separation.",
+        },
+        "risk": {
+            "quality": "May over-sharpen top-ranked pairs and reduce calibration.",
+            "runtime": "Small overhead from per-batch weighting.",
+            "implementation": "Requires local loss composition only.",
+            "recbole_core_change_required": False,
+        },
+        "decision_rule": {
+            "keep_if": "ndcg@10 improves over the hard-negative margin parent.",
+            "revise_if": "metrics are near parent but rank_weight_alpha appears too high.",
+            "discard_if": "NDCG or precision collapses below BPR baseline.",
+        },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        },
+    },
+    {
+        "proposal_type": "algorithmic_variant",
+        "candidate_stub": "cand_lightgcn_residual_norm_rank_alignment",
+        "parent_candidate_id": "cand_lightgcn_residual_norm_constrained",
+        "base_model": "LightGCN",
+        "category": "Representation & Interaction",
+        "action_type": "auxiliary_loss",
+        "mechanism": "residual_norm_rank_alignment",
+        "mechanism_composition": ["residual", "norm_control", "alignment", "rank_aware"],
+        "novelty_claim": "adds objective-side alignment/rank pressure to the strongest residual-norm LightGCN family",
+        "expected_failure_mode": "auxiliary objectives may fight the BPR ranking loss or over-regularize propagation",
+        "ablation_parent": "cand_lightgcn_residual_norm_constrained",
+        "implementation_complexity": "medium",
+        "hypothesis": "Residual-norm propagation with a small alignment or rank-aware auxiliary term may improve top-k generalization.",
+        "runnable_level": "code_required",
+        "runner_type": "model",
+        "consumes": ["embedding_size", "n_layers", "residual_weight", "lambda_norm", "max_norm", "lambda_align", "rank_weight_alpha"],
+        "new_parameters": [
+            {"name": "lambda_align", "default": 0.0001, "search_space": [0.0001, 0.001, 0.01]},
+            {"name": "rank_weight_alpha", "default": 0.1, "search_space": [0.1, 0.2, 0.5]},
+        ],
+        "implementation_plan": {
+            "summary": "Add a LightGCN residual-norm subclass that adds a small layer-alignment and rank-aware objective term.",
+            "entrypoint": "recclaw_ext.models.lightgcn_algorithmic:LightGCNResidualNormRankAlignment",
+            "files": ["recclaw_ext/models/lightgcn_algorithmic.py"],
+        },
+        "allowed_files": ["recclaw_ext/models/lightgcn_algorithmic.py"],
+        "expected_effect": {
+            "primary_metric": "ndcg@10",
+            "direction": "increase",
+            "rationale": "The historical best family was residual-norm; auxiliary objective pressure tests a genuinely new mechanism on top of it.",
+        },
+        "risk": {
+            "quality": "Auxiliary losses can over-constrain layer embeddings.",
+            "runtime": "Small training overhead from extra objective terms.",
+            "implementation": "Requires a local LightGCN subclass reusing existing residual-norm code.",
+            "recbole_core_change_required": False,
+        },
+        "decision_rule": {
+            "keep_if": "ndcg@10 improves over residual-norm parent or reaches the tuned LightGCN threshold quickly.",
+            "revise_if": "candidate is close to parent and auxiliary weights appear too strong.",
+            "discard_if": "NDCG drops below LightGCN baseline or training becomes unstable.",
+        },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        },
+    },
+    {
+        "proposal_type": "algorithmic_variant",
+        "candidate_stub": "cand_lightgcn_edge_dropout_residual_norm_gated",
+        "parent_candidate_id": "cand_lightgcn_edge_dropout_residual_norm",
+        "base_model": "LightGCN",
+        "category": "Representation & Interaction",
+        "action_type": "layer_interaction",
+        "mechanism": "edge_dropout_residual_norm_gated",
+        "mechanism_composition": ["edge_dropout", "residual", "norm_control", "gating"],
+        "novelty_claim": "uses a gate to control residual signal strength in the edge-dropout residual-norm family",
+        "expected_failure_mode": "gating can suppress useful graph propagation or introduce unstable scaling",
+        "ablation_parent": "cand_lightgcn_edge_dropout_residual_norm",
+        "implementation_complexity": "medium",
+        "hypothesis": "A gated residual path may let edge-dropout residual-norm adaptively retain useful layer signal.",
+        "runnable_level": "code_required",
+        "runner_type": "model",
+        "consumes": ["embedding_size", "n_layers", "residual_weight", "edge_dropout", "lambda_norm", "max_norm", "residual_gate_scale", "gate_dropout"],
+        "new_parameters": [
+            {"name": "residual_gate_scale", "default": 0.5, "search_space": [0.25, 0.5, 1.0]},
+            {"name": "gate_dropout", "default": 0.0, "search_space": [0.0, 0.05, 0.1]},
+        ],
+        "implementation_plan": {
+            "summary": "Add a LightGCN edge-dropout residual-norm subclass with a lightweight residual gate.",
+            "entrypoint": "recclaw_ext.models.lightgcn_algorithmic:LightGCNEdgeDropoutResidualNormGated",
+            "files": ["recclaw_ext/models/lightgcn_algorithmic.py"],
+        },
+        "allowed_files": ["recclaw_ext/models/lightgcn_algorithmic.py"],
+        "expected_effect": {
+            "primary_metric": "ndcg@10",
+            "direction": "increase",
+            "rationale": "Gating tests a new layer-interaction mechanism rather than only retuning residual_weight.",
+        },
+        "risk": {
+            "quality": "May over-suppress residual graph signal.",
+            "runtime": "Small overhead from gate computation.",
+            "implementation": "Requires local LightGCN layer interaction code.",
+            "recbole_core_change_required": False,
+        },
+        "decision_rule": {
+            "keep_if": "ndcg@10 improves over edge-dropout residual-norm parent.",
+            "revise_if": "near-parent result suggests a smaller gate scale or dropout.",
+            "discard_if": "ranking metrics regress below LightGCN baseline.",
+        },
+        "evaluation_plan": {
+            "primary_metric": "ndcg@10",
+            "validation_seeds": DEFAULT_VALIDATION_SEEDS,
+            "aggregation": "report mean and std over validation_seeds before claiming improvement",
+        },
+    },
+    {
+        "proposal_type": "algorithmic_variant",
         "candidate_stub": "cand_bpr_hard_negative_margin",
+        "allow_wired_stub_variant": True,
         "parent_candidate_id": "cand_bpr_hard_negative_mix",
         "base_model": "BPR",
         "category": "Bias & Sample Construction",
@@ -440,6 +640,35 @@ def default_evaluation_plan(primary_metric: str = "ndcg@10") -> dict[str, Any]:
     }
 
 
+def mechanism_from_candidate_id(candidate_id: str) -> str:
+    text = str(candidate_id or "").strip()
+    if text.startswith("cand_"):
+        text = text[len("cand_") :]
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_") or "algorithm_variant"
+
+
+def mechanism_tokens_from_text(*items: Any) -> list[str]:
+    text = " ".join(str(item or "") for item in items).lower()
+    token_map = {
+        "hard_negative": ("hard_negative", "hard negative"),
+        "margin": ("margin", "pairwise"),
+        "tail_reweight": ("tail", "long_tail"),
+        "popularity": ("popularity", "popaware"),
+        "norm_control": ("norm", "max_norm"),
+        "residual": ("residual",),
+        "edge_dropout": ("edge_dropout", "edge dropout"),
+        "alignment": ("align", "alignment"),
+        "rank_aware": ("rank", "rank_aware"),
+        "gating": ("gate", "gating"),
+        "negative_sampling": ("negative_sampling", "debiased_negative", "sampling"),
+    }
+    tokens: list[str] = []
+    for token, needles in token_map.items():
+        if any(needle in text for needle in needles):
+            tokens.append(token)
+    return tokens or ["algorithm_variant"]
+
+
 def override_slug(params: dict[str, Any]) -> str:
     chunks = []
     for key, value in sorted(params.items()):
@@ -525,6 +754,12 @@ def build_parameter_proposal(
         "base_model": base_model,
         "category": parent.get("category") or "Uncategorized",
         "action_type": "parameter_tuning",
+        "mechanism": mechanism_from_candidate_id(parent_id),
+        "mechanism_composition": mechanism_tokens_from_text(parent_id, parameter_overrides),
+        "novelty_claim": "parameter-only sanity tuning around an existing algorithm family",
+        "expected_failure_mode": "single-axis tuning may overfit without improving the underlying mechanism",
+        "ablation_parent": parent_id,
+        "implementation_complexity": "low",
         "hypothesis": (
             f"Tuning {override_text} may improve {primary_metric} "
             f"without changing the executable candidate path."
@@ -617,7 +852,17 @@ def template_parent_exists(template: dict[str, Any], registry_ids: set[str]) -> 
 def build_algorithmic_proposal(template: dict[str, Any], sequence: int, stamp: str) -> dict[str, Any]:
     proposal = dict(template)
     stub = str(proposal.pop("candidate_stub"))
+    proposal.pop("allow_wired_stub_variant", None)
     proposal["candidate_id"] = f"{stub}_{stamp}_{sequence:02d}"
+    proposal.setdefault("mechanism", mechanism_from_candidate_id(stub))
+    proposal.setdefault(
+        "mechanism_composition",
+        mechanism_tokens_from_text(stub, proposal.get("hypothesis"), proposal.get("consumes")),
+    )
+    proposal.setdefault("novelty_claim", "local algorithmic variant within the declared RecClaw action space")
+    proposal.setdefault("expected_failure_mode", "may underperform if the composed mechanisms over-regularize or weaken ranking signal")
+    proposal.setdefault("ablation_parent", str(proposal.get("parent_candidate_id") or ""))
+    proposal.setdefault("implementation_complexity", "medium")
     proposal.setdefault("promotion_requirements", [])
     proposal["promotion_requirements"] = [
         *proposal["promotion_requirements"],
@@ -642,7 +887,7 @@ def generate_algorithmic_proposals(
     for template in ALGORITHM_TEMPLATES:
         if str(template.get("runnable_level") or "") == "spec_only" and not include_spec_only:
             continue
-        if str(template.get("candidate_stub") or "") in wired_ids:
+        if str(template.get("candidate_stub") or "") in wired_ids and not bool(template.get("allow_wired_stub_variant")):
             continue
         if not template_parent_exists(template, registry_ids):
             continue
@@ -683,6 +928,38 @@ def generate_proposals(
     if mode == "explore":
         return generate_algorithmic_proposals(registry=registry, count=count, stamp=stamp)
 
+    if mode == "algorithm_first":
+        sanity_tuning_count = 1 if count >= 5 else 0
+        algorithmic_target = max(1, count - sanity_tuning_count)
+        proposals = generate_algorithmic_proposals(
+            registry=registry,
+            count=algorithmic_target,
+            stamp=stamp,
+            include_spec_only=False,
+        )
+        if sanity_tuning_count:
+            proposals.extend(
+                generate_tuning_proposals(
+                    registry=registry,
+                    experiment_log=experiment_log,
+                    memory=memory,
+                    count=sanity_tuning_count,
+                    stamp=stamp,
+                    proposal_history=proposal_history,
+                )
+            )
+        used_ids = set()
+        unique: list[dict[str, Any]] = []
+        for proposal in proposals:
+            candidate_id = str(proposal.get("candidate_id") or "")
+            if not candidate_id or candidate_id in used_ids:
+                continue
+            used_ids.add(candidate_id)
+            unique.append(proposal)
+            if len(unique) >= count:
+                break
+        return unique[:count]
+
     tuning_count = max(1, count // 2)
     algorithmic_count = max(0, count - tuning_count)
     proposals = generate_tuning_proposals(
@@ -719,7 +996,7 @@ def main() -> int:
     parser.add_argument("--count", type=int, default=4, help="Number of proposals to emit")
     parser.add_argument(
         "--mode",
-        choices=("conservative", "mixed", "explore"),
+        choices=("conservative", "mixed", "explore", "algorithm_first"),
         default="mixed",
         help="Proposal generation mode",
     )

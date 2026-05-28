@@ -477,8 +477,11 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertGreaterEqual(len(set(plan["validation_seeds"])), 3)
         self.assertIn("parameter_signature", proposal)
         self.assertEqual(proposal["action_type"], "parameter_tuning")
+        self.assertIn("mechanism", proposal)
+        self.assertIn("mechanism_composition", proposal)
+        self.assertIn("ablation_parent", proposal)
 
-    def test_algorithmic_generator_skips_already_wired_template_stub(self) -> None:
+    def test_algorithmic_generator_expands_from_wired_anchor(self) -> None:
         registry = [
             {
                 "candidate_id": "cand_bpr_hard_negative_mix",
@@ -506,7 +509,12 @@ class CandidateProposalTests(unittest.TestCase):
             stamp="20260526_000000",
         )
 
-        self.assertEqual(proposals, [])
+        self.assertEqual(len(proposals), 1)
+        self.assertEqual(proposals[0]["parent_candidate_id"], "cand_bpr_hard_negative_margin")
+        self.assertEqual(proposals[0]["runnable_level"], "code_required")
+        self.assertIn("mechanism", proposals[0])
+        self.assertIn("mechanism_composition", proposals[0])
+        self.assertIn("ablation_parent", proposals[0])
 
     def test_algorithmic_generator_skips_spec_only_by_default(self) -> None:
         registry = [

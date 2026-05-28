@@ -376,6 +376,22 @@ def summarize_memory(
     high_collapse_rate = float(thresholds.get("high_collapse_rate", 0.25))
     minimum_family_runs = int(policy.get("minimum_family_runs_for_policy", 2))
     baseline_reference = policy.get("baseline_reference") if isinstance(policy.get("baseline_reference"), dict) else {}
+    algorithm_policy = policy.get("algorithm_first") if isinstance(policy.get("algorithm_first"), dict) else {}
+    anchor_defs = algorithm_policy.get("anchor_families") if isinstance(algorithm_policy.get("anchor_families"), dict) else {}
+    search_algorithm_policy = (
+        search_policy.get("algorithm_first")
+        if isinstance(search_policy, dict) and isinstance(search_policy.get("algorithm_first"), dict)
+        else {}
+    )
+    search_anchors = (
+        search_algorithm_policy.get("anchor_families")
+        if isinstance(search_algorithm_policy.get("anchor_families"), list)
+        else []
+    )
+    anchor_families = {str(item) for item in anchor_defs}
+    anchor_families.update(str(item) for item in search_anchors if str(item))
+    historical_floor = float(algorithm_policy.get("historical_anchor_floor", 0.274))
+    revisit_bucket = str(algorithm_policy.get("high_potential_policy_bucket") or "revisit")
 
     family_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
     do_not_repeat_signatures: list[str] = []
@@ -417,6 +433,13 @@ def summarize_memory(
         collapse_rate = collapse_count / len(values) if values else 0.0
         trend = convergence_trend(rows, metric, policy)
         domain_warnings = domain_prior_warnings(base_model=base_model, params=params, policy=policy)
+        anchor_info = anchor_defs.get(family) if isinstance(anchor_defs.get(family), dict) else {}
+        historical_best = to_float(anchor_info.get("historical_best"))
+        is_high_potential = (
+            family in anchor_families
+            or (historical_best is not None and historical_best >= historical_floor)
+            or (best is not None and best >= historical_floor)
+        )
         if not values:
             policy_bucket = "avoid"
         elif len(values) < minimum_family_runs:
@@ -429,6 +452,13 @@ def summarize_memory(
             policy_bucket = "caution"
         else:
             policy_bucket = "avoid"
+        if (
+            policy_bucket == "avoid"
+            and is_high_potential
+            and crash_count < 2
+            and collapse_rate < max(0.50, high_collapse_rate)
+        ):
+            policy_bucket = revisit_bucket
         family_summaries.append(
             {
                 "family": family,
@@ -447,6 +477,9 @@ def summarize_memory(
                 "effective_region": params,
                 "trend": trend,
                 "domain_warnings": domain_warnings,
+                "historical_best": round(historical_best, 6) if historical_best is not None else None,
+                "historical_mechanism": anchor_info.get("mechanism") if anchor_info else "",
+                "high_potential": bool(is_high_potential),
                 "policy_bucket": policy_bucket,
             }
         )
@@ -454,6 +487,7 @@ def summarize_memory(
     family_summaries.sort(
         key=lambda item: (
             item["policy_bucket"] != "encourage",
+            item["policy_bucket"] != "revisit",
             -float(item["best"] or 0.0),
             -int(item["crash_count"]),
         )
@@ -467,6 +501,8 @@ def summarize_memory(
             {"composition": name, "failures": count}
             for name, count in sorted(failed_composition_counts.items(), key=lambda item: (-item[1], item[0]))
         ],
+        "algorithm_tasks": list(algorithm_policy.get("algorithm_tasks") or []),
+        "anchor_families": sorted(anchor_families),
     }
 
 
@@ -483,7 +519,7 @@ def family_ids(items: list[dict[str, Any]], bucket: str, limit: int = 10) -> lis
 def promising_parameter_regions(items: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
     regions: list[dict[str, Any]] = []
     for item in items:
-        if item.get("policy_bucket") not in {"encourage", "caution"}:
+        if item.get("policy_bucket") not in {"encourage", "caution", "revisit"}:
             continue
         params = item.get("effective_region")
         if not isinstance(params, dict) or not params:
@@ -563,18 +599,36 @@ def build_experience_policy(
         if isinstance(search_policy.get("composition_rules"), dict)
         else {}
     )
+    algorithm_first = (
+        search_policy.get("algorithm_first")
+        if isinstance(search_policy.get("algorithm_first"), dict)
+        else {}
+    )
+    anchor_families = {
+        str(item)
+        for item in (algorithm_first.get("anchor_families") or summary.get("anchor_families") or [])
+        if str(item)
+    }
+    protect_anchors = bool(family_budget.get("protect_anchor_families_from_discard_freeze", True))
     freeze_crashes = int(family_budget.get("crashes_before_freeze", 2))
     freeze_collapse = float(family_budget.get("collapse_rate_before_freeze", 0.25))
+    freeze_severe_collapse = float(family_budget.get("severe_collapse_rate_before_freeze", freeze_collapse))
     freeze_families = []
     for item in family_summaries:
+        family = str(item.get("family") or "")
         crash_count = int(item.get("crash_count") or 0)
         collapse_rate = float(item.get("collapse_rate") or 0.0)
         decisions = item.get("decisions") if isinstance(item.get("decisions"), dict) else {}
         failed_decisions = int(decisions.get("discard") or 0) + int(decisions.get("crash") or 0)
+        if protect_anchors and family in anchor_families:
+            if crash_count >= freeze_crashes or collapse_rate >= freeze_severe_collapse:
+                freeze_families.append(family)
+            continue
         if crash_count >= freeze_crashes or collapse_rate >= freeze_collapse or failed_decisions >= freeze_crashes:
-            freeze_families.append(str(item.get("family") or ""))
+            freeze_families.append(family)
     encourage = family_ids(family_summaries, "encourage")
     caution = family_ids(family_summaries, "caution")
+    revisit = family_ids(family_summaries, "revisit")
     avoid = family_ids(family_summaries, "avoid")
     domain_prior_notes = []
     trend_notes = []
@@ -599,38 +653,52 @@ def build_experience_policy(
     exploit_stage = search_stages.get("exploit") if isinstance(search_stages.get("exploit"), dict) else {}
     if isinstance(exploit_stage.get("priority_families"), list):
         exploit_defaults = [str(item) for item in exploit_stage.get("priority_families") if str(item)]
+    algorithm_stage = search_stages.get("algorithm_discovery") if isinstance(search_stages.get("algorithm_discovery"), dict) else {}
+    algorithm_defaults = []
+    if isinstance(algorithm_stage.get("priority_families"), list):
+        algorithm_defaults = [str(item) for item in algorithm_stage.get("priority_families") if str(item)]
     frozen_or_avoid = {family for family in [*avoid, *freeze_families] if family}
-    prefer_candidates = encourage or exploit_defaults
+    frozen_or_avoid.difference_update(revisit)
+    prefer_candidates = encourage or algorithm_defaults or exploit_defaults
     prefer_families = [family for family in prefer_candidates if family not in frozen_or_avoid]
-    repair_families = [family for family in caution if family not in frozen_or_avoid]
+    repair_families = [family for family in [*revisit, *caution] if family not in frozen_or_avoid]
+    algorithm_tasks = [str(item) for item in summary.get("algorithm_tasks", []) if str(item)]
     hints = tree_policy_hints(tree_summary)
     return {
         "encourage_families": encourage,
         "caution_families": caution,
+        "revisit_families": revisit,
         "avoid_families": avoid,
         "freeze_families": sorted(set(freeze_families)),
         "promising_parameter_regions": promising_parameter_regions(family_summaries),
         "failed_compositions": summary.get("failed_compositions", []),
         "do_not_repeat_signatures": summary.get("do_not_repeat_signatures", []),
+        "algorithm_tasks": algorithm_tasks,
         "domain_prior_notes": domain_prior_notes[:10],
         "trend_notes": trend_notes[:10],
         "budget_hints": {
-            "max_code_required_per_window": int(family_budget.get("max_code_required_per_window", 1)),
-            "window_rounds": int(family_budget.get("window_rounds", 5)),
+            "max_code_required_per_window": int(
+                algorithm_first.get("algorithm_budget_per_window", family_budget.get("max_code_required_per_window", 1))
+            ),
+            "window_rounds": int(algorithm_first.get("window_rounds", family_budget.get("window_rounds", 5))),
             "max_active_families_per_stage": int(family_budget.get("max_active_families_per_stage", 4)),
             "keep_requires_multiseed": bool(validation_gates.get("keep_requires_multiseed", True)),
             "minimum_validation_seeds": int(validation_gates.get("minimum_validation_seeds", 3)),
+            "parameter_tuning_cap_fraction": float(algorithm_first.get("parameter_tuning_cap_fraction", 0.10)),
         },
         "next_proposal_policy": {
-            "stage_order": ["exploit", "repair", "explore"],
+            "stage_order": ["algorithm_discovery", "repair", "exploit", "explore"],
             "prefer_families": prefer_families[:8],
             "repair_families": repair_families[:8],
             "avoid_families": sorted(frozen_or_avoid)[:12],
+            "anchor_families": sorted(anchor_families),
+            "algorithm_tasks": algorithm_tasks[:8],
             "composition_rules": composition_rules,
             "tree_hints": hints,
             "instruction": (
-                "Prefer small controlled variants around encourage/prefer families; use repair for caution "
-                "families; introduce at most the configured number of code_required proposals per window."
+                "Prioritize algorithmic mechanism proposals and repairs around anchor/revisit families; "
+                "use parameter-only tuning only after a credible algorithm signal; introduce at most the "
+                "configured number of code_required proposals per window."
             ),
         },
     }
@@ -660,6 +728,7 @@ def build_markdown(
     if summary["successful_metric_rows"] < minimum:
         next_policy = experience_policy.get("next_proposal_policy") if isinstance(experience_policy, dict) else {}
         prefer = next_policy.get("prefer_families") if isinstance(next_policy, dict) else []
+        tasks = next_policy.get("algorithm_tasks") if isinstance(next_policy, dict) else []
         return "\n".join(
             [
                 "# RecClaw Experience Summary",
@@ -677,6 +746,7 @@ def build_markdown(
                 "",
                 "## Next Proposal Policy",
                 f"- Prefer families: {', '.join(prefer) if prefer else 'use search_policy defaults'}",
+                f"- Algorithm tasks: {'; '.join(str(item) for item in tasks[:4]) if tasks else 'use algorithm_first search_policy defaults'}",
                 "- Keep all proposals inside configs/action_space.yaml and configs/search_policy.yaml.",
                 "",
             ]
@@ -685,6 +755,7 @@ def build_markdown(
     limits = policy.get("summary_limits") if isinstance(policy.get("summary_limits"), dict) else {}
     encourage = limited(summary["family_summaries"], "encourage", int(limits.get("encourage", 5)))
     caution = limited(summary["family_summaries"], "caution", int(limits.get("caution", 5)))
+    revisit = limited(summary["family_summaries"], "revisit", int(limits.get("caution", 5)))
     avoid = limited(summary["family_summaries"], "avoid", int(limits.get("avoid", 5)))
     next_policy = experience_policy.get("next_proposal_policy") if isinstance(experience_policy, dict) else {}
     budget_hints = experience_policy.get("budget_hints") if isinstance(experience_policy, dict) else {}
@@ -693,6 +764,7 @@ def build_markdown(
     prefer = next_policy.get("prefer_families") if isinstance(next_policy, dict) else []
     repair = next_policy.get("repair_families") if isinstance(next_policy, dict) else []
     avoid_policy = next_policy.get("avoid_families") if isinstance(next_policy, dict) else []
+    tasks = next_policy.get("algorithm_tasks") if isinstance(next_policy, dict) else []
     domain_lines = [
         f"- {item.get('family')}: {item.get('note')}"
         for item in domain_notes
@@ -719,6 +791,9 @@ def build_markdown(
         "## Caution",
         *(format_family_line(item) for item in caution),
         "",
+        "## Revisit",
+        *(format_family_line(item) for item in revisit),
+        "",
         "## Avoid",
         *(format_family_line(item) for item in avoid),
         "",
@@ -732,11 +807,13 @@ def build_markdown(
         f"- Prefer families: {', '.join(prefer) if prefer else 'none yet'}",
         f"- Repair families: {', '.join(repair) if repair else 'none yet'}",
         f"- Avoid/freeze families: {', '.join(avoid_policy) if avoid_policy else 'none yet'}",
+        f"- Algorithm tasks: {'; '.join(str(item) for item in tasks[:4]) if tasks else 'none declared'}",
         (
             "- Code-required budget: "
             f"{budget_hints.get('max_code_required_per_window', 1)} per "
             f"{budget_hints.get('window_rounds', 5)} rounds"
         ),
+        f"- Parameter-only tuning cap: {budget_hints.get('parameter_tuning_cap_fraction', 0.1)} of proposal budget unless an algorithm family has crossed the tuned baseline.",
         "- Avoid repeating signatures listed in experience_summary.json unless proposing a minimal repair.",
         "- Keep all proposals inside configs/action_space.yaml and the candidate proposal schema.",
         "",

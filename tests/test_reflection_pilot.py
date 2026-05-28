@@ -77,18 +77,23 @@ class ReflectionPilotTests(unittest.TestCase):
             self.assertIn("initial_summary", payload["commands"])
             self.assertIn("agent", payload["commands"])
             self.assertIn("--rounds 50", payload["commands"]["agent"])
+            self.assertIn("--start-round 1", payload["commands"]["agent"])
             self.assertIn("--loop-mode mixed", payload["commands"]["agent"])
             self.assertIn("--refresh-experience-every 10", payload["commands"]["agent"])
             self.assertIn("--set gpu_id=2", payload["commands"]["agent"])
             self.assertIn("--baseline-dir", payload["commands"]["agent"])
+            self.assertIn("--search-intensity algorithm_first", payload["commands"]["agent"])
+            self.assertIn("--algorithm-budget-per-window 3", payload["commands"]["agent"])
+            self.assertIn("--proposal-count 6", payload["commands"]["agent"])
             self.assertNotIn("--allow-llm-fallback", payload["commands"]["agent"])
             self.assertEqual(payload["loop_mode"], "mixed")
+            self.assertEqual(payload["search_intensity"], "algorithm_first")
             self.assertEqual(payload["llm_provider"], "deepseek")
             self.assertEqual(payload["llm_api_key_env"], "DEEPSEEK_API_KEY")
             self.assertTrue(payload["baseline_dir"].endswith("results/baseline"))
             self.assertFalse((Path(tmp) / "unit").exists())
 
-    def test_llm_dry_run_defaults_to_auto_with_fallback(self) -> None:
+    def test_llm_dry_run_defaults_to_auto_without_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             buffer = io.StringIO()
             with contextlib.redirect_stdout(buffer):
@@ -112,6 +117,30 @@ class ReflectionPilotTests(unittest.TestCase):
             self.assertIn("--loop-mode auto", payload["commands"]["agent"])
             self.assertIn("--llm-provider deepseek", payload["commands"]["agent"])
             self.assertIn("--llm-api-key-env DEEPSEEK_API_KEY", payload["commands"]["agent"])
+            self.assertIn("--search-intensity algorithm_first", payload["commands"]["agent"])
+            self.assertIn("--max-pending-implemented 6", payload["commands"]["agent"])
+            self.assertIn("--max-implement-per-round 2", payload["commands"]["agent"])
+            self.assertIn("--seed-validation-min-metric 0.274", payload["commands"]["agent"])
+            self.assertNotIn("--allow-llm-fallback", payload["commands"]["agent"])
+
+    def test_llm_dry_run_can_opt_into_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                exit_code = pilot.main(
+                    [
+                        "--dry-run",
+                        "--pilot-root",
+                        tmp,
+                        "--stamp",
+                        "unit-llm-fallback",
+                        "--proposal-source",
+                        "llm",
+                        "--allow-llm-fallback",
+                    ]
+                )
+            payload = json.loads(buffer.getvalue())
+            self.assertEqual(exit_code, 0)
             self.assertIn("--allow-llm-fallback", payload["commands"]["agent"])
 
     def test_llm_dry_run_can_select_openai_provider(self) -> None:
@@ -137,6 +166,50 @@ class ReflectionPilotTests(unittest.TestCase):
             self.assertEqual(payload["llm_api_key_env"], "OPENAI_API_KEY")
             self.assertIn("--llm-provider openai", payload["commands"]["agent"])
             self.assertIn("--llm-api-key-env OPENAI_API_KEY", payload["commands"]["agent"])
+
+    def test_continuation_dry_run_passes_start_round(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                exit_code = pilot.main(
+                    [
+                        "--dry-run",
+                        "--pilot-root",
+                        tmp,
+                        "--stamp",
+                        "unit-continue",
+                        "--proposal-source",
+                        "heuristic",
+                        "--start-round",
+                        "51",
+                        "--rounds",
+                        "200",
+                    ]
+                )
+            payload = json.loads(buffer.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["start_round"], 51)
+            self.assertIn("--start-round 51", payload["commands"]["agent"])
+            self.assertIn("--rounds 200", payload["commands"]["agent"])
+            self.assertFalse((Path(tmp) / "unit-continue").exists())
+
+    def test_seed_runtime_artifacts_copies_known_files_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seed = root / "seed"
+            seed.mkdir()
+            (seed / "agent_memory.jsonl").write_text('{"event":"x"}\n', encoding="utf-8")
+            (seed / "results.csv").write_text("candidate_id,ndcg@10\ncand,0.1\n", encoding="utf-8")
+            (seed / "ignore.tmp").write_text("ignore", encoding="utf-8")
+            paths = pilot.build_paths(root, "target")
+            pilot.ensure_runtime_dirs(paths)
+
+            copied = pilot.seed_runtime_artifacts(paths, seed)
+
+            self.assertEqual(copied, ["agent_memory.jsonl", "results.csv"])
+            self.assertTrue(paths.memory.exists())
+            self.assertTrue(paths.results_csv.exists())
+            self.assertFalse((paths.run_dir / "ignore.tmp").exists())
 
 
 if __name__ == "__main__":

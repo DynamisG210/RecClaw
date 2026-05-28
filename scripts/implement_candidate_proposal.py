@@ -8,6 +8,7 @@ import importlib
 import json
 import os
 import re
+import socket
 import ssl
 import subprocess
 import sys
@@ -126,6 +127,7 @@ IMPLEMENTATION_RESPONSE_SCHEMA: dict[str, Any] = {
 }
 
 SELF_REG_LOSS_PATTERN = re.compile(r"\bself\.reg_loss\s*\(")
+FLOAT_CONFIG_INDEX_PATTERN = re.compile(r"\bfloat\s*\(\s*config\s*\[")
 SOFT_L2_POSITIONAL_MAX_NORM_PATTERN = re.compile(
     r"soft_l2_norm_penalty\s*\([^)\n]+,\s*(?:self\.)?(?:max_norm|lambda_norm)\b"
 )
@@ -203,7 +205,7 @@ def chat_completion(
         except urlerror.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"LLM API HTTP {exc.code}: {body}") from exc
-        except (urlerror.URLError, TimeoutError, ssl.SSLError) as exc:
+        except (urlerror.URLError, TimeoutError, socket.timeout, ssl.SSLError, OSError) as exc:
             if attempt >= max_attempts:
                 raise RuntimeError(f"LLM API request failed after {attempt} attempts: {exc}") from exc
             time.sleep(min(2.0 * attempt, 5.0))
@@ -262,6 +264,92 @@ class PreparedImplementation:
 
 
 TEMPLATE_IMPLEMENTATIONS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "bpr_hard_negative_margin_tail_reweight",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_hard_negative_margin"},
+        "required_consumes": {"hard_negative_ratio", "margin", "tail_weight_alpha"},
+        "model": "BPRHardNegativeMarginTailReweight",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRHardNegativeMarginTailReweight",
+        "defaults": {"hard_negative_ratio": 0.5, "margin": 0.2, "tail_weight_alpha": 0.2},
+        "category": "Objective & Optimization",
+        "priority": "high",
+        "rs_problem": "hard negatives need pairwise separation without losing long-tail signal",
+        "minimal_change": "reuse the existing hard-negative sampler and add margin plus positive-item tail weighting",
+    },
+    {
+        "name": "bpr_rank_aware_hard_negative_margin",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_hard_negative_margin"},
+        "required_consumes": {"hard_negative_ratio", "margin", "rank_weight_alpha"},
+        "model": "BPRRankAwareHardNegativeMargin",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRRankAwareHardNegativeMargin",
+        "defaults": {"hard_negative_ratio": 0.5, "margin": 0.2, "rank_weight_alpha": 0.1},
+        "category": "Objective & Optimization",
+        "priority": "high",
+        "rs_problem": "pairwise training is not directly weighted toward hard top-k mistakes",
+        "minimal_change": "reuse hard-negative margin training and add a rank-aware pair weighting term",
+    },
+    {
+        "name": "lightgcn_residual_norm_rank_alignment",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_residual_norm_constrained"},
+        "required_consumes": {
+            "embedding_size",
+            "n_layers",
+            "residual_weight",
+            "lambda_norm",
+            "max_norm",
+            "lambda_align",
+            "rank_weight_alpha",
+        },
+        "model": "LightGCNResidualNormRankAlignment",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormRankAlignment",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+            "lambda_align": 1e-4,
+            "rank_weight_alpha": 0.1,
+        },
+        "category": "Objective & Optimization",
+        "priority": "high",
+        "rs_problem": "strong residual-norm propagation still optimizes a plain pairwise objective",
+        "minimal_change": "reuse residual-norm propagation and add small rank-aware plus layer-alignment objectives",
+    },
+    {
+        "name": "lightgcn_edge_dropout_residual_norm_gated",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_edge_dropout_residual_norm"},
+        "required_consumes": {
+            "embedding_size",
+            "n_layers",
+            "residual_weight",
+            "edge_dropout",
+            "lambda_norm",
+            "max_norm",
+            "residual_gate_scale",
+            "gate_dropout",
+        },
+        "model": "LightGCNEdgeDropoutResidualNormGated",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNormGated",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "edge_dropout": 0.1,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+            "residual_gate_scale": 0.5,
+            "gate_dropout": 0.0,
+        },
+        "category": "Representation & Interaction",
+        "priority": "high",
+        "rs_problem": "fixed residual mixing may over- or under-use ego embeddings under edge dropout",
+        "minimal_change": "reuse edge-dropout residual-norm propagation and add a lightweight residual gate",
+    },
     {
         "name": "bpr_hard_negative_margin",
         "base_model": "BPR",
@@ -440,6 +528,11 @@ def validate_static_model_code(path: str, content: str) -> None:
             f"generated model uses config.get in {path}; RecBole Config does not support it. "
             "Use recclaw_ext.models._utils.config_get/config_float or config[key] with a fallback."
         )
+    if FLOAT_CONFIG_INDEX_PATTERN.search(content):
+        raise ValueError(
+            f"generated model casts config[...] directly in {path}; missing RecBole keys return None. "
+            "Use recclaw_ext.models._utils.config_float(config, key, default) for numeric knobs."
+        )
     if (
         SELF_REG_LOSS_PATTERN.search(content)
         and "def reg_loss" not in content
@@ -471,13 +564,17 @@ def enforce_proposal_parameter_defaults(candidate_config: dict[str, Any], propos
 def validate_candidate_config_matches_proposal(candidate_config: dict[str, Any], proposal: dict[str, Any]) -> None:
     overrides = proposal.get("parameter_overrides") or {}
     if not isinstance(overrides, dict):
-        return
+        overrides = {}
     mismatches: list[str] = []
     for key, value in overrides.items():
         if key not in IMPLEMENTATION_PARAMETER_KEYS or value is None:
             continue
         if candidate_config.get(key) != value:
             mismatches.append(f"{key} expected {value!r}, got {candidate_config.get(key)!r}")
+    for key in proposal.get("consumes") or []:
+        key_text = str(key)
+        if key_text in IMPLEMENTATION_PARAMETER_KEYS and candidate_config.get(key_text) is None:
+            mismatches.append(f"{key_text} consumed by proposal but missing non-null candidate_config default")
     if mismatches:
         raise ValueError("candidate_config must preserve proposal parameter_overrides: " + "; ".join(mismatches))
 
@@ -634,12 +731,36 @@ def run_dry_run(candidate_id: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def default_smoke_results_csv() -> Path:
+    explicit = os.environ.get("RECCLAW_SMOKE_RESULTS_CSV", "")
+    if explicit:
+        return Path(explicit)
+    runtime_results = os.environ.get("RECCLAW_RESULTS_CSV", "")
+    if runtime_results:
+        path = Path(runtime_results)
+        return path.with_name(f"{path.stem}.smoke{path.suffix or '.csv'}")
+    return PROJECT_ROOT / "results" / "smoke_results.csv"
+
+
 def run_training_smoke(candidate_id: str, smoke_sets: list[str]) -> subprocess.CompletedProcess[str]:
+    smoke_results_csv = default_smoke_results_csv()
+    smoke_root = smoke_results_csv.parent
+    smoke_result_dir = Path(os.environ.get("RECCLAW_SMOKE_RESULT_DIR", "") or smoke_root / "candidates")
+    smoke_override_dir = Path(os.environ.get("RECCLAW_SMOKE_OVERRIDE_DIR", "") or smoke_root / "overrides")
+    smoke_results_csv.parent.mkdir(parents=True, exist_ok=True)
+    smoke_result_dir.mkdir(parents=True, exist_ok=True)
+    smoke_override_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
         str(PROJECT_ROOT / "scripts" / "run_candidate.py"),
         candidate_id,
         "--cleanup-checkpoints",
+        "--result-dir",
+        str(smoke_result_dir),
+        "--override-dir",
+        str(smoke_override_dir),
+        "--results-csv",
+        str(smoke_results_csv),
     ]
     for item in smoke_sets:
         cmd.extend(["--set", item])
@@ -746,6 +867,7 @@ def build_implementation_context(
             "Use entrypoints like recclaw_ext.models.my_model:MyModel, not recclaw_ext.models:MyModel.",
             "If experiment_directive.enabled is true, follow experiment_directive.text unless it conflicts with forbidden rules or the proposal specification.",
             "RecBole Config is not a dict; never call config.get(...).",
+            "For numeric knobs, use config_float(config, key, default) instead of float(config[key]).",
             "Prefer helpers from recclaw_ext.models._utils: config_get, config_float, margin_bpr_loss, soft_l2_norm_penalty.",
             "Do not call self.reg_loss unless the generated class defines reg_loss itself.",
             "Call soft_l2_norm_penalty with max_norm=... and weight=... keyword arguments; never pass scalar knobs positionally.",
@@ -858,6 +980,7 @@ def main() -> int:
                                     "rewrite_requirements": [
                                         "Return the full strict JSON object again.",
                                         "Do not call config.get(...).",
+                                        "Do not call float(config[key]); use config_float(config, key, default).",
                                         "Do not call self.reg_loss unless this generated class defines it.",
                                         "Do not pass scalar knobs positionally to soft_l2_norm_penalty.",
                                         "Preserve proposal.parameter_overrides in candidate_config.",

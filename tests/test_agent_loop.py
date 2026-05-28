@@ -6,6 +6,7 @@ import unittest
 import csv
 import importlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -26,6 +27,7 @@ class AgentLoopTests(unittest.TestCase):
         self.assertEqual(set(agent.LOOP_MODE_POLICIES), {"tuning", "mixed", "explore", "auto"})
         self.assertEqual(agent.LOOP_MODE_POLICIES["tuning"]["proposal_mode"], "conservative")
         self.assertTrue(agent.LOOP_MODE_POLICIES["explore"]["auto_implement"])
+        self.assertEqual(agent.LOOP_MODE_POLICIES["auto"]["proposal_mode"], "algorithm_first")
         self.assertTrue(agent.LOOP_MODE_POLICIES["auto"]["llm_plan"])
 
     def test_parameter_signature_ignores_seed_only_overrides(self) -> None:
@@ -111,8 +113,9 @@ class AgentLoopTests(unittest.TestCase):
         registry = agent.load_yaml(ROOT / "configs" / "candidate_registry.yaml")
         registry_ids = {str(item.get("candidate_id")) for item in registry.get("candidates", [])}
         priority_families = set(policy["search_stages"]["exploit"]["priority_families"])
+        priority_families.update(policy["search_stages"]["algorithm_discovery"]["priority_families"])
         self.assertEqual(policy["protocol_lock"]["primary_metric"], "ndcg@10")
-        self.assertEqual(policy["family_budget"]["max_code_required_per_window"], 1)
+        self.assertEqual(policy["family_budget"]["max_code_required_per_window"], 3)
         self.assertEqual(priority_families - registry_ids, set())
 
     def test_wired_local_model_entrypoints_are_concrete_modules(self) -> None:
@@ -215,9 +218,31 @@ class AgentLoopTests(unittest.TestCase):
         rec_agent.config.enable_candidate_proposals = False
         rec_agent.config.auto_implement_code_required = False
         rec_agent.reset_round_policy()
-        self.assertEqual(rec_agent.config.proposal_mode, "mixed")
+        self.assertEqual(rec_agent.config.proposal_mode, "algorithm_first")
         self.assertTrue(rec_agent.config.enable_candidate_proposals)
         self.assertTrue(rec_agent.config.auto_implement_code_required)
+
+    def test_algorithm_first_planner_fallback_prefers_algorithm_proposal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    loop_mode="auto",
+                    search_intensity="algorithm_first",
+                    allow_llm_fallback=True,
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    state_summary_path=Path(tmp) / "agent_state_summary.json",
+                )
+            )
+
+            def fail_chat(*_args: object, **_kwargs: object) -> str:
+                raise RuntimeError("api down")
+
+            rec_agent._chat_completion = fail_chat  # type: ignore[method-assign]
+            rec_agent.apply_auto_planner(round_id=1)
+            self.assertEqual(rec_agent.last_planner_action["action"], "propose_algorithm")
+            self.assertEqual(rec_agent.config.proposal_mode, "algorithm_first")
+            self.assertTrue(rec_agent.force_proposal_refresh)
+            self.assertTrue(rec_agent.config.auto_implement_code_required)
 
     def test_experiment_directive_resolves_file_and_disable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -403,6 +428,42 @@ class AgentLoopTests(unittest.TestCase):
         self.assertNotIn("cand_caution_frozen", next_policy["repair_families"])
         self.assertIn("cand_bad_default", next_policy["avoid_families"])
         self.assertIn("cand_caution_frozen", next_policy["avoid_families"])
+
+    def test_high_potential_anchor_goes_to_revisit_not_freeze(self) -> None:
+        search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
+        reflection_policy = experience.load_yaml(ROOT / "configs" / "reflection_policy.yaml")
+        rows = [
+            {
+                "candidate_id": "cand_lightgcn_residual_norm_constrained_trial_a",
+                "parent_candidate_id": "cand_lightgcn_residual_norm_constrained",
+                "base_model": "LightGCN",
+                "status": "success",
+                "decision": "discard",
+                "params": {"lambda_norm": 0.001, "max_norm": 1.0},
+                "result": {"ndcg@10": 0.265},
+            },
+            {
+                "candidate_id": "cand_lightgcn_residual_norm_constrained_trial_b",
+                "parent_candidate_id": "cand_lightgcn_residual_norm_constrained",
+                "base_model": "LightGCN",
+                "status": "success",
+                "decision": "discard",
+                "params": {"lambda_norm": 0.0005, "max_norm": 0.5},
+                "result": {"ndcg@10": 0.266},
+            },
+        ]
+        summary = experience.summarize_memory(
+            rows,
+            action_space={},
+            policy=reflection_policy,
+            search_policy=search_policy,
+        )
+        family = summary["family_summaries"][0]
+        self.assertEqual(family["policy_bucket"], "revisit")
+        policy = experience.build_experience_policy(summary, search_policy=search_policy, tree_summary={})
+        self.assertIn("cand_lightgcn_residual_norm_constrained", policy["revisit_families"])
+        self.assertNotIn("cand_lightgcn_residual_norm_constrained", policy["avoid_families"])
+        self.assertNotIn("cand_lightgcn_residual_norm_constrained", policy["freeze_families"])
 
     def test_experience_builder_outputs_domain_and_trend_notes(self) -> None:
         search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
@@ -776,6 +837,26 @@ class AgentLoopTests(unittest.TestCase):
                 "        return soft_l2_norm_penalty(emb, self.max_norm)\n",
             )
 
+    def test_auto_implementation_rejects_direct_float_config_index(self) -> None:
+        with self.assertRaisesRegex(ValueError, "config_float"):
+            implement.validate_static_model_code(
+                "recclaw_ext/models/generated_bad_config.py",
+                "class X:\n"
+                "    def __init__(self, config):\n"
+                "        self.lambda_align = float(config['lambda_align'])\n",
+            )
+
+    def test_candidate_config_requires_consumed_defaults(self) -> None:
+        with self.assertRaisesRegex(ValueError, "lambda_align"):
+            implement.validate_candidate_config_matches_proposal(
+                {"candidate_id": "cand_x", "model": "X"},
+                {
+                    "candidate_id": "cand_x",
+                    "consumes": ["lambda_align"],
+                    "parameter_overrides": {},
+                },
+            )
+
     def test_auto_planner_gates_seed_verify_without_pending_keep(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             rec_agent = agent.RecClawAgent(
@@ -789,6 +870,126 @@ class AgentLoopTests(unittest.TestCase):
             )
         self.assertEqual(parsed["action"], "propose_mixed")
         self.assertEqual(reason, "no_unverified_keep_for_seed_verify")
+
+    def test_seed_verify_pending_rows_skip_separate_validation_events(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        rec_agent.memory = [
+            {
+                "round_id": 1,
+                "candidate_id": "cand_verified",
+                "parent_candidate_id": "parent_a",
+                "params": {"x": 1},
+                "status": "success",
+                "decision": "keep",
+                "result": {"ndcg@10": 0.28},
+                "parameter_signature": 'parent_a::{"x":1}',
+            },
+            {
+                "event": "seed_validation",
+                "round_id": 2,
+                "candidate_id": "cand_verified",
+                "parent_candidate_id": "parent_a",
+                "seed_validation": {"status": "passed", "mean": 0.281},
+            },
+            {
+                "round_id": 3,
+                "candidate_id": "cand_pending",
+                "parent_candidate_id": "parent_a",
+                "params": {"x": 2},
+                "status": "success",
+                "decision": "keep",
+                "result": {"ndcg@10": 0.282},
+                "parameter_signature": 'parent_a::{"x":2}',
+            },
+        ]
+
+        pending = rec_agent._unverified_keep_rows()
+
+        self.assertEqual([row["candidate_id"] for row in pending], ["cand_pending"])
+
+    def test_best_validated_keep_uses_separate_validation_events(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        rec_agent.memory = [
+            {
+                "round_id": 1,
+                "candidate_id": "cand_verified",
+                "parent_candidate_id": "parent_a",
+                "params": {"x": 1},
+                "status": "success",
+                "decision": "keep",
+                "result": {"ndcg@10": 0.28},
+                "parameter_signature": 'parent_a::{"x":1}',
+            },
+            {
+                "event": "seed_validation",
+                "round_id": 2,
+                "candidate_id": "cand_verified",
+                "parent_candidate_id": "parent_a",
+                "parameter_signature": 'parent_a::{"x":1}',
+                "seed_validation": {"status": "passed", "mean": 0.281},
+            },
+        ]
+
+        best = rec_agent._best_validated_keep()
+
+        self.assertEqual(best["candidate_id"], "cand_verified")
+        self.assertEqual(best["seed_validation"]["mean"], 0.281)
+
+    def test_failed_seed_validation_clears_pending_keep_gate(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        rec_agent.memory = [
+            {
+                "round_id": 1,
+                "candidate_id": "cand_failed",
+                "parent_candidate_id": "parent_a",
+                "params": {"x": 1},
+                "status": "success",
+                "decision": "keep",
+                "result": {"ndcg@10": 0.28},
+                "parameter_signature": 'parent_a::{"x":1}',
+            },
+            {
+                "event": "seed_validation",
+                "round_id": 2,
+                "candidate_id": "cand_failed",
+                "parent_candidate_id": "parent_a",
+                "parameter_signature": 'parent_a::{"x":1}',
+                "seed_validation": {"status": "failed", "mean": 0.25},
+            },
+        ]
+
+        self.assertEqual(rec_agent._unverified_keep_rows(), [])
+        self.assertEqual(rec_agent._best_validated_keep(), {})
+
+    def test_run_continuation_respects_start_round(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                start_round=3,
+                rounds=4,
+                dry_run=True,
+                enable_candidate_proposals=False,
+            )
+        )
+        seen_rounds: list[int] = []
+        refreshes: list[tuple[int, str]] = []
+        rec_agent.observe = lambda: None  # type: ignore[method-assign]
+        rec_agent.remember_experiment_directive = lambda: None  # type: ignore[method-assign]
+        rec_agent.reset_round_policy = lambda: None  # type: ignore[method-assign]
+        rec_agent._refresh_experience_artifacts = (  # type: ignore[method-assign]
+            lambda round_id, reason: refreshes.append((round_id, reason)) or True
+        )
+
+        def fake_apply(round_id: int) -> None:
+            seen_rounds.append(round_id)
+            rec_agent.skip_current_round = False
+
+        rec_agent.apply_auto_planner = fake_apply  # type: ignore[method-assign]
+        rec_agent.plan = lambda: ({"candidate_id": f"cand_{len(seen_rounds)}"}, {}, {})  # type: ignore[method-assign]
+
+        rec_agent.run()
+
+        self.assertEqual(seen_rounds, [3, 4])
+        self.assertEqual(refreshes, [])
 
     def test_state_summary_tracks_validated_best_and_duplicates(self) -> None:
         rec_agent = agent.RecClawAgent(agent.AgentConfig())
@@ -864,6 +1065,118 @@ class AgentLoopTests(unittest.TestCase):
         self.assertTrue(summary["metric_stagnation"])
         self.assertEqual(summary["valid_score_unique_count"], 1)
         self.assertEqual(summary["run_id"], "r1")
+
+    def test_auto_implementation_stops_after_repeated_smoke_failures(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig(max_failed_implementation_attempts=2))
+        rec_agent.memory = [
+            {
+                "event": "implementation_result",
+                "proposal_id": "cand_bad",
+                "candidate_id": "cand_bad",
+                "status": "implemented_but_smoke_failed",
+            },
+            {
+                "event": "implementation_result",
+                "proposal_id": "cand_bad",
+                "candidate_id": "cand_bad",
+                "status": "implemented_but_smoke_failed",
+            },
+        ]
+        rec_agent.proposal_validation_report = {
+            "results": [
+                {
+                    "candidate_id": "cand_bad",
+                    "status": "needs_review",
+                    "runnable_level": "code_required",
+                }
+            ]
+        }
+        rec_agent.candidate_proposals = [{"candidate_id": "cand_bad"}]
+        rec_agent._run_json_command = lambda *args, **kwargs: self.fail("implementation should be skipped")  # type: ignore[method-assign]
+
+        rec_agent.implement_needs_review_proposals(round_id=3)
+
+        self.assertEqual(rec_agent.memory[-1]["event"], "implementation_skipped")
+        self.assertEqual(rec_agent.memory[-1]["reason"], "prior_failed_implementation_attempts")
+
+    def test_algorithm_first_keep_requires_promotion_floor(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(search_intensity="algorithm_first", seed_validation_min_metric=0.274)
+        )
+
+        decision, reason, _ = rec_agent.reflect(
+            {"candidate_id": "cand_bpr_margin_loss", "consumes": ["margin"]},
+            {"margin": 0.2},
+            {"exit_code": 0},
+            {"status": "success", "ndcg@10": 0.259},
+            {"delta": 0.03},
+            {"delta": 0.001},
+        )
+
+        self.assertEqual(decision, "revise")
+        self.assertIn("promotion floor", reason)
+
+    def test_proposal_route_records_algorithm_metadata(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        rec_agent.current_proposal_source = "llm"
+        rec_agent.candidate_proposals = [
+            {
+                "candidate_id": "cand_alg",
+                "parent_candidate_id": "cand_parent",
+                "action_type": "auxiliary_loss",
+                "proposal_type": "algorithmic_variant",
+                "runnable_level": "code_required",
+                "mechanism_composition": ["alignment", "rank-aware"],
+                "novelty_claim": "minimal mechanism ablation",
+                "expected_failure_mode": "loss scale instability",
+                "ablation_parent": "cand_parent",
+                "implementation_complexity": "low",
+            }
+        ]
+        rec_agent.proposal_validation_report = {
+            "results": [
+                {
+                    "candidate_id": "cand_alg",
+                    "status": "needs_review",
+                    "parameter_signature": "",
+                    "errors": [],
+                    "review_reasons": [],
+                    "next_action": "promote_to_implementation_queue",
+                }
+            ]
+        }
+
+        rec_agent.record_proposal_routes(round_id=7)
+
+        event = rec_agent.memory[-1]
+        self.assertEqual(event["mechanism"], "alignment+rank-aware")
+        self.assertEqual(event["proposal_type"], "algorithmic_variant")
+        self.assertEqual(event["runnable_level"], "code_required")
+
+    def test_smoke_results_csv_is_isolated_from_runtime_results(self) -> None:
+        old_results = os.environ.get("RECCLAW_RESULTS_CSV")
+        old_smoke = os.environ.get("RECCLAW_SMOKE_RESULTS_CSV")
+        try:
+            os.environ.pop("RECCLAW_SMOKE_RESULTS_CSV", None)
+            os.environ["RECCLAW_RESULTS_CSV"] = "/tmp/recclaw_runtime/results.csv"
+            self.assertEqual(
+                implement.default_smoke_results_csv(),
+                Path("/tmp/recclaw_runtime/results.smoke.csv"),
+            )
+            os.environ["RECCLAW_SMOKE_RESULTS_CSV"] = "/tmp/recclaw_smoke/custom.csv"
+            self.assertEqual(
+                implement.default_smoke_results_csv(),
+                Path("/tmp/recclaw_smoke/custom.csv"),
+            )
+        finally:
+            if old_results is None:
+                os.environ.pop("RECCLAW_RESULTS_CSV", None)
+            else:
+                os.environ["RECCLAW_RESULTS_CSV"] = old_results
+            if old_smoke is None:
+                os.environ.pop("RECCLAW_SMOKE_RESULTS_CSV", None)
+            else:
+                os.environ["RECCLAW_SMOKE_RESULTS_CSV"] = old_smoke
 
     def test_auto_implementation_rejects_external_entrypoint(self) -> None:
         with self.assertRaisesRegex(ValueError, "must stay inside recclaw_ext"):
@@ -947,6 +1260,63 @@ class AgentLoopTests(unittest.TestCase):
             rec_agent._run_json_command = fail_command  # type: ignore[method-assign]
             rec_agent.implement_needs_review_proposals(round_id=1)
             self.assertEqual(rec_agent.memory[-1]["event"], "implementation_skipped")
+
+    def test_v4_algorithm_templates_map_to_runnable_local_entrypoints(self) -> None:
+        proposals = [
+            {
+                "candidate_id": "cand_bpr_tail_test",
+                "parent_candidate_id": "cand_bpr_hard_negative_margin",
+                "base_model": "BPR",
+                "consumes": ["hard_negative_ratio", "margin", "tail_weight_alpha"],
+            },
+            {
+                "candidate_id": "cand_bpr_rank_test",
+                "parent_candidate_id": "cand_bpr_hard_negative_margin",
+                "base_model": "BPR",
+                "consumes": ["hard_negative_ratio", "margin", "rank_weight_alpha"],
+            },
+            {
+                "candidate_id": "cand_lgcn_rank_align_test",
+                "parent_candidate_id": "cand_lightgcn_residual_norm_constrained",
+                "base_model": "LightGCN",
+                "consumes": [
+                    "embedding_size",
+                    "n_layers",
+                    "residual_weight",
+                    "lambda_norm",
+                    "max_norm",
+                    "lambda_align",
+                    "rank_weight_alpha",
+                ],
+            },
+            {
+                "candidate_id": "cand_lgcn_gate_test",
+                "parent_candidate_id": "cand_lightgcn_edge_dropout_residual_norm",
+                "base_model": "LightGCN",
+                "consumes": [
+                    "embedding_size",
+                    "n_layers",
+                    "residual_weight",
+                    "edge_dropout",
+                    "lambda_norm",
+                    "max_norm",
+                    "residual_gate_scale",
+                    "gate_dropout",
+                ],
+            },
+        ]
+        prepared = [implement.template_implementation_for_proposal(item) for item in proposals]
+        self.assertTrue(all(item is not None for item in prepared))
+        for item in prepared:
+            assert item is not None
+            module_name, attr = item.entrypoint.split(":", 1)
+            try:
+                module = importlib.import_module(module_name)
+            except ModuleNotFoundError as exc:
+                if exc.name in {"recbole", "torch"}:
+                    self.skipTest("RecBole is not installed in this local test environment")
+                raise
+            self.assertTrue(hasattr(module, attr), item.entrypoint)
 
     def test_terminal_implementation_skip_clears_pending_review_gate(self) -> None:
         rec_agent = agent.RecClawAgent(agent.AgentConfig())

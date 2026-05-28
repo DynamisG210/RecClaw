@@ -1,12 +1,13 @@
-version: 2
+version: 3
 description: >
   Policy for building short runtime experience summaries from current
   results/ memory. This file is agent-runtime configuration, not LabLog
   evidence.
 
-  v2 adds conservative recommender-system domain priors and trend notes. NDCG@10
-  remains the primary metric; secondary metrics can provide caution/tie-break
-  context but must not override clear NDCG regression.
+  v3 keeps NDCG@10 as the primary metric while separating genuinely dead
+  families from underperforming but historically or structurally promising
+  algorithm families. Reflection should steer algorithm discovery, not collapse
+  the loop into repeated parameter tuning.
 
 metric: ndcg@10
 minimum_successful_runs: 3
@@ -25,6 +26,32 @@ decision_guards:
   primary_metric_hard_guard: true
   secondary_metrics_tie_break_only: true
   do_not_encourage_below_baseline: true
+  protect_high_potential_from_discard_freeze: true
+
+algorithm_first:
+  tuned_lightgcn_mean: 0.274367
+  historical_anchor_floor: 0.274
+  old_first50_best: 0.2765
+  high_potential_policy_bucket: revisit
+  revisit_not_avoid: true
+  anchor_families:
+    cand_bpr_hard_negative_margin:
+      historical_best: 0.2769
+      mechanism: hard_negative + margin pairwise loss
+    cand_lightgcn_shallow_layers:
+      historical_best: 0.275
+      mechanism: shallow graph propagation
+    cand_lightgcn_residual_norm_constrained:
+      historical_best: 0.2856
+      mechanism: residual propagation + norm control
+    cand_lightgcn_edge_dropout_residual_norm:
+      historical_best: 0.273
+      mechanism: edge dropout + residual propagation + norm control
+  algorithm_tasks:
+    - compose hard-negative sampling, pairwise margin, and tail/popularity reweighting in BPR.
+    - revisit shallow LightGCN and residual-norm LightGCN with mechanism ablations rather than broad tuning.
+    - combine LightGCN propagation changes with one objective-side signal such as alignment or rank-aware weighting.
+    - quarantine weak implementations quickly and return budget to anchor families.
 
 domain_priors:
   LightGCN:
@@ -62,6 +89,7 @@ output_contract:
   required_sections:
     - Encourage
     - Caution
+    - Revisit
     - Avoid
     - Domain Prior Notes
     - Trend Notes
