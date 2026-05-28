@@ -14,6 +14,7 @@ import os
 import random
 import re
 import shutil
+import socket
 import ssl
 import statistics
 import subprocess
@@ -29,9 +30,19 @@ from urllib import request as urlrequest
 import yaml
 
 try:
+    from .action_space import (
+        allowed_action_types,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from .collect_result import load_result_source
     from .compare_runs import compare_results
 except ImportError:
+    from action_space import (
+        allowed_action_types,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from collect_result import load_result_source
     from compare_runs import compare_results
 
@@ -44,10 +55,22 @@ STATE_SUMMARY_PATH = PROJECT_ROOT / "results" / "agent_state_summary.json"
 NOTES_DIR = PROJECT_ROOT / "notes"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 PROPOSAL_SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
+ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
+CANDIDATE_TREE_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.json"
+CANDIDATE_TREE_MD_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.md"
+CANDIDATE_TREE_MMD_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.mmd"
+EXPERIENCE_SUMMARY_PATH = PROJECT_ROOT / "results" / "experience_summary.md"
+EXPERIENCE_SUMMARY_JSON_PATH = PROJECT_ROOT / "results" / "experience_summary.json"
+REFLECTION_MEMORY_PATH = PROJECT_ROOT / "results" / "reflection_memory.jsonl"
 AUTO_PROMOTABLE_PARENT_IDS = {
     "cand_bpr_long_tail_reweight",
     "cand_bpr_popularity_regularized",
     "cand_bpr_norm_constrained",
+    "cand_bpr_hard_negative_mix",
+    "cand_bpr_popularity_aware_negative",
+    "cand_lightgcn_edge_dropout_residual_mix",
+    "cand_lightgcn_aux_alignment_loss",
+    "cand_lightgcn_rank_aware_loss",
 }
 
 REQUIRED_MULTI_METRICS = (
@@ -82,10 +105,16 @@ TERMINAL_IMPLEMENTATION_SKIP_REASONS = {
     "dry_run",
 }
 DEFAULT_VALIDATION_SEEDS = [2026, 2027, 2028]
+MAX_EXPERIMENT_DIRECTIVE_CHARS = 4000
 IMPLEMENTATION_RUNNABLE_STATUSES = {
     "implemented_and_runnable",
     "implemented_and_importable",
     "implemented_and_smoke_passed",
+}
+IMPLEMENTATION_TERMINAL_FAILURE_STATUSES = {
+    "implementation_failed",
+    "implementation_rejected",
+    "implemented_but_smoke_failed",
 }
 LOOP_MODE_POLICIES = {
     "tuning": {
@@ -107,7 +136,7 @@ LOOP_MODE_POLICIES = {
         "llm_plan": False,
     },
     "auto": {
-        "proposal_mode": "mixed",
+        "proposal_mode": "algorithm_first",
         "auto_promote": True,
         "auto_implement": True,
         "llm_plan": True,
@@ -115,34 +144,21 @@ LOOP_MODE_POLICIES = {
 }
 AUTO_PLANNER_ACTIONS = {
     "run_available",
+    "run_algorithm_variant",
     "propose_tuning",
     "propose_mixed",
     "propose_explore",
+    "propose_algorithm",
     "implement_needs_review",
+    "implement_algorithm",
+    "tune_after_algorithm_success",
     "multi_seed_verify",
     "report",
 }
-PROPOSAL_PARAMETER_KEYS = (
-    "embedding_size",
-    "learning_rate",
-    "n_layers",
-    "reg_weight",
-    "margin",
-    "residual_weight",
-    "tail_weight_alpha",
-    "lambda_pop",
-    "lambda_norm",
-    "max_norm",
-    "hard_negative_ratio",
-    "popularity_alpha",
-    "debias_alpha",
-    "lambda_align",
-    "rank_weight_alpha",
-    "lambda_coverage",
-    "edge_dropout",
-    "cl_temperature",
-    "pareto_temperature",
-)
+ACTION_SPACE = load_action_space(ACTION_SPACE_PATH)
+DEFAULT_PARAMETER_SPACE = parameter_space_from_action_space(ACTION_SPACE)
+PROPOSAL_PARAMETER_KEYS = tuple(DEFAULT_PARAMETER_SPACE)
+PROPOSAL_ACTION_TYPES = tuple(sorted(allowed_action_types(ACTION_SPACE)))
 
 
 def normalize_signature_value(value: Any) -> Any:
@@ -178,6 +194,13 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                     "parent_candidate_id": {"type": "string"},
                     "base_model": {"type": "string", "enum": ["BPR", "LightGCN"]},
                     "category": {"type": "string"},
+                    "action_type": {"type": "string", "enum": list(PROPOSAL_ACTION_TYPES)},
+                    "mechanism": {"type": "string"},
+                    "mechanism_composition": {"type": "array", "items": {"type": "string"}},
+                    "novelty_claim": {"type": "string"},
+                    "expected_failure_mode": {"type": "string"},
+                    "ablation_parent": {"type": "string"},
+                    "implementation_complexity": {"type": "string", "enum": ["low", "medium", "high"]},
                     "hypothesis": {"type": "string"},
                     "runnable_level": {
                         "type": "string",
@@ -245,6 +268,13 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                     "parent_candidate_id",
                     "base_model",
                     "category",
+                    "action_type",
+                    "mechanism",
+                    "mechanism_composition",
+                    "novelty_claim",
+                    "expected_failure_mode",
+                    "ablation_parent",
+                    "implementation_complexity",
                     "hypothesis",
                     "runnable_level",
                     "runner_type",
@@ -281,6 +311,7 @@ PLANNER_RESPONSE_SCHEMA: dict[str, Any] = {
 @dataclass
 class AgentConfig:
     rounds: int = 5
+    start_round: int = 1
     metric: str = "ndcg@10"
     multi_metrics: bool = False
     min_keep_delta: float = 1e-5
@@ -294,11 +325,21 @@ class AgentConfig:
     dry_run: bool = False
     memory_read_limit: int = 2000
     prompt_memory_tail: int = 120
+    use_experiment_directive: bool = False
+    experiment_directive: str = ""
+    static_experiment_directive: str = ""
     memory_path: Path = MEMORY_PATH
     state_summary_path: Path = STATE_SUMMARY_PATH
     results_csv: Path = RESULTS_CSV
     baseline_dir: Path = BASELINE_DIR
     registry_path: Path = REGISTRY_PATH
+    candidate_tree_path: Path = CANDIDATE_TREE_PATH
+    candidate_tree_md_path: Path = CANDIDATE_TREE_MD_PATH
+    candidate_tree_mmd_path: Path = CANDIDATE_TREE_MMD_PATH
+    experience_summary_path: Path = EXPERIENCE_SUMMARY_PATH
+    experience_summary_json_path: Path = EXPERIENCE_SUMMARY_JSON_PATH
+    reflection_memory_path: Path = REFLECTION_MEMORY_PATH
+    refresh_experience_every: int = 0
     loop_mode: str = "mixed"
     enable_candidate_proposals: bool = True
     proposal_path: Path = PROPOSAL_PATH
@@ -313,6 +354,20 @@ class AgentConfig:
     max_pending_implemented: int = 3
     max_implement_per_round: int = 1
     implementation_smoke_run: bool = True
+    max_failed_implementation_attempts: int = 2
+    search_intensity: str = "balanced"
+    algorithm_budget_per_window: int = 3
+    algorithm_first_explore_rounds: int = 20
+    seed_validation_min_metric: float = 0.0
+    anchor_families: list[str] = field(
+        default_factory=lambda: [
+            "cand_bpr_hard_negative_margin",
+            "cand_lightgcn_shallow_layers",
+            "cand_lightgcn_residual_norm_constrained",
+            "cand_lightgcn_edge_dropout_residual_norm",
+        ]
+    )
+    tuned_lightgcn_mean: float = 0.274367
     exploitation_window_rounds: int = 8
     global_overrides: list[str] = field(default_factory=list)
     checkpoint_dir: str = ""
@@ -340,29 +395,7 @@ class AgentConfig:
         }
     )
     metric_directions: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_METRIC_DIRECTIONS))
-    parameter_space: dict[str, list[Any]] = field(
-        default_factory=lambda: {
-            "embedding_size": [32, 64, 128],
-            "learning_rate": [0.0001, 0.001, 0.005],
-            "n_layers": [1, 2, 3],
-            "reg_weight": [1e-6, 1e-5, 1e-4],
-            "margin": [0.1, 0.2, 0.5],
-            "residual_weight": [0.05, 0.1, 0.2, 0.3],
-            "tail_weight_alpha": [0.2, 0.5, 1.0],
-            "lambda_pop": [1e-4, 1e-3, 1e-2],
-            "lambda_norm": [1e-5, 1e-4, 1e-3],
-            "max_norm": [0.5, 1.0, 2.0],
-            "hard_negative_ratio": [0.25, 0.5, 0.75],
-            "popularity_alpha": [0.2, 0.5, 1.0],
-            "debias_alpha": [0.1, 0.2, 0.5],
-            "lambda_align": [1e-4, 1e-3, 1e-2],
-            "rank_weight_alpha": [0.1, 0.2, 0.5],
-            "lambda_coverage": [1e-4, 1e-3, 1e-2],
-            "edge_dropout": [0.05, 0.1, 0.2],
-            "cl_temperature": [0.1, 0.2, 0.5],
-            "pareto_temperature": [0.2, 0.5, 1.0],
-        }
-    )
+    parameter_space: dict[str, list[Any]] = field(default_factory=lambda: dict(DEFAULT_PARAMETER_SPACE))
 
 
 @dataclass
@@ -412,6 +445,37 @@ def normalize_weights(weights_json: str) -> dict[str, float]:
     return {k: v / total for k, v in normalized.items()}
 
 
+def resolve_experiment_directive(
+    directive: str = "",
+    directive_file: str | Path = "",
+    *,
+    disabled: bool = False,
+) -> str:
+    if disabled:
+        return ""
+    parts: list[str] = []
+    if directive_file:
+        path = Path(directive_file)
+        if not path.exists():
+            raise FileNotFoundError(f"experiment directive file does not exist: {path}")
+        file_text = path.read_text(encoding="utf-8", errors="replace").strip()
+        if file_text:
+            parts.append(file_text)
+    directive_text = str(directive or "").strip()
+    if directive_text:
+        parts.append(directive_text)
+    text = "\n\n".join(parts).strip()
+    if len(text) <= MAX_EXPERIMENT_DIRECTIVE_CHARS:
+        return text
+    return text[:MAX_EXPERIMENT_DIRECTIVE_CHARS].rstrip() + "\n[truncated by RecClaw]"
+
+
+def reject_runtime_lablog_path(path: str | Path) -> None:
+    text = str(path).replace("\\", "/").lower()
+    if "recclaw_lablog" in text:
+        raise ValueError(f"agent runtime refuses LabLog path: {path}")
+
+
 class RecClawAgent:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
@@ -435,6 +499,8 @@ class RecClawAgent:
         self.current_proposal_source: str = config.proposal_source
         self.skip_current_round: bool = False
         self.skip_proposal_generation: bool = False
+        self.force_proposal_refresh: bool = False
+        self.last_experiment_directive_digest: str = ""
 
     # ===== Observe =====
     def observe(self) -> None:
@@ -897,6 +963,42 @@ class RecClawAgent:
             pending.add(candidate_id)
         return pending
 
+    def _implemented_algorithm_candidate_ids(self) -> set[str]:
+        return {
+            str(row.get("candidate_id") or "")
+            for row in self.memory
+            if row.get("event") == "implementation_result"
+            and str(row.get("status") or "") in IMPLEMENTATION_RUNNABLE_STATUSES
+            and row.get("candidate_id")
+        }
+
+    def _failed_implementation_attempts(self, proposal_id: str) -> list[dict[str, Any]]:
+        return [
+            row
+            for row in self.memory
+            if row.get("event") == "implementation_result"
+            and str(row.get("proposal_id") or "") == proposal_id
+            and str(row.get("status") or "") in IMPLEMENTATION_TERMINAL_FAILURE_STATUSES
+        ]
+
+    def _formal_trial_count(self) -> int:
+        return len(self._trial_memory_rows())
+
+    def _candidate_config_params(self, candidate: dict[str, Any]) -> dict[str, Any]:
+        candidate_id = str(candidate.get("candidate_id") or "")
+        if not candidate_id:
+            return {}
+        config_path = PROJECT_ROOT / "configs" / "candidates" / f"{candidate_id}.yaml"
+        config = load_yaml(config_path)
+        if not config:
+            return {}
+        consumes = {str(item) for item in (candidate.get("consumes") or [])}
+        params: dict[str, Any] = {}
+        for key in consumes:
+            if key in config and key in self.config.parameter_space:
+                params[key] = config[key]
+        return params
+
     def _candidate_plan_score(self, candidate: dict[str, Any]) -> float:
         cid = str(candidate.get("candidate_id") or "")
         runs = self.history_by_candidate.get(cid, [])
@@ -918,6 +1020,17 @@ class RecClawAgent:
             - self.config.crash_penalty * crashes
             - (self.config.recent_schedule_penalty if recently_scheduled else 0.0)
         )
+
+    def _algorithm_first_score_adjustment(self, candidate: dict[str, Any]) -> float:
+        if self.config.search_intensity != "algorithm_first" or not self._has_strong_algorithm_signal():
+            return 0.0
+        if str(candidate.get("candidate_id") or "") in self._pending_implemented_candidate_ids():
+            return 0.0
+        if candidate.get("parent_candidate_id"):
+            return 0.0
+        if self._normalize_model_key(candidate.get("base_model")) == "BPR":
+            return -1.0
+        return 0.0
 
     def _family_plan_credit(self, candidate_id: str) -> float:
         keeps = 0
@@ -958,12 +1071,37 @@ class RecClawAgent:
             ]
             if pending_options:
                 plan_options = pending_options
+        if (
+            self.config.search_intensity == "algorithm_first"
+            and self._formal_trial_count() < self.config.algorithm_first_explore_rounds
+        ):
+            implemented_algorithm_ids = self._implemented_algorithm_candidate_ids()
+            algorithm_options = [
+                (candidate, params)
+                for candidate, params in plan_options
+                if str(candidate.get("candidate_id") or "") in implemented_algorithm_ids
+                or str(candidate.get("proposal_type") or "") == "algorithmic_variant"
+                or str(candidate.get("runnable_level") or "") == "code_required"
+            ]
+            if algorithm_options:
+                plan_options = algorithm_options
+        if str(self.last_planner_action.get("action") or "") == "tune_after_algorithm_success":
+            validated_focus = self._best_validated_keep()
+            if validated_focus:
+                focused_options = [
+                    (candidate, params)
+                    for candidate, params in plan_options
+                    if self._candidate_matches_validated_focus(candidate, validated_focus)
+                ]
+                if focused_options:
+                    plan_options = focused_options
 
         scored_options = sorted(
             (
                 (
                     self._candidate_plan_score(candidate)
-                    + (1.0 if str(candidate.get("candidate_id") or "") in pending_ids else 0.0),
+                    + (1.0 if str(candidate.get("candidate_id") or "") in pending_ids else 0.0)
+                    + self._algorithm_first_score_adjustment(candidate),
                     candidate,
                     params_override,
                 )
@@ -976,10 +1114,15 @@ class RecClawAgent:
         fallback_choice: tuple[dict[str, Any], dict[str, Any]] | None = None
         chosen, params = scored_options[0][1], scored_options[0][2] or {}
         for _, candidate, params_override in scored_options:
+            config_params = self._candidate_config_params(candidate)
             candidate_params = (
                 params_override
                 if params_override is not None
-                else self._choose_execution_unique_params(candidate, used_execution_signatures)
+                else (
+                    config_params
+                    if str(candidate.get("candidate_id") or "") in pending_ids and config_params
+                    else self._choose_execution_unique_params(candidate, used_execution_signatures)
+                )
             )
             if fallback_choice is None:
                 fallback_choice = (candidate, candidate_params)
@@ -1004,6 +1147,11 @@ class RecClawAgent:
         candidate_id = str(candidate.get("candidate_id"))
         run_candidate_id = str(candidate.get("run_candidate_id") or candidate_id)
         cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "run_candidate.py"), run_candidate_id]
+        cmd.extend(["--registry-path", str(self.config.registry_path)])
+        cmd.extend(["--results-csv", str(self.config.results_csv)])
+        run_root = self.config.results_csv.parent
+        cmd.extend(["--result-dir", str(run_root / "candidates")])
+        cmd.extend(["--override-dir", str(run_root / "overrides")])
         if self.config.checkpoint_dir:
             cmd.extend(["--checkpoint-dir", self.config.checkpoint_dir])
         if self.config.checkpoint_policy != "none":
@@ -1151,16 +1299,90 @@ class RecClawAgent:
         return str(row.get("parent_candidate_id") or row.get("candidate_id") or "unknown")
 
     def _unverified_keep_rows(self) -> list[dict[str, Any]]:
+        completed_targets = self._seed_validation_completed_target_keys()
         return [
             row
             for row in self._trial_memory_rows()
-            if row.get("decision") == "keep" and not row.get("seed_validation")
+            if row.get("decision") == "keep"
+            and not row.get("seed_validation")
+            and self._seed_validation_eligible(row)
+            and self._seed_validation_target_key(row) not in completed_targets
         ]
+
+    def _seed_validation_eligible(self, row: dict[str, Any]) -> bool:
+        if self.config.seed_validation_min_metric <= 0:
+            return True
+        metric_value = self._to_float((row.get("result") or {}).get(self.config.metric))
+        if metric_value is None:
+            return False
+        return metric_value >= self.config.seed_validation_min_metric
+
+    def _seed_validation_target_key(self, row: dict[str, Any]) -> str:
+        candidate_id = str(row.get("candidate_id") or "").strip()
+        if candidate_id:
+            return f"candidate::{candidate_id}"
+        signature = self._canonical_parameter_signature_text(row.get("parameter_signature"))
+        if signature:
+            return f"signature::{signature}"
+        parent_id = str(row.get("parent_candidate_id") or row.get("candidate_id") or "").strip()
+        params = row.get("params") or row.get("parameter_overrides")
+        if parent_id and isinstance(params, dict) and params:
+            return f"signature::{self._parameter_signature(parent_id, params)}"
+        return ""
+
+    def _seed_validated_target_keys(self) -> set[str]:
+        validated: set[str] = set()
+        for row in self.memory:
+            validation = row.get("seed_validation")
+            if not isinstance(validation, dict) or not validation:
+                continue
+            if str(validation.get("status") or "").lower() != "passed":
+                continue
+            key = self._seed_validation_target_key(row)
+            if key:
+                validated.add(key)
+            signature = self._canonical_parameter_signature_text(row.get("parameter_signature"))
+            if signature:
+                validated.add(f"signature::{signature}")
+        return validated
+
+    def _seed_validation_completed_target_keys(self) -> set[str]:
+        completed: set[str] = set()
+        for row in self.memory:
+            validation = row.get("seed_validation")
+            if not isinstance(validation, dict) or not validation:
+                continue
+            if str(validation.get("status") or "").lower() not in {"passed", "failed"}:
+                continue
+            key = self._seed_validation_target_key(row)
+            if key:
+                completed.add(key)
+            signature = self._canonical_parameter_signature_text(row.get("parameter_signature"))
+            if signature:
+                completed.add(f"signature::{signature}")
+        return completed
 
     def _best_validated_keep(self) -> dict[str, Any]:
         candidates: list[tuple[float, int, dict[str, Any]]] = []
+        validation_by_key: dict[str, dict[str, Any]] = {}
+        for row in self.memory:
+            validation = row.get("seed_validation")
+            if not isinstance(validation, dict) or validation.get("status") != "passed":
+                continue
+            key = self._seed_validation_target_key(row)
+            if key:
+                validation_by_key[key] = validation
+            signature = self._canonical_parameter_signature_text(row.get("parameter_signature"))
+            if signature:
+                validation_by_key[f"signature::{signature}"] = validation
         for idx, row in enumerate(self._trial_memory_rows()):
             validation = row.get("seed_validation")
+            if not isinstance(validation, dict) or validation.get("status") != "passed":
+                keys = [self._seed_validation_target_key(row)]
+                signature = self._canonical_parameter_signature_text(row.get("parameter_signature"))
+                if signature:
+                    keys.append(f"signature::{signature}")
+                validation = next((validation_by_key[key] for key in keys if key in validation_by_key), {})
             if not isinstance(validation, dict) or validation.get("status") != "passed":
                 continue
             value = self._to_float(validation.get("mean"))
@@ -1168,10 +1390,27 @@ class RecClawAgent:
                 value = self._to_float((row.get("result") or {}).get(self.config.metric))
             if value is None:
                 continue
-            candidates.append((value, idx, row))
+            candidates.append((value, idx, {**row, "seed_validation": validation}))
         if not candidates:
             return {}
         return max(candidates, key=lambda item: item[0])[2]
+
+    @staticmethod
+    def _candidate_matches_validated_focus(candidate: dict[str, Any], validated: dict[str, Any]) -> bool:
+        focus_id = str(validated.get("candidate_id") or "").strip()
+        if not focus_id:
+            return False
+        candidate_ids = {
+            str(candidate.get("candidate_id") or "").strip(),
+            str(candidate.get("run_candidate_id") or "").strip(),
+            str(candidate.get("proposal_id") or "").strip(),
+        }
+        if focus_id in candidate_ids:
+            return True
+        # Post-success refinement should stay on the validated algorithm or
+        # direct repair/ablation children, not fall through to unrelated
+        # runnable baselines when a proposal is rejected or smoke fails.
+        return str(candidate.get("parent_candidate_id") or "").strip() == focus_id
 
     def _recent_parameter_signatures(self, limit: int = 120) -> list[str]:
         signatures: list[str] = []
@@ -1271,6 +1510,28 @@ class RecClawAgent:
             summaries.append(item)
         return sorted(summaries, key=lambda item: (item.get("best_metric") is not None, item.get("best_metric") or -1), reverse=True)
 
+    def _best_trial_metric(self) -> float | None:
+        values: list[float] = []
+        for row in self._trial_memory_rows():
+            if str(row.get("status") or "").lower() != "success":
+                continue
+            value = self._to_float((row.get("result") or {}).get(self.config.metric))
+            if value is not None:
+                values.append(value)
+        return max(values) if values else None
+
+    def _has_strong_algorithm_signal(self) -> bool:
+        best = self._best_trial_metric()
+        return best is not None and best >= self.config.tuned_lightgcn_mean
+
+    def _algorithm_fallback_action(self) -> str:
+        pending_count = len(self._pending_implemented_candidate_ids())
+        if pending_count:
+            return "run_algorithm_variant" if self.config.search_intensity == "algorithm_first" else "run_available"
+        if self._has_pending_code_required_review():
+            return "implement_algorithm" if self.config.search_intensity == "algorithm_first" else "implement_needs_review"
+        return "propose_algorithm" if self.config.search_intensity == "algorithm_first" else "propose_mixed"
+
     def _build_agent_state_summary(self) -> dict[str, Any]:
         trials = self._trial_memory_rows()
         decision_counts: dict[str, int] = {}
@@ -1331,21 +1592,32 @@ class RecClawAgent:
             if any("already run" in str(error) for error in (row.get("errors") or []))
         ]
         family_stats = self._family_stats_summary()
+        anchor_family_set = set(self.config.anchor_families)
+        anchor_family_stats = [
+            item for item in family_stats if str(item.get("family") or "") in anchor_family_set
+        ]
         bad_families = [
             item
             for item in family_stats
-            if item.get("crash", 0) >= 2
-            or item.get("collapse", 0) >= 2
-            or (
-                item.get("trials", 0) >= 4
-                and item.get("keep", 0) == 0
-                and item.get("baseline_win", 0) == 0
+            if (
+                item.get("crash", 0) >= 2
+                or item.get("collapse", 0) >= 2
+                or (
+                    str(item.get("family") or "") not in anchor_family_set
+                    and item.get("trials", 0) >= 4
+                    and item.get("keep", 0) == 0
+                    and item.get("baseline_win", 0) == 0
+                )
             )
         ][:10]
         pending_implemented = sorted(self._pending_implemented_candidate_ids())
+        best_metric = self._best_trial_metric()
         summary = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "metric": self.config.metric,
+            "search_intensity": self.config.search_intensity,
+            "best_metric_so_far": round(best_metric, 6) if best_metric is not None else None,
+            "experiment_directive": self._experiment_directive_context(),
             "trial_count": len(trials),
             "decision_counts": decision_counts,
             "validated_best": {
@@ -1361,6 +1633,7 @@ class RecClawAgent:
             "top_frontier": top_frontier,
             "best_by_model": best_by_model_summary,
             "family_stats": family_stats[:20],
+            "anchor_family_stats": anchor_family_stats[:20],
             "bad_families": bad_families,
             "quarantined_candidates": [
                 {"candidate_id": candidate_id, "issues": issues}
@@ -1375,6 +1648,20 @@ class RecClawAgent:
                 "quarantined_count": len(self.quarantined_candidate_ids),
                 "max_pending_implemented": self.config.max_pending_implemented,
             },
+            "algorithm_first_targets": {
+                "enabled": self.config.search_intensity == "algorithm_first",
+                "tuned_lightgcn_mean": self.config.tuned_lightgcn_mean,
+                "old_recclaw_first50_best": 0.2765,
+                "anchor_families": list(self.config.anchor_families),
+                "algorithm_budget_per_window": self.config.algorithm_budget_per_window,
+                "algorithm_first_explore_rounds": self.config.algorithm_first_explore_rounds,
+                "seed_validation_min_metric": self.config.seed_validation_min_metric,
+                "guidance": (
+                    "If best_metric_so_far is below tuned_lightgcn_mean, prioritize propose_algorithm, "
+                    "implement_algorithm, and run_algorithm_variant over parameter-only tuning. "
+                    "Planner-triggered seed validation is reserved for keeps meeting seed_validation_min_metric."
+                ),
+            },
         }
         return summary
 
@@ -1388,6 +1675,142 @@ class RecClawAgent:
         except OSError as exc:
             print(f"[StateSummary] write skipped: {exc}", file=sys.stderr)
 
+    def remember_event(self, payload: dict[str, Any]) -> None:
+        event = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            **payload,
+        }
+        self.config.memory_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.config.memory_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+        self.memory.append(event)
+
+    def _active_experiment_directive(self) -> str:
+        if not self.config.use_experiment_directive:
+            return ""
+        return str(self.config.experiment_directive or "").strip()
+
+    def _experiment_directive_context(self) -> dict[str, Any]:
+        directive = self._active_experiment_directive()
+        if not directive:
+            return {"enabled": False}
+        return {
+            "enabled": True,
+            "priority": "highest user steering instruction below hard_constraints and schema validity",
+            "text": directive,
+        }
+
+    def remember_experiment_directive(self) -> None:
+        directive = self._active_experiment_directive()
+        if not directive:
+            return
+        if directive == self.last_experiment_directive_digest:
+            return
+        self.remember_event(
+            {
+                "event": "experiment_directive",
+                "priority": "highest_user_steering_below_hard_constraints",
+                "text": directive,
+            }
+        )
+        self.last_experiment_directive_digest = directive
+
+    def _refresh_experience_artifacts(self, round_id: int, *, reason: str) -> bool:
+        if self.config.refresh_experience_every <= 0:
+            return False
+        if not self.config.use_experiment_directive:
+            return False
+        if self.config.dry_run:
+            print(f"[Reflection] dry-run skip refresh round={round_id} reason={reason}")
+            return False
+
+        runtime_paths = (
+            self.config.registry_path,
+            self.config.proposal_path,
+            self.config.memory_path,
+            self.config.results_csv,
+            self.config.candidate_tree_path,
+            self.config.candidate_tree_md_path,
+            self.config.candidate_tree_mmd_path,
+            self.config.experience_summary_path,
+            self.config.experience_summary_json_path,
+            self.config.reflection_memory_path,
+        )
+        for path in runtime_paths:
+            reject_runtime_lablog_path(path)
+
+        tree_cmd = [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "analysis" / "build_candidate_search_tree.py"),
+            "--registry",
+            str(self.config.registry_path),
+            "--proposals",
+            str(self.config.proposal_path),
+            "--memory",
+            str(self.config.memory_path),
+            "--results",
+            str(self.config.results_csv),
+            "--metric",
+            self.config.metric,
+            "--out-json",
+            str(self.config.candidate_tree_path),
+            "--out-md",
+            str(self.config.candidate_tree_md_path),
+            "--out-mmd",
+            str(self.config.candidate_tree_mmd_path),
+        ]
+        summary_cmd = [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "build_experience_summary.py"),
+            "--memory",
+            str(self.config.memory_path),
+            "--results",
+            str(self.config.results_csv),
+            "--tree",
+            str(self.config.candidate_tree_path),
+            "--out-md",
+            str(self.config.experience_summary_path),
+            "--out-json",
+            str(self.config.experience_summary_json_path),
+            "--out-jsonl",
+            str(self.config.reflection_memory_path),
+        ]
+
+        print(f"[Reflection] refresh round={round_id} reason={reason}")
+        for cmd in (tree_cmd, summary_cmd):
+            completed = subprocess.run(
+                cmd,
+                cwd=PROJECT_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.stdout.strip():
+                print(completed.stdout.strip())
+            if completed.returncode != 0:
+                if completed.stderr.strip():
+                    print(completed.stderr.strip(), file=sys.stderr)
+                raise RuntimeError(f"experience refresh failed: {' '.join(cmd)}")
+
+        self.config.experiment_directive = resolve_experiment_directive(
+            directive=self.config.static_experiment_directive,
+            directive_file=self.config.experience_summary_path,
+            disabled=False,
+        )
+        self.config.use_experiment_directive = bool(self.config.experiment_directive)
+        self.remember_event(
+            {
+                "event": "experience_refresh",
+                "round_id": round_id,
+                "reason": reason,
+                "tree": str(self.config.candidate_tree_path),
+                "summary": str(self.config.experience_summary_path),
+            }
+        )
+        self.remember_experiment_directive()
+        return True
+
     def _llm_proposal_context(self) -> dict[str, Any]:
         schema = load_yaml(self.config.proposal_schema_path)
         self.agent_state_summary = self._build_agent_state_summary()
@@ -1397,12 +1820,24 @@ class RecClawAgent:
         results_tail = self.results_rows[-50:]
         pending_implemented = sorted(self._pending_implemented_candidate_ids())
         return {
-            "task": "Generate RecClaw candidate proposals.",
+            "task": "Generate RecClaw candidate proposals for algorithm discovery.",
             "loop_mode": self.config.loop_mode,
             "proposal_mode": self.config.proposal_mode,
             "proposal_count": self.config.proposal_count,
+            "search_intensity": self.config.search_intensity,
+            "algorithm_budget_per_window": self.config.algorithm_budget_per_window,
+            "anchor_families": list(self.config.anchor_families),
+            "tuned_lightgcn_mean": self.config.tuned_lightgcn_mean,
+            "steering_priority": [
+                "hard_constraints and schema validity",
+                "experiment_directive when enabled",
+                "agent_state_summary and memory",
+                "default proposal/search policy",
+            ],
+            "experiment_directive": self._experiment_directive_context(),
             "pending_implemented_count": len(pending_implemented),
             "pending_implemented_candidates": pending_implemented[:50],
+            "action_space": ACTION_SPACE,
             "parameter_space": self.config.parameter_space,
             "schema": schema,
             "registry": self.registry,
@@ -1413,8 +1848,6 @@ class RecClawAgent:
                 (
                     "candidate_proposal_workflow.md",
                     "experiment_log.md",
-                    "candidate_library.md",
-                    "method_change_space.md",
                 )
             ),
             "hard_constraints": [
@@ -1422,9 +1855,13 @@ class RecClawAgent:
                 "Return an object with a proposals list, or a JSON array.",
                 "Each proposal must satisfy configs/candidate_proposal_schema.yaml.",
                 "Do not require RecBole core changes.",
+                "If experiment_directive.enabled is true, follow experiment_directive.text as the highest-priority user steering instruction unless it conflicts with these hard constraints.",
                 "For mixed mode, include both runnable tuning proposals and code_required/spec_only exploration when useful.",
+                "For algorithm_first mode, prioritize algorithmic mechanisms, mechanism compositions, and code_required local extensions; parameter-only proposals are only sanity checks or local refinement after a strong algorithm signal.",
                 "Runnable tuning proposals must use parameter_overrides and an existing wired parent candidate.",
                 "Runnable tuning parameter_overrides must use values from parameter_space.",
+                "Every proposal must include mechanism, mechanism_composition, novelty_claim, expected_failure_mode, ablation_parent, and implementation_complexity.",
+                "Every proposal must stay inside action_space; use action_space.method_space_projection as the compact method-space guide.",
                 "Do not propose exact parameter signatures listed in agent_state_summary.recent_forbidden_parameter_signatures.",
                 "If agent_state_summary.focused_exploitation is non-empty, include focused local variants around it unless the planner explicitly asks only for reporting.",
                 "Do not propose or run candidates listed in agent_state_summary.quarantined_candidates unless explicitly proposing a repair.",
@@ -1539,10 +1976,41 @@ class RecClawAgent:
             proposal["candidate_id"] = next_id
             used_ids.add(next_id)
 
+        if not proposal.get("action_type"):
+            proposal["action_type"] = self._infer_action_type(proposal)
+        parent_id = str(proposal.get("parent_candidate_id") or "")
+        mechanism = str(proposal.get("mechanism") or "").strip()
+        if not mechanism:
+            mechanism = str(proposal.get("category") or proposal.get("action_type") or "algorithmic mechanism")
+            proposal["mechanism"] = mechanism
+        composition = proposal.get("mechanism_composition")
+        if not isinstance(composition, list) or not composition:
+            tokens = [
+                str(item)
+                for item in (
+                    proposal.get("consumes")
+                    if isinstance(proposal.get("consumes"), list)
+                    else []
+                )
+                if str(item).strip()
+            ]
+            proposal["mechanism_composition"] = tokens[:6] or [mechanism]
+        proposal.setdefault(
+            "novelty_claim",
+            "Local RecClaw extension that changes the recommendation mechanism while preserving the fixed protocol.",
+        )
+        proposal.setdefault(
+            "expected_failure_mode",
+            "May underperform if the added mechanism over-regularizes embeddings or destabilizes pairwise training.",
+        )
+        proposal.setdefault("ablation_parent", parent_id)
+        complexity = str(proposal.get("implementation_complexity") or "").strip().lower()
+        if complexity not in {"low", "medium", "high"}:
+            proposal["implementation_complexity"] = "medium"
+
         runnable_level = str(proposal.get("runnable_level") or "")
         if runnable_level not in {"code_required", "spec_only"}:
             return
-        parent_id = str(proposal.get("parent_candidate_id") or "")
         parent = registry_by_id.get(parent_id)
         if parent is None:
             return
@@ -1564,6 +2032,32 @@ class RecClawAgent:
             new_parameters.extend(missing)
 
     @staticmethod
+    def _infer_action_type(proposal: dict[str, Any]) -> str:
+        proposal_type = str(proposal.get("proposal_type") or "")
+        runner_type = str(proposal.get("runner_type") or "")
+        category = str(proposal.get("category") or "").lower()
+        consumes = {str(item) for item in (proposal.get("consumes") or [])}
+        if proposal_type == "tuning":
+            return "parameter_tuning"
+        if runner_type == "posthoc":
+            return "posthoc_rerank"
+        if consumes.intersection({"hard_negative_ratio", "popularity_alpha", "debias_alpha"}):
+            return "negative_sampling"
+        if consumes.intersection({"margin", "tail_weight_alpha"}):
+            return "pairwise_loss"
+        if consumes.intersection({"lambda_norm", "max_norm", "reg_weight"}):
+            return "regularization"
+        if consumes.intersection({"lambda_align"}):
+            return "auxiliary_loss"
+        if consumes.intersection({"rank_weight_alpha"}):
+            return "rank_aware_loss"
+        if consumes.intersection({"edge_dropout"}):
+            return "graph_augmentation"
+        if "representation" in category or consumes.intersection({"residual_weight"}):
+            return "aggregation"
+        return "local_loss"
+
+    @staticmethod
     def _find_action_payload(value: Any) -> dict[str, Any]:
         if isinstance(value, dict):
             action = str(value.get("action") or "").strip()
@@ -1583,7 +2077,7 @@ class RecClawAgent:
     def _sanitize_planner_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
         ignored_fields = sorted(set(payload) - {"action", "reason", "proposal_count"})
         sanitized = {
-            "action": str(payload.get("action") or "propose_mixed").strip(),
+            "action": str(payload.get("action") or self._algorithm_fallback_action()).strip(),
             "reason": str(payload.get("reason") or "").strip(),
             "proposal_count": payload.get("proposal_count", self.config.proposal_count),
         }
@@ -1638,9 +2132,8 @@ class RecClawAgent:
     def _maybe_override_auto_action(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
         action = str(payload.get("action") or "")
         if action == "multi_seed_verify" and not self._unverified_keep_rows():
-            pending_count = len(self._pending_implemented_candidate_ids())
             updated = dict(payload)
-            updated["action"] = "run_available" if pending_count else "propose_mixed"
+            updated["action"] = self._algorithm_fallback_action()
             updated["reason"] = (
                 f"auto override because multi_seed_verify has no unverified keep; "
                 f"{payload.get('reason', '')}"
@@ -1648,10 +2141,9 @@ class RecClawAgent:
             return updated, "no_unverified_keep_for_seed_verify"
         if action in {"multi_seed_verify", "report"}:
             return payload, ""
-        if action == "implement_needs_review" and not self._has_pending_code_required_review():
-            pending_count = len(self._pending_implemented_candidate_ids())
+        if action in {"implement_needs_review", "implement_algorithm"} and not self._has_pending_code_required_review():
             updated = dict(payload)
-            updated["action"] = "run_available" if pending_count else "propose_mixed"
+            updated["action"] = self._algorithm_fallback_action()
             updated["reason"] = (
                 f"auto override because no actionable code_required review is pending; "
                 f"{payload.get('reason', '')}"
@@ -1659,29 +2151,38 @@ class RecClawAgent:
             return updated, "no_actionable_code_review_pending"
         pending_count = len(self._pending_implemented_candidate_ids())
         if pending_count >= self.config.max_pending_implemented and (
-            action.startswith("propose") or action == "implement_needs_review"
+            action.startswith("propose") or action in {"implement_needs_review", "implement_algorithm"}
         ):
             updated = dict(payload)
-            updated["action"] = "run_available"
+            updated["action"] = self._algorithm_fallback_action()
             updated["reason"] = (
                 f"auto override to run pending implemented candidates before adding more code; "
                 f"pending_implemented_count={pending_count}; {payload.get('reason', '')}"
             ).strip()
             return updated, "pending_implemented_backlog"
+        if self.config.search_intensity == "algorithm_first" and not self._has_strong_algorithm_signal():
+            if action in {"propose_tuning", "propose_mixed", "propose_explore", "tune_after_algorithm_success"}:
+                updated = dict(payload)
+                updated["action"] = self._algorithm_fallback_action()
+                updated["reason"] = (
+                    f"algorithm-first override while best_metric is below tuned LightGCN; "
+                    f"{payload.get('reason', '')}"
+                ).strip()
+                return updated, "algorithm_first_no_strong_signal"
         recent_actions = self._recent_planner_actions(limit=4)
         recent_decisions = self._recent_trial_decisions(limit=4)
         repeated_mixed = len(recent_actions) >= 3 and all(item == "propose_mixed" for item in recent_actions[-3:])
         no_recent_keep = recent_decisions and all(item != "keep" for item in recent_decisions)
         if repeated_mixed and self._has_pending_code_required_review():
             updated = dict(payload)
-            updated["action"] = "implement_needs_review"
+            updated["action"] = "implement_algorithm"
             updated["reason"] = (
                 f"auto override after repeated propose_mixed actions; {payload.get('reason', '')}"
             ).strip()
             return updated, "repeated_mixed_pending_code_required"
         if repeated_mixed and no_recent_keep:
             updated = dict(payload)
-            updated["action"] = "propose_explore"
+            updated["action"] = "propose_algorithm" if self.config.search_intensity == "algorithm_first" else "propose_explore"
             updated["reason"] = (
                 f"auto override to broaden exploration after repeated mixed/discard rounds; {payload.get('reason', '')}"
             ).strip()
@@ -1691,6 +2192,7 @@ class RecClawAgent:
     def reset_round_policy(self) -> None:
         self.skip_current_round = False
         self.skip_proposal_generation = False
+        self.force_proposal_refresh = False
         if self.config.loop_mode != "auto":
             return
         policy = LOOP_MODE_POLICIES[self.config.loop_mode]
@@ -1769,7 +2271,7 @@ class RecClawAgent:
             except urlerror.HTTPError as exc:
                 body = exc.read().decode("utf-8", errors="replace")
                 raise RuntimeError(f"LLM API HTTP {exc.code}: {body}") from exc
-            except (urlerror.URLError, TimeoutError, ssl.SSLError) as exc:
+            except (urlerror.URLError, TimeoutError, socket.timeout, ssl.SSLError, OSError) as exc:
                 if attempt >= max_attempts:
                     raise RuntimeError(f"LLM API request failed after {attempt} attempts: {exc}") from exc
                 time.sleep(min(2.0 * attempt, 5.0))
@@ -1797,6 +2299,7 @@ class RecClawAgent:
         system_prompt = (
             "You are RecClaw's candidate proposal generator. "
             "Generate valid recommender-system candidate proposals only. "
+            "Honor experiment_directive as the highest-priority user steering below hard constraints. "
             "Do not modify RecBole core. Return strict JSON only."
         )
         user_prompt = (
@@ -1834,7 +2337,10 @@ class RecClawAgent:
             "planner_actions": sorted(AUTO_PLANNER_ACTIONS),
             "instruction": (
                 "Choose exactly one next action for this RecClaw round. "
-                "Prefer multi_seed_verify only when there is an unverified keep. "
+                "Prefer propose_algorithm, implement_algorithm, or run_algorithm_variant while the best metric is "
+                "below tuned_lightgcn_mean. Prefer tune_after_algorithm_success only after an algorithmic candidate "
+                "has crossed tuned_lightgcn_mean. Prefer multi_seed_verify only when there is an unverified keep "
+                "that meets agent_state_summary.algorithm_first_targets.seed_validation_min_metric. "
                 "Return strict JSON with action, reason, and optional proposal_count."
             ),
         }
@@ -1843,7 +2349,11 @@ class RecClawAgent:
                 [
                     {
                         "role": "system",
-                        "content": "You are RecClaw's loop planner. Return strict JSON only.",
+                        "content": (
+                            "You are RecClaw's loop planner. "
+                            "Honor experiment_directive as the highest-priority user steering below hard constraints. "
+                            "Return strict JSON only."
+                        ),
                     },
                     {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
                 ],
@@ -1857,21 +2367,21 @@ class RecClawAgent:
                 parsed = self._find_action_payload(parsed) or parsed
             if not isinstance(parsed, dict):
                 raise ValueError("planner output must be a JSON object")
+            parsed, ignored_fields = self._sanitize_planner_payload(parsed)
             action = str(parsed.get("action") or "").strip()
             if action not in AUTO_PLANNER_ACTIONS:
                 raise ValueError(f"unsupported planner action: {action}")
-            parsed, ignored_fields = self._sanitize_planner_payload(parsed)
         except Exception as exc:  # noqa: BLE001
             if not self.config.allow_llm_fallback:
                 raise RuntimeError(f"auto planner LLM failed: {type(exc).__name__}: {exc}") from exc
             parsed = {
-                "action": "propose_mixed",
+                "action": self._algorithm_fallback_action(),
                 "reason": f"planner fallback after {type(exc).__name__}: {exc}",
                 "proposal_count": self.config.proposal_count,
             }
             ignored_fields = []
         parsed, override_reason = self._maybe_override_auto_action(parsed)
-        action = str(parsed.get("action") or "propose_mixed")
+        action = str(parsed.get("action") or self._algorithm_fallback_action())
         self.last_planner_action = parsed
         event = {
             "event": "planner_action",
@@ -1909,19 +2419,28 @@ class RecClawAgent:
             self.config.proposal_mode = "conservative"
             self.config.auto_promote_needs_review = False
             self.config.auto_implement_code_required = False
-        elif action == "propose_explore" or action == "implement_needs_review":
+        elif action in {"propose_algorithm", "propose_explore", "implement_needs_review", "implement_algorithm"}:
             self.config.enable_candidate_proposals = True
-            self.config.proposal_mode = "explore"
+            self.config.proposal_mode = "algorithm_first" if action in {"propose_algorithm", "implement_algorithm"} else "explore"
             self.config.auto_promote_needs_review = True
             self.config.auto_implement_code_required = True
-            self.skip_proposal_generation = action == "implement_needs_review"
-        elif action == "run_available":
+            self.skip_proposal_generation = action in {"implement_needs_review", "implement_algorithm"}
+        elif action in {"run_available", "run_algorithm_variant"}:
             self.config.enable_candidate_proposals = False
-        else:
+        elif action == "tune_after_algorithm_success":
             self.config.enable_candidate_proposals = True
             self.config.proposal_mode = "mixed"
             self.config.auto_promote_needs_review = True
-            self.config.auto_implement_code_required = action != "propose_mixed"
+            self.config.auto_implement_code_required = False
+        else:
+            self.config.enable_candidate_proposals = True
+            self.config.proposal_mode = (
+                "algorithm_first" if self.config.search_intensity == "algorithm_first" else "mixed"
+            )
+            self.config.auto_promote_needs_review = True
+            self.config.auto_implement_code_required = True
+        if action.startswith("propose"):
+            self.force_proposal_refresh = True
         if parsed.get("proposal_count") is not None:
             try:
                 self.config.proposal_count = max(1, int(parsed["proposal_count"]))
@@ -1938,11 +2457,8 @@ class RecClawAgent:
                 }
             )
             return
-        target = None
-        for row in reversed(self.memory):
-            if row.get("decision") == "keep" and not row.get("seed_validation"):
-                target = row
-                break
+        unverified_keeps = self._unverified_keep_rows()
+        target = unverified_keeps[-1] if unverified_keeps else None
         if target is None:
             self.remember_event(
                 {
@@ -1971,6 +2487,9 @@ class RecClawAgent:
             candidate["run_candidate_id"] = parent_id
             candidate["parent_candidate_id"] = parent_id
         params = target.get("params") if isinstance(target.get("params"), dict) else {}
+        parameter_signature = self._canonical_parameter_signature_text(target.get("parameter_signature"))
+        if not parameter_signature and parent_id and params:
+            parameter_signature = self._parameter_signature(parent_id, dict(params))
         compare_baseline = target.get("compare_baseline") if isinstance(target.get("compare_baseline"), dict) else {}
         validation = self.run_seed_validation(candidate, dict(params), self._to_float(compare_baseline.get("baseline_metric")))
         self.remember_event(
@@ -1979,6 +2498,8 @@ class RecClawAgent:
                 "round_id": round_id,
                 "candidate_id": candidate_id,
                 "parent_candidate_id": parent_id,
+                "params": params,
+                "parameter_signature": parameter_signature,
                 "seed_validation": validation,
             }
         )
@@ -2025,7 +2546,12 @@ class RecClawAgent:
         every = max(1, self.config.proposal_every)
         should_generate = (
             not self.skip_proposal_generation
-            and (round_id == 1 or (round_id - 1) % every == 0 or not self.config.proposal_path.exists())
+            and (
+                self.force_proposal_refresh
+                or round_id == 1
+                or (round_id - 1) % every == 0
+                or not self.config.proposal_path.exists()
+            )
         )
         if should_generate:
             try:
@@ -2187,12 +2713,25 @@ class RecClawAgent:
                 continue
             proposal = by_id.get(proposal_id, {})
             self.recorded_proposal_events.add(event_key)
+            mechanism = proposal.get("mechanism")
+            if not mechanism:
+                composition = proposal.get("mechanism_composition")
+                if isinstance(composition, list):
+                    mechanism = "+".join(str(item) for item in composition if str(item))
             self.remember_event(
                 {
                     "event": f"proposal_{status}",
                     "round_id": round_id,
                     "proposal_id": proposal_id,
                     "parent_candidate_id": proposal.get("parent_candidate_id", ""),
+                    "action_type": proposal.get("action_type", ""),
+                    "proposal_type": proposal.get("proposal_type", ""),
+                    "runnable_level": proposal.get("runnable_level", ""),
+                    "mechanism": mechanism or "",
+                    "novelty_claim": proposal.get("novelty_claim", ""),
+                    "expected_failure_mode": proposal.get("expected_failure_mode", ""),
+                    "ablation_parent": proposal.get("ablation_parent", ""),
+                    "implementation_complexity": proposal.get("implementation_complexity", ""),
                     "parameter_signature": row.get("parameter_signature", ""),
                     "proposal_source": self.current_proposal_source,
                     "errors": row.get("errors", []),
@@ -2222,6 +2761,19 @@ class RecClawAgent:
                 continue
             if not proposal_id or proposal_id in self.scheduled_candidate_ids:
                 continue
+            failed_attempts = self._failed_implementation_attempts(proposal_id)
+            if len(failed_attempts) >= max(1, self.config.max_failed_implementation_attempts):
+                self.remember_event(
+                    {
+                        "event": "implementation_skipped",
+                        "round_id": round_id,
+                        "proposal_id": proposal_id,
+                        "reason": "prior_failed_implementation_attempts",
+                        "failed_attempt_count": len(failed_attempts),
+                        "last_status": failed_attempts[-1].get("status", ""),
+                    }
+                )
+                continue
             proposal = next(
                 (
                     item
@@ -2232,11 +2784,14 @@ class RecClawAgent:
             )
             parent_id = str(proposal.get("parent_candidate_id") or "")
             parent = self._find_registry_candidate(parent_id)
+            proposal_consumes = {str(item) for item in (proposal.get("consumes") or [])}
+            parent_consumes = {str(item) for item in ((parent or {}).get("consumes") or [])}
             if (
                 parent_id in AUTO_PROMOTABLE_PARENT_IDS
                 and parent is not None
                 and bool(parent.get("wired"))
                 and str(parent.get("status") or "") == "implemented"
+                and proposal_consumes.issubset(parent_consumes)
             ):
                 self.remember_event(
                     {
@@ -2248,46 +2803,45 @@ class RecClawAgent:
                     }
                 )
                 continue
-            report = self._run_json_command(
-                [
-                    sys.executable,
-                    str(PROJECT_ROOT / "scripts" / "implement_candidate_proposal.py"),
-                    "--proposal-id",
-                    proposal_id,
-                    "--proposals",
-                    str(self.config.proposal_path),
-                    "--registry",
-                    str(self.config.registry_path),
-                    "--llm-provider",
-                    self.config.llm_provider,
-                    "--llm-base-url",
-                    self.config.llm_base_url,
-                    "--llm-model",
-                    self.config.llm_model,
-                    "--llm-api-key-env",
-                    self.config.llm_api_key_env,
-                    "--llm-temperature",
-                    str(self.config.llm_temperature),
-                    "--llm-timeout",
-                    str(self.config.llm_timeout),
-                    "--llm-max-tokens",
-                    str(self.config.llm_max_tokens),
-                    "--llm-retries",
-                    str(self.config.llm_retries),
-                ]
-                + (
-                    []
-                    if self.config.implementation_smoke_run
-                    else ["--skip-smoke-run"]
-                )
-                + [
-                    item
-                    for override in self.config.global_overrides
-                    for item in ("--smoke-set", override)
-                ]
-                + (["--dry-run"] if self.config.dry_run else []),
-                allow_json_failure=True,
+            command = [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts" / "implement_candidate_proposal.py"),
+                "--proposal-id",
+                proposal_id,
+                "--proposals",
+                str(self.config.proposal_path),
+                "--registry",
+                str(self.config.registry_path),
+                "--llm-provider",
+                self.config.llm_provider,
+                "--llm-base-url",
+                self.config.llm_base_url,
+                "--llm-model",
+                self.config.llm_model,
+                "--llm-api-key-env",
+                self.config.llm_api_key_env,
+                "--llm-temperature",
+                str(self.config.llm_temperature),
+                "--llm-timeout",
+                str(self.config.llm_timeout),
+                "--llm-max-tokens",
+                str(self.config.llm_max_tokens),
+                "--llm-retries",
+                str(self.config.llm_retries),
+            ]
+            directive = self._active_experiment_directive()
+            if directive:
+                command.extend(["--experiment-directive", directive])
+            if not self.config.implementation_smoke_run:
+                command.append("--skip-smoke-run")
+            command.extend(
+                item
+                for override in self.config.global_overrides
+                for item in ("--smoke-set", override)
             )
+            if self.config.dry_run:
+                command.append("--dry-run")
+            report = self._run_json_command(command, allow_json_failure=True)
             review_errors = report.get("review_errors", [])
             if not isinstance(review_errors, list):
                 review_errors = []
@@ -2300,6 +2854,7 @@ class RecClawAgent:
                     "candidate_id": report.get("candidate_id", ""),
                     "reason": report.get("reason", ""),
                     "entrypoint": report.get("entrypoint", ""),
+                    "source": report.get("source", ""),
                     "files": report.get("files", []),
                     "smoke": report.get("smoke", {}),
                     "review_errors": review_errors[-5:],
@@ -2423,6 +2978,19 @@ class RecClawAgent:
         baseline_delta = float(compare_baseline.get("delta") or 0.0)
         history_delta = float(compare_history.get("delta") or 0.0)
         if baseline_delta > self.config.min_keep_delta and history_delta > self.config.min_keep_delta:
+            metric_value = self._to_float(candidate_result.get(self.config.metric))
+            promotion_floor = self.config.seed_validation_min_metric
+            if (
+                self.config.search_intensity == "algorithm_first"
+                and promotion_floor > 0
+                and metric_value is not None
+                and metric_value < promotion_floor
+            ):
+                return (
+                    "revise",
+                    "candidate improves local baseline/history but is below algorithm-first promotion floor",
+                    self._revise_suggestion(candidate, params),
+                )
             return "keep", "candidate improves both baseline and current history best", "schedule follow-up around this candidate"
         if baseline_delta >= 0 and history_delta <= self.config.min_keep_delta:
             return "revise", "candidate improves baseline but does not beat history best", self._revise_suggestion(candidate, params)
@@ -2579,8 +3147,13 @@ class RecClawAgent:
         return float(item.get(self.config.metric) or 0.0)
 
     def run(self) -> None:
+        start_round = max(1, self.config.start_round)
+        end_round = max(start_round, self.config.rounds)
         self.observe()
-        for round_id in range(1, self.config.rounds + 1):
+        if start_round == 1:
+            self._refresh_experience_artifacts(0, reason="initial")
+        self.remember_experiment_directive()
+        for round_id in range(start_round, end_round + 1):
             try:
                 self.reset_round_policy()
                 self.apply_auto_planner(round_id)
@@ -2659,6 +3232,8 @@ class RecClawAgent:
                 )
                 self.remember(record)
                 self._update_history_best(candidate.get("base_model") or candidate_result.get("model"), candidate_result)
+                if self.config.refresh_experience_every > 0 and round_id % self.config.refresh_experience_every == 0:
+                    self._refresh_experience_artifacts(round_id, reason=f"round_{round_id}")
                 print(
                     json.dumps(
                         {
@@ -2694,12 +3269,20 @@ class RecClawAgent:
                     next_action="inspect agent pipeline/runtime environment and retry",
                 )
                 self.remember(fallback_record)
+                if self.config.refresh_experience_every > 0 and round_id % self.config.refresh_experience_every == 0:
+                    self._refresh_experience_artifacts(round_id, reason=f"round_{round_id}_crash")
                 print(f"[Round {round_id}] crash: {reason}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="RecClaw Observe->Plan->Act->Evaluate->Reflect->Remember agent")
     parser.add_argument("--rounds", type=int, default=5, help="Number of scheduling rounds")
+    parser.add_argument(
+        "--start-round",
+        type=int,
+        default=1,
+        help="First scheduling round id; use with --rounds as the final round id for safe continuation runs",
+    )
     parser.add_argument(
         "--loop-mode",
         choices=("tuning", "mixed", "explore", "auto"),
@@ -2733,6 +3316,9 @@ def main() -> int:
         ),
     )
     parser.add_argument("--memory-path", default=str(MEMORY_PATH), help="Agent memory jsonl path")
+    parser.add_argument("--results-csv", default=str(RESULTS_CSV), help="Candidate results.csv path used for evaluation")
+    parser.add_argument("--baseline-dir", default=str(BASELINE_DIR), help="Directory containing baseline log files")
+    parser.add_argument("--registry-path", default=str(REGISTRY_PATH), help="Candidate registry yaml path")
     parser.add_argument("--memory-read-limit", type=int, default=2000, help="Read only latest N memory rows (0 means all)")
     parser.add_argument(
         "--state-summary-path",
@@ -2745,6 +3331,48 @@ def main() -> int:
         default=120,
         help="Maximum recent memory rows included verbatim in LLM prompts; summary still sees loaded memory",
     )
+    parser.add_argument(
+        "--experiment-directive",
+        default=os.environ.get("RECCLAW_EXPERIMENT_DIRECTIVE", ""),
+        help=(
+            "Optional run-level user steering prompt. When provided, it is injected into "
+            "planner/proposal prompts below hard safety constraints."
+        ),
+    )
+    parser.add_argument(
+        "--experiment-directive-file",
+        default=os.environ.get("RECCLAW_EXPERIMENT_DIRECTIVE_FILE", ""),
+        help="Optional UTF-8 text file containing the run-level experiment directive",
+    )
+    parser.add_argument(
+        "--disable-experiment-directive",
+        action="store_true",
+        help="Ignore --experiment-directive, --experiment-directive-file, and directive environment variables",
+    )
+    parser.add_argument(
+        "--refresh-experience-every",
+        type=int,
+        default=0,
+        help="Refresh candidate tree and experience summary every N completed rounds when directives are enabled",
+    )
+    parser.add_argument("--candidate-tree-path", default=str(CANDIDATE_TREE_PATH), help="Output JSON path for candidate search tree")
+    parser.add_argument(
+        "--candidate-tree-md-path",
+        default=str(CANDIDATE_TREE_MD_PATH),
+        help="Output Markdown path for candidate search tree",
+    )
+    parser.add_argument(
+        "--candidate-tree-mmd-path",
+        default=str(CANDIDATE_TREE_MMD_PATH),
+        help="Output Mermaid path for candidate search tree",
+    )
+    parser.add_argument("--experience-summary-path", default=str(EXPERIENCE_SUMMARY_PATH), help="Output Markdown path for experience summary")
+    parser.add_argument(
+        "--experience-summary-json-path",
+        default=str(EXPERIENCE_SUMMARY_JSON_PATH),
+        help="Output JSON path for experience summary",
+    )
+    parser.add_argument("--reflection-memory-path", default=str(REFLECTION_MEMORY_PATH), help="Append-only reflection memory JSONL path")
     parser.add_argument("--recent-schedule-penalty", type=float, default=0.15, help="Penalty if candidate was scheduled in previous round")
     parser.add_argument(
         "--enable-candidate-proposals",
@@ -2759,7 +3387,7 @@ def main() -> int:
     parser.add_argument("--proposal-path", default=str(PROPOSAL_PATH), help="Candidate proposal JSONL path")
     parser.add_argument(
         "--proposal-mode",
-        choices=("conservative", "mixed", "explore"),
+        choices=("conservative", "mixed", "explore", "algorithm_first"),
         default=None,
         help="Override the proposal generation mode selected by --loop-mode",
     )
@@ -2788,6 +3416,39 @@ def main() -> int:
         type=int,
         default=1,
         help="Maximum code_required proposals to auto-implement in one round",
+    )
+    parser.add_argument(
+        "--search-intensity",
+        choices=("balanced", "algorithm_first"),
+        default=os.environ.get("RECCLAW_SEARCH_INTENSITY", "balanced"),
+        help="Search posture for auto planner overrides and LLM proposal context",
+    )
+    parser.add_argument(
+        "--algorithm-budget-per-window",
+        type=int,
+        default=int(os.environ.get("RECCLAW_ALGORITHM_BUDGET_PER_WINDOW", "3")),
+        help="Target code_required algorithmic budget per short search window",
+    )
+    parser.add_argument(
+        "--algorithm-first-explore-rounds",
+        type=int,
+        default=int(os.environ.get("RECCLAW_ALGORITHM_FIRST_EXPLORE_ROUNDS", "20")),
+        help="In algorithm-first mode, prefer runnable algorithmic candidates over parameter-only proposals for this many formal trials.",
+    )
+    parser.add_argument(
+        "--seed-validation-min-metric",
+        type=float,
+        default=float(os.environ.get("RECCLAW_SEED_VALIDATION_MIN_METRIC", "0")),
+        help="Only planner-triggered multi-seed verification keeps whose primary metric is at least this value.",
+    )
+    parser.add_argument(
+        "--anchor-families",
+        default=os.environ.get(
+            "RECCLAW_ANCHOR_FAMILIES",
+            "cand_bpr_hard_negative_margin,cand_lightgcn_shallow_layers,"
+            "cand_lightgcn_residual_norm_constrained,cand_lightgcn_edge_dropout_residual_norm",
+        ),
+        help="Comma-separated high-potential family anchors protected from ordinary discard freezing",
     )
     parser.add_argument(
         "--disable-implementation-smoke",
@@ -2839,6 +3500,7 @@ def main() -> int:
         args.enable_candidate_proposals or args.loop_mode in LOOP_MODE_POLICIES
     )
     validation_seeds = [int(item.strip()) for item in str(args.validation_seeds).split(",") if item.strip()]
+    anchor_families = [item.strip() for item in str(args.anchor_families).split(",") if item.strip()]
     llm_provider = str(args.llm_provider)
     if llm_provider == "openai":
         default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
@@ -2855,9 +3517,15 @@ def main() -> int:
     llm_model = args.llm_model or default_model
     llm_base_url = args.llm_base_url or default_base_url
     llm_api_key_env = args.llm_api_key_env or default_key_env
+    experiment_directive = resolve_experiment_directive(
+        directive=args.experiment_directive,
+        directive_file=args.experiment_directive_file,
+        disabled=bool(args.disable_experiment_directive),
+    )
 
     config = AgentConfig(
-        rounds=max(1, args.rounds),
+        rounds=max(max(1, args.rounds), max(1, args.start_round)),
+        start_round=max(1, args.start_round),
         metric=args.metric,
         multi_metrics=args.multi_metrics,
         metrics_weights=metrics_weights,
@@ -2866,8 +3534,21 @@ def main() -> int:
         loop_mode=args.loop_mode,
         memory_path=Path(args.memory_path),
         state_summary_path=Path(args.state_summary_path),
+        results_csv=Path(args.results_csv),
+        baseline_dir=Path(args.baseline_dir),
+        registry_path=Path(args.registry_path),
         memory_read_limit=max(0, args.memory_read_limit),
         prompt_memory_tail=max(0, args.prompt_memory_tail),
+        use_experiment_directive=bool(experiment_directive),
+        experiment_directive=experiment_directive,
+        static_experiment_directive="" if args.disable_experiment_directive else str(args.experiment_directive or ""),
+        candidate_tree_path=Path(args.candidate_tree_path),
+        candidate_tree_md_path=Path(args.candidate_tree_md_path),
+        candidate_tree_mmd_path=Path(args.candidate_tree_mmd_path),
+        experience_summary_path=Path(args.experience_summary_path),
+        experience_summary_json_path=Path(args.experience_summary_json_path),
+        reflection_memory_path=Path(args.reflection_memory_path),
+        refresh_experience_every=max(0, args.refresh_experience_every),
         recent_schedule_penalty=max(0.0, args.recent_schedule_penalty),
         enable_candidate_proposals=enable_candidate_proposals,
         proposal_path=Path(args.proposal_path),
@@ -2881,6 +3562,11 @@ def main() -> int:
         max_pending_implemented=max(1, args.max_pending_implemented),
         max_implement_per_round=max(0, args.max_implement_per_round),
         implementation_smoke_run=not bool(args.disable_implementation_smoke),
+        search_intensity=str(args.search_intensity),
+        algorithm_budget_per_window=max(0, args.algorithm_budget_per_window),
+        algorithm_first_explore_rounds=max(0, args.algorithm_first_explore_rounds),
+        seed_validation_min_metric=max(0.0, args.seed_validation_min_metric),
+        anchor_families=anchor_families or AgentConfig().anchor_families,
         global_overrides=list(args.global_overrides),
         checkpoint_dir=str(args.checkpoint_dir or ""),
         checkpoint_policy=str(args.checkpoint_policy),

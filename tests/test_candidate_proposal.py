@@ -165,6 +165,93 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertEqual(result["status"], validate.REJECTED)
         self.assertTrue(any("already run" in error for error in result["errors"]))
 
+    def test_validator_rejects_model_incompatible_action_space_parameter(self) -> None:
+        action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
+        registry = {
+            "cand_bpr_bad_layers": {
+                "candidate_id": "cand_bpr_bad_layers",
+                "base_model": "BPR",
+                "wired": True,
+                "consumes": ["n_layers"],
+            }
+        }
+        proposal = tuning_proposal("proposal_bad_layers", {"n_layers": 2})
+        proposal["parent_candidate_id"] = "cand_bpr_bad_layers"
+        proposal["base_model"] = "BPR"
+        proposal["action_type"] = "parameter_tuning"
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space=action_space,
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("n_layers is not compatible" in error for error in result["errors"]))
+
+    def test_validator_rejects_explicit_conditional_validity_violation(self) -> None:
+        action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
+        registry = {
+            "cand_lightgcn_residual": {
+                "candidate_id": "cand_lightgcn_residual",
+                "base_model": "LightGCN",
+                "wired": True,
+                "consumes": ["residual_weight", "n_layers"],
+            }
+        }
+        proposal = tuning_proposal("proposal_bad_residual", {"residual_weight": 0.1, "n_layers": 1})
+        proposal["parent_candidate_id"] = "cand_lightgcn_residual"
+        proposal["action_type"] = "parameter_tuning"
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space=action_space,
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("residual_weight requires n_layers >=2" in error for error in result["errors"]))
+
+    def test_validator_allows_single_axis_tuning_when_parent_context_is_implicit(self) -> None:
+        action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
+        registry = {
+            "cand_lightgcn_residual": {
+                "candidate_id": "cand_lightgcn_residual",
+                "base_model": "LightGCN",
+                "wired": True,
+                "consumes": ["residual_weight", "n_layers"],
+            }
+        }
+        proposal = tuning_proposal("proposal_residual_only", {"residual_weight": 0.1})
+        proposal["parent_candidate_id"] = "cand_lightgcn_residual"
+        proposal["action_type"] = "parameter_tuning"
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space=action_space,
+        )
+
+        self.assertEqual(result["status"], validate.ACCEPTED)
+
     def test_memory_signature_loader_canonicalizes_explicit_trial_signature(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "memory.jsonl"
@@ -260,6 +347,121 @@ class CandidateProposalTests(unittest.TestCase):
 
         self.assertEqual(result["status"], validate.ACCEPTED)
 
+    def test_validator_rejects_parameter_value_outside_action_space(self) -> None:
+        registry = {
+            "cand_lightgcn_small_embedding": {
+                "candidate_id": "cand_lightgcn_small_embedding",
+                "base_model": "LightGCN",
+                "wired": True,
+                "consumes": ["embedding_size", "n_layers"],
+            }
+        }
+        proposal = tuning_proposal("proposal_out_of_space", {"embedding_size": 256, "n_layers": 2})
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space={
+                "parameter_space": {
+                    "embedding_size": {"values": [32, 64, 128]},
+                    "n_layers": {"values": [1, 2, 3]},
+                }
+            },
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("outside action_space" in error for error in result["errors"]))
+
+    def test_validator_rejects_consumes_outside_action_space(self) -> None:
+        registry = {
+            "cand_bpr_margin_loss": {
+                "candidate_id": "cand_bpr_margin_loss",
+                "base_model": "BPR",
+                "wired": True,
+                "consumes": ["margin"],
+            }
+        }
+        proposal = {
+            "proposal_type": "algorithmic_variant",
+            "candidate_id": "proposal_new_param",
+            "parent_candidate_id": "cand_bpr_margin_loss",
+            "base_model": "BPR",
+            "category": "Objective & Optimization",
+            "action_type": "local_loss",
+            "hypothesis": "Try a new local loss parameter.",
+            "runnable_level": "code_required",
+            "runner_type": "model",
+            "consumes": ["margin", "surprise_alpha"],
+            "new_parameters": [{"name": "surprise_alpha", "search_space": [0.1, 0.2]}],
+            "implementation_plan": {
+                "files": ["recclaw_ext/models/surprise.py"],
+                "entrypoint": "recclaw_ext.models.surprise:SurpriseBPR",
+            },
+            "allowed_files": ["recclaw_ext/models/surprise.py"],
+            "expected_effect": {"primary_metric": "ndcg@10", "direction": "increase"},
+            "risk": {"recbole_core_change_required": False},
+            "decision_rule": {"keep_if": "improves"},
+        }
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space={
+                "action_types": {"local_loss": {}},
+                "parameter_space": {"margin": {"values": [0.1, 0.2, 0.5]}},
+                "allowed_implementation_roots": ["recclaw_ext/models/"],
+            },
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("consumes includes parameters outside action_space" in error for error in result["errors"]))
+
+    def test_validator_prefers_action_space_action_types(self) -> None:
+        registry = {
+            "cand_bpr_margin_loss": {
+                "candidate_id": "cand_bpr_margin_loss",
+                "base_model": "BPR",
+                "wired": True,
+                "consumes": ["margin"],
+            }
+        }
+        proposal = tuning_proposal("proposal_action_type", {"margin": 0.1})
+        proposal["parent_candidate_id"] = "cand_bpr_margin_loss"
+        proposal["base_model"] = "BPR"
+        proposal["runner_type"] = "model"
+        proposal["action_type"] = "posthoc_rerank"
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema={**sample_schema(), "allowed_action_types": ["posthoc_rerank"]},
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space={
+                "action_types": {"parameter_tuning": {}},
+                "parameter_space": {"margin": {"values": [0.1, 0.2, 0.5]}},
+                "allowed_implementation_roots": ["recclaw_ext/models/"],
+            },
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("action_type must be one of" in error for error in result["errors"]))
+
     def test_generated_proposal_includes_multiseed_evaluation_plan(self) -> None:
         parent = {
             "candidate_id": "cand_bpr_margin_loss",
@@ -274,6 +476,74 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertEqual(plan["primary_metric"], "ndcg@10")
         self.assertGreaterEqual(len(set(plan["validation_seeds"])), 3)
         self.assertIn("parameter_signature", proposal)
+        self.assertEqual(proposal["action_type"], "parameter_tuning")
+        self.assertIn("mechanism", proposal)
+        self.assertIn("mechanism_composition", proposal)
+        self.assertIn("ablation_parent", proposal)
+
+    def test_algorithmic_generator_expands_from_wired_anchor(self) -> None:
+        registry = [
+            {
+                "candidate_id": "cand_bpr_hard_negative_mix",
+                "base_model": "BPR",
+                "category": "Bias & Sample Construction",
+                "status": "implemented",
+                "wired": True,
+                "runner_type": "model",
+                "consumes": ["hard_negative_ratio"],
+            },
+            {
+                "candidate_id": "cand_bpr_hard_negative_margin",
+                "base_model": "BPR",
+                "category": "Bias & Sample Construction",
+                "status": "implemented",
+                "wired": True,
+                "runner_type": "model",
+                "consumes": ["hard_negative_ratio", "margin"],
+            },
+        ]
+
+        proposals = propose.generate_algorithmic_proposals(
+            registry=registry,
+            count=1,
+            stamp="20260526_000000",
+        )
+
+        self.assertEqual(len(proposals), 1)
+        self.assertEqual(proposals[0]["parent_candidate_id"], "cand_bpr_hard_negative_margin")
+        self.assertEqual(proposals[0]["runnable_level"], "code_required")
+        self.assertIn("mechanism", proposals[0])
+        self.assertIn("mechanism_composition", proposals[0])
+        self.assertIn("ablation_parent", proposals[0])
+
+    def test_algorithmic_generator_skips_spec_only_by_default(self) -> None:
+        registry = [
+            {
+                "candidate_id": "cand_rerank_coverage_boost",
+                "base_model": "LightGCN",
+                "category": "Result Distribution Quality",
+                "status": "implement-ready",
+                "wired": False,
+                "runner_type": "posthoc",
+                "consumes": ["lambda_coverage"],
+            }
+        ]
+
+        proposals = propose.generate_algorithmic_proposals(
+            registry=registry,
+            count=1,
+            stamp="20260526_000000",
+        )
+        spec_proposals = propose.generate_algorithmic_proposals(
+            registry=registry,
+            count=1,
+            stamp="20260526_000000",
+            include_spec_only=True,
+        )
+
+        self.assertEqual(proposals, [])
+        self.assertEqual(len(spec_proposals), 1)
+        self.assertEqual(spec_proposals[0]["runnable_level"], "spec_only")
 
 
 if __name__ == "__main__":

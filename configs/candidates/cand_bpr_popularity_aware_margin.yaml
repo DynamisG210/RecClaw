@@ -1,0 +1,4 @@
+candidate_id: cand_bpr_popularity_aware_margin
+model: BPRPopularityAwareMargin
+popularity_alpha: 0.5
+margin: 0.2

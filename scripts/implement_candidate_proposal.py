@@ -8,6 +8,7 @@ import importlib
 import json
 import os
 import re
+import socket
 import ssl
 import subprocess
 import sys
@@ -21,8 +22,18 @@ from urllib import request as urlrequest
 import yaml
 
 try:
+    from action_space import (
+        allowed_implementation_roots,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from validate_candidate_proposal import load_jsonl, load_yaml
 except ImportError:
+    from .action_space import (
+        allowed_implementation_roots,
+        load_action_space,
+        parameter_space_from_action_space,
+    )
     from .validate_candidate_proposal import load_jsonl, load_yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -30,11 +41,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
+ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
+ACTION_SPACE = load_action_space(ACTION_SPACE_PATH)
 
-ALLOWED_WRITE_ROOTS = (
-    "recclaw_ext/models/",
-    "recclaw_ext/posthoc/",
-)
+ALLOWED_WRITE_ROOTS = tuple(sorted(allowed_implementation_roots(ACTION_SPACE)))
 FORBIDDEN_PATHS = {
     "configs/task_ml1m.yaml",
     "configs/lightgcn.yaml",
@@ -43,27 +53,7 @@ FORBIDDEN_PATHS = {
     "recclaw_ext/models/__init__.py",
     "recclaw_ext/posthoc/__init__.py",
 }
-IMPLEMENTATION_PARAMETER_KEYS = (
-    "embedding_size",
-    "learning_rate",
-    "n_layers",
-    "reg_weight",
-    "margin",
-    "residual_weight",
-    "tail_weight_alpha",
-    "lambda_pop",
-    "lambda_norm",
-    "max_norm",
-    "hard_negative_ratio",
-    "popularity_alpha",
-    "debias_alpha",
-    "lambda_align",
-    "rank_weight_alpha",
-    "lambda_coverage",
-    "edge_dropout",
-    "cl_temperature",
-    "pareto_temperature",
-)
+IMPLEMENTATION_PARAMETER_KEYS = tuple(parameter_space_from_action_space(ACTION_SPACE))
 IMPLEMENTATION_PARAMETER_SCHEMA = {
     key: {"type": ["number", "null"]} for key in IMPLEMENTATION_PARAMETER_KEYS
 }
@@ -137,6 +127,7 @@ IMPLEMENTATION_RESPONSE_SCHEMA: dict[str, Any] = {
 }
 
 SELF_REG_LOSS_PATTERN = re.compile(r"\bself\.reg_loss\s*\(")
+FLOAT_CONFIG_INDEX_PATTERN = re.compile(r"\bfloat\s*\(\s*config\s*\[")
 SOFT_L2_POSITIONAL_MAX_NORM_PATTERN = re.compile(
     r"soft_l2_norm_penalty\s*\([^)\n]+,\s*(?:self\.)?(?:max_norm|lambda_norm)\b"
 )
@@ -214,7 +205,7 @@ def chat_completion(
         except urlerror.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"LLM API HTTP {exc.code}: {body}") from exc
-        except (urlerror.URLError, TimeoutError, ssl.SSLError) as exc:
+        except (urlerror.URLError, TimeoutError, socket.timeout, ssl.SSLError, OSError) as exc:
             if attempt >= max_attempts:
                 raise RuntimeError(f"LLM API request failed after {attempt} attempts: {exc}") from exc
             time.sleep(min(2.0 * attempt, 5.0))
@@ -269,6 +260,229 @@ class PreparedImplementation:
     registry_entry: dict[str, Any]
     config_path: Path
     entrypoint: str
+    source: str = "llm"
+
+
+TEMPLATE_IMPLEMENTATIONS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "bpr_hard_negative_margin_tail_reweight",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_hard_negative_margin"},
+        "required_consumes": {"hard_negative_ratio", "margin", "tail_weight_alpha"},
+        "model": "BPRHardNegativeMarginTailReweight",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRHardNegativeMarginTailReweight",
+        "defaults": {"hard_negative_ratio": 0.5, "margin": 0.2, "tail_weight_alpha": 0.2},
+        "category": "Objective & Optimization",
+        "priority": "high",
+        "rs_problem": "hard negatives need pairwise separation without losing long-tail signal",
+        "minimal_change": "reuse the existing hard-negative sampler and add margin plus positive-item tail weighting",
+    },
+    {
+        "name": "bpr_rank_aware_hard_negative_margin",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_hard_negative_margin"},
+        "required_consumes": {"hard_negative_ratio", "margin", "rank_weight_alpha"},
+        "model": "BPRRankAwareHardNegativeMargin",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRRankAwareHardNegativeMargin",
+        "defaults": {"hard_negative_ratio": 0.5, "margin": 0.2, "rank_weight_alpha": 0.1},
+        "category": "Objective & Optimization",
+        "priority": "high",
+        "rs_problem": "pairwise training is not directly weighted toward hard top-k mistakes",
+        "minimal_change": "reuse hard-negative margin training and add a rank-aware pair weighting term",
+    },
+    {
+        "name": "lightgcn_residual_norm_rank_alignment",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_residual_norm_constrained"},
+        "required_consumes": {
+            "embedding_size",
+            "n_layers",
+            "residual_weight",
+            "lambda_norm",
+            "max_norm",
+            "lambda_align",
+            "rank_weight_alpha",
+        },
+        "model": "LightGCNResidualNormRankAlignment",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormRankAlignment",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+            "lambda_align": 1e-4,
+            "rank_weight_alpha": 0.1,
+        },
+        "category": "Objective & Optimization",
+        "priority": "high",
+        "rs_problem": "strong residual-norm propagation still optimizes a plain pairwise objective",
+        "minimal_change": "reuse residual-norm propagation and add small rank-aware plus layer-alignment objectives",
+    },
+    {
+        "name": "lightgcn_edge_dropout_residual_norm_gated",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_edge_dropout_residual_norm"},
+        "required_consumes": {
+            "embedding_size",
+            "n_layers",
+            "residual_weight",
+            "edge_dropout",
+            "lambda_norm",
+            "max_norm",
+            "residual_gate_scale",
+            "gate_dropout",
+        },
+        "model": "LightGCNEdgeDropoutResidualNormGated",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNormGated",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "edge_dropout": 0.1,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+            "residual_gate_scale": 0.5,
+            "gate_dropout": 0.0,
+        },
+        "category": "Representation & Interaction",
+        "priority": "high",
+        "rs_problem": "fixed residual mixing may over- or under-use ego embeddings under edge dropout",
+        "minimal_change": "reuse edge-dropout residual-norm propagation and add a lightweight residual gate",
+    },
+    {
+        "name": "bpr_hard_negative_margin",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_hard_negative_mix", "cand_bpr_margin_loss"},
+        "required_consumes": {"hard_negative_ratio", "margin"},
+        "model": "BPRHardNegativeMargin",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRHardNegativeMargin",
+        "defaults": {"hard_negative_ratio": 0.5, "margin": 0.2},
+        "category": "Bias & Sample Construction",
+        "priority": "high",
+        "rs_problem": "negative sampling is weak and the pairwise boundary is soft",
+        "minimal_change": "reuse existing hard-negative sampler and margin loss helper",
+    },
+    {
+        "name": "bpr_popularity_aware_margin",
+        "base_model": "BPR",
+        "parents": {"cand_bpr_popularity_aware_negative", "cand_bpr_margin_loss"},
+        "required_consumes": {"popularity_alpha", "margin"},
+        "model": "BPRPopularityAwareMargin",
+        "entrypoint": "recclaw_ext.models.bpr_composed:BPRPopularityAwareMargin",
+        "defaults": {"popularity_alpha": 0.5, "margin": 0.2},
+        "category": "Bias & Sample Construction",
+        "priority": "medium",
+        "rs_problem": "negative sampling and pairwise separation are both under-constrained",
+        "minimal_change": "reuse existing popularity-aware sampler and margin loss helper",
+    },
+    {
+        "name": "lightgcn_edge_dropout_residual_norm",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_edge_dropout_residual_mix", "cand_lightgcn_residual_layer_mix"},
+        "required_consumes": {"residual_weight", "edge_dropout", "lambda_norm", "max_norm"},
+        "model": "LightGCNEdgeDropoutResidualNorm",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNorm",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "edge_dropout": 0.1,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+        },
+        "category": "Representation & Interaction",
+        "priority": "high",
+        "rs_problem": "residual graph propagation needs structural and scale regularization",
+        "minimal_change": "reuse existing edge-dropout residual propagation and norm-control loss mixin",
+    },
+    {
+        "name": "lightgcn_residual_norm",
+        "base_model": "LightGCN",
+        "parents": {"cand_lightgcn_residual_layer_mix"},
+        "required_consumes": {"residual_weight", "lambda_norm", "max_norm"},
+        "forbidden_consumes": {"edge_dropout"},
+        "model": "LightGCNResidualNormConstrained",
+        "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormConstrained",
+        "defaults": {
+            "embedding_size": 128,
+            "n_layers": 3,
+            "residual_weight": 0.2,
+            "lambda_norm": 1e-4,
+            "max_norm": 1.0,
+        },
+        "category": "Representation & Interaction",
+        "priority": "high",
+        "rs_problem": "residual propagation can drift in embedding scale",
+        "minimal_change": "reuse existing residual propagation and add soft norm control",
+    },
+)
+
+
+def template_implementation_for_proposal(proposal: dict[str, Any]) -> PreparedImplementation | None:
+    """Map known safe code_required proposals to reusable local classes.
+
+    This lets the agent turn compatible, unseen composition proposals into
+    runnable candidate configs without asking an LLM to rewrite code that already
+    exists in the repository.
+    """
+
+    candidate_id = str(proposal.get("candidate_id") or "")
+    parent_id = str(proposal.get("parent_candidate_id") or "")
+    base_model = str(proposal.get("base_model") or "")
+    consumes = {str(item) for item in (proposal.get("consumes") or [])}
+    if not candidate_id or not consumes:
+        return None
+
+    for spec in TEMPLATE_IMPLEMENTATIONS:
+        required = set(spec["required_consumes"])
+        forbidden = set(spec.get("forbidden_consumes") or set())
+        if base_model != spec["base_model"]:
+            continue
+        if parent_id not in spec["parents"]:
+            continue
+        if not required.issubset(consumes):
+            continue
+        if forbidden & consumes:
+            continue
+
+        candidate_config = {"candidate_id": candidate_id, "model": spec["model"]}
+        defaults = dict(spec["defaults"])
+        for key, value in defaults.items():
+            if key in consumes or key in required or key in {"embedding_size", "n_layers"}:
+                candidate_config[key] = value
+        candidate_config = enforce_proposal_parameter_defaults(candidate_config, proposal)
+        candidate_config = {key: value for key, value in candidate_config.items() if value is not None}
+        validate_candidate_config_matches_proposal(candidate_config, proposal)
+
+        registry_entry = {
+            "candidate_id": candidate_id,
+            "category": proposal.get("category") or spec["category"],
+            "base_model": base_model,
+            "rs_problem": spec["rs_problem"],
+            "hypothesis": proposal.get("hypothesis") or "Known safe template implementation.",
+            "implementation_type": "model",
+            "minimal_change": spec["minimal_change"],
+            "priority": spec["priority"],
+            "status": "implemented",
+            "wired": True,
+            "runner_type": "model",
+            "entrypoint": spec["entrypoint"],
+            "consumes": [key for key in defaults if key in candidate_config and key not in {"candidate_id", "model"}],
+        }
+        config_path = PROJECT_ROOT / "configs" / "candidates" / f"{candidate_id}.yaml"
+        if config_path.exists():
+            raise ValueError(f"refusing to overwrite existing candidate config: {config_path.relative_to(PROJECT_ROOT)}")
+        return PreparedImplementation(
+            candidate_id=candidate_id,
+            files=[],
+            candidate_config=candidate_config,
+            registry_entry=registry_entry,
+            config_path=config_path,
+            entrypoint=str(spec["entrypoint"]),
+            source=f"template:{spec['name']}",
+        )
+    return None
 
 
 def validate_files(files: Any) -> list[dict[str, str]]:
@@ -314,6 +528,11 @@ def validate_static_model_code(path: str, content: str) -> None:
             f"generated model uses config.get in {path}; RecBole Config does not support it. "
             "Use recclaw_ext.models._utils.config_get/config_float or config[key] with a fallback."
         )
+    if FLOAT_CONFIG_INDEX_PATTERN.search(content):
+        raise ValueError(
+            f"generated model casts config[...] directly in {path}; missing RecBole keys return None. "
+            "Use recclaw_ext.models._utils.config_float(config, key, default) for numeric knobs."
+        )
     if (
         SELF_REG_LOSS_PATTERN.search(content)
         and "def reg_loss" not in content
@@ -345,13 +564,17 @@ def enforce_proposal_parameter_defaults(candidate_config: dict[str, Any], propos
 def validate_candidate_config_matches_proposal(candidate_config: dict[str, Any], proposal: dict[str, Any]) -> None:
     overrides = proposal.get("parameter_overrides") or {}
     if not isinstance(overrides, dict):
-        return
+        overrides = {}
     mismatches: list[str] = []
     for key, value in overrides.items():
         if key not in IMPLEMENTATION_PARAMETER_KEYS or value is None:
             continue
         if candidate_config.get(key) != value:
             mismatches.append(f"{key} expected {value!r}, got {candidate_config.get(key)!r}")
+    for key in proposal.get("consumes") or []:
+        key_text = str(key)
+        if key_text in IMPLEMENTATION_PARAMETER_KEYS and candidate_config.get(key_text) is None:
+            mismatches.append(f"{key_text} consumed by proposal but missing non-null candidate_config default")
     if mismatches:
         raise ValueError("candidate_config must preserve proposal parameter_overrides: " + "; ".join(mismatches))
 
@@ -508,12 +731,36 @@ def run_dry_run(candidate_id: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def default_smoke_results_csv() -> Path:
+    explicit = os.environ.get("RECCLAW_SMOKE_RESULTS_CSV", "")
+    if explicit:
+        return Path(explicit)
+    runtime_results = os.environ.get("RECCLAW_RESULTS_CSV", "")
+    if runtime_results:
+        path = Path(runtime_results)
+        return path.with_name(f"{path.stem}.smoke{path.suffix or '.csv'}")
+    return PROJECT_ROOT / "results" / "smoke_results.csv"
+
+
 def run_training_smoke(candidate_id: str, smoke_sets: list[str]) -> subprocess.CompletedProcess[str]:
+    smoke_results_csv = default_smoke_results_csv()
+    smoke_root = smoke_results_csv.parent
+    smoke_result_dir = Path(os.environ.get("RECCLAW_SMOKE_RESULT_DIR", "") or smoke_root / "candidates")
+    smoke_override_dir = Path(os.environ.get("RECCLAW_SMOKE_OVERRIDE_DIR", "") or smoke_root / "overrides")
+    smoke_results_csv.parent.mkdir(parents=True, exist_ok=True)
+    smoke_result_dir.mkdir(parents=True, exist_ok=True)
+    smoke_override_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
         str(PROJECT_ROOT / "scripts" / "run_candidate.py"),
         candidate_id,
         "--cleanup-checkpoints",
+        "--result-dir",
+        str(smoke_result_dir),
+        "--override-dir",
+        str(smoke_override_dir),
+        "--results-csv",
+        str(smoke_results_csv),
     ]
     for item in smoke_sets:
         cmd.extend(["--set", item])
@@ -574,11 +821,26 @@ def cleanup_artifacts(prepared: PreparedImplementation, registry_path: Path, pre
         registry_path.write_text(previous_registry_text, encoding="utf-8")
 
 
-def build_implementation_context(proposal: dict[str, Any], registry: dict[str, Any]) -> dict[str, Any]:
-    return {
+def build_implementation_context(
+    proposal: dict[str, Any],
+    registry: dict[str, Any],
+    experiment_directive: str = "",
+) -> dict[str, Any]:
+    directive = str(experiment_directive or "").strip()
+    context = {
         "task": "Implement one RecClaw code_required candidate proposal under strict local allowlists.",
         "proposal": proposal,
         "registry": registry,
+        "steering_priority": [
+            "forbidden and allowlists",
+            "experiment_directive when enabled",
+            "proposal specification",
+        ],
+        "experiment_directive": {
+            "enabled": bool(directive),
+            "priority": "highest user steering instruction below forbidden and allowlists",
+            "text": directive,
+        },
         "required_json_shape": {
             "files": [{"path": "recclaw_ext/models/example.py", "content": "complete file content"}],
             "candidate_config": {"candidate_id": proposal.get("candidate_id"), "model": "LocalModelName"},
@@ -591,6 +853,7 @@ def build_implementation_context(proposal: dict[str, Any], registry: dict[str, A
                 "consumes": proposal.get("consumes") or [],
             },
         },
+        "action_space": ACTION_SPACE,
         "allowed_write_roots": list(ALLOWED_WRITE_ROOTS),
         "config_update": "Use candidate_config only; do not include configs/candidates/*.yaml in files.",
         "registry_update": "Use registry_entry only; do not include configs/candidate_registry.yaml in files.",
@@ -600,8 +863,11 @@ def build_implementation_context(proposal: dict[str, Any], registry: dict[str, A
             "Do not write any __init__.py file; use concrete module entrypoints instead.",
             "Do not overwrite existing local helper/model files; return a new module file for this proposal.",
             "Do not include config files in files; candidate_config is written by this script.",
+            "Stay inside action_space; candidate_config knobs should use declared action_space parameters.",
             "Use entrypoints like recclaw_ext.models.my_model:MyModel, not recclaw_ext.models:MyModel.",
+            "If experiment_directive.enabled is true, follow experiment_directive.text unless it conflicts with forbidden rules or the proposal specification.",
             "RecBole Config is not a dict; never call config.get(...).",
+            "For numeric knobs, use config_float(config, key, default) instead of float(config[key]).",
             "Prefer helpers from recclaw_ext.models._utils: config_get, config_float, margin_bpr_loss, soft_l2_norm_penalty.",
             "Do not call self.reg_loss unless the generated class defines reg_loss itself.",
             "Call soft_l2_norm_penalty with max_norm=... and weight=... keyword arguments; never pass scalar knobs positionally.",
@@ -611,6 +877,7 @@ def build_implementation_context(proposal: dict[str, Any], registry: dict[str, A
             "Provide complete file contents, not patches.",
         ],
     }
+    return context
 
 
 def status_report(status: str, **kwargs: Any) -> dict[str, Any]:
@@ -637,6 +904,11 @@ def main() -> int:
     parser.add_argument("--llm-timeout", type=int, default=180, help="LLM request timeout")
     parser.add_argument("--llm-max-tokens", type=int, default=8192, help="Maximum LLM output tokens")
     parser.add_argument("--llm-retries", type=int, default=2, help="Retry count for transient LLM API transport errors")
+    parser.add_argument(
+        "--experiment-directive",
+        default="",
+        help="Optional run-level directive forwarded from agent.py for implementation steering",
+    )
     parser.add_argument(
         "--implementation-review-retries",
         type=int,
@@ -666,73 +938,76 @@ def main() -> int:
         if str(proposal.get("runnable_level") or "") != "code_required":
             raise ValueError("only code_required proposals can be auto-implemented")
 
-        context = build_implementation_context(proposal, registry)
-        if args.llm_provider == "openai":
-            default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
-            default_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-            default_key_env = "OPENAI_API_KEY"
-        elif args.llm_provider == "deepseek":
-            default_model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-            default_base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-            default_key_env = "DEEPSEEK_API_KEY"
-        else:
-            default_model = os.environ.get("OPENAI_MODEL") or os.environ.get("DEEPSEEK_MODEL", "")
-            default_base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL", "")
-            default_key_env = os.environ.get("RECCLAW_LLM_API_KEY_ENV", "OPENAI_API_KEY")
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You implement RecClaw local candidate proposals. "
-                    "Return strict JSON only and obey all allowlists. "
-                    "If review feedback is provided, rewrite the implementation instead of explaining."
-                ),
-            },
-            {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
-        ]
-        prepared: PreparedImplementation | None = None
+        prepared: PreparedImplementation | None = template_implementation_for_proposal(proposal)
         review_errors: list[str] = []
-        attempts = max(1, int(args.implementation_review_retries) + 1)
-        for attempt in range(1, attempts + 1):
-            if review_errors:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            {
-                                "implementation_review_failed": True,
-                                "attempt": attempt - 1,
-                                "errors": review_errors[-5:],
-                                "rewrite_requirements": [
-                                    "Return the full strict JSON object again.",
-                                    "Do not call config.get(...).",
-                                    "Do not call self.reg_loss unless this generated class defines it.",
-                                    "Do not pass scalar knobs positionally to soft_l2_norm_penalty.",
-                                    "Preserve proposal.parameter_overrides in candidate_config.",
-                                    "Keep entrypoint in a concrete generated recclaw_ext module.",
-                                ],
-                            },
-                            ensure_ascii=True,
-                        ),
-                    }
+        if prepared is None:
+            context = build_implementation_context(proposal, registry, args.experiment_directive)
+            if args.llm_provider == "openai":
+                default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
+                default_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+                default_key_env = "OPENAI_API_KEY"
+            elif args.llm_provider == "deepseek":
+                default_model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+                default_base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+                default_key_env = "DEEPSEEK_API_KEY"
+            else:
+                default_model = os.environ.get("OPENAI_MODEL") or os.environ.get("DEEPSEEK_MODEL", "")
+                default_base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL", "")
+                default_key_env = os.environ.get("RECCLAW_LLM_API_KEY_ENV", "OPENAI_API_KEY")
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You implement RecClaw local candidate proposals. "
+                        "Honor experiment_directive as the highest-priority user steering below allowlists. "
+                        "Return strict JSON only and obey all allowlists. "
+                        "If review feedback is provided, rewrite the implementation instead of explaining."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
+            ]
+            attempts = max(1, int(args.implementation_review_retries) + 1)
+            for attempt in range(1, attempts + 1):
+                if review_errors:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                {
+                                    "implementation_review_failed": True,
+                                    "attempt": attempt - 1,
+                                    "errors": review_errors[-5:],
+                                    "rewrite_requirements": [
+                                        "Return the full strict JSON object again.",
+                                        "Do not call config.get(...).",
+                                        "Do not call float(config[key]); use config_float(config, key, default).",
+                                        "Do not call self.reg_loss unless this generated class defines it.",
+                                        "Do not pass scalar knobs positionally to soft_l2_norm_penalty.",
+                                        "Preserve proposal.parameter_overrides in candidate_config.",
+                                        "Keep entrypoint in a concrete generated recclaw_ext module.",
+                                    ],
+                                },
+                                ensure_ascii=True,
+                            ),
+                        }
+                    )
+                content = chat_completion(
+                    provider=args.llm_provider,
+                    base_url=args.llm_base_url or default_base_url,
+                    model=args.llm_model or default_model,
+                    api_key_env=args.llm_api_key_env or default_key_env,
+                    temperature=max(0.0, args.llm_temperature),
+                    max_tokens=max(512, args.llm_max_tokens),
+                    timeout=max(1, args.llm_timeout),
+                    retries=max(0, args.llm_retries),
+                    messages=messages,
                 )
-            content = chat_completion(
-                provider=args.llm_provider,
-                base_url=args.llm_base_url or default_base_url,
-                model=args.llm_model or default_model,
-                api_key_env=args.llm_api_key_env or default_key_env,
-                temperature=max(0.0, args.llm_temperature),
-                max_tokens=max(512, args.llm_max_tokens),
-                timeout=max(1, args.llm_timeout),
-                retries=max(0, args.llm_retries),
-                messages=messages,
-            )
-            try:
-                implementation = parse_json_object(content)
-                prepared = prepare_implementation(implementation, proposal)
-                break
-            except Exception as exc:  # noqa: BLE001
-                review_errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
+                try:
+                    implementation = parse_json_object(content)
+                    prepared = prepare_implementation(implementation, proposal)
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    review_errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
         if prepared is None:
             print(
                 json.dumps(
@@ -765,6 +1040,7 @@ def main() -> int:
                         files=[item["path"] for item in files],
                         config_path=str(config_path.relative_to(PROJECT_ROOT)),
                         entrypoint=entrypoint,
+                        source=prepared.source,
                     ),
                     ensure_ascii=True,
                     indent=2,
@@ -863,6 +1139,7 @@ def main() -> int:
                     files=[item["path"] for item in files],
                     config_path=str(config_path.relative_to(PROJECT_ROOT)),
                     entrypoint=entrypoint,
+                    source=prepared.source,
                     smoke=smoke_summary,
                 ),
                 ensure_ascii=True,

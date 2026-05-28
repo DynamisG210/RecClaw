@@ -1,11 +1,13 @@
 """Local recommendation models used by RecClaw."""
 
 from .bpr_margin import BPRMargin
+from .bpr_composed import BPRHardNegativeMargin, BPRPopularityAwareMargin
 from .bpr_regularized import (
     BPRLongTailReweight,
     BPRNormConstrained,
     BPRPopularityRegularized,
 )
+from .bpr_sampling import BPRHardNegative, BPRPopularityAwareNegative
 from ._losses import (
     BPRLongTailReweightLoss,
     BPRMarginLoss,
@@ -22,23 +24,40 @@ from ._samplers import (
     PopularityAwareNegativeSampler,
 )
 from .lightgcn_lw import LightGCNLW
+from .lightgcn_edge_dropout_residual import LightGCNEdgeDropoutResidualMix
+from .lightgcn_objectives import LightGCNAuxAlignment, LightGCNRankAware
 from .lightgcn_residual import LightGCNResidualMix
+from .lightgcn_residual_norm import (
+    LightGCNEdgeDropoutResidualNorm,
+    LightGCNResidualNormConstrained,
+)
+from .lightgcn_sampling import LightGCNDebiasedNegative
 
 __all__ = [
+    "BPRHardNegative",
+    "BPRHardNegativeMargin",
     "BPRMargin",
     "BPRLongTailReweight",
     "BPRLongTailReweightLoss",
     "BPRMarginLoss",
     "BPRNormConstrained",
     "BPRNormConstrainedLoss",
+    "BPRPopularityAwareNegative",
+    "BPRPopularityAwareMargin",
     "BPRPopularityRegularized",
     "BPRPopularityRegularizedLoss",
     "config_float",
     "config_get",
     "DebiasedNegativeSampler",
     "LayerAlignmentLoss",
+    "LightGCNAuxAlignment",
+    "LightGCNEdgeDropoutResidualMix",
+    "LightGCNEdgeDropoutResidualNorm",
+    "LightGCNDebiasedNegative",
     "LightGCNLW",
+    "LightGCNRankAware",
     "LightGCNResidualMix",
+    "LightGCNResidualNormConstrained",
     "margin_bpr_loss",
     "MixedNegativeSampler",
     "MixedNegativeSamplerConfig",

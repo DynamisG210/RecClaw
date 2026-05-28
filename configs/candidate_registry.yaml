@@ -22,10 +22,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "model-level negative sampling inside a local BPR subclass"
     priority: "high"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRHardNegative"
+    entrypoint: "recclaw_ext.models.bpr_sampling:BPRHardNegative"
     consumes:
       - hard_negative_ratio
 
@@ -37,12 +37,44 @@ candidates:
     implementation_type: "model"
     minimal_change: "model-level popularity-aware negative sampling inside a local BPR subclass"
     priority: "high"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:BPRPopularityAwareNegative"
+    entrypoint: "recclaw_ext.models.bpr_sampling:BPRPopularityAwareNegative"
     consumes:
       - popularity_alpha
+
+  - candidate_id: cand_bpr_hard_negative_margin
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "negative sampling is weak and the pairwise boundary is soft"
+    hypothesis: "combining mixed hard negatives with margin-aware pairwise loss improves ranking separation"
+    implementation_type: "model"
+    minimal_change: "local BPR subclass reuses the hard-negative sampler and margin loss helper"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_composed:BPRHardNegativeMargin"
+    consumes:
+      - hard_negative_ratio
+      - margin
+
+  - candidate_id: cand_bpr_popularity_aware_margin
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "negative sampling and pairwise separation are both under-constrained"
+    hypothesis: "popularity-aware negatives plus a small margin may improve exposure-robust ranking"
+    implementation_type: "model"
+    minimal_change: "local BPR subclass reuses the popularity-aware sampler and margin loss helper"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_composed:BPRPopularityAwareMargin"
+    consumes:
+      - popularity_alpha
+      - margin
 
   - candidate_id: cand_bpr_long_tail_reweight
     category: "Bias & Sample Construction"
@@ -52,8 +84,8 @@ candidates:
     implementation_type: "model"
     minimal_change: "local BPR subclass reads tail_weight_alpha and calls an internal loss helper"
     priority: "high"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
     entrypoint: "recclaw_ext.models.bpr_regularized:BPRLongTailReweight"
     consumes:
@@ -67,10 +99,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "model-level debiased negative sampling inside a local LightGCN subclass"
     priority: "medium"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:LightGCNDebiasedNegative"
+    entrypoint: "recclaw_ext.models.lightgcn_sampling:LightGCNDebiasedNegative"
     consumes:
       - debias_alpha
 
@@ -108,6 +140,25 @@ candidates:
       - n_layers
       - residual_weight
 
+  - candidate_id: cand_lightgcn_residual_norm_constrained
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "residual propagation can still drift in embedding scale"
+    hypothesis: "residual layer mixing with soft norm control preserves strong signal while stabilizing propagated embeddings"
+    implementation_type: "model"
+    minimal_change: "local residual LightGCN subclass adds a soft norm penalty in calculate_loss"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormConstrained"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - lambda_norm
+      - max_norm
+
   - candidate_id: cand_lightgcn_user_item_gate
     category: "Representation & Interaction"
     base_model: "LightGCN"
@@ -121,6 +172,44 @@ candidates:
     runner_type: "model"
     entrypoint: "recclaw_ext.models:LightGCNUserItemGate"
     consumes: []
+
+  - candidate_id: cand_lightgcn_edge_dropout_residual_mix
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "over-smoothing and brittle propagation"
+    hypothesis: "training-time sparse edge dropout regularizes residual propagation while preserving the full-sort protocol"
+    implementation_type: "model"
+    minimal_change: "local LightGCN residual subclass applies sparse edge dropout during training"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_edge_dropout_residual:LightGCNEdgeDropoutResidualMix"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+
+  - candidate_id: cand_lightgcn_edge_dropout_residual_norm
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "residual graph propagation needs both structural and scale regularization"
+    hypothesis: "edge-dropout residual propagation plus soft norm control may improve late-stage generalization"
+    implementation_type: "model"
+    minimal_change: "local edge-dropout residual LightGCN subclass reuses residual-norm loss control"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNorm"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+      - lambda_norm
+      - max_norm
 
   - candidate_id: cand_bpr_mlp_head
     category: "Representation & Interaction"
@@ -159,8 +248,8 @@ candidates:
     implementation_type: "model"
     minimal_change: "local BPR subclass reads lambda_pop and calls an internal loss helper"
     priority: "high"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
     entrypoint: "recclaw_ext.models.bpr_regularized:BPRPopularityRegularized"
     consumes:
@@ -174,8 +263,8 @@ candidates:
     implementation_type: "model"
     minimal_change: "local BPR subclass reads lambda_norm/max_norm and calls an internal loss helper"
     priority: "medium"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
     entrypoint: "recclaw_ext.models.bpr_regularized:BPRNormConstrained"
     consumes:
@@ -190,10 +279,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "local LightGCN subclass returns layer embeddings and adds alignment loss"
     priority: "medium"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:LightGCNAuxAlignment"
+    entrypoint: "recclaw_ext.models.lightgcn_objectives:LightGCNAuxAlignment"
     consumes:
       - lambda_align
 
@@ -205,10 +294,10 @@ candidates:
     implementation_type: "model"
     minimal_change: "local LightGCN subclass reads rank_weight_alpha and calls an internal loss helper"
     priority: "medium"
-    status: "implement-ready"
-    wired: false
+    status: "implemented"
+    wired: true
     runner_type: "model"
-    entrypoint: "recclaw_ext.models:LightGCNRankAware"
+    entrypoint: "recclaw_ext.models.lightgcn_objectives:LightGCNRankAware"
     consumes:
       - rank_weight_alpha
 

@@ -11,11 +11,33 @@ from typing import Any
 
 import yaml
 
+try:
+    from .action_space import (
+        allowed_action_types,
+        allowed_implementation_roots,
+        compatible_models_for_parameter,
+        is_parameter_compatible_with_model,
+        load_action_space,
+        parameter_space_from_action_space,
+        validate_parameter_conditions,
+    )
+except ImportError:
+    from action_space import (
+        allowed_action_types,
+        allowed_implementation_roots,
+        compatible_models_for_parameter,
+        is_parameter_compatible_with_model,
+        load_action_space,
+        parameter_space_from_action_space,
+        validate_parameter_conditions,
+    )
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
 SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
+ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
 
 ACCEPTED = "accepted"
 REJECTED = "rejected"
@@ -28,6 +50,7 @@ NEXT_ACTIONS = {
 }
 
 SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
+CONDITIONAL_CONTEXT_KEYS = {"action_type", "base_model", "proposal_type", "runnable_level", "runner_type"}
 
 
 def normalize_signature_value(value: Any) -> Any:
@@ -102,6 +125,22 @@ def new_parameter_names(proposal: dict[str, Any]) -> set[str]:
         elif isinstance(item, dict) and item.get("name"):
             names.add(str(item["name"]))
     return names
+
+
+def declared_new_parameter_specs(proposal: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    specs: dict[str, dict[str, Any]] = {}
+    for item in as_list(proposal.get("new_parameters")):
+        if isinstance(item, str):
+            specs[item] = {}
+        elif isinstance(item, dict) and item.get("name"):
+            specs[str(item["name"])] = item
+    return specs
+
+
+def value_allowed(value: Any, allowed_values: list[Any]) -> bool:
+    normalized_value = normalize_signature_value(value)
+    normalized_allowed = [normalize_signature_value(item) for item in allowed_values]
+    return normalized_value in normalized_allowed
 
 
 def implementation_files(proposal: dict[str, Any]) -> list[str]:
@@ -231,6 +270,53 @@ def multiseed_warnings(proposal: dict[str, Any], runnable_level: str) -> list[st
     return []
 
 
+def proposal_param_context(proposal: dict[str, Any], consumes: list[str]) -> dict[str, Any]:
+    context: dict[str, Any] = {
+        "base_model": str(proposal.get("base_model") or "").strip(),
+        "runner_type": str(proposal.get("runner_type") or "").strip(),
+        "runnable_level": str(proposal.get("runnable_level") or "").strip(),
+        "action_type": str(proposal.get("action_type") or "").strip(),
+        "proposal_type": str(proposal.get("proposal_type") or "").strip(),
+    }
+    for name in consumes:
+        context.setdefault(str(name), "")
+    overrides = proposal.get("parameter_overrides")
+    if isinstance(overrides, dict):
+        for key, value in overrides.items():
+            context[str(key)] = value
+    return context
+
+
+def action_space_parameter_errors(
+    proposal: dict[str, Any],
+    *,
+    consumes: list[str],
+    action_space: dict[str, Any],
+    runnable_level: str,
+) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    review_reasons: list[str] = []
+    if not action_space:
+        return errors, review_reasons
+    base_model = str(proposal.get("base_model") or "").strip()
+    context = proposal_param_context(proposal, consumes)
+    checked = list(dict.fromkeys([*consumes, *[str(key) for key in context if key not in CONDITIONAL_CONTEXT_KEYS]]))
+    parameter_space = parameter_space_from_action_space(action_space)
+    for name in checked:
+        if name not in parameter_space:
+            continue
+        if base_model and not is_parameter_compatible_with_model(name, base_model, action_space):
+            allowed = compatible_models_for_parameter(name, action_space)
+            errors.append(f"{name} is not compatible with base_model {base_model} (allowed: {allowed})")
+        violations = validate_parameter_conditions(name, context.get(name), context, action_space)
+        for violation in violations:
+            if runnable_level in {"parameter_only", "config_only"}:
+                errors.append(violation)
+            else:
+                review_reasons.append(violation)
+    return errors, review_reasons
+
+
 def validate_one(
     proposal: dict[str, Any],
     *,
@@ -241,6 +327,7 @@ def validate_one(
     seen_ids: set[str],
     seen_param_signatures: set[str],
     memory_param_signatures: set[str],
+    action_space: dict[str, Any] | None = None,
     require_multiseed: bool = False,
 ) -> dict[str, Any]:
     errors: list[str] = []
@@ -254,9 +341,19 @@ def validate_one(
     allowed_proposal_types = {
         str(item) for item in schema.get("allowed_proposal_types", ["tuning", "algorithmic_variant", "research_spec"])
     }
+    action_space = action_space or {}
+    parameter_space = parameter_space_from_action_space(action_space)
+    if action_space:
+        allowed_actions = allowed_action_types(action_space)
+    else:
+        allowed_actions = {
+            str(item) for item in schema.get("allowed_action_types", sorted(allowed_action_types(action_space)))
+        }
     allowed_roots = {
         str(item).replace("\\", "/") for item in schema.get("allowed_implementation_roots", [])
     }
+    if action_space:
+        allowed_roots = allowed_implementation_roots(action_space)
 
     for field in required_fields:
         if field not in proposal:
@@ -266,11 +363,15 @@ def validate_one(
     candidate_id = str(proposal.get("candidate_id") or "").strip()
     parent_id = str(proposal.get("parent_candidate_id") or "").strip()
     base_model = str(proposal.get("base_model") or "").strip()
+    action_type = str(proposal.get("action_type") or "").strip()
     runnable_level = str(proposal.get("runnable_level") or "").strip()
     runner_type = str(proposal.get("runner_type") or "").strip()
 
     if proposal_type not in allowed_proposal_types:
         errors.append(f"proposal_type must be one of {sorted(allowed_proposal_types)}: {proposal_type or '<missing>'}")
+
+    if action_type and action_type not in allowed_actions:
+        errors.append(f"action_type must be one of {sorted(allowed_actions)}: {action_type}")
 
     if not candidate_id:
         errors.append("candidate_id is empty")
@@ -307,12 +408,17 @@ def validate_one(
     consumes = extract_consume_names(consumes_value)
     if not isinstance(consumes_value, list):
         errors.append("consumes must be a list")
+    if action_space:
+        outside_action_space = sorted({name for name in consumes if name not in parameter_space})
+        if outside_action_space:
+            errors.append(f"consumes includes parameters outside action_space: {outside_action_space}")
     if runnable_level == "parameter_only" and not consumes:
         errors.append("parameter_only proposal must consume at least one parent parameter")
 
     if parent is not None:
         parent_consumes = {str(item) for item in as_list(parent.get("consumes"))}
         declared_new_params = new_parameter_names(proposal)
+        declared_new_specs = declared_new_parameter_specs(proposal)
         unsupported = sorted(set(consumes) - parent_consumes)
 
         if runnable_level in {"parameter_only", "config_only"} and unsupported:
@@ -323,6 +429,15 @@ def validate_one(
                 errors.append(
                     f"new consumes must be declared in new_parameters for {runnable_level}: {undeclared}"
                 )
+            for name in sorted(set(unsupported) & declared_new_params):
+                if name in parameter_space:
+                    continue
+                spec = declared_new_specs.get(name) or {}
+                search_space = spec.get("search_space") if isinstance(spec, dict) else None
+                if not isinstance(search_space, list) or not search_space:
+                    errors.append(
+                        f"new parameter must have a non-empty search_space or exist in action_space: {name}"
+                    )
 
         overrides = proposal.get("parameter_overrides") or {}
         if overrides and not isinstance(overrides, dict):
@@ -333,11 +448,30 @@ def validate_one(
                 errors.append(
                     f"parameter_overrides includes parameters not supported by parent {parent_id}: {unsupported_overrides}"
                 )
+            if runnable_level in {"parameter_only", "config_only"}:
+                for key, value in overrides.items():
+                    key_text = str(key)
+                    if key_text not in parameter_space:
+                        errors.append(f"parameter_overrides key is outside action_space: {key_text}")
+                        continue
+                    if not value_allowed(value, parameter_space[key_text]):
+                        errors.append(
+                            f"parameter_overrides value is outside action_space for {key_text}: {value}"
+                        )
 
         if runnable_level == "parameter_only" and not bool(parent.get("wired")):
             errors.append(f"parameter_only parent must be wired=true: {parent_id}")
         elif runnable_level == "config_only" and not bool(parent.get("wired")):
             review_reasons.append(f"parent is not wired yet: {parent_id}")
+
+    compatibility_errors, compatibility_reviews = action_space_parameter_errors(
+        proposal,
+        consumes=consumes,
+        action_space=action_space or {},
+        runnable_level=runnable_level,
+    )
+    errors.extend(compatibility_errors)
+    review_reasons.extend(compatibility_reviews)
 
     parameter_signature = proposal_parameter_signature(proposal)
     if proposal_type == "tuning" and runnable_level in {"parameter_only", "config_only"}:
@@ -405,6 +539,7 @@ def validate_one(
         "candidate_id": candidate_id,
         "parameter_signature": parameter_signature,
         "proposal_type": proposal_type,
+        "action_type": action_type,
         "runnable_level": runnable_level,
         "runner_type": runner_type,
         "status": status,
@@ -420,6 +555,7 @@ def main() -> int:
     parser.add_argument("--proposals", default=str(PROPOSAL_PATH), help="Path to candidate proposal JSONL")
     parser.add_argument("--registry", default=str(REGISTRY_PATH), help="Path to candidate_registry.yaml")
     parser.add_argument("--schema", default=str(SCHEMA_PATH), help="Path to candidate_proposal_schema.yaml")
+    parser.add_argument("--action-space", default=str(ACTION_SPACE_PATH), help="Path to action_space.yaml")
     parser.add_argument(
         "--memory",
         default=str(MEMORY_PATH),
@@ -434,6 +570,7 @@ def main() -> int:
     args = parser.parse_args()
 
     schema = load_yaml(Path(args.schema))
+    action_space = load_action_space(Path(args.action_space))
     registry = load_yaml(Path(args.registry)).get("candidates", [])
     if not isinstance(registry, list):
         raise ValueError(f"registry candidates must be a list: {args.registry}")
@@ -456,6 +593,7 @@ def main() -> int:
                     "candidate_id": "",
                     "parameter_signature": "",
                     "proposal_type": "",
+                    "action_type": "",
                     "runnable_level": "",
                     "runner_type": "",
                     "status": REJECTED,
@@ -477,6 +615,7 @@ def main() -> int:
                 seen_ids=seen_ids,
                 seen_param_signatures=seen_param_signatures,
                 memory_param_signatures=memory_param_signatures,
+                action_space=action_space,
                 require_multiseed=bool(args.require_multiseed),
             )
         )

@@ -1,0 +1,135 @@
+version: 3
+description: >
+  Runtime search-steering policy for RecClaw. v3 is algorithm-first: the LLM
+  agent should discover, compose, implement, and validate RS mechanisms before
+  falling back to local parameter tuning. This file does not expand the action
+  space; it prioritizes, budgets, and freezes exploration inside
+  configs/action_space.yaml.
+
+protocol_lock:
+  dataset: ml-1m
+  split: configs/task_ml1m.yaml
+  eval_mode: fixed top-k evaluation
+  primary_metric: ndcg@10
+  immutable:
+    - dataset split definition
+    - evaluation protocol
+    - baseline task config
+    - RecBole core source files
+
+search_stages:
+  algorithm_discovery:
+    description: Prefer new or composed local RS mechanisms over single-axis tuning.
+    priority_families:
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+    preferred_actions:
+      - pairwise_loss
+      - negative_sampling
+      - local_loss
+      - graph_augmentation
+      - layer_interaction
+      - auxiliary_loss
+      - rank_aware_loss
+      - regularization
+    proposal_mix:
+      algorithmic_code_required: 0.60
+      runnable_algorithm_variant: 0.30
+      parameter_sanity_tuning: 0.10
+  exploit:
+    description: Exploit only after an algorithm family has shown credible NDCG signal.
+    priority_families:
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+      - cand_lightgcn_residual_layer_mix
+      - cand_lightgcn_layer_weighted_agg
+    preferred_actions:
+      - pairwise_loss
+      - graph_augmentation
+      - regularization
+      - local_loss
+  repair:
+    description: Revisit high-potential or historical strong families as mechanism repairs or ablations.
+    max_repair_depth: 1
+    preferred_actions:
+      - pairwise_loss
+      - local_loss
+      - regularization
+      - layer_interaction
+  explore:
+    description: Introduce code_required families when the frontier stagnates or remains below tuned LightGCN.
+    max_code_required_per_window: 3
+    window_rounds: 5
+    preferred_actions:
+      - local_loss
+      - negative_sampling
+      - pairwise_loss
+      - graph_augmentation
+      - layer_interaction
+      - auxiliary_loss
+      - rank_aware_loss
+
+composition_rules:
+  max_mechanisms_per_proposal: 3
+  discourage_combinations:
+    - [debias, pareto]
+    - [pareto, contrastive]
+    - [debias, pareto, contrastive]
+  require_declared_search_space: true
+  prefer_single_axis_tuning: false
+  parameter_tuning_only_after_algorithm_signal: true
+  require_ablation_parent_for_algorithmic_variant: true
+
+algorithm_first:
+  enabled: true
+  tuned_lightgcn_mean: 0.274367
+  old_first50_best: 0.2765
+  below_tuned_lightgcn_after_rounds: 20
+  default_planner_action: propose_algorithm
+  fallback_planner_action: propose_algorithm
+  proposal_mode: algorithm_first
+  algorithm_budget_per_window: 3
+  window_rounds: 5
+  max_pending_implemented: 4
+  anchor_families:
+    - cand_bpr_hard_negative_margin
+    - cand_lightgcn_shallow_layers
+    - cand_lightgcn_residual_norm_constrained
+    - cand_lightgcn_edge_dropout_residual_norm
+  revisit_floor_ndcg: 0.274
+  parameter_tuning_cap_fraction: 0.10
+  required_algorithmic_formal_fraction: 0.60
+
+family_budget:
+  consecutive_failures_before_downweight: 3
+  crashes_before_freeze: 2
+  collapse_rate_before_freeze: 0.50
+  severe_collapse_rate_before_freeze: 0.25
+  no_gain_after_budget: 8
+  max_active_families_per_stage: 6
+  max_code_required_per_window: 3
+  window_rounds: 5
+  protect_anchor_families_from_discard_freeze: true
+
+validation_gates:
+  keep_requires_multiseed: true
+  minimum_validation_seeds: 3
+  strong_claim_requires:
+    - tuned_baseline_comparison
+    - random_baseline_comparison
+    - no_history_or_weak_memory_ablation
+
+freeze_rules:
+  freeze_if:
+    - repeated_crash
+    - severe_collapse_rate
+    - repeated_duplicate_signature
+    - protocol_or_schema_risk
+  thaw_only_for:
+    - minimal_repair
+    - targeted_ablation
+    - anchor_family_revisit

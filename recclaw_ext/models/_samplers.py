@@ -26,6 +26,7 @@ class MixedNegativeSampler:
         num_items: int,
         popularity: Optional[Union[torch.Tensor, Sequence[float]]] = None,
         hard_negative_ratio: float = 0.5,
+        avoid_zero: bool = False,
     ) -> None:
         if num_items <= 0:
             raise ValueError("num_items must be positive.")
@@ -34,6 +35,7 @@ class MixedNegativeSampler:
 
         self.num_items = int(num_items)
         self.hard_negative_ratio = float(hard_negative_ratio)
+        self.avoid_zero = bool(avoid_zero)
         self.popularity = self._build_popularity(popularity)
 
     def sample(
@@ -50,9 +52,8 @@ class MixedNegativeSampler:
         pop_count = round(total * self.hard_negative_ratio)
         uniform_count = total - pop_count
 
-        uniform_samples = torch.randint(
-            self.num_items, (uniform_count,), device=target_device
-        )
+        low = 1 if self.avoid_zero and self.num_items > 1 else 0
+        uniform_samples = torch.randint(low, self.num_items, (uniform_count,), device=target_device)
         pop_samples = torch.multinomial(
             self.popularity.to(target_device),
             pop_count,
@@ -74,10 +75,15 @@ class MixedNegativeSampler:
             if weights.numel() != self.num_items:
                 raise ValueError("popularity must contain one value per item.")
             weights = weights.reshape(self.num_items).clamp_min(0)
+        if self.avoid_zero and weights.numel() > 1:
+            weights = weights.clone()
+            weights[0] = 0
 
         total = weights.sum()
         if total <= 0:
             weights = torch.ones(self.num_items, dtype=torch.float)
+            if self.avoid_zero and weights.numel() > 1:
+                weights[0] = 0
             total = weights.sum()
         return weights / total
 
@@ -95,14 +101,20 @@ class DebiasedNegativeSampler:
         self,
         popularity: Union[torch.Tensor, Sequence[float]],
         alpha: float = 0.5,
+        avoid_zero: bool = False,
     ) -> None:
         if alpha < 0:
             raise ValueError("alpha must be non-negative.")
         weights = torch.as_tensor(popularity, dtype=torch.float).flatten().clamp_min(0)
         if weights.numel() == 0:
             raise ValueError("popularity must not be empty.")
+        if avoid_zero and weights.numel() > 1:
+            weights = weights.clone()
+            weights[0] = 0
 
         inverse = (weights + 1.0).pow(-float(alpha))
+        if avoid_zero and inverse.numel() > 1:
+            inverse[0] = 0
         self.probability = inverse / inverse.sum()
 
     @property
@@ -134,16 +146,22 @@ class PopularityAwareNegativeSampler:
         self,
         popularity: Union[torch.Tensor, Sequence[float]],
         alpha: float = 0.75,
+        avoid_zero: bool = False,
     ) -> None:
         if alpha < 0:
             raise ValueError("alpha must be non-negative.")
         weights = torch.as_tensor(popularity, dtype=torch.float).flatten().clamp_min(0)
         if weights.numel() == 0:
             raise ValueError("popularity must not be empty.")
+        if avoid_zero and weights.numel() > 1:
+            weights = weights.clone()
+            weights[0] = 0
 
         shaped = weights.pow(float(alpha))
         if shaped.sum() <= 0:
             shaped = torch.ones_like(shaped)
+            if avoid_zero and shaped.numel() > 1:
+                shaped[0] = 0
         self.probability = shaped / shaped.sum()
 
     @property

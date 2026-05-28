@@ -10,6 +10,13 @@ required_fields:
   - parent_candidate_id
   - base_model
   - category
+  - action_type
+  - mechanism
+  - mechanism_composition
+  - novelty_claim
+  - expected_failure_mode
+  - ablation_parent
+  - implementation_complexity
   - hypothesis
   - runnable_level
   - runner_type
@@ -38,6 +45,21 @@ allowed_proposal_types:
   - algorithmic_variant
   - research_spec
 
+allowed_action_types:
+  - parameter_tuning
+  - local_loss
+  - aggregation
+  - regularization
+  - sampling_wrapper
+  - posthoc_rerank
+  - negative_sampling
+  - pairwise_loss
+  - graph_propagation
+  - graph_augmentation
+  - layer_interaction
+  - auxiliary_loss
+  - rank_aware_loss
+
 allowed_implementation_roots:
   - recclaw_ext/models/
   - recclaw_ext/posthoc/
@@ -53,6 +75,13 @@ field_contract:
   parent_candidate_id: "Existing candidate_id used as the executable or conceptual parent."
   base_model: "Exactly one of BPR or LightGCN."
   category: "Same style as registry category, for example Objective & Optimization."
+  action_type: "Executable action kind from configs/action_space.yaml, for example parameter_tuning, local_loss, aggregation, regularization, sampling_wrapper, negative_sampling, pairwise_loss, graph_propagation, graph_augmentation, layer_interaction, auxiliary_loss, rank_aware_loss, or posthoc_rerank."
+  mechanism: "Short algorithm mechanism label, for example hard_negative_margin_tail_reweight or residual_norm_rank_alignment. Parameter-only proposals should still name the algorithm family being tested."
+  mechanism_composition: "Required list of mechanism tokens being combined; use this to make algorithmic composition explicit instead of hiding it in parameter names."
+  novelty_claim: "Required concise statement of what is algorithmically new relative to the ablation_parent. Parameter-only proposals should state why the sanity/refinement point matters."
+  expected_failure_mode: "Required concise statement of how this algorithm can fail, such as over-regularization, popularity over-penalty, or representation collapse."
+  ablation_parent: "Required existing candidate_id that should be used as the ablation baseline for the new algorithm or parameter sanity check."
+  implementation_complexity: "Required one of low, medium, high. Use low for reuse/composition of existing helpers and high for genuinely new local model code."
   hypothesis: "One sentence explaining why this proposal should improve a metric or risk dimension."
   runnable_level: "parameter_only and config_only should be runnable without local code changes."
   runner_type: "Must stay within the existing RecClaw runner contract."
@@ -74,6 +103,15 @@ example_proposal:
   parent_candidate_id: cand_lightgcn_residual_layer_mix
   base_model: LightGCN
   category: Representation & Interaction
+  action_type: parameter_tuning
+  mechanism: residual_layer_mix
+  mechanism_composition:
+    - residual_layer_mix
+    - depth_tuning
+  novelty_claim: parameter-only sanity check around a known residual propagation family.
+  expected_failure_mode: too little residual signal or over-smoothing if propagation depth is mismatched.
+  ablation_parent: cand_lightgcn_residual_layer_mix
+  implementation_complexity: low
   hypothesis: Lower residual mixing may reduce over-smoothing while keeping useful ego embedding signal.
   runnable_level: parameter_only
   runner_type: model
@@ -111,6 +149,15 @@ example_algorithmic_variant:
   parent_candidate_id: cand_bpr_margin_loss
   base_model: BPR
   category: Objective & Optimization
+  action_type: pairwise_loss
+  mechanism: adaptive_popularity_margin
+  mechanism_composition:
+    - pairwise_margin
+    - popularity_reweighting
+  novelty_claim: adaptive item-popularity margins change the pairwise objective rather than only tuning a scalar margin.
+  expected_failure_mode: may over-penalize popular negatives and reduce precision@10.
+  ablation_parent: cand_bpr_margin_loss
+  implementation_complexity: medium
   hypothesis: Adaptive margins based on item popularity may reduce head-item dominance while preserving pairwise ranking strength.
   runnable_level: code_required
   runner_type: model
@@ -119,11 +166,11 @@ example_algorithmic_variant:
     - popularity_alpha
   new_parameters:
     - name: popularity_alpha
-      default: 0.3
+      default: 0.5
       search_space:
-        - 0.1
-        - 0.3
+        - 0.2
         - 0.5
+        - 1.0
   implementation_plan:
     summary: Add a local BPR subclass that scales pairwise margin by negative-item popularity.
     entrypoint: recclaw_ext.models.bpr_adaptive_popularity_margin:BPRAdaptivePopularityMargin
