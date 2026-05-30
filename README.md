@@ -1,33 +1,40 @@
 # RecClaw
 
-RecClaw is a lightweight workspace for recommender-system method exploration.
+RecClaw is a recommender-system research agent workspace built around RecBole.
+It is used to propose, validate, implement, run, and reflect on candidate
+recommendation algorithms under a fixed evaluation protocol.
 
-The current stage focuses on local candidate design around fixed BPR and
-LightGCN baselines.
+The current runtime focuses on controlled BPR/LightGCN action-space exploration
+with local extension code under `recclaw_ext/`.
 
-## Server Experiment Flow
+## Main Pieces
 
-Start from a clean `results/` state, then establish same-protocol baselines
-before running the agent loop:
+- `configs/action_space.yaml`: runtime boundary for what the agent may change.
+- `configs/candidate_registry.yaml`: runnable candidate catalog.
+- `scripts/agent.py`: Observe -> Plan -> Propose -> Validate -> Run -> Reflect loop.
+- `scripts/run_candidate.py`: isolated candidate execution.
+- `scripts/build_experience_summary.py`: reflection memory and search steering.
+- `recclaw_ext/`: local model/loss/sampler extensions.
+- `recclaw_program.md`: operating manual for the agent and experiments.
 
-```bash
-bash scripts/run_baseline.sh
-python scripts/agent.py --loop-mode mixed --rounds 5
-```
-
-Useful agent modes:
-
-- `tuning`: conservative parameter/config proposals only.
-- `mixed`: default balance of runnable tuning and implementation review queue.
-- `explore`: allows auto-implementation of `code_required` proposals through the LLM allowlist.
-- `auto`: asks the LLM planner to choose the next loop action each round.
-
-For a no-LLM smoke check, run:
+## Quick Checks
 
 ```bash
-python scripts/agent.py --rounds 1 --dry-run --disable-candidate-proposals
+python3 scripts/analysis/lint_recclaw_space.py
+python3 -m unittest discover -s tests
 ```
 
-`run_time` and `latency_ms` are intentionally separate. `latency_ms` should
-come from an explicit inference-timing benchmark or model output; the result
-collector leaves it empty when only wall-clock run time is available.
+## Pilot Entry
+
+Use an isolated output directory for each run:
+
+```bash
+python3 scripts/run_reflection_pilot.py \
+  --rounds 50 \
+  --proposal-source llm \
+  --search-intensity algorithm_first \
+  --gpu-id 0
+```
+
+Keep `RecClaw_LabLog` out of runtime inputs. Use it only for human-facing
+analysis, plots, and reports.

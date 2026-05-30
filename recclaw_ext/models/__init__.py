@@ -25,6 +25,9 @@ from ._samplers import (
 )
 from .lightgcn_lw import LightGCNLW
 from .lightgcn_edge_dropout_residual import LightGCNEdgeDropoutResidualMix
+from .lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076 import (
+    LightGCNEdgeDropoutResidualNormDualPathBlend,
+)
 from .lightgcn_objectives import LightGCNAuxAlignment, LightGCNRankAware
 from .lightgcn_residual import LightGCNResidualMix
 from .lightgcn_residual_norm import (
@@ -53,6 +56,7 @@ __all__ = [
     "LightGCNAuxAlignment",
     "LightGCNEdgeDropoutResidualMix",
     "LightGCNEdgeDropoutResidualNorm",
+    "LightGCNEdgeDropoutResidualNormDualPathBlend",
     "LightGCNDebiasedNegative",
     "LightGCNLW",
     "LightGCNRankAware",

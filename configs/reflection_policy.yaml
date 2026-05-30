@@ -52,6 +52,22 @@ algorithm_first:
     - revisit shallow LightGCN and residual-norm LightGCN with mechanism ablations rather than broad tuning.
     - combine LightGCN propagation changes with one objective-side signal such as alignment or rank-aware weighting.
     - quarantine weak implementations quickly and return budget to anchor families.
+  plateau_policy:
+    enabled: true
+    window_metric_rows: 30
+    min_global_improvement: 0.0005
+    family_overuse_window: 20
+    max_same_family_trials: 8
+    weak_family_ceiling: 0.280
+    forced_exploration_families:
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+    forced_algorithm_tasks:
+      - force cross-family residual-norm / edge-drop residual-norm exploration after a stale global best.
+      - cap repeated local shallow/gate/rank-aware repair when it stops improving the running best.
+      - require architecture-level or loss/sampling-level novelty before spending more budget in a plateau family.
 
 domain_priors:
   LightGCN:
@@ -93,6 +109,7 @@ output_contract:
     - Avoid
     - Domain Prior Notes
     - Trend Notes
+    - Plateau / Anti-Locality
     - Next Proposal Policy
   max_lines: 80
   include_raw_tables: false
