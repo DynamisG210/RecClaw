@@ -103,6 +103,23 @@ algorithm_first:
   revisit_floor_ndcg: 0.274
   parameter_tuning_cap_fraction: 0.10
   required_algorithmic_formal_fraction: 0.60
+  anti_plateau:
+    enabled: true
+    window_metric_rows: 30
+    min_global_improvement: 0.0005
+    family_overuse_window: 20
+    max_same_family_trials: 8
+    weak_family_ceiling: 0.280
+    forced_exploration_families:
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+    forced_algorithm_tasks:
+      - revisit residual-norm constrained LightGCN with architectural ablations rather than shallow/gate-only repairs.
+      - compose edge-drop residual-norm propagation with one objective-side signal, then ablate each mechanism.
+      - return to hard-negative margin BPR only for mechanism-level sampling/loss changes, not broad parameter sweeps.
+      - propose at least one genuinely new local architecture connection when the running best has not improved for a full plateau window.
 
 family_budget:
   consecutive_failures_before_downweight: 3

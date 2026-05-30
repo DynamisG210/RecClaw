@@ -142,6 +142,7 @@ class AgentLoopTests(unittest.TestCase):
             "cand_bpr_popularity_regularized",
             "cand_lightgcn_edge_dropout_residual_mix",
             "cand_lightgcn_edge_dropout_residual_norm",
+            "cand_lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076",
             "cand_lightgcn_debiased_negative_sampling",
             "cand_lightgcn_aux_alignment_loss",
             "cand_lightgcn_rank_aware_loss",
@@ -243,6 +244,54 @@ class AgentLoopTests(unittest.TestCase):
             self.assertEqual(rec_agent.config.proposal_mode, "algorithm_first")
             self.assertTrue(rec_agent.force_proposal_refresh)
             self.assertTrue(rec_agent.config.auto_implement_code_required)
+
+    def test_anti_plateau_overrides_local_tuning_action(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                search_intensity="algorithm_first",
+                plateau_window_metric_rows=10,
+                plateau_family_overuse_window=10,
+                max_same_family_repair_streak=4,
+            )
+        )
+        rec_agent.memory = [
+            {
+                "round_id": 1,
+                "candidate_id": "cand_global_best",
+                "parent_candidate_id": "cand_lightgcn_residual_norm_constrained",
+                "status": "success",
+                "decision": "keep",
+                "result": {"ndcg@10": 0.2842},
+            }
+        ]
+        for round_id in range(2, 18):
+            rec_agent.memory.append(
+                {
+                    "round_id": round_id,
+                    "candidate_id": f"cand_local_repair_{round_id}",
+                    "parent_candidate_id": "cand_lightgcn_shallow_gate_plateau",
+                    "status": "success",
+                    "decision": "revise",
+                    "result": {"ndcg@10": 0.277},
+                }
+            )
+        rec_agent.memory.append(
+            {
+                "event": "proposal_needs_review",
+                "proposal_id": "cand_stale_local_code",
+                "parent_candidate_id": "cand_lightgcn_shallow_gate_plateau",
+                "next_action": "promote_to_implementation_queue",
+            }
+        )
+
+        payload, reason = rec_agent._maybe_override_auto_action(
+            {"action": "tune_after_algorithm_success", "reason": "keep repairing gate", "proposal_count": 3}
+        )
+
+        self.assertEqual(payload["action"], "propose_algorithm")
+        self.assertEqual(reason, "anti_plateau_force_algorithm_exploration")
+        self.assertTrue(rec_agent._plateau_state()["plateau_detected"])
+        self.assertFalse(rec_agent._has_pending_code_required_review())
 
     def test_experiment_directive_resolves_file_and_disable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -428,6 +477,49 @@ class AgentLoopTests(unittest.TestCase):
         self.assertNotIn("cand_caution_frozen", next_policy["repair_families"])
         self.assertIn("cand_bad_default", next_policy["avoid_families"])
         self.assertIn("cand_caution_frozen", next_policy["avoid_families"])
+
+    def test_experience_policy_forces_cross_family_after_plateau(self) -> None:
+        search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
+        reflection_policy = experience.load_yaml(ROOT / "configs" / "reflection_policy.yaml")
+        rows = [
+            {
+                "round_id": 1,
+                "candidate_id": "cand_best",
+                "parent_candidate_id": "cand_lightgcn_residual_norm_constrained",
+                "base_model": "LightGCN",
+                "status": "success",
+                "decision": "keep",
+                "params": {"lambda_norm": 0.001},
+                "result": {"ndcg@10": 0.2842},
+            }
+        ]
+        for round_id in range(2, 40):
+            rows.append(
+                {
+                    "round_id": round_id,
+                    "candidate_id": f"cand_plateau_{round_id}",
+                    "parent_candidate_id": "cand_lightgcn_shallow_gate_plateau",
+                    "base_model": "LightGCN",
+                    "status": "success",
+                    "decision": "revise",
+                    "params": {"lambda_align": 0.01},
+                    "result": {"ndcg@10": 0.277},
+                }
+            )
+
+        summary = experience.summarize_memory(
+            rows,
+            action_space={},
+            policy=reflection_policy,
+            search_policy=search_policy,
+        )
+        policy = experience.build_experience_policy(summary, search_policy=search_policy, tree_summary={})
+        next_policy = policy["next_proposal_policy"]
+
+        self.assertTrue(policy["plateau_analysis"]["plateau_detected"])
+        self.assertIn("cand_lightgcn_shallow_gate", next_policy["local_repair_capped_families"])
+        self.assertIn("cand_lightgcn_residual_norm_constrained", next_policy["forced_exploration_families"])
+        self.assertNotIn("cand_lightgcn_shallow_gate_plateau", next_policy["prefer_families"])
 
     def test_high_potential_anchor_goes_to_revisit_not_freeze(self) -> None:
         search_policy = experience.load_yaml(ROOT / "configs" / "search_policy.yaml")
@@ -1338,6 +1430,53 @@ class AgentLoopTests(unittest.TestCase):
         )
         self.assertEqual(payload["action"], "propose_mixed")
         self.assertEqual(reason, "no_actionable_code_review_pending")
+
+    def test_post_validation_sibling_churn_prefers_structured_refinement(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                search_intensity="algorithm_first",
+                post_validation_sibling_churn_limit=2,
+                post_validation_structured_followup_window=5,
+                post_validation_min_followup_improvement=0.0005,
+                seed_validation_min_metric=0.274,
+            )
+        )
+        rec_agent.memory = [
+            {
+                "round_id": 10,
+                "candidate_id": "cand_validated_best",
+                "parent_candidate_id": "cand_anchor",
+                "status": "success",
+                "decision": "keep",
+                "result": {"ndcg@10": 0.289},
+                "seed_validation": {"status": "passed", "mean": 0.289},
+            },
+            {
+                "round_id": 11,
+                "candidate_id": "cand_validated_best_child_a",
+                "parent_candidate_id": "cand_validated_best",
+                "status": "success",
+                "decision": "revise",
+                "result": {"ndcg@10": 0.272},
+            },
+            {
+                "round_id": 12,
+                "candidate_id": "cand_validated_best_child_b",
+                "parent_candidate_id": "cand_validated_best",
+                "status": "success",
+                "decision": "revise",
+                "result": {"ndcg@10": 0.273},
+            },
+        ]
+
+        followup = rec_agent._post_validation_followup_state()
+        payload, reason = rec_agent._maybe_override_auto_action(
+            {"action": "propose_algorithm", "reason": "keep making siblings", "proposal_count": 3}
+        )
+
+        self.assertTrue(followup["needs_structured_followup"])
+        self.assertEqual(payload["action"], "tune_after_algorithm_success")
+        self.assertEqual(reason, "post_validation_structured_followup")
 
     def test_llm_proposal_repair_fills_new_parameters_and_unique_id(self) -> None:
         rec_agent = agent.RecClawAgent(agent.AgentConfig())

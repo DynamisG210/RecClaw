@@ -359,6 +359,14 @@ class AgentConfig:
     algorithm_budget_per_window: int = 3
     algorithm_first_explore_rounds: int = 20
     seed_validation_min_metric: float = 0.0
+    anti_plateau_enabled: bool = True
+    plateau_window_metric_rows: int = 30
+    plateau_min_global_improvement: float = 0.0005
+    plateau_family_overuse_window: int = 20
+    max_same_family_repair_streak: int = 8
+    plateau_weak_family_ceiling: float = 0.280
+    anti_plateau_anchor_bonus: float = 0.85
+    anti_plateau_local_family_penalty: float = 1.25
     anchor_families: list[str] = field(
         default_factory=lambda: [
             "cand_bpr_hard_negative_margin",
@@ -369,6 +377,9 @@ class AgentConfig:
     )
     tuned_lightgcn_mean: float = 0.274367
     exploitation_window_rounds: int = 8
+    post_validation_structured_followup_window: int = 20
+    post_validation_sibling_churn_limit: int = 6
+    post_validation_min_followup_improvement: float = 0.0005
     global_overrides: list[str] = field(default_factory=list)
     checkpoint_dir: str = ""
     checkpoint_policy: str = "none"
@@ -1021,17 +1032,6 @@ class RecClawAgent:
             - (self.config.recent_schedule_penalty if recently_scheduled else 0.0)
         )
 
-    def _algorithm_first_score_adjustment(self, candidate: dict[str, Any]) -> float:
-        if self.config.search_intensity != "algorithm_first" or not self._has_strong_algorithm_signal():
-            return 0.0
-        if str(candidate.get("candidate_id") or "") in self._pending_implemented_candidate_ids():
-            return 0.0
-        if candidate.get("parent_candidate_id"):
-            return 0.0
-        if self._normalize_model_key(candidate.get("base_model")) == "BPR":
-            return -1.0
-        return 0.0
-
     def _family_plan_credit(self, candidate_id: str) -> float:
         keeps = 0
         revises = 0
@@ -1051,6 +1051,173 @@ class RecClawAgent:
             min(0.45, 0.2 * keeps + 0.04 * revises)
             - min(0.45, 0.15 * crashes + 0.04 * discards + 0.18 * collapses)
         )
+
+    @staticmethod
+    def _family_matches(candidate_family: str, target_family: str) -> bool:
+        candidate_family = str(candidate_family or "")
+        target_family = str(target_family or "")
+        return (
+            candidate_family == target_family
+            or candidate_family.startswith(f"{target_family}_")
+            or target_family.startswith(f"{candidate_family}_")
+        )
+
+    @staticmethod
+    def _coarse_family_key(family: str) -> str:
+        family = str(family or "")
+        known_prefixes = (
+            "cand_lightgcn_shallow_alignment_rankaware_gate",
+            "cand_lightgcn_shallow_rankaware_lastlayeralign",
+            "cand_lightgcn_edge_dropout_residual_norm",
+            "cand_lightgcn_residual_norm_constrained",
+            "cand_bpr_hard_negative_margin",
+            "cand_lightgcn_shallow_layers",
+        )
+        for prefix in known_prefixes:
+            if family == prefix or family.startswith(f"{prefix}_"):
+                return prefix
+        parts = family.split("_")
+        return "_".join(parts[:4]) if len(parts) >= 4 else family
+
+    def _metric_trial_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for index, row in enumerate(self._trial_memory_rows()):
+            if str(row.get("status") or "").lower() != "success":
+                continue
+            value = self._to_float((row.get("result") or {}).get(self.config.metric))
+            if value is None:
+                continue
+            rows.append(
+                {
+                    "index": index,
+                    "round_id": int(row.get("round_id") or index + 1),
+                    "candidate_id": str(row.get("candidate_id") or ""),
+                    "family": self._family_key(row),
+                    "value": value,
+                    "decision": str(row.get("decision") or ""),
+                }
+            )
+        return rows
+
+    def _plateau_state(self) -> dict[str, Any]:
+        rows = self._metric_trial_rows()
+        window = max(1, self.config.plateau_window_metric_rows)
+        overuse_window = max(1, self.config.plateau_family_overuse_window)
+        min_improvement = max(0.0, self.config.plateau_min_global_improvement)
+        default_forced = list(self.config.anchor_families)
+        if not self.config.anti_plateau_enabled or len(rows) <= window:
+            return {
+                "enabled": bool(self.config.anti_plateau_enabled),
+                "plateau_detected": False,
+                "metric_rows": len(rows),
+                "window_metric_rows": window,
+                "forced_exploration_families": default_forced,
+                "local_repair_capped_families": [],
+            }
+
+        values = [float(row["value"]) for row in rows]
+        best_value = max(values)
+        best_index = values.index(best_value)
+        best_row = rows[best_index]
+        prior_best = max(values[:-window])
+        recent_rows = rows[-window:]
+        recent_best = max(float(row["value"]) for row in recent_rows)
+        recent_improvement = recent_best - prior_best
+        rows_since_best = len(rows) - best_index - 1
+
+        recent_family_counts: dict[str, int] = {}
+        recent_cluster_counts: dict[str, int] = {}
+        for row in rows[-overuse_window:]:
+            family = str(row["family"])
+            recent_family_counts[family] = recent_family_counts.get(family, 0) + 1
+            cluster = self._coarse_family_key(family)
+            recent_cluster_counts[cluster] = recent_cluster_counts.get(cluster, 0) + 1
+
+        capped_families: list[str] = []
+        for family, count in sorted(recent_cluster_counts.items(), key=lambda item: (-item[1], item[0])):
+            overused = count >= self.config.max_same_family_repair_streak
+            weak_recent_frontier = recent_best <= self.config.plateau_weak_family_ceiling
+            stale_global_best = rows_since_best >= window
+            is_anchor = any(self._family_matches(family, anchor) for anchor in self.config.anchor_families)
+            if overused and stale_global_best and (weak_recent_frontier or not is_anchor):
+                capped_families.append(family)
+
+        plateau_detected = (
+            rows_since_best >= window
+            and recent_improvement < min_improvement
+        ) or bool(capped_families)
+        if plateau_detected and rows_since_best >= window:
+            stale_best_family = self._coarse_family_key(str(best_row.get("family") or ""))
+            stale_best_is_anchor = any(
+                self._family_matches(stale_best_family, anchor)
+                for anchor in self.config.anchor_families
+            )
+            if stale_best_family and not stale_best_is_anchor and stale_best_family not in capped_families:
+                capped_families.append(stale_best_family)
+        forced = [
+            family
+            for family in self.config.anchor_families
+            if not any(self._family_matches(family, capped) for capped in capped_families)
+        ] or default_forced
+        return {
+            "enabled": True,
+            "plateau_detected": bool(plateau_detected),
+            "metric_rows": len(rows),
+            "window_metric_rows": window,
+            "rows_since_best": rows_since_best,
+            "best_metric": round(best_value, 6),
+            "best_round_id": best_row.get("round_id"),
+            "best_family": best_row.get("family"),
+            "recent_best": round(recent_best, 6),
+            "recent_improvement": round(recent_improvement, 6),
+            "local_repair_capped_families": capped_families[:10],
+            "recent_family_counts": dict(sorted(recent_family_counts.items(), key=lambda item: (-item[1], item[0]))[:10]),
+            "recent_family_clusters": dict(sorted(recent_cluster_counts.items(), key=lambda item: (-item[1], item[0]))[:10]),
+            "forced_exploration_families": forced,
+            "instruction": (
+                "Plateau detected: cap local repairs on overused families and force cross-family "
+                "algorithm proposals around residual-norm, edge-drop residual-norm, hard-negative margin, "
+                "or other architecture-level mechanisms."
+            )
+            if plateau_detected
+            else "",
+        }
+
+    def _algorithm_first_score_adjustment(self, candidate: dict[str, Any]) -> float:
+        if self.config.search_intensity != "algorithm_first":
+            return 0.0
+        if str(candidate.get("candidate_id") or "") in self._pending_implemented_candidate_ids():
+            return 0.0
+        adjustment = 0.0
+        family = str(candidate.get("parent_candidate_id") or candidate.get("candidate_id") or "")
+        plateau = self._plateau_state()
+        if plateau.get("plateau_detected"):
+            capped = [str(item) for item in plateau.get("local_repair_capped_families", [])]
+            forced = [str(item) for item in plateau.get("forced_exploration_families", [])]
+            if any(self._family_matches(family, item) for item in capped):
+                adjustment -= self.config.anti_plateau_local_family_penalty
+            if any(self._family_matches(family, item) for item in forced):
+                adjustment += self.config.anti_plateau_anchor_bonus
+        if not self._has_strong_algorithm_signal():
+            return adjustment
+        if candidate.get("parent_candidate_id"):
+            return adjustment
+        if self._normalize_model_key(candidate.get("base_model")) == "BPR":
+            adjustment -= 1.0
+        return adjustment
+
+    def _plateau_allows_family(self, family: str) -> bool:
+        if self.config.search_intensity != "algorithm_first":
+            return True
+        plateau = self._plateau_state()
+        if not plateau.get("plateau_detected"):
+            return True
+        family = str(family or "")
+        capped = [str(item) for item in plateau.get("local_repair_capped_families", [])]
+        forced = [str(item) for item in plateau.get("forced_exploration_families", [])]
+        if any(self._family_matches(family, item) for item in forced):
+            return True
+        return not any(self._family_matches(family, item) for item in capped)
 
     def plan(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
         plan_options: list[tuple[dict[str, Any], dict[str, Any] | None]] = [
@@ -1412,6 +1579,82 @@ class RecClawAgent:
         # runnable baselines when a proposal is rejected or smoke fails.
         return str(candidate.get("parent_candidate_id") or "").strip() == focus_id
 
+    def _post_validation_followup_state(self) -> dict[str, Any]:
+        validated = self._best_validated_keep()
+        if not validated:
+            return {"enabled": False}
+
+        focus_id = str(validated.get("candidate_id") or "").strip()
+        if not focus_id:
+            return {"enabled": False}
+
+        validation_metric = self._to_float((validated.get("seed_validation") or {}).get("mean"))
+        if validation_metric is None:
+            validation_metric = self._to_float((validated.get("result") or {}).get(self.config.metric))
+        validation_round = int(validated.get("round_id") or 0)
+        target_key = self._seed_validation_target_key(validated)
+        for row in self.memory:
+            validation = row.get("seed_validation")
+            if not isinstance(validation, dict) or validation.get("status") != "passed":
+                continue
+            if target_key and self._seed_validation_target_key(row) != target_key:
+                continue
+            try:
+                validation_round = max(validation_round, int(row.get("round_id") or 0))
+            except (TypeError, ValueError):
+                pass
+
+        trials = self._trial_memory_rows()
+        latest_round = max([int(row.get("round_id") or 0) for row in trials] or [validation_round])
+        window = max(1, self.config.post_validation_structured_followup_window)
+        followups: list[dict[str, Any]] = []
+        for row in trials:
+            try:
+                round_id = int(row.get("round_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if round_id <= validation_round:
+                continue
+            candidate_id = str(row.get("candidate_id") or "").strip()
+            parent_id = str(row.get("parent_candidate_id") or "").strip()
+            if candidate_id == focus_id or parent_id == focus_id:
+                followups.append(row)
+        recent_followups = followups[-window:]
+        values = [
+            value
+            for row in recent_followups
+            if (value := self._to_float((row.get("result") or {}).get(self.config.metric))) is not None
+        ]
+        best_followup = max(values) if values else None
+        improvement = (
+            best_followup - validation_metric
+            if best_followup is not None and validation_metric is not None
+            else None
+        )
+        needs_structured = (
+            len(recent_followups) >= max(1, self.config.post_validation_sibling_churn_limit)
+            and improvement is not None
+            and improvement < self.config.post_validation_min_followup_improvement
+        )
+        return {
+            "enabled": True,
+            "candidate_id": focus_id,
+            "parent_candidate_id": validated.get("parent_candidate_id") or focus_id,
+            "validation_round_id": validation_round,
+            "latest_round_id": latest_round,
+            "validation_metric": round(validation_metric, 6) if validation_metric is not None else None,
+            "recent_followup_trials": len(recent_followups),
+            "best_followup_metric": round(best_followup, 6) if best_followup is not None else None,
+            "followup_improvement": round(improvement, 6) if improvement is not None else None,
+            "needs_structured_followup": bool(needs_structured),
+            "guidance": (
+                "Validated best has enough non-improving local siblings; switch to one-axis ablation, "
+                "seed stability checks, or parameter-region refinement instead of generating more nearby code variants."
+            )
+            if needs_structured
+            else "Validated best can still accept focused follow-up, but prefer diagnostic variants over free-form sibling churn.",
+        }
+
     def _recent_parameter_signatures(self, limit: int = 120) -> list[str]:
         signatures: list[str] = []
         seen: set[str] = set()
@@ -1530,6 +1773,8 @@ class RecClawAgent:
             return "run_algorithm_variant" if self.config.search_intensity == "algorithm_first" else "run_available"
         if self._has_pending_code_required_review():
             return "implement_algorithm" if self.config.search_intensity == "algorithm_first" else "implement_needs_review"
+        if self.config.search_intensity == "algorithm_first" and self._plateau_state().get("plateau_detected"):
+            return "propose_algorithm"
         return "propose_algorithm" if self.config.search_intensity == "algorithm_first" else "propose_mixed"
 
     def _build_agent_state_summary(self) -> dict[str, Any]:
@@ -1612,12 +1857,17 @@ class RecClawAgent:
         ][:10]
         pending_implemented = sorted(self._pending_implemented_candidate_ids())
         best_metric = self._best_trial_metric()
+        plateau_state = self._plateau_state()
+        post_validation_followup = self._post_validation_followup_state()
+        if focused_context and post_validation_followup.get("needs_structured_followup"):
+            focused_context["guidance"] = post_validation_followup["guidance"]
         summary = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "metric": self.config.metric,
             "search_intensity": self.config.search_intensity,
             "best_metric_so_far": round(best_metric, 6) if best_metric is not None else None,
             "experiment_directive": self._experiment_directive_context(),
+            "anti_plateau": plateau_state,
             "trial_count": len(trials),
             "decision_counts": decision_counts,
             "validated_best": {
@@ -1630,6 +1880,7 @@ class RecClawAgent:
             if validated_best
             else {},
             "focused_exploitation": focused_context,
+            "post_validation_followup": post_validation_followup,
             "top_frontier": top_frontier,
             "best_by_model": best_by_model_summary,
             "family_stats": family_stats[:20],
@@ -1659,7 +1910,13 @@ class RecClawAgent:
                 "guidance": (
                     "If best_metric_so_far is below tuned_lightgcn_mean, prioritize propose_algorithm, "
                     "implement_algorithm, and run_algorithm_variant over parameter-only tuning. "
-                    "Planner-triggered seed validation is reserved for keeps meeting seed_validation_min_metric."
+                    "Planner-triggered seed validation is reserved for keeps meeting seed_validation_min_metric. "
+                    "If anti_plateau.plateau_detected is true, cap local repairs on "
+                    "anti_plateau.local_repair_capped_families and force cross-family algorithm exploration "
+                    "around anti_plateau.forced_exploration_families. "
+                    "If post_validation_followup.needs_structured_followup is true, stop adding nearby code "
+                    "siblings for the validated best and switch to one-axis ablation, stability replication, "
+                    "or parameter-region refinement."
                 ),
             },
         }
@@ -1863,6 +2120,8 @@ class RecClawAgent:
                 "Every proposal must include mechanism, mechanism_composition, novelty_claim, expected_failure_mode, ablation_parent, and implementation_complexity.",
                 "Every proposal must stay inside action_space; use action_space.method_space_projection as the compact method-space guide.",
                 "Do not propose exact parameter signatures listed in agent_state_summary.recent_forbidden_parameter_signatures.",
+                "If agent_state_summary.anti_plateau.plateau_detected is true, do not spend the next proposal set on minor variants of agent_state_summary.anti_plateau.local_repair_capped_families; include cross-family algorithmic proposals from agent_state_summary.anti_plateau.forced_exploration_families.",
+                "If agent_state_summary.post_validation_followup.needs_structured_followup is true, do not propose more nearby code_required siblings for that validated best; propose a one-axis ablation, seed-stability replication, or parameter-region refinement using the validated parent/family.",
                 "If agent_state_summary.focused_exploitation is non-empty, include focused local variants around it unless the planner explicitly asks only for reporting.",
                 "Do not propose or run candidates listed in agent_state_summary.quarantined_candidates unless explicitly proposing a repair.",
                 "Avoid families listed in agent_state_summary.bad_families unless the proposal is an explicit minimal repair or ablation.",
@@ -2126,6 +2385,9 @@ class RecClawAgent:
             if not proposal_id or proposal_id in handled:
                 continue
             if row.get("next_action") == "promote_to_implementation_queue":
+                parent_id = str(row.get("parent_candidate_id") or "")
+                if not self._plateau_allows_family(parent_id or proposal_id):
+                    continue
                 return True
         return False
 
@@ -2160,6 +2422,37 @@ class RecClawAgent:
                 f"pending_implemented_count={pending_count}; {payload.get('reason', '')}"
             ).strip()
             return updated, "pending_implemented_backlog"
+        post_validation = self._post_validation_followup_state()
+        if (
+            self.config.search_intensity == "algorithm_first"
+            and post_validation.get("needs_structured_followup")
+            and action in {"propose_algorithm", "propose_explore", "propose_mixed", "implement_needs_review", "implement_algorithm"}
+        ):
+            updated = dict(payload)
+            updated["action"] = "tune_after_algorithm_success"
+            updated["reason"] = (
+                "post-validation override: the validated best has enough non-improving local siblings, "
+                "so the next step should be one-axis ablation, stability replication, or parameter-region "
+                f"refinement instead of more nearby code variants; {payload.get('reason', '')}"
+            ).strip()
+            return updated, "post_validation_structured_followup"
+        plateau = self._plateau_state()
+        if self.config.search_intensity == "algorithm_first" and plateau.get("plateau_detected"):
+            local_actions = {
+                "propose_tuning",
+                "propose_mixed",
+                "propose_explore",
+                "run_available",
+                "tune_after_algorithm_success",
+            }
+            if action in local_actions:
+                updated = dict(payload)
+                updated["action"] = self._algorithm_fallback_action()
+                updated["reason"] = (
+                    "anti-plateau override: global best has not improved recently, so the next step must "
+                    f"force cross-family algorithm exploration; {payload.get('reason', '')}"
+                ).strip()
+                return updated, "anti_plateau_force_algorithm_exploration"
         if self.config.search_intensity == "algorithm_first" and not self._has_strong_algorithm_signal():
             if action in {"propose_tuning", "propose_mixed", "propose_explore", "tune_after_algorithm_success"}:
                 updated = dict(payload)
@@ -2341,6 +2634,12 @@ class RecClawAgent:
                 "below tuned_lightgcn_mean. Prefer tune_after_algorithm_success only after an algorithmic candidate "
                 "has crossed tuned_lightgcn_mean. Prefer multi_seed_verify only when there is an unverified keep "
                 "that meets agent_state_summary.algorithm_first_targets.seed_validation_min_metric. "
+                "If agent_state_summary.anti_plateau.plateau_detected is true, choose propose_algorithm, "
+                "implement_algorithm, or run_algorithm_variant; do not choose tune_after_algorithm_success "
+                "for local repair unless it is explicitly cross-family and architecture-level. "
+                "If agent_state_summary.post_validation_followup.needs_structured_followup is true, choose "
+                "tune_after_algorithm_success so the next round performs one-axis ablation, stability replication, "
+                "or parameter-region refinement instead of more nearby code siblings. "
                 "Return strict JSON with action, reason, and optional proposal_count."
             ),
         }
@@ -2783,6 +3082,17 @@ class RecClawAgent:
                 {},
             )
             parent_id = str(proposal.get("parent_candidate_id") or "")
+            if not self._plateau_allows_family(parent_id or proposal_id):
+                self.remember_event(
+                    {
+                        "event": "implementation_skipped",
+                        "round_id": round_id,
+                        "proposal_id": proposal_id,
+                        "parent_candidate_id": parent_id,
+                        "reason": "anti_plateau_capped_family",
+                    }
+                )
+                continue
             parent = self._find_registry_candidate(parent_id)
             proposal_consumes = {str(item) for item in (proposal.get("consumes") or [])}
             parent_consumes = {str(item) for item in ((parent or {}).get("consumes") or [])}
@@ -3442,6 +3752,41 @@ def main() -> int:
         help="Only planner-triggered multi-seed verification keeps whose primary metric is at least this value.",
     )
     parser.add_argument(
+        "--disable-anti-plateau",
+        action="store_true",
+        help="Disable the algorithm-first anti-plateau planner guard.",
+    )
+    parser.add_argument(
+        "--plateau-window-metric-rows",
+        type=int,
+        default=int(os.environ.get("RECCLAW_PLATEAU_WINDOW_METRIC_ROWS", "30")),
+        help="Metric-bearing rows without global-best refresh before anti-plateau steering activates.",
+    )
+    parser.add_argument(
+        "--plateau-min-global-improvement",
+        type=float,
+        default=float(os.environ.get("RECCLAW_PLATEAU_MIN_GLOBAL_IMPROVEMENT", "0.0005")),
+        help="Minimum recent running-best improvement that counts as escaping a plateau.",
+    )
+    parser.add_argument(
+        "--plateau-family-overuse-window",
+        type=int,
+        default=int(os.environ.get("RECCLAW_PLATEAU_FAMILY_OVERUSE_WINDOW", "20")),
+        help="Recent metric-bearing rows used to detect over-concentrated local family repairs.",
+    )
+    parser.add_argument(
+        "--max-same-family-repair-streak",
+        type=int,
+        default=int(os.environ.get("RECCLAW_MAX_SAME_FAMILY_REPAIR_STREAK", "8")),
+        help="Maximum recent rows from one family before anti-plateau caps local repair.",
+    )
+    parser.add_argument(
+        "--plateau-weak-family-ceiling",
+        type=float,
+        default=float(os.environ.get("RECCLAW_PLATEAU_WEAK_FAMILY_CEILING", "0.280")),
+        help="Recent-best ceiling below which overused local repairs are treated as weak plateau behavior.",
+    )
+    parser.add_argument(
         "--anchor-families",
         default=os.environ.get(
             "RECCLAW_ANCHOR_FAMILIES",
@@ -3566,6 +3911,12 @@ def main() -> int:
         algorithm_budget_per_window=max(0, args.algorithm_budget_per_window),
         algorithm_first_explore_rounds=max(0, args.algorithm_first_explore_rounds),
         seed_validation_min_metric=max(0.0, args.seed_validation_min_metric),
+        anti_plateau_enabled=not bool(args.disable_anti_plateau),
+        plateau_window_metric_rows=max(1, args.plateau_window_metric_rows),
+        plateau_min_global_improvement=max(0.0, args.plateau_min_global_improvement),
+        plateau_family_overuse_window=max(1, args.plateau_family_overuse_window),
+        max_same_family_repair_streak=max(1, args.max_same_family_repair_streak),
+        plateau_weak_family_ceiling=max(0.0, args.plateau_weak_family_ceiling),
         anchor_families=anchor_families or AgentConfig().anchor_families,
         global_overrides=list(args.global_overrides),
         checkpoint_dir=str(args.checkpoint_dir or ""),

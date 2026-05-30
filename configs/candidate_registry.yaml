@@ -211,6 +211,26 @@ candidates:
       - lambda_norm
       - max_norm
 
+  - candidate_id: cand_lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "single-path graph propagation can overfit either clean or perturbed topology"
+    hypothesis: "averaging clean and edge-dropped propagation paths, then residual-mixing with ego embeddings and norm control, improves robustness without changing the full-sort protocol"
+    implementation_type: "model"
+    minimal_change: "local LightGCN subclass combines clean/dropout paths with residual-norm loss control"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076:LightGCNEdgeDropoutResidualNormDualPathBlend"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+      - lambda_norm
+      - max_norm
+
   - candidate_id: cand_bpr_mlp_head
     category: "Representation & Interaction"
     base_model: "BPR"

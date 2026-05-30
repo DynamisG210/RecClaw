@@ -317,6 +317,16 @@ def build_commands(
         "20" if search_intensity == "algorithm_first" else "0",
         "--seed-validation-min-metric",
         "0.274" if search_intensity == "algorithm_first" else "0",
+        "--plateau-window-metric-rows",
+        "30",
+        "--plateau-min-global-improvement",
+        "0.0005",
+        "--plateau-family-overuse-window",
+        "20",
+        "--max-same-family-repair-streak",
+        "8",
+        "--plateau-weak-family-ceiling",
+        "0.280",
     ]
     for override in (*SAFE_OVERRIDES, f"gpu_id={gpu_id}"):
         agent_cmd.extend(["--set", override])

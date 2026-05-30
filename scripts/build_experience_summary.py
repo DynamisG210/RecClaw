@@ -361,6 +361,169 @@ def is_failed_record(record: dict[str, Any], metric: str, collapse_ndcg: float) 
     return value is not None and value < collapse_ndcg
 
 
+def family_matches(candidate_family: str, target_family: str) -> bool:
+    candidate_family = str(candidate_family or "")
+    target_family = str(target_family or "")
+    return (
+        candidate_family == target_family
+        or candidate_family.startswith(f"{target_family}_")
+        or target_family.startswith(f"{candidate_family}_")
+    )
+
+
+def coarse_family_key(family: str) -> str:
+    family = str(family or "")
+    known_prefixes = (
+        "cand_lightgcn_shallow_alignment_rankaware_gate",
+        "cand_lightgcn_shallow_rankaware_lastlayeralign",
+        "cand_lightgcn_edge_dropout_residual_norm",
+        "cand_lightgcn_residual_norm_constrained",
+        "cand_bpr_hard_negative_margin",
+        "cand_lightgcn_shallow_layers",
+    )
+    for prefix in known_prefixes:
+        if family == prefix or family.startswith(f"{prefix}_"):
+            return prefix
+    parts = family.split("_")
+    return "_".join(parts[:4]) if len(parts) >= 4 else family
+
+
+def algorithm_policy_defaults(policy: dict[str, Any], search_policy: dict[str, Any] | None) -> tuple[dict[str, Any], list[str]]:
+    reflection_algorithm = policy.get("algorithm_first") if isinstance(policy.get("algorithm_first"), dict) else {}
+    search_algorithm = (
+        search_policy.get("algorithm_first")
+        if isinstance(search_policy, dict) and isinstance(search_policy.get("algorithm_first"), dict)
+        else {}
+    )
+    plateau_policy = reflection_algorithm.get("plateau_policy")
+    plateau_policy = plateau_policy if isinstance(plateau_policy, dict) else {}
+    anti_plateau = search_algorithm.get("anti_plateau")
+    anti_plateau = anti_plateau if isinstance(anti_plateau, dict) else {}
+    merged = {**plateau_policy, **anti_plateau}
+    anchor_defs = reflection_algorithm.get("anchor_families")
+    anchors = [str(item) for item in anchor_defs] if isinstance(anchor_defs, dict) else []
+    search_anchors = search_algorithm.get("anchor_families")
+    if isinstance(search_anchors, list):
+        anchors.extend(str(item) for item in search_anchors if str(item))
+    forced = merged.get("forced_exploration_families")
+    if isinstance(forced, list):
+        anchors = [str(item) for item in forced if str(item)] + anchors
+    deduped: list[str] = []
+    for item in anchors:
+        if item and item not in deduped:
+            deduped.append(item)
+    return merged, deduped
+
+
+def detect_plateau(
+    rows: list[dict[str, Any]],
+    *,
+    metric: str,
+    policy: dict[str, Any],
+    search_policy: dict[str, Any] | None,
+) -> dict[str, Any]:
+    plateau_policy, forced_defaults = algorithm_policy_defaults(policy, search_policy)
+    enabled = bool(plateau_policy.get("enabled", True))
+    window = max(1, int(plateau_policy.get("window_metric_rows", 30)))
+    overuse_window = max(1, int(plateau_policy.get("family_overuse_window", 20)))
+    max_same_family = max(1, int(plateau_policy.get("max_same_family_trials", 8)))
+    min_improvement = max(0.0, float(plateau_policy.get("min_global_improvement", 0.0005)))
+    weak_family_ceiling = max(0.0, float(plateau_policy.get("weak_family_ceiling", 0.280)))
+    trial_rows = [
+        row
+        for row in rows
+        if not row.get("event") and "decision" in row
+    ]
+    source_rows = trial_rows if trial_rows else rows
+    metric_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(source_rows):
+        if row.get("event"):
+            continue
+        status = str(row.get("status") or "").lower()
+        if status and status not in {"success", "ok"}:
+            continue
+        value = metric_value(row, metric)
+        if value is None:
+            continue
+        metric_rows.append(
+            {
+                "index": index,
+                "round_id": int(row.get("round_id") or index + 1),
+                "family": candidate_family(row),
+                "candidate_id": str(row.get("candidate_id") or ""),
+                "value": value,
+            }
+        )
+
+    default_response = {
+        "enabled": enabled,
+        "plateau_detected": False,
+        "metric_rows": len(metric_rows),
+        "window_metric_rows": window,
+        "local_repair_capped_families": [],
+        "forced_exploration_families": forced_defaults,
+        "recent_family_counts": {},
+        "forced_algorithm_tasks": list(plateau_policy.get("forced_algorithm_tasks") or []),
+    }
+    if not enabled or len(metric_rows) <= window:
+        return default_response
+
+    values = [float(row["value"]) for row in metric_rows]
+    best_value = max(values)
+    best_index = values.index(best_value)
+    best_row = metric_rows[best_index]
+    prior_best = max(values[:-window])
+    recent_rows = metric_rows[-window:]
+    recent_best = max(float(row["value"]) for row in recent_rows)
+    recent_improvement = recent_best - prior_best
+    rows_since_best = len(metric_rows) - best_index - 1
+
+    recent_family_counts: dict[str, int] = defaultdict(int)
+    recent_cluster_counts: dict[str, int] = defaultdict(int)
+    for row in metric_rows[-overuse_window:]:
+        family = str(row["family"])
+        recent_family_counts[family] += 1
+        recent_cluster_counts[coarse_family_key(family)] += 1
+
+    capped_families: list[str] = []
+    for family, count in sorted(recent_cluster_counts.items(), key=lambda item: (-item[1], item[0])):
+        overused = count >= max_same_family
+        stale_global_best = rows_since_best >= window
+        weak_recent_frontier = recent_best <= weak_family_ceiling
+        is_forced_anchor = any(family_matches(family, anchor) for anchor in forced_defaults)
+        if overused and stale_global_best and (weak_recent_frontier or not is_forced_anchor):
+            capped_families.append(family)
+
+    plateau_detected = (
+        rows_since_best >= window
+        and recent_improvement < min_improvement
+    ) or bool(capped_families)
+    if plateau_detected and rows_since_best >= window:
+        stale_best_family = coarse_family_key(str(best_row.get("family") or ""))
+        stale_best_is_anchor = any(family_matches(stale_best_family, anchor) for anchor in forced_defaults)
+        if stale_best_family and not stale_best_is_anchor and stale_best_family not in capped_families:
+            capped_families.append(stale_best_family)
+    forced = [
+        family
+        for family in forced_defaults
+        if not any(family_matches(family, capped) for capped in capped_families)
+    ] or forced_defaults
+    return {
+        **default_response,
+        "plateau_detected": bool(plateau_detected),
+        "rows_since_best": rows_since_best,
+        "best_metric": round(best_value, 6),
+        "best_round_id": best_row.get("round_id"),
+        "best_family": best_row.get("family"),
+        "recent_best": round(recent_best, 6),
+        "recent_improvement": round(recent_improvement, 6),
+        "local_repair_capped_families": capped_families[:10],
+        "forced_exploration_families": forced,
+        "recent_family_counts": dict(sorted(recent_family_counts.items(), key=lambda item: (-item[1], item[0]))[:10]),
+        "recent_family_clusters": dict(sorted(recent_cluster_counts.items(), key=lambda item: (-item[1], item[0]))[:10]),
+    }
+
+
 def summarize_memory(
     memory_rows: list[dict[str, Any]],
     *,
@@ -492,6 +655,12 @@ def summarize_memory(
             -int(item["crash_count"]),
         )
     )
+    plateau_analysis = detect_plateau(
+        memory_rows,
+        metric=metric,
+        policy=policy,
+        search_policy=search_policy,
+    )
     return {
         "metric": metric,
         "family_summaries": family_summaries,
@@ -503,6 +672,7 @@ def summarize_memory(
         ],
         "algorithm_tasks": list(algorithm_policy.get("algorithm_tasks") or []),
         "anchor_families": sorted(anchor_families),
+        "plateau_analysis": plateau_analysis,
     }
 
 
@@ -618,11 +788,14 @@ def build_experience_policy(
         family = str(item.get("family") or "")
         crash_count = int(item.get("crash_count") or 0)
         collapse_rate = float(item.get("collapse_rate") or 0.0)
+        high_potential = bool(item.get("high_potential"))
         decisions = item.get("decisions") if isinstance(item.get("decisions"), dict) else {}
         failed_decisions = int(decisions.get("discard") or 0) + int(decisions.get("crash") or 0)
         if protect_anchors and family in anchor_families:
             if crash_count >= freeze_crashes or collapse_rate >= freeze_severe_collapse:
                 freeze_families.append(family)
+            continue
+        if high_potential and crash_count < freeze_crashes and collapse_rate < freeze_severe_collapse:
             continue
         if crash_count >= freeze_crashes or collapse_rate >= freeze_collapse or failed_decisions >= freeze_crashes:
             freeze_families.append(family)
@@ -659,17 +832,55 @@ def build_experience_policy(
         algorithm_defaults = [str(item) for item in algorithm_stage.get("priority_families") if str(item)]
     frozen_or_avoid = {family for family in [*avoid, *freeze_families] if family}
     frozen_or_avoid.difference_update(revisit)
-    prefer_candidates = encourage or algorithm_defaults or exploit_defaults
+    plateau = summary.get("plateau_analysis") if isinstance(summary.get("plateau_analysis"), dict) else {}
+    plateau_detected = bool(plateau.get("plateau_detected"))
+    capped_families = {str(item) for item in plateau.get("local_repair_capped_families", []) if str(item)}
+    forced_exploration = [str(item) for item in plateau.get("forced_exploration_families", []) if str(item)]
+    forced_tasks = [str(item) for item in plateau.get("forced_algorithm_tasks", []) if str(item)]
+    if plateau_detected:
+        prefer_candidates = [*forced_exploration, *algorithm_defaults]
+    else:
+        prefer_candidates = encourage or algorithm_defaults or exploit_defaults
+    deduped_prefer: list[str] = []
+    for family in prefer_candidates:
+        if family not in deduped_prefer:
+            deduped_prefer.append(family)
+    prefer_candidates = deduped_prefer
     prefer_families = [family for family in prefer_candidates if family not in frozen_or_avoid]
+    if plateau_detected:
+        prefer_families = [
+            family
+            for family in prefer_families
+            if not any(family_matches(family, capped) for capped in capped_families)
+        ]
     repair_families = [family for family in [*revisit, *caution] if family not in frozen_or_avoid]
+    if plateau_detected:
+        repair_families = [
+            family
+            for family in repair_families
+            if not any(family_matches(family, capped) for capped in capped_families)
+            and any(family_matches(family, forced) for forced in forced_exploration)
+        ]
     algorithm_tasks = [str(item) for item in summary.get("algorithm_tasks", []) if str(item)]
+    if forced_tasks:
+        algorithm_tasks = [*forced_tasks, *algorithm_tasks]
     hints = tree_policy_hints(tree_summary)
+    instruction = (
+        "Plateau detected: force cross-family algorithmic proposals around forced_exploration_families; "
+        "do not spend the next proposal window on minor repairs of local_repair_capped_families. "
+        "Use parameter-only tuning only after a new family crosses the tuned baseline."
+    ) if plateau_detected else (
+        "Prioritize algorithmic mechanism proposals and repairs around anchor/revisit families; "
+        "use parameter-only tuning only after a credible algorithm signal; introduce at most the "
+        "configured number of code_required proposals per window."
+    )
     return {
         "encourage_families": encourage,
         "caution_families": caution,
         "revisit_families": revisit,
         "avoid_families": avoid,
         "freeze_families": sorted(set(freeze_families)),
+        "plateau_analysis": plateau,
         "promising_parameter_regions": promising_parameter_regions(family_summaries),
         "failed_compositions": summary.get("failed_compositions", []),
         "do_not_repeat_signatures": summary.get("do_not_repeat_signatures", []),
@@ -692,14 +903,13 @@ def build_experience_policy(
             "repair_families": repair_families[:8],
             "avoid_families": sorted(frozen_or_avoid)[:12],
             "anchor_families": sorted(anchor_families),
+            "forced_exploration_families": forced_exploration[:8],
+            "local_repair_capped_families": sorted(capped_families)[:8],
+            "plateau_detected": plateau_detected,
             "algorithm_tasks": algorithm_tasks[:8],
             "composition_rules": composition_rules,
             "tree_hints": hints,
-            "instruction": (
-                "Prioritize algorithmic mechanism proposals and repairs around anchor/revisit families; "
-                "use parameter-only tuning only after a credible algorithm signal; introduce at most the "
-                "configured number of code_required proposals per window."
-            ),
+            "instruction": instruction,
         },
     }
 
@@ -765,6 +975,10 @@ def build_markdown(
     repair = next_policy.get("repair_families") if isinstance(next_policy, dict) else []
     avoid_policy = next_policy.get("avoid_families") if isinstance(next_policy, dict) else []
     tasks = next_policy.get("algorithm_tasks") if isinstance(next_policy, dict) else []
+    forced = next_policy.get("forced_exploration_families") if isinstance(next_policy, dict) else []
+    capped = next_policy.get("local_repair_capped_families") if isinstance(next_policy, dict) else []
+    plateau = experience_policy.get("plateau_analysis") if isinstance(experience_policy, dict) else {}
+    plateau = plateau if isinstance(plateau, dict) else {}
     domain_lines = [
         f"- {item.get('family')}: {item.get('note')}"
         for item in domain_notes
@@ -802,6 +1016,12 @@ def build_markdown(
         "",
         "## Trend Notes",
         *(trend_lines or ["- none"]),
+        "",
+        "## Plateau / Anti-Locality",
+        f"- Detected: {bool(plateau.get('plateau_detected'))}",
+        f"- Rows since best: {plateau.get('rows_since_best', 'n/a')}",
+        f"- Capped local families: {', '.join(capped) if capped else 'none'}",
+        f"- Forced exploration families: {', '.join(forced) if forced else 'none'}",
         "",
         "## Next Proposal Policy",
         f"- Prefer families: {', '.join(prefer) if prefer else 'none yet'}",
