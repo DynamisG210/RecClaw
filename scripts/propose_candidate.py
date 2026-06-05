@@ -9,6 +9,9 @@ fallback/reference path. It supports three proposal modes:
 - explore: algorithmic variants and research specs that expand the search space
 - algorithm_first: mostly algorithmic/code_required proposals, with a small
   amount of runnable algorithm-family sanity tuning
+- objective_first: code_required loss/objective proposals over strong parents
+- architecture_first: architecture_required Custom general-rec proposals
+- architecture_ablation: focused architecture ablation proposals
 """
 
 from __future__ import annotations
@@ -510,6 +513,19 @@ ALGORITHM_TEMPLATES: list[dict[str, Any]] = [
 ]
 
 
+def architecture_new_parameters() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "architecture_gate_alpha",
+            "type": "number",
+            "default": 0.2,
+            "search_space": [0.1, 0.2, 0.5],
+            "meaning": "Controls the strength of the new architecture branch relative to the base embedding signal.",
+            "expected_effect": "Small values should preserve the parent signal while testing whether the new block adds useful structure.",
+        }
+    ]
+
+
 def load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -897,6 +913,209 @@ def generate_algorithmic_proposals(
     return proposals
 
 
+def implementation_ready_model_parents(
+    registry: list[dict[str, Any]],
+    *,
+    memory: list[dict[str, Any]] | None = None,
+    experiment_log: str = "",
+    preferred_base_models: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    parents = [
+        item
+        for item in registry
+        if bool(item.get("wired"))
+        and str(item.get("status") or "") == "implemented"
+        and str(item.get("runner_type") or "") == "model"
+        and normalize_base_model(item.get("base_model")) in {"BPR", "LightGCN"}
+    ]
+    preferred_rank = {model: idx for idx, model in enumerate(preferred_base_models)}
+    fallback_rank = len(preferred_rank)
+    memory_rows = memory or []
+    parents.sort(
+        key=lambda item: (
+            preferred_rank.get(normalize_base_model(item.get("base_model")), fallback_rank),
+            -score_parent(item, memory_rows, experiment_log),
+            str(item.get("candidate_id") or ""),
+        )
+    )
+    return parents
+
+
+def build_objective_proposal(parent: dict[str, Any], sequence: int, stamp: str) -> dict[str, Any]:
+    parent_id = str(parent.get("candidate_id") or "")
+    base_model = normalize_base_model(parent.get("base_model"))
+    stub = f"{parent_id}_objective_mix"
+    return {
+        "proposal_type": "algorithmic_variant",
+        "candidate_id": f"{stub}_{stamp}_{sequence:02d}",
+        "parent_candidate_id": parent_id,
+        "base_model": base_model,
+        "base_architecture": "",
+        "category": "Objective & Optimization",
+        "action_type": "objective_function",
+        "mechanism": "dynamic_rank_alignment_objective",
+        "mechanism_composition": ["objective_function", "rank_aware", "alignment", "dynamic_weighting"],
+        "novelty_claim": "changes the training objective instead of only retuning exposed parent parameters",
+        "expected_failure_mode": "auxiliary objective pressure can over-regularize embeddings or conflict with the parent ranking loss",
+        "ablation_parent": parent_id,
+        "implementation_complexity": "medium",
+        "hypothesis": (
+            "A small dynamic rank/alignment auxiliary term may improve top-k generalization while preserving "
+            "the parent model's full-sort evaluation protocol."
+        ),
+        "runnable_level": "code_required",
+        "runner_type": "model",
+        "consumes": ["objective_mix_alpha", "dynamic_loss_warmup"],
+        "parameter_overrides": {"objective_mix_alpha": 0.1, "dynamic_loss_warmup": 0},
+        "new_parameters": [],
+        "implementation_plan": {
+            "summary": "Add a local model subclass that rewrites calculate_loss with a scalar composed objective.",
+            "entrypoint": "recclaw_ext.models.objective_exploration:DynamicRankAlignmentObjective",
+            "files": ["recclaw_ext/models/objective_exploration.py"],
+        },
+        "allowed_files": ["recclaw_ext/models/objective_exploration.py"],
+        "expected_effect": {
+            "primary_metric": "ndcg@10",
+            "direction": "increase",
+            "rationale": "Objective search tests whether better training signals exist beyond local parameter tuning.",
+        },
+        "risk": {
+            "quality": "Can reduce relevance if auxiliary terms dominate the native ranking loss.",
+            "runtime": "Small overhead from extra batch-level objective terms.",
+            "implementation": "Must keep calculate_loss scalar and preserve predict/full_sort_predict behavior.",
+            "recbole_core_change_required": False,
+        },
+        "decision_rule": {
+            "keep_if": "ndcg@10 improves over the parent or matches it with a clearer objective-side mechanism.",
+            "revise_if": "near-parent result suggests objective_mix_alpha or warmup should be adjusted.",
+            "discard_if": "loss is unstable, non-scalar, or full-sort ranking regresses sharply.",
+        },
+        "evaluation_plan": default_evaluation_plan("ndcg@10"),
+    }
+
+
+def build_architecture_proposal(
+    parent: dict[str, Any],
+    sequence: int,
+    stamp: str,
+    *,
+    ablation: bool = False,
+) -> dict[str, Any]:
+    parent_id = str(parent.get("candidate_id") or "")
+    action_type = "hybrid_graph_interaction" if ablation else "transformer_interaction"
+    base_architecture = "hybrid_graph_interaction" if ablation else "transformer_style_interaction"
+    stub = f"cand_custom_{base_architecture}"
+    return {
+        "proposal_type": "architecture",
+        "candidate_id": f"{stub}_{stamp}_{sequence:02d}",
+        "parent_candidate_id": parent_id,
+        "base_model": "Custom",
+        "base_architecture": base_architecture,
+        "category": "Representation & Interaction",
+        "action_type": action_type,
+        "mechanism": f"{base_architecture}_local_block",
+        "mechanism_composition": ["custom_encoder", "interaction_function", "attention", "residual"],
+        "novelty_claim": (
+            "implements a Custom general-rec model with a local attention/interaction block rather than "
+            "another parent-family repair"
+        ),
+        "expected_failure_mode": "new structure may be too expressive, unstable, or fail to beat a strong parent without enough inductive bias",
+        "ablation_parent": parent_id,
+        "implementation_complexity": "high",
+        "hypothesis": (
+            "A lightweight transformer-style interaction or graph-attention block can test a higher-level "
+            "architecture idea under the existing full-sort general-rec protocol."
+        ),
+        "runnable_level": "architecture_required",
+        "runner_type": "model",
+        "consumes": [
+            "embedding_size",
+            "dropout",
+            "hidden_size",
+            "attention_heads",
+            "attention_temperature",
+            "architecture_gate_alpha",
+        ],
+        "parameter_overrides": {
+            "embedding_size": 64,
+            "dropout": 0.1,
+            "hidden_size": 64,
+            "attention_heads": 1,
+            "attention_temperature": 1.0,
+            "architecture_gate_alpha": 0.2,
+        },
+        "new_parameters": architecture_new_parameters(),
+        "implementation_plan": {
+            "summary": (
+                "Create a local Custom GeneralRecommender-compatible model implementing calculate_loss, "
+                "predict, and full_sort_predict with a small attention/interaction block."
+            ),
+            "entrypoint": "recclaw_ext.models.architecture_exploration:CustomTransformerStyleInteraction",
+            "files": ["recclaw_ext/models/architecture_exploration.py"],
+        },
+        "allowed_files": ["recclaw_ext/models/architecture_exploration.py"],
+        "expected_effect": {
+            "primary_metric": "ndcg@10",
+            "direction": "increase",
+            "rationale": "Architecture search changes the representation/interaction form rather than only tuning or objective weighting.",
+        },
+        "risk": {
+            "quality": "May underfit or overfit if the new block overwhelms collaborative signal.",
+            "runtime": "Moderate overhead from attention/MLP operations but no new dataloader or protocol.",
+            "implementation": "Must stay within local extension files and keep full_sort_predict shape correct.",
+            "recbole_core_change_required": False,
+        },
+        "decision_rule": {
+            "keep_if": "smoke passes and ndcg@10 is competitive with the parent or opens a distinct strong family.",
+            "revise_if": "smoke passes but performance suggests smaller gate/hidden size or simpler attention.",
+            "discard_if": "training crashes, loss is non-scalar, or full_sort_predict shape is wrong.",
+        },
+        "evaluation_plan": default_evaluation_plan("ndcg@10"),
+    }
+
+
+def generate_objective_proposals(
+    *,
+    registry: list[dict[str, Any]],
+    count: int,
+    stamp: str,
+    memory: list[dict[str, Any]] | None = None,
+    experiment_log: str = "",
+) -> list[dict[str, Any]]:
+    proposals: list[dict[str, Any]] = []
+    for parent in implementation_ready_model_parents(
+        registry,
+        memory=memory,
+        experiment_log=experiment_log,
+    ):
+        proposals.append(build_objective_proposal(parent, len(proposals) + 1, stamp))
+        if len(proposals) >= count:
+            break
+    return proposals
+
+
+def generate_architecture_proposals(
+    *,
+    registry: list[dict[str, Any]],
+    count: int,
+    stamp: str,
+    ablation: bool = False,
+    memory: list[dict[str, Any]] | None = None,
+    experiment_log: str = "",
+) -> list[dict[str, Any]]:
+    proposals: list[dict[str, Any]] = []
+    for parent in implementation_ready_model_parents(
+        registry,
+        memory=memory,
+        experiment_log=experiment_log,
+        preferred_base_models=("LightGCN", "BPR"),
+    ):
+        proposals.append(build_architecture_proposal(parent, len(proposals) + 1, stamp, ablation=ablation))
+        if len(proposals) >= count:
+            break
+    return proposals
+
+
 def generate_proposals(
     *,
     registry_path: Path,
@@ -927,6 +1146,43 @@ def generate_proposals(
 
     if mode == "explore":
         return generate_algorithmic_proposals(registry=registry, count=count, stamp=stamp)
+
+    if mode == "objective_first":
+        proposals = generate_objective_proposals(
+            registry=registry,
+            count=count,
+            stamp=stamp,
+            memory=memory,
+            experiment_log=experiment_log,
+        )
+        if proposals:
+            return proposals
+        return generate_algorithmic_proposals(registry=registry, count=count, stamp=stamp)
+
+    if mode == "architecture_first":
+        proposals = generate_architecture_proposals(
+            registry=registry,
+            count=count,
+            stamp=stamp,
+            memory=memory,
+            experiment_log=experiment_log,
+        )
+        if proposals:
+            return proposals
+        return generate_algorithmic_proposals(registry=registry, count=count, stamp=stamp, include_spec_only=True)
+
+    if mode == "architecture_ablation":
+        proposals = generate_architecture_proposals(
+            registry=registry,
+            count=count,
+            stamp=stamp,
+            ablation=True,
+            memory=memory,
+            experiment_log=experiment_log,
+        )
+        if proposals:
+            return proposals
+        return generate_algorithmic_proposals(registry=registry, count=count, stamp=stamp, include_spec_only=True)
 
     if mode == "algorithm_first":
         sanity_tuning_count = 1 if count >= 5 else 0
@@ -996,7 +1252,15 @@ def main() -> int:
     parser.add_argument("--count", type=int, default=4, help="Number of proposals to emit")
     parser.add_argument(
         "--mode",
-        choices=("conservative", "mixed", "explore", "algorithm_first"),
+        choices=(
+            "conservative",
+            "mixed",
+            "explore",
+            "algorithm_first",
+            "objective_first",
+            "architecture_first",
+            "architecture_ablation",
+        ),
         default="mixed",
         help="Proposal generation mode",
     )

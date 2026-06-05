@@ -50,7 +50,27 @@ NEXT_ACTIONS = {
 }
 
 SIGNATURE_EXCLUDED_KEYS = {"seed", "reproducibility", "checkpoint_dir"}
-CONDITIONAL_CONTEXT_KEYS = {"action_type", "base_model", "proposal_type", "runnable_level", "runner_type"}
+CONDITIONAL_CONTEXT_KEYS = {
+    "action_type",
+    "base_architecture",
+    "base_model",
+    "proposal_type",
+    "runnable_level",
+    "runner_type",
+}
+IMPLEMENTATION_REQUIRED_LEVELS = {"code_required", "architecture_required"}
+OBJECTIVE_ACTIONS = {"loss_function", "objective_function"}
+ARCHITECTURE_ACTIONS = {
+    "custom_encoder",
+    "graph_rewire",
+    "graph_attention",
+    "interaction_function",
+    "propagation_mechanism",
+    "hybrid_graph_interaction",
+    "transformer_interaction",
+}
+DESIGN_ONLY_CURRENT_PROTOCOL_ACTIONS = {"sequence_aggregator", "multi_modal_fusion"}
+SEQUENCE_PROTOCOL_ONLY_PARAMETERS = {"max_seq_len"}
 
 
 def normalize_signature_value(value: Any) -> Any:
@@ -137,6 +157,33 @@ def declared_new_parameter_specs(proposal: dict[str, Any]) -> dict[str, dict[str
     return specs
 
 
+def validate_new_parameter_specs(proposal: dict[str, Any], known_parameters: set[str]) -> list[str]:
+    """Validate explicit specs for new generated-model config parameters."""
+    errors: list[str] = []
+    specs = declared_new_parameter_specs(proposal)
+    for name, spec in specs.items():
+        if name in known_parameters:
+            continue
+        if not spec:
+            errors.append(f"new parameter must be declared as an object with search_space/default: {name}")
+            continue
+        search_space = spec.get("search_space")
+        default = spec.get("default")
+        declared_type = str(spec.get("type") or "").strip()
+        if not isinstance(search_space, list) or not search_space:
+            errors.append(f"new parameter must have a non-empty search_space or exist in action_space: {name}")
+        if "default" not in spec:
+            errors.append(f"new parameter must declare default: {name}")
+        if declared_type and declared_type not in {"number", "string", "integer", "boolean", "mixed"}:
+            errors.append(f"new parameter has unsupported type {declared_type!r}: {name}")
+        if isinstance(search_space, list) and search_space and "default" in spec:
+            normalized_default = normalize_signature_value(default)
+            normalized_space = [normalize_signature_value(item) for item in search_space]
+            if normalized_default not in normalized_space:
+                errors.append(f"new parameter default must be one of search_space values: {name}")
+    return errors
+
+
 def value_allowed(value: Any, allowed_values: list[Any]) -> bool:
     normalized_value = normalize_signature_value(value)
     normalized_allowed = [normalize_signature_value(item) for item in allowed_values]
@@ -181,10 +228,18 @@ def canonical_parameter_signature_text(raw: Any) -> str:
 
 def proposal_parameter_signature(proposal: dict[str, Any]) -> str:
     parent_id = str(proposal.get("parent_candidate_id") or "").strip()
-    overrides = proposal.get("parameter_overrides") or {}
-    if not parent_id or not isinstance(overrides, dict) or not overrides:
+    if not parent_id:
         return ""
-    return parent_param_signature(parent_id, overrides)
+    signature_params: dict[str, Any] = {}
+    overrides = proposal.get("parameter_overrides") or {}
+    if isinstance(overrides, dict):
+        signature_params.update(overrides)
+    for item in as_list(proposal.get("new_parameters")):
+        if isinstance(item, dict) and item.get("name") and "default" in item:
+            signature_params.setdefault(str(item["name"]), item.get("default"))
+    if not signature_params:
+        return ""
+    return parent_param_signature(parent_id, signature_params)
 
 
 def load_memory_param_signatures(path: Path) -> set[str]:
@@ -244,7 +299,7 @@ def next_action_for(status: str, runnable_level: str, runner_type: str) -> str:
     if status == NEEDS_REVIEW:
         if runner_type == "posthoc":
             return "review_posthoc_runner_support"
-        if runnable_level == "code_required":
+        if runnable_level in IMPLEMENTATION_REQUIRED_LEVELS:
             return "promote_to_implementation_queue"
         return "review_research_spec"
     return NEXT_ACTIONS[REJECTED]
@@ -272,6 +327,7 @@ def multiseed_warnings(proposal: dict[str, Any], runnable_level: str) -> list[st
 
 def proposal_param_context(proposal: dict[str, Any], consumes: list[str]) -> dict[str, Any]:
     context: dict[str, Any] = {
+        "base_architecture": str(proposal.get("base_architecture") or "").strip(),
         "base_model": str(proposal.get("base_model") or "").strip(),
         "runner_type": str(proposal.get("runner_type") or "").strip(),
         "runnable_level": str(proposal.get("runnable_level") or "").strip(),
@@ -363,6 +419,7 @@ def validate_one(
     candidate_id = str(proposal.get("candidate_id") or "").strip()
     parent_id = str(proposal.get("parent_candidate_id") or "").strip()
     base_model = str(proposal.get("base_model") or "").strip()
+    base_architecture = str(proposal.get("base_architecture") or "").strip()
     action_type = str(proposal.get("action_type") or "").strip()
     runnable_level = str(proposal.get("runnable_level") or "").strip()
     runner_type = str(proposal.get("runner_type") or "").strip()
@@ -392,7 +449,8 @@ def validate_one(
         errors.append(f"base_model must be one of {sorted(allowed_models)}: {base_model or '<missing>'}")
     elif parent is not None:
         parent_models = parent_base_models(parent.get("base_model"), allowed_models)
-        if parent_models and base_model not in parent_models:
+        architecture_custom_parent = proposal_type == "architecture" and base_model == "Custom"
+        if parent_models and base_model not in parent_models and not architecture_custom_parent:
             errors.append(
                 f"base_model does not match parent {parent_id}: "
                 f"parent={sorted(parent_models)}, proposal={base_model}"
@@ -408,10 +466,20 @@ def validate_one(
     consumes = extract_consume_names(consumes_value)
     if not isinstance(consumes_value, list):
         errors.append("consumes must be a list")
+    sequence_protocol_params = sorted(set(consumes) & SEQUENCE_PROTOCOL_ONLY_PARAMETERS)
+    if sequence_protocol_params and runnable_level != "spec_only":
+        errors.append(
+            "sequence-protocol-only parameters are not allowed in the current general-rec formal line: "
+            f"{sequence_protocol_params}"
+        )
     if action_space:
         outside_action_space = sorted({name for name in consumes if name not in parameter_space})
         if outside_action_space:
-            errors.append(f"consumes includes parameters outside action_space: {outside_action_space}")
+            declared = new_parameter_names(proposal)
+            allowed_new = runnable_level in {*IMPLEMENTATION_REQUIRED_LEVELS, "spec_only"}
+            undeclared_outside = sorted(set(outside_action_space) - declared)
+            if not allowed_new or undeclared_outside:
+                errors.append(f"consumes includes parameters outside action_space: {outside_action_space}")
     if runnable_level == "parameter_only" and not consumes:
         errors.append("parameter_only proposal must consume at least one parent parameter")
 
@@ -423,8 +491,8 @@ def validate_one(
 
         if runnable_level in {"parameter_only", "config_only"} and unsupported:
             errors.append(f"consumes includes parameters not supported by parent {parent_id}: {unsupported}")
-        elif runnable_level in {"code_required", "spec_only"}:
-            undeclared = sorted(set(unsupported) - declared_new_params)
+        elif runnable_level in {*IMPLEMENTATION_REQUIRED_LEVELS, "spec_only"}:
+            undeclared = sorted(name for name in set(unsupported) if name not in parameter_space and name not in declared_new_params)
             if undeclared:
                 errors.append(
                     f"new consumes must be declared in new_parameters for {runnable_level}: {undeclared}"
@@ -433,11 +501,8 @@ def validate_one(
                 if name in parameter_space:
                     continue
                 spec = declared_new_specs.get(name) or {}
-                search_space = spec.get("search_space") if isinstance(spec, dict) else None
-                if not isinstance(search_space, list) or not search_space:
-                    errors.append(
-                        f"new parameter must have a non-empty search_space or exist in action_space: {name}"
-                    )
+                if not isinstance(spec, dict):
+                    errors.append(f"new parameter must be declared as an object with search_space/default: {name}")
 
         overrides = proposal.get("parameter_overrides") or {}
         if overrides and not isinstance(overrides, dict):
@@ -472,6 +537,7 @@ def validate_one(
     )
     errors.extend(compatibility_errors)
     review_reasons.extend(compatibility_reviews)
+    errors.extend(validate_new_parameter_specs(proposal, set(parameter_space)))
 
     parameter_signature = proposal_parameter_signature(proposal)
     if proposal_type == "tuning" and runnable_level in {"parameter_only", "config_only"}:
@@ -501,6 +567,31 @@ def validate_one(
     risk = proposal.get("risk")
     if isinstance(risk, dict) and risk.get("recbole_core_change_required") is True:
         errors.append("risk.recbole_core_change_required must not be true")
+
+    if action_type in OBJECTIVE_ACTIONS and runnable_level in {"parameter_only", "config_only"}:
+        errors.append(f"{action_type} proposals must be code_required, architecture_required, or spec_only")
+
+    if action_type in DESIGN_ONLY_CURRENT_PROTOCOL_ACTIONS and runnable_level != "spec_only":
+        errors.append(
+            f"{action_type} is design-only in the current general-rec protocol; use spec_only or open a separate protocol line"
+        )
+
+    if runnable_level == "architecture_required":
+        if proposal_type != "architecture":
+            errors.append("architecture_required proposal must use proposal_type architecture")
+        if base_model != "Custom":
+            errors.append("architecture_required proposal must use base_model Custom")
+        if runner_type != "model":
+            errors.append("architecture_required proposal must use runner_type model")
+        if not base_architecture:
+            errors.append("architecture proposal must include non-empty base_architecture")
+        if action_type not in ARCHITECTURE_ACTIONS | OBJECTIVE_ACTIONS | {"regularization", "auxiliary_loss"}:
+            errors.append(f"architecture proposal action_type is not architecture/objective compatible: {action_type}")
+        if not isinstance(proposal.get("implementation_plan"), dict):
+            errors.append("architecture_required proposal must include implementation_plan")
+        if not implementation_files(proposal):
+            errors.append("architecture_required proposal must include allowed_files or implementation_plan.files")
+        review_reasons.append("architecture_required proposal needs local model implementation and smoke run")
 
     if runnable_level == "code_required":
         if proposal_type not in {"algorithmic_variant", "research_spec"}:

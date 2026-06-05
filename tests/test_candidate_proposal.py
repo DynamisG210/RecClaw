@@ -29,15 +29,24 @@ def sample_schema() -> dict[str, object]:
             "risk",
             "decision_rule",
         ],
-        "allowed_runnable_levels": ["parameter_only", "config_only", "spec_only", "code_required"],
-        "allowed_base_models": ["BPR", "LightGCN"],
+        "allowed_runnable_levels": [
+            "parameter_only",
+            "config_only",
+            "spec_only",
+            "code_required",
+            "architecture_required",
+        ],
+        "allowed_base_models": ["BPR", "LightGCN", "Custom"],
         "allowed_runner_types": ["config_only", "model", "posthoc"],
-        "allowed_proposal_types": ["tuning", "algorithmic_variant", "research_spec"],
+        "allowed_proposal_types": ["tuning", "algorithmic_variant", "research_spec", "architecture"],
         "allowed_implementation_roots": [
             "recclaw_ext/models/",
             "recclaw_ext/posthoc/",
             "configs/candidates/",
             "configs/candidate_registry.yaml",
+            "recclaw_ext/models/layers/",
+            "recclaw_ext/models/encoders/",
+            "recclaw_ext/models/fusion/",
         ],
     }
 
@@ -164,6 +173,25 @@ class CandidateProposalTests(unittest.TestCase):
 
         self.assertEqual(result["status"], validate.REJECTED)
         self.assertTrue(any("already run" in error for error in result["errors"]))
+
+    def test_parameter_signature_records_declared_new_parameter_defaults(self) -> None:
+        proposal = {
+            "parent_candidate_id": "cand_lightgcn_anchor",
+            "parameter_overrides": {},
+            "new_parameters": [
+                {
+                    "name": "architecture_gate_alpha",
+                    "type": "number",
+                    "default": 0.2,
+                    "search_space": [0.1, 0.2, 0.5],
+                }
+            ],
+        }
+
+        self.assertEqual(
+            validate.proposal_parameter_signature(proposal),
+            'cand_lightgcn_anchor::{"architecture_gate_alpha":0.2}',
+        )
 
     def test_validator_rejects_model_incompatible_action_space_parameter(self) -> None:
         action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
@@ -378,7 +406,7 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertEqual(result["status"], validate.REJECTED)
         self.assertTrue(any("outside action_space" in error for error in result["errors"]))
 
-    def test_validator_rejects_consumes_outside_action_space(self) -> None:
+    def test_validator_accepts_declared_new_parameter_for_code_required(self) -> None:
         registry = {
             "cand_bpr_margin_loss": {
                 "candidate_id": "cand_bpr_margin_loss",
@@ -398,7 +426,64 @@ class CandidateProposalTests(unittest.TestCase):
             "runnable_level": "code_required",
             "runner_type": "model",
             "consumes": ["margin", "surprise_alpha"],
-            "new_parameters": [{"name": "surprise_alpha", "search_space": [0.1, 0.2]}],
+            "new_parameters": [
+                {
+                    "name": "surprise_alpha",
+                    "type": "number",
+                    "default": 0.1,
+                    "search_space": [0.1, 0.2],
+                }
+            ],
+            "implementation_plan": {
+                "files": ["recclaw_ext/models/surprise.py"],
+                "entrypoint": "recclaw_ext.models.surprise:SurpriseBPR",
+            },
+            "allowed_files": ["recclaw_ext/models/surprise.py"],
+            "expected_effect": {"primary_metric": "ndcg@10", "direction": "increase"},
+            "risk": {"recbole_core_change_required": False},
+            "decision_rule": {"keep_if": "improves"},
+        }
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space={
+                "action_types": {"local_loss": {}},
+                "parameter_space": {"margin": {"values": [0.1, 0.2, 0.5]}},
+                "allowed_implementation_roots": ["recclaw_ext/models/"],
+            },
+        )
+
+        self.assertEqual(result["status"], validate.NEEDS_REVIEW)
+        self.assertEqual(result["next_action"], "promote_to_implementation_queue")
+
+    def test_validator_rejects_undeclared_new_parameter_for_code_required(self) -> None:
+        registry = {
+            "cand_bpr_margin_loss": {
+                "candidate_id": "cand_bpr_margin_loss",
+                "base_model": "BPR",
+                "wired": True,
+                "consumes": ["margin"],
+            }
+        }
+        proposal = {
+            "proposal_type": "algorithmic_variant",
+            "candidate_id": "proposal_new_param",
+            "parent_candidate_id": "cand_bpr_margin_loss",
+            "base_model": "BPR",
+            "category": "Objective & Optimization",
+            "action_type": "local_loss",
+            "hypothesis": "Try a new local loss parameter.",
+            "runnable_level": "code_required",
+            "runner_type": "model",
+            "consumes": ["margin", "surprise_alpha"],
+            "new_parameters": [],
             "implementation_plan": {
                 "files": ["recclaw_ext/models/surprise.py"],
                 "entrypoint": "recclaw_ext.models.surprise:SurpriseBPR",
@@ -426,7 +511,238 @@ class CandidateProposalTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], validate.REJECTED)
-        self.assertTrue(any("consumes includes parameters outside action_space" in error for error in result["errors"]))
+        self.assertTrue(any("new consumes must be declared" in error for error in result["errors"]))
+
+    def test_validator_accepts_architecture_required_custom_model(self) -> None:
+        registry = {
+            "cand_lightgcn_parent": {
+                "candidate_id": "cand_lightgcn_parent",
+                "base_model": "LightGCN",
+                "wired": True,
+                "status": "implemented",
+                "runner_type": "model",
+                "consumes": ["embedding_size"],
+            }
+        }
+        proposal = {
+            "proposal_type": "architecture",
+            "candidate_id": "proposal_custom_graph_attention",
+            "parent_candidate_id": "cand_lightgcn_parent",
+            "base_model": "Custom",
+            "base_architecture": "graph_attention",
+            "category": "Representation & Interaction",
+            "action_type": "graph_attention",
+            "hypothesis": "Try a Custom graph-attention interaction block.",
+            "runnable_level": "architecture_required",
+            "runner_type": "model",
+            "consumes": ["embedding_size", "attention_temperature", "architecture_gate_alpha"],
+            "new_parameters": [
+                {
+                    "name": "architecture_gate_alpha",
+                    "type": "number",
+                    "default": 0.2,
+                    "search_space": [0.1, 0.2, 0.5],
+                }
+            ],
+            "implementation_plan": {
+                "files": ["recclaw_ext/models/architecture_exploration.py"],
+                "entrypoint": "recclaw_ext.models.architecture_exploration:CustomGraphAttention",
+            },
+            "allowed_files": ["recclaw_ext/models/architecture_exploration.py"],
+            "expected_effect": {"primary_metric": "ndcg@10", "direction": "increase"},
+            "risk": {"recbole_core_change_required": False},
+            "decision_rule": {"keep_if": "improves"},
+        }
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space={
+                "action_types": {"graph_attention": {}},
+                "parameter_space": {
+                    "embedding_size": {"values": [64], "compatible_models": ["Custom"]},
+                    "attention_temperature": {"values": [1.0], "compatible_models": ["Custom"]},
+                },
+                "allowed_implementation_roots": ["recclaw_ext/models/"],
+            },
+        )
+
+        self.assertEqual(result["status"], validate.NEEDS_REVIEW)
+        self.assertEqual(result["next_action"], "promote_to_implementation_queue")
+        self.assertTrue(any("architecture_required" in reason for reason in result["review_reasons"]))
+
+    def test_validator_rejects_sequence_formal_run_in_current_protocol(self) -> None:
+        registry = {
+            "cand_lightgcn_parent": {
+                "candidate_id": "cand_lightgcn_parent",
+                "base_model": "LightGCN",
+                "wired": True,
+                "status": "implemented",
+                "runner_type": "model",
+                "consumes": ["embedding_size"],
+            }
+        }
+        proposal = {
+            "proposal_type": "architecture",
+            "candidate_id": "proposal_sequence_model",
+            "parent_candidate_id": "cand_lightgcn_parent",
+            "base_model": "Custom",
+            "base_architecture": "transformer",
+            "category": "Representation & Interaction",
+            "action_type": "sequence_aggregator",
+            "hypothesis": "Try a formal sequence model.",
+            "runnable_level": "architecture_required",
+            "runner_type": "model",
+            "consumes": ["embedding_size"],
+            "implementation_plan": {
+                "files": ["recclaw_ext/models/sequence_model.py"],
+                "entrypoint": "recclaw_ext.models.sequence_model:CustomSequence",
+            },
+            "allowed_files": ["recclaw_ext/models/sequence_model.py"],
+            "expected_effect": {"primary_metric": "ndcg@10", "direction": "increase"},
+            "risk": {"recbole_core_change_required": False},
+            "decision_rule": {"keep_if": "improves"},
+        }
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space={
+                "action_types": {"sequence_aggregator": {}},
+                "parameter_space": {"embedding_size": {"values": [64]}},
+                "allowed_implementation_roots": ["recclaw_ext/models/"],
+            },
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("sequence_aggregator" in error for error in result["errors"]))
+
+    def test_validator_rejects_sequence_only_parameter_in_transformer_style_formal_line(self) -> None:
+        registry = {
+            "cand_lightgcn_parent": {
+                "candidate_id": "cand_lightgcn_parent",
+                "base_model": "LightGCN",
+                "wired": True,
+                "status": "implemented",
+                "runner_type": "model",
+                "consumes": ["embedding_size"],
+            }
+        }
+        proposal = {
+            "proposal_type": "architecture",
+            "candidate_id": "proposal_transformer_style_with_sequence_len",
+            "parent_candidate_id": "cand_lightgcn_parent",
+            "base_model": "Custom",
+            "base_architecture": "transformer_style_interaction",
+            "category": "Representation & Interaction",
+            "action_type": "transformer_interaction",
+            "hypothesis": "Try local attention, but mistakenly depend on sequence length.",
+            "runnable_level": "architecture_required",
+            "runner_type": "model",
+            "consumes": ["embedding_size", "max_seq_len"],
+            "new_parameters": [],
+            "implementation_plan": {
+                "files": ["recclaw_ext/models/transformer_style_model.py"],
+                "entrypoint": "recclaw_ext.models.transformer_style_model:CustomTransformerStyle",
+            },
+            "allowed_files": ["recclaw_ext/models/transformer_style_model.py"],
+            "expected_effect": {"primary_metric": "ndcg@10", "direction": "increase"},
+            "risk": {"recbole_core_change_required": False},
+            "decision_rule": {"keep_if": "improves"},
+        }
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space={
+                "action_types": {"transformer_interaction": {}},
+                "parameter_space": {
+                    "embedding_size": {"values": [64], "compatible_models": ["Custom"]},
+                    "max_seq_len": {"values": [50], "compatible_models": ["Custom"]},
+                },
+                "allowed_implementation_roots": ["recclaw_ext/models/"],
+            },
+        )
+
+        self.assertEqual(result["status"], validate.REJECTED)
+        self.assertTrue(any("sequence-protocol-only" in error for error in result["errors"]))
+
+    def test_validator_allows_edge_dropout_for_custom_graph_architecture(self) -> None:
+        action_space = validate.load_action_space(ROOT / "configs" / "action_space.yaml")
+        registry = {
+            "cand_lightgcn_parent": {
+                "candidate_id": "cand_lightgcn_parent",
+                "base_model": "LightGCN",
+                "wired": True,
+                "status": "implemented",
+                "runner_type": "model",
+                "consumes": ["embedding_size", "n_layers"],
+            }
+        }
+        proposal = {
+            "proposal_type": "architecture",
+            "candidate_id": "proposal_custom_edge_dropout",
+            "parent_candidate_id": "cand_lightgcn_parent",
+            "base_model": "Custom",
+            "base_architecture": "hybrid_graph_interaction",
+            "category": "Representation & Interaction",
+            "action_type": "hybrid_graph_interaction",
+            "hypothesis": "Use a perturbed graph path inside a Custom architecture.",
+            "runnable_level": "architecture_required",
+            "runner_type": "model",
+            "consumes": ["embedding_size", "n_layers", "edge_dropout", "architecture_gate_alpha"],
+            "parameter_overrides": {"embedding_size": 64, "n_layers": 2, "edge_dropout": 0.1},
+            "new_parameters": [
+                {
+                    "name": "architecture_gate_alpha",
+                    "type": "number",
+                    "default": 0.2,
+                    "search_space": [0.1, 0.2, 0.5],
+                }
+            ],
+            "implementation_plan": {
+                "files": ["recclaw_ext/models/custom_edge_dropout.py"],
+                "entrypoint": "recclaw_ext.models.custom_edge_dropout:CustomEdgeDropout",
+            },
+            "allowed_files": ["recclaw_ext/models/custom_edge_dropout.py"],
+            "expected_effect": {"primary_metric": "ndcg@10", "direction": "increase"},
+            "risk": {"recbole_core_change_required": False},
+            "decision_rule": {"keep_if": "improves"},
+        }
+
+        result = validate.validate_one(
+            proposal,
+            line_no=1,
+            schema=sample_schema(),
+            registry_by_id=registry,
+            registry_ids=set(registry),
+            seen_ids=set(),
+            seen_param_signatures=set(),
+            memory_param_signatures=set(),
+            action_space=action_space,
+        )
+
+        self.assertEqual(result["status"], validate.NEEDS_REVIEW)
+        self.assertFalse(result["errors"])
+        self.assertEqual(result["next_action"], "promote_to_implementation_queue")
 
     def test_validator_prefers_action_space_action_types(self) -> None:
         registry = {
@@ -544,6 +860,36 @@ class CandidateProposalTests(unittest.TestCase):
         self.assertEqual(proposals, [])
         self.assertEqual(len(spec_proposals), 1)
         self.assertEqual(spec_proposals[0]["runnable_level"], "spec_only")
+
+    def test_architecture_fallback_prefers_lightgcn_anchor(self) -> None:
+        registry = [
+            {
+                "candidate_id": "cand_bpr_anchor",
+                "base_model": "BPR",
+                "status": "implemented",
+                "wired": True,
+                "runner_type": "model",
+            },
+            {
+                "candidate_id": "cand_lightgcn_anchor",
+                "base_model": "LightGCN",
+                "status": "implemented",
+                "wired": True,
+                "runner_type": "model",
+            },
+        ]
+
+        proposals = propose.generate_architecture_proposals(
+            registry=registry,
+            count=1,
+            stamp="20260605_000000",
+        )
+
+        self.assertEqual(len(proposals), 1)
+        self.assertEqual(proposals[0]["parent_candidate_id"], "cand_lightgcn_anchor")
+        self.assertEqual(proposals[0]["runnable_level"], "architecture_required")
+        self.assertEqual(proposals[0]["base_architecture"], "transformer_style_interaction")
+        self.assertEqual(proposals[0]["action_type"], "transformer_interaction")
 
 
 if __name__ == "__main__":

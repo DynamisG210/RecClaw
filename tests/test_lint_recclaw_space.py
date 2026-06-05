@@ -105,6 +105,46 @@ class RecClawSpaceLintTests(unittest.TestCase):
             )
         )
 
+    def test_candidate_declared_local_parameter_is_lintable(self) -> None:
+        action_space, schema, registry, search_policy = load_default_payloads()
+        registry = copy.deepcopy(registry)
+        candidate_id = "cand_custom_declared_local_parameter"
+        registry["candidates"].append(
+            {
+                "candidate_id": candidate_id,
+                "base_model": "Custom",
+                "runner_type": "model",
+                "status": "implemented",
+                "wired": True,
+                "consumes": ["embedding_size", "architecture_gate_alpha"],
+                "new_parameters": [
+                    {
+                        "name": "architecture_gate_alpha",
+                        "type": "number",
+                        "default": 0.2,
+                        "search_space": [0.1, 0.2, 0.5],
+                    }
+                ],
+            }
+        )
+
+        issues = lint_space.lint_payloads(
+            action_space=action_space,
+            schema=schema,
+            registry=registry,
+            search_policy=search_policy,
+            candidate_configs={
+                f"configs/candidates/{candidate_id}.yaml": {
+                    "candidate_id": candidate_id,
+                    "model": "CustomDeclaredLocalParameter",
+                    "embedding_size": 64,
+                    "architecture_gate_alpha": 0.2,
+                }
+            },
+        )
+
+        self.assertFalse(any(issue.object_id == candidate_id for issue in issues))
+
     def test_compatible_models_conflict_for_runnable_candidate_is_reported(self) -> None:
         action_space, schema, registry, search_policy = load_default_payloads()
         action_space = copy.deepcopy(action_space)

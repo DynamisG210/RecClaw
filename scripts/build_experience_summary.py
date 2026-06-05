@@ -243,8 +243,10 @@ def domain_prior_warnings(
 
 
 def infer_base_model(record: dict[str, Any]) -> str:
+    explicit = str(record.get("base_model") or "").strip()
+    if explicit:
+        return explicit
     for value in (
-        record.get("base_model"),
         (record.get("result") or {}).get("model") if isinstance(record.get("result"), dict) else "",
         record.get("model"),
         record.get("candidate_id"),
@@ -259,7 +261,7 @@ def infer_base_model(record: dict[str, Any]) -> str:
 
 
 def candidate_family(record: dict[str, Any]) -> str:
-    return str(record.get("parent_candidate_id") or record.get("candidate_id") or "unknown")
+    return str(record.get("family") or record.get("parent_candidate_id") or record.get("candidate_id") or "unknown")
 
 
 def canonical_signature(raw: Any) -> str:

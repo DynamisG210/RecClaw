@@ -139,6 +139,20 @@ def parameter_values(spec: Any) -> list[Any]:
     return values if isinstance(values, list) else []
 
 
+def declared_candidate_parameter_specs(candidate: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    specs: dict[str, dict[str, Any]] = {}
+    raw = candidate.get("new_parameters") or []
+    if not isinstance(raw, list):
+        return specs
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if name:
+            specs[name] = item
+    return specs
+
+
 def scalar_value(value: Any) -> bool:
     return isinstance(value, (str, int, float, bool)) or value is None
 
@@ -490,17 +504,77 @@ def lint_payloads(
                 f"candidate runner_type is outside action_space: {runner_type}",
                 object_id=candidate_id,
             )
+        local_parameter_specs = declared_candidate_parameter_specs(candidate)
+        raw_new_parameters = candidate.get("new_parameters")
+        if raw_new_parameters is not None and not isinstance(raw_new_parameters, list):
+            add_issue(
+                issues,
+                "error",
+                "candidate_registry.new_parameters",
+                "new_parameters must be a list",
+                object_id=candidate_id,
+            )
+        elif isinstance(raw_new_parameters, list):
+            seen_local_names: set[str] = set()
+            for item in raw_new_parameters:
+                if not isinstance(item, dict):
+                    add_issue(
+                        issues,
+                        "error",
+                        "candidate_registry.new_parameters",
+                        "each new parameter declaration must be an object",
+                        object_id=candidate_id,
+                    )
+                    continue
+                name = str(item.get("name") or "").strip()
+                if not name:
+                    add_issue(
+                        issues,
+                        "error",
+                        "candidate_registry.new_parameters",
+                        "new parameter declaration requires a name",
+                        object_id=candidate_id,
+                    )
+                    continue
+                if name in seen_local_names:
+                    add_issue(
+                        issues,
+                        "error",
+                        "candidate_registry.new_parameters",
+                        f"duplicate local parameter declaration: {name}",
+                        object_id=candidate_id,
+                    )
+                seen_local_names.add(name)
+                search_space = item.get("search_space")
+                if not isinstance(search_space, list) or not search_space:
+                    add_issue(
+                        issues,
+                        "error",
+                        "candidate_registry.new_parameters",
+                        f"local parameter requires a non-empty search_space: {name}",
+                        object_id=candidate_id,
+                    )
+                elif "default" not in item or not value_allowed(item.get("default"), search_space):
+                    add_issue(
+                        issues,
+                        "error",
+                        "candidate_registry.new_parameters",
+                        f"local parameter default must belong to search_space: {name}",
+                        object_id=candidate_id,
+                    )
         for consume in as_str_list(candidate.get("consumes")):
             if consume in ALLOWED_PROTOCOL_CONSUMES:
                 continue
-            if consume not in parameter_space:
+            if consume not in parameter_space and consume not in local_parameter_specs:
                 add_issue(
                     issues,
                     "error",
                     "candidate_registry.consumes",
-                    f"candidate consumes parameter outside action_space: {consume}",
+                    f"candidate consumes undeclared parameter: {consume}",
                     object_id=candidate_id,
                 )
+                continue
+            if consume in local_parameter_specs:
                 continue
             if consume in planned_parameters and is_runnable_candidate(candidate):
                 add_issue(
@@ -556,11 +630,16 @@ def lint_payloads(
         else:
             models = candidate_base_models(registry_candidate.get("base_model"), base_models)
             config_is_runnable = is_runnable_candidate(registry_candidate)
+        local_parameter_specs = (
+            declared_candidate_parameter_specs(registry_candidate)
+            if registry_candidate is not None
+            else {}
+        )
         for key, value in payload.items():
             parameter = str(key)
             if parameter in CANDIDATE_CONFIG_META_KEYS:
                 continue
-            if parameter not in parameter_space:
+            if parameter not in parameter_space and parameter not in local_parameter_specs:
                 add_issue(
                     issues,
                     "error",
@@ -569,6 +648,18 @@ def lint_payloads(
                     object_id=candidate_id,
                     path=config_path,
                 )
+                continue
+            if parameter in local_parameter_specs:
+                allowed_values = local_parameter_specs[parameter].get("search_space")
+                if isinstance(allowed_values, list) and allowed_values and not value_allowed(value, allowed_values):
+                    add_issue(
+                        issues,
+                        "error" if config_is_runnable else "warning",
+                        "candidate_config.values",
+                        f"candidate config value is outside local search_space for {parameter}: {value}",
+                        object_id=candidate_id,
+                        path=config_path,
+                    )
                 continue
             if parameter in planned_parameters:
                 add_issue(

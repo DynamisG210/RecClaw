@@ -32,7 +32,9 @@ import yaml
 try:
     from .action_space import (
         allowed_action_types,
+        base_models,
         load_action_space,
+        parameter_schema_map,
         parameter_space_from_action_space,
     )
     from .collect_result import load_result_source
@@ -40,7 +42,9 @@ try:
 except ImportError:
     from action_space import (
         allowed_action_types,
+        base_models,
         load_action_space,
+        parameter_schema_map,
         parameter_space_from_action_space,
     )
     from collect_result import load_result_source
@@ -149,8 +153,13 @@ AUTO_PLANNER_ACTIONS = {
     "propose_mixed",
     "propose_explore",
     "propose_algorithm",
+    "propose_objective",
+    "propose_architecture",
     "implement_needs_review",
     "implement_algorithm",
+    "implement_architecture",
+    "run_architecture_variant",
+    "architecture_ablation",
     "tune_after_algorithm_success",
     "multi_seed_verify",
     "report",
@@ -159,6 +168,17 @@ ACTION_SPACE = load_action_space(ACTION_SPACE_PATH)
 DEFAULT_PARAMETER_SPACE = parameter_space_from_action_space(ACTION_SPACE)
 PROPOSAL_PARAMETER_KEYS = tuple(DEFAULT_PARAMETER_SPACE)
 PROPOSAL_ACTION_TYPES = tuple(sorted(allowed_action_types(ACTION_SPACE)))
+PROPOSAL_BASE_MODELS = tuple(base_models(ACTION_SPACE))
+IMPLEMENTATION_REQUIRED_LEVELS = {"code_required", "architecture_required"}
+ARCHITECTURE_ACTION_TYPES = {
+    "custom_encoder",
+    "graph_rewire",
+    "graph_attention",
+    "interaction_function",
+    "propagation_mechanism",
+    "hybrid_graph_interaction",
+    "transformer_interaction",
+}
 
 
 def normalize_signature_value(value: Any) -> Any:
@@ -171,7 +191,7 @@ def normalize_signature_value(value: Any) -> Any:
     if isinstance(value, float) and value.is_integer():
         return int(value)
     return value
-PROPOSAL_PARAMETER_SCHEMA = {key: {"type": ["number", "null"]} for key in PROPOSAL_PARAMETER_KEYS}
+PROPOSAL_PARAMETER_SCHEMA = parameter_schema_map(ACTION_SPACE)
 SELF_REG_LOSS_PATTERN = re.compile(r"\bself\.reg_loss\s*\(")
 LIGHTGCN_BASE_CLASS_PATTERN = re.compile(r"class\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*LightGCN[^)]*\)")
 REG_LOSS_GUARD_PATTERN = re.compile(r"hasattr\s*\(\s*self\s*,\s*[\"']reg_weight[\"']\s*\)")
@@ -189,10 +209,11 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "proposal_type": {"type": "string", "enum": ["tuning", "algorithmic_variant", "research_spec"]},
+                    "proposal_type": {"type": "string", "enum": ["tuning", "algorithmic_variant", "research_spec", "architecture"]},
                     "candidate_id": {"type": "string"},
                     "parent_candidate_id": {"type": "string"},
-                    "base_model": {"type": "string", "enum": ["BPR", "LightGCN"]},
+                    "base_model": {"type": "string", "enum": list(PROPOSAL_BASE_MODELS)},
+                    "base_architecture": {"type": "string"},
                     "category": {"type": "string"},
                     "action_type": {"type": "string", "enum": list(PROPOSAL_ACTION_TYPES)},
                     "mechanism": {"type": "string"},
@@ -204,7 +225,7 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                     "hypothesis": {"type": "string"},
                     "runnable_level": {
                         "type": "string",
-                        "enum": ["parameter_only", "config_only", "spec_only", "code_required"],
+                        "enum": ["parameter_only", "config_only", "spec_only", "code_required", "architecture_required"],
                     },
                     "runner_type": {"type": "string", "enum": ["config_only", "model", "posthoc"]},
                     "consumes": {"type": "array", "items": {"type": "string"}},
@@ -259,7 +280,25 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                         "required": ["summary", "entrypoint", "files"],
                     },
                     "allowed_files": {"type": "array", "items": {"type": "string"}},
-                    "new_parameters": {"type": "array", "items": {"type": "string"}},
+                    "new_parameters": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "name": {"type": "string"},
+                                "type": {"type": "string"},
+                                "default": {"type": ["number", "string", "boolean", "null"]},
+                                "search_space": {
+                                    "type": "array",
+                                    "items": {"type": ["number", "string", "boolean", "null"]},
+                                },
+                                "meaning": {"type": "string"},
+                                "expected_effect": {"type": "string"},
+                            },
+                            "required": ["name", "type", "default", "search_space", "meaning", "expected_effect"],
+                        },
+                    },
                     "promotion_requirements": {"type": "array", "items": {"type": "string"}},
                 },
                 "required": [
@@ -267,6 +306,7 @@ PROPOSAL_RESPONSE_SCHEMA: dict[str, Any] = {
                     "candidate_id",
                     "parent_candidate_id",
                     "base_model",
+                    "base_architecture",
                     "category",
                     "action_type",
                     "mechanism",
@@ -344,6 +384,7 @@ class AgentConfig:
     enable_candidate_proposals: bool = True
     proposal_path: Path = PROPOSAL_PATH
     proposal_mode: str = "mixed"
+    proposal_mode_locked: bool = False
     proposal_count: int = 5
     proposal_every: int = 3
     proposal_bonus: float = 0.35
@@ -424,6 +465,12 @@ class TrialRecord:
     reason: str
     next_action: str
     parent_candidate_id: str = ""
+    base_model: str = ""
+    proposal_type: str = ""
+    action_type: str = ""
+    base_architecture: str = ""
+    mechanism: str = ""
+    family: str = ""
     proposal_id: str = ""
     parameter_signature: str = ""
     execution_signature: str = ""
@@ -594,6 +641,57 @@ class RecClawAgent:
         if not isinstance(registry, list):
             raise ValueError("registry candidates must be a list")
         self.registry = registry
+
+    def _registry_candidate(self, candidate_id: str) -> dict[str, Any]:
+        candidate_id = str(candidate_id or "").strip()
+        if not candidate_id:
+            return {}
+        for candidate in self.registry:
+            if str(candidate.get("candidate_id") or "").strip() == candidate_id:
+                return candidate
+        return {}
+
+    @staticmethod
+    def _candidate_family(candidate: dict[str, Any]) -> str:
+        proposal_type = str(candidate.get("proposal_type") or "").strip()
+        runnable_level = str(candidate.get("runnable_level") or "").strip()
+        base_model = str(candidate.get("base_model") or "").strip()
+        if proposal_type == "architecture" or runnable_level == "architecture_required" or base_model == "Custom":
+            base_architecture = str(candidate.get("base_architecture") or "").strip()
+            mechanism = str(candidate.get("mechanism") or "").strip()
+            action_type = str(candidate.get("action_type") or "").strip()
+            identity = base_architecture or mechanism or action_type or str(candidate.get("candidate_id") or "unknown")
+            return f"architecture::{identity}"
+        if str(candidate.get("action_type") or "") in {"loss_function", "objective_function"}:
+            identity = str(candidate.get("mechanism") or candidate.get("action_type") or "objective").strip()
+            return f"objective::{identity}"
+        return str(candidate.get("parent_candidate_id") or candidate.get("candidate_id") or "unknown")
+
+    def _baseline_model_for_candidate(self, candidate: dict[str, Any], result_model: str) -> str:
+        requested = self._normalize_model_key(candidate.get("comparison_baseline_model"))
+        if requested and requested in self.baselines_by_model:
+            return requested
+
+        direct = self._normalize_model_key(candidate.get("base_model"))
+        if direct and direct != "Custom" and direct in self.baselines_by_model:
+            return direct
+
+        seen: set[str] = set()
+        parent_id = str(candidate.get("parent_candidate_id") or "").strip()
+        while parent_id and parent_id not in seen:
+            seen.add(parent_id)
+            parent = self._registry_candidate(parent_id)
+            if not parent:
+                break
+            parent_model = self._normalize_model_key(parent.get("base_model"))
+            if parent_model and parent_model != "Custom" and parent_model in self.baselines_by_model:
+                return parent_model
+            parent_id = str(parent.get("parent_candidate_id") or "").strip()
+
+        normalized_result = self._normalize_model_key(result_model)
+        if normalized_result in self.baselines_by_model:
+            return normalized_result
+        return ""
         self.candidate_health_issues = self._build_candidate_health_issues()
         self.quarantined_candidate_ids = {
             candidate_id for candidate_id, issues in self.candidate_health_issues.items() if issues
@@ -798,10 +896,10 @@ class RecClawAgent:
     def _choose_params(self, candidate: dict[str, Any]) -> dict[str, Any]:
         consumes = candidate.get("consumes") or []
         param_values: list[tuple[str, list[Any]]] = []
-        params: dict[str, Any] = {}
+        params = self._candidate_config_params(candidate)
         for key in consumes:
             key_text = str(key)
-            values = self.config.parameter_space.get(key_text, [])
+            values = self._candidate_parameter_values(candidate, key_text)
             if values:
                 param_values.append((key_text, values))
                 params[key_text] = self.rng.choice(values)
@@ -837,12 +935,16 @@ class RecClawAgent:
         consumes = candidate.get("consumes") or []
         param_values: list[tuple[str, list[Any]]] = []
         for key in consumes:
-            values = self.config.parameter_space.get(str(key), [])
+            values = self._candidate_parameter_values(candidate, str(key))
             if values:
                 param_values.append((str(key), values))
+        fixed_params = self._candidate_config_params(candidate)
         max_tries = max(30, 6 * len(param_values))
         for _ in range(max_tries):
-            proposal = {key: self.rng.choice(values) for key, values in param_values}
+            proposal = {
+                **fixed_params,
+                **{key: self.rng.choice(values) for key, values in param_values},
+            }
             execution_signature = self._execution_signature(candidate, proposal)
             if execution_signature and (
                 execution_signature in used_execution_signatures
@@ -1006,9 +1108,20 @@ class RecClawAgent:
         consumes = {str(item) for item in (candidate.get("consumes") or [])}
         params: dict[str, Any] = {}
         for key in consumes:
-            if key in config and key in self.config.parameter_space:
+            if key in config:
                 params[key] = config[key]
         return params
+
+    def _candidate_parameter_values(self, candidate: dict[str, Any], key: str) -> list[Any]:
+        global_values = self.config.parameter_space.get(key, [])
+        if global_values:
+            return list(global_values)
+        for item in candidate.get("new_parameters") or []:
+            if not isinstance(item, dict) or str(item.get("name") or "") != key:
+                continue
+            search_space = item.get("search_space")
+            return list(search_space) if isinstance(search_space, list) else []
+        return []
 
     def _candidate_plan_score(self, candidate: dict[str, Any]) -> float:
         cid = str(candidate.get("candidate_id") or "")
@@ -1031,6 +1144,27 @@ class RecClawAgent:
             - self.config.crash_penalty * crashes
             - (self.config.recent_schedule_penalty if recently_scheduled else 0.0)
         )
+
+    def _matches_locked_proposal_scope(self, candidate: dict[str, Any]) -> bool:
+        if not self.config.proposal_mode_locked:
+            return True
+        mode = str(self.config.proposal_mode or "")
+        proposal_type = str(candidate.get("proposal_type") or "")
+        runnable_level = str(candidate.get("runnable_level") or "")
+        action_type = str(candidate.get("action_type") or "")
+        base_model = str(candidate.get("base_model") or "")
+        base_architecture = str(candidate.get("base_architecture") or "")
+        if mode in {"architecture_first", "architecture_ablation"}:
+            return bool(
+                proposal_type == "architecture"
+                or runnable_level == "architecture_required"
+                or action_type in ARCHITECTURE_ACTION_TYPES
+                or base_model == "Custom"
+                or base_architecture
+            )
+        if mode == "objective_first":
+            return action_type in {"loss_function", "objective_function"}
+        return True
 
     def _family_plan_credit(self, candidate_id: str) -> float:
         keeps = 0
@@ -1238,6 +1372,22 @@ class RecClawAgent:
             ]
             if pending_options:
                 plan_options = pending_options
+        if self.config.proposal_mode_locked and self.config.proposal_mode in {
+            "objective_first",
+            "architecture_first",
+            "architecture_ablation",
+        }:
+            scoped_options = [
+                (candidate, params)
+                for candidate, params in plan_options
+                if self._matches_locked_proposal_scope(candidate)
+            ]
+            if not scoped_options:
+                raise RuntimeError(
+                    f"no runnable candidates match locked proposal mode {self.config.proposal_mode}; "
+                    "generate or implement an in-scope proposal instead of spending formal budget on legacy candidates"
+                )
+            plan_options = scoped_options
         if (
             self.config.search_intensity == "algorithm_first"
             and self._formal_trial_count() < self.config.algorithm_first_explore_rounds
@@ -1463,7 +1613,7 @@ class RecClawAgent:
 
     @staticmethod
     def _family_key(row: dict[str, Any]) -> str:
-        return str(row.get("parent_candidate_id") or row.get("candidate_id") or "unknown")
+        return str(row.get("family") or row.get("parent_candidate_id") or row.get("candidate_id") or "unknown")
 
     def _unverified_keep_rows(self) -> list[dict[str, Any]]:
         completed_targets = self._seed_validation_completed_target_keys()
@@ -1772,9 +1922,20 @@ class RecClawAgent:
         if pending_count:
             return "run_algorithm_variant" if self.config.search_intensity == "algorithm_first" else "run_available"
         if self._has_pending_code_required_review():
+            pending_architecture = any(
+                row.get("event") == "proposal_needs_review"
+                and row.get("next_action") == "promote_to_implementation_queue"
+                and str(row.get("runnable_level") or "") == "architecture_required"
+                for row in reversed(self.memory)
+            )
+            if pending_architecture:
+                return "implement_architecture"
             return "implement_algorithm" if self.config.search_intensity == "algorithm_first" else "implement_needs_review"
         if self.config.search_intensity == "algorithm_first" and self._plateau_state().get("plateau_detected"):
-            return "propose_algorithm"
+            recent = self._recent_planner_actions(limit=4)
+            if recent.count("propose_objective") >= 2 or recent[-2:] == ["propose_objective", "propose_objective"]:
+                return "propose_architecture"
+            return "propose_objective"
         return "propose_algorithm" if self.config.search_intensity == "algorithm_first" else "propose_mixed"
 
     def _build_agent_state_summary(self) -> dict[str, Any]:
@@ -2097,6 +2258,28 @@ class RecClawAgent:
             "action_space": ACTION_SPACE,
             "parameter_space": self.config.parameter_space,
             "schema": schema,
+            "architecture_objective_directive": {
+                "loss_objective_open": True,
+                "architecture_open": True,
+                "planner_actions": [
+                    "propose_objective",
+                    "propose_architecture",
+                    "implement_architecture",
+                    "run_architecture_variant",
+                    "architecture_ablation",
+                ],
+                "current_protocol": "ML-1M general recommendation full-sort; do not introduce sequence dataloaders, temporal split, or RecBole core changes",
+                "allowed_transformer_style_scope": [
+                    "attention-based user/item interaction",
+                    "graph-attention propagation",
+                    "transformer-style residual/FFN/layer-norm block",
+                    "MLP or attention scoring head",
+                ],
+                "plateau_response": (
+                    "If local tuning or same-family repair is saturated, propose loss/objective first, "
+                    "then graph/interaction architecture; if architecture passes smoke, propose ablation/exploit."
+                ),
+            },
             "registry": self.registry,
             "agent_state_summary": self.agent_state_summary,
             "recent_agent_memory": memory,
@@ -2237,6 +2420,22 @@ class RecClawAgent:
 
         if not proposal.get("action_type"):
             proposal["action_type"] = self._infer_action_type(proposal)
+        action_type = str(proposal.get("action_type") or "")
+        proposal_type = str(proposal.get("proposal_type") or "")
+        if proposal_type == "architecture" or action_type in ARCHITECTURE_ACTION_TYPES:
+            proposal["proposal_type"] = "architecture"
+            proposal["base_model"] = "Custom"
+            proposal["runner_type"] = "model"
+            proposal["runnable_level"] = "architecture_required"
+            proposal.setdefault("base_architecture", action_type if action_type in ARCHITECTURE_ACTION_TYPES else "custom")
+            proposal["implementation_complexity"] = "high"
+        elif action_type in {"loss_function", "objective_function"}:
+            proposal.setdefault("proposal_type", "algorithmic_variant")
+            proposal.setdefault("runnable_level", "code_required")
+            proposal.setdefault("runner_type", "model")
+            proposal.setdefault("base_architecture", "")
+        else:
+            proposal.setdefault("base_architecture", "")
         parent_id = str(proposal.get("parent_candidate_id") or "")
         mechanism = str(proposal.get("mechanism") or "").strip()
         if not mechanism:
@@ -2268,27 +2467,63 @@ class RecClawAgent:
             proposal["implementation_complexity"] = "medium"
 
         runnable_level = str(proposal.get("runnable_level") or "")
-        if runnable_level not in {"code_required", "spec_only"}:
+        if runnable_level not in {*IMPLEMENTATION_REQUIRED_LEVELS, "spec_only"}:
             return
         parent = registry_by_id.get(parent_id)
         if parent is None:
             return
         consumes = [str(item) for item in (proposal.get("consumes") or [])]
         parent_consumes = {str(item) for item in (parent.get("consumes") or [])}
+        known_parameters = set(self.config.parameter_space)
         new_names: set[str] = set()
         new_parameters = proposal.get("new_parameters")
         if isinstance(new_parameters, list):
+            normalized_new_parameters: list[Any] = []
             for item in new_parameters:
                 if isinstance(item, str):
+                    if item in known_parameters:
+                        continue
                     new_names.add(item)
+                    values = self.config.parameter_space.get(item) or [0.1, 0.2, 0.5]
+                    default = values[0] if values else None
+                    value_type = "string" if isinstance(default, str) else "number"
+                    normalized_new_parameters.append(
+                        {
+                            "name": item,
+                            "type": value_type,
+                            "default": default,
+                            "search_space": values,
+                            "meaning": f"Generated parameter for {proposal.get('mechanism') or action_type}",
+                            "expected_effect": "Controls the strength or capacity of the generated mechanism.",
+                        }
+                    )
                 elif isinstance(item, dict) and item.get("name"):
-                    new_names.add(str(item["name"]))
+                    item_name = str(item["name"])
+                    if item_name in known_parameters:
+                        continue
+                    new_names.add(item_name)
+                    normalized_new_parameters.append(item)
+            proposal["new_parameters"] = normalized_new_parameters
+            new_parameters = proposal["new_parameters"]
         else:
             proposal["new_parameters"] = []
             new_parameters = proposal["new_parameters"]
-        missing = sorted(set(consumes) - parent_consumes - new_names)
+        missing = sorted(name for name in set(consumes) - parent_consumes - new_names if name not in known_parameters)
         if missing and isinstance(new_parameters, list):
-            new_parameters.extend(missing)
+            for name in missing:
+                values = self.config.parameter_space.get(name) or [0.1, 0.2, 0.5]
+                default = values[0] if values else None
+                value_type = "string" if isinstance(default, str) else "number"
+                new_parameters.append(
+                    {
+                        "name": name,
+                        "type": value_type,
+                        "default": default,
+                        "search_space": values,
+                        "meaning": f"Generated parameter for {proposal.get('mechanism') or action_type}",
+                        "expected_effect": "Controls the strength or capacity of the generated mechanism.",
+                    }
+                )
 
     @staticmethod
     def _infer_action_type(proposal: dict[str, Any]) -> str:
@@ -2298,6 +2533,15 @@ class RecClawAgent:
         consumes = {str(item) for item in (proposal.get("consumes") or [])}
         if proposal_type == "tuning":
             return "parameter_tuning"
+        if proposal_type == "architecture":
+            base_architecture = str(proposal.get("base_architecture") or "").lower()
+            if "attention" in base_architecture and "graph" in base_architecture:
+                return "graph_attention"
+            if "transformer" in base_architecture:
+                return "transformer_interaction"
+            if "interaction" in base_architecture or "hybrid" in base_architecture:
+                return "hybrid_graph_interaction"
+            return "propagation_mechanism"
         if runner_type == "posthoc":
             return "posthoc_rerank"
         if consumes.intersection({"hard_negative_ratio", "popularity_alpha", "debias_alpha"}):
@@ -2403,17 +2647,17 @@ class RecClawAgent:
             return updated, "no_unverified_keep_for_seed_verify"
         if action in {"multi_seed_verify", "report"}:
             return payload, ""
-        if action in {"implement_needs_review", "implement_algorithm"} and not self._has_pending_code_required_review():
+        if action in {"implement_needs_review", "implement_algorithm", "implement_architecture"} and not self._has_pending_code_required_review():
             updated = dict(payload)
             updated["action"] = self._algorithm_fallback_action()
             updated["reason"] = (
-                f"auto override because no actionable code_required review is pending; "
+                f"auto override because no actionable implementation review is pending; "
                 f"{payload.get('reason', '')}"
             ).strip()
             return updated, "no_actionable_code_review_pending"
         pending_count = len(self._pending_implemented_candidate_ids())
         if pending_count >= self.config.max_pending_implemented and (
-            action.startswith("propose") or action in {"implement_needs_review", "implement_algorithm"}
+            action.startswith("propose") or action in {"implement_needs_review", "implement_algorithm", "implement_architecture"}
         ):
             updated = dict(payload)
             updated["action"] = self._algorithm_fallback_action()
@@ -2490,9 +2734,14 @@ class RecClawAgent:
             return
         policy = LOOP_MODE_POLICIES[self.config.loop_mode]
         self.config.enable_candidate_proposals = True
-        self.config.proposal_mode = str(policy["proposal_mode"])
+        if not self.config.proposal_mode_locked:
+            self.config.proposal_mode = str(policy["proposal_mode"])
         self.config.auto_promote_needs_review = bool(policy["auto_promote"])
         self.config.auto_implement_code_required = bool(policy["auto_implement"])
+
+    def _set_auto_proposal_mode(self, mode: str) -> None:
+        if not self.config.proposal_mode_locked:
+            self.config.proposal_mode = mode
 
     @staticmethod
     def _https_context() -> ssl.SSLContext:
@@ -2593,6 +2842,10 @@ class RecClawAgent:
             "You are RecClaw's candidate proposal generator. "
             "Generate valid recommender-system candidate proposals only. "
             "Honor experiment_directive as the highest-priority user steering below hard constraints. "
+            "When proposal_mode is objective_first or architecture_first, produce real loss/objective or "
+            "Custom architecture proposals that can be implemented, smoked, and formally run. "
+            "Transformer-style local attention/interaction blocks are allowed under the current general-rec protocol; "
+            "sequence dataloaders, temporal splits, SASRec/BERT4Rec formal lines, and RecBole core changes are forbidden. "
             "Do not modify RecBole core. Return strict JSON only."
         )
         user_prompt = (
@@ -2635,8 +2888,11 @@ class RecClawAgent:
                 "has crossed tuned_lightgcn_mean. Prefer multi_seed_verify only when there is an unverified keep "
                 "that meets agent_state_summary.algorithm_first_targets.seed_validation_min_metric. "
                 "If agent_state_summary.anti_plateau.plateau_detected is true, choose propose_algorithm, "
-                "implement_algorithm, or run_algorithm_variant; do not choose tune_after_algorithm_success "
-                "for local repair unless it is explicitly cross-family and architecture-level. "
+                "propose_objective, propose_architecture, implement_algorithm, implement_architecture, "
+                "or run_algorithm_variant; do not choose tune_after_algorithm_success for local repair "
+                "unless it is explicitly cross-family and architecture-level. "
+                "Escalate local tuning plateaus to objective search first, then graph/interaction architecture "
+                "if objective proposals also plateau. "
                 "If agent_state_summary.post_validation_followup.needs_structured_followup is true, choose "
                 "tune_after_algorithm_success so the next round performs one-axis ablation, stability replication, "
                 "or parameter-region refinement instead of more nearby code siblings. "
@@ -2715,25 +2971,43 @@ class RecClawAgent:
 
         if action == "propose_tuning":
             self.config.enable_candidate_proposals = True
-            self.config.proposal_mode = "conservative"
+            self._set_auto_proposal_mode("conservative")
             self.config.auto_promote_needs_review = False
             self.config.auto_implement_code_required = False
         elif action in {"propose_algorithm", "propose_explore", "implement_needs_review", "implement_algorithm"}:
             self.config.enable_candidate_proposals = True
-            self.config.proposal_mode = "algorithm_first" if action in {"propose_algorithm", "implement_algorithm"} else "explore"
+            self._set_auto_proposal_mode(
+                "algorithm_first" if action in {"propose_algorithm", "implement_algorithm"} else "explore"
+            )
             self.config.auto_promote_needs_review = True
             self.config.auto_implement_code_required = True
             self.skip_proposal_generation = action in {"implement_needs_review", "implement_algorithm"}
-        elif action in {"run_available", "run_algorithm_variant"}:
+        elif action == "propose_objective":
+            self.config.enable_candidate_proposals = True
+            self._set_auto_proposal_mode("objective_first")
+            self.config.auto_promote_needs_review = True
+            self.config.auto_implement_code_required = True
+        elif action in {"propose_architecture", "implement_architecture"}:
+            self.config.enable_candidate_proposals = True
+            self._set_auto_proposal_mode("architecture_first")
+            self.config.auto_promote_needs_review = True
+            self.config.auto_implement_code_required = True
+            self.skip_proposal_generation = action == "implement_architecture"
+        elif action in {"run_available", "run_algorithm_variant", "run_architecture_variant"}:
             self.config.enable_candidate_proposals = False
+        elif action == "architecture_ablation":
+            self.config.enable_candidate_proposals = True
+            self._set_auto_proposal_mode("architecture_ablation")
+            self.config.auto_promote_needs_review = True
+            self.config.auto_implement_code_required = True
         elif action == "tune_after_algorithm_success":
             self.config.enable_candidate_proposals = True
-            self.config.proposal_mode = "mixed"
+            self._set_auto_proposal_mode("mixed")
             self.config.auto_promote_needs_review = True
             self.config.auto_implement_code_required = False
         else:
             self.config.enable_candidate_proposals = True
-            self.config.proposal_mode = (
+            self._set_auto_proposal_mode(
                 "algorithm_first" if self.config.search_intensity == "algorithm_first" else "mixed"
             )
             self.config.auto_promote_needs_review = True
@@ -2769,7 +3043,10 @@ class RecClawAgent:
             return
         candidate_id = str(target.get("candidate_id") or "")
         parent_id = str(target.get("parent_candidate_id") or "")
-        base = self._find_registry_candidate(parent_id or candidate_id)
+        base = self._find_registry_candidate(candidate_id)
+        used_parent_fallback = base is None and bool(parent_id)
+        if used_parent_fallback:
+            base = self._find_registry_candidate(parent_id)
         if base is None:
             self.remember_event(
                 {
@@ -2781,7 +3058,7 @@ class RecClawAgent:
             )
             return
         candidate = dict(base)
-        if parent_id:
+        if used_parent_fallback:
             candidate["candidate_id"] = candidate_id
             candidate["run_candidate_id"] = parent_id
             candidate["parent_candidate_id"] = parent_id
@@ -3045,7 +3322,8 @@ class RecClawAgent:
             if not isinstance(row, dict):
                 continue
             proposal_id = str(row.get("candidate_id") or "")
-            if row.get("status") != "needs_review" or row.get("runnable_level") != "code_required":
+            runnable_level = str(row.get("runnable_level") or "")
+            if row.get("status") != "needs_review" or runnable_level not in IMPLEMENTATION_REQUIRED_LEVELS:
                 continue
             if implemented_this_round >= self.config.max_implement_per_round:
                 self.remember_event(
@@ -3053,6 +3331,7 @@ class RecClawAgent:
                         "event": "implementation_skipped",
                         "round_id": round_id,
                         "proposal_id": proposal_id,
+                        "runnable_level": runnable_level,
                         "reason": "max_implement_per_round",
                         "max_implement_per_round": self.config.max_implement_per_round,
                     }
@@ -3067,6 +3346,7 @@ class RecClawAgent:
                         "event": "implementation_skipped",
                         "round_id": round_id,
                         "proposal_id": proposal_id,
+                        "runnable_level": runnable_level,
                         "reason": "prior_failed_implementation_attempts",
                         "failed_attempt_count": len(failed_attempts),
                         "last_status": failed_attempts[-1].get("status", ""),
@@ -3089,6 +3369,7 @@ class RecClawAgent:
                         "round_id": round_id,
                         "proposal_id": proposal_id,
                         "parent_candidate_id": parent_id,
+                        "runnable_level": runnable_level,
                         "reason": "anti_plateau_capped_family",
                     }
                 )
@@ -3109,6 +3390,7 @@ class RecClawAgent:
                         "round_id": round_id,
                         "proposal_id": proposal_id,
                         "parent_candidate_id": parent_id,
+                        "runnable_level": runnable_level,
                         "reason": "known parent was auto-promoted and is runnable",
                     }
                 )
@@ -3160,6 +3442,10 @@ class RecClawAgent:
                     "event": "implementation_result",
                     "round_id": round_id,
                     "proposal_id": proposal_id,
+                    "proposal_type": proposal.get("proposal_type", ""),
+                    "action_type": proposal.get("action_type", ""),
+                    "base_architecture": proposal.get("base_architecture", ""),
+                    "runnable_level": runnable_level,
                     "status": report.get("status", "implementation_failed"),
                     "candidate_id": report.get("candidate_id", ""),
                     "reason": report.get("reason", ""),
@@ -3190,7 +3476,8 @@ class RecClawAgent:
         elif run_id:
             candidate_result = self._load_result_from_csv(run_id)
 
-        baseline = self.baselines_by_model.get(model_name, {})
+        baseline_model = self._baseline_model_for_candidate(candidate, model_name)
+        baseline = self.baselines_by_model.get(baseline_model, {})
         history_best = self.best_by_model.get(model_name, baseline)
         if not baseline:
             baseline = {"status": "missing"}
@@ -3430,6 +3717,18 @@ class RecClawAgent:
         }
         if record.parent_candidate_id:
             payload["parent_candidate_id"] = record.parent_candidate_id
+        if record.base_model:
+            payload["base_model"] = record.base_model
+        if record.proposal_type:
+            payload["proposal_type"] = record.proposal_type
+        if record.action_type:
+            payload["action_type"] = record.action_type
+        if record.base_architecture:
+            payload["base_architecture"] = record.base_architecture
+        if record.mechanism:
+            payload["mechanism"] = record.mechanism
+        if record.family:
+            payload["family"] = record.family
         if record.proposal_id:
             payload["proposal_id"] = record.proposal_id
         if record.parameter_signature:
@@ -3532,6 +3831,12 @@ class RecClawAgent:
                     reason=reason,
                     next_action=next_action,
                     parent_candidate_id=str(candidate.get("parent_candidate_id") or ""),
+                    base_model=str(candidate.get("base_model") or ""),
+                    proposal_type=str(candidate.get("proposal_type") or ""),
+                    action_type=str(candidate.get("action_type") or ""),
+                    base_architecture=str(candidate.get("base_architecture") or ""),
+                    mechanism=str(candidate.get("mechanism") or ""),
+                    family=self._candidate_family(candidate),
                     proposal_id=str(candidate.get("proposal_id") or ""),
                     parameter_signature=parameter_signature,
                     execution_signature=execution_signature,
@@ -3697,7 +4002,15 @@ def main() -> int:
     parser.add_argument("--proposal-path", default=str(PROPOSAL_PATH), help="Candidate proposal JSONL path")
     parser.add_argument(
         "--proposal-mode",
-        choices=("conservative", "mixed", "explore", "algorithm_first"),
+        choices=(
+            "conservative",
+            "mixed",
+            "explore",
+            "algorithm_first",
+            "objective_first",
+            "architecture_first",
+            "architecture_ablation",
+        ),
         default=None,
         help="Override the proposal generation mode selected by --loop-mode",
     )
@@ -3898,6 +4211,7 @@ def main() -> int:
         enable_candidate_proposals=enable_candidate_proposals,
         proposal_path=Path(args.proposal_path),
         proposal_mode=selected_proposal_mode,
+        proposal_mode_locked=args.proposal_mode is not None,
         proposal_count=max(1, args.proposal_count),
         proposal_every=max(1, args.proposal_every),
         proposal_bonus=max(0.0, args.proposal_bonus),

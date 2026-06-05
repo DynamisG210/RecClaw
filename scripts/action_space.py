@@ -34,6 +34,15 @@ FALLBACK_PARAMETER_SPACE: dict[str, list[Any]] = {
     "residual_gate_scale": [0.25, 0.5, 1.0],
     "cl_temperature": [0.1, 0.2, 0.5],
     "pareto_temperature": [0.2, 0.5, 1.0],
+    "dropout": [0.0, 0.1, 0.2, 0.5],
+    "hidden_size": [32, 64, 128],
+    "attention_heads": [1, 2, 4],
+    "num_layers": [1, 2, 3, 4],
+    "ffn_hidden_size": [64, 128, 256, 512],
+    "positional_encoding": ["sinusoidal", "learnable", "none"],
+    "attention_temperature": [0.5, 1.0, 2.0],
+    "objective_mix_alpha": [0.1, 0.2, 0.5],
+    "dynamic_loss_warmup": [0, 5, 10],
 }
 
 
@@ -52,6 +61,9 @@ FALLBACK_PARAMETER_GROUPS: tuple[tuple[str, ...], ...] = (
     ("residual_gate_scale", "gate_dropout"),
     ("learning_rate",),
     ("reg_weight",),
+    ("dropout", "hidden_size"),
+    ("attention_heads", "attention_temperature"),
+    ("objective_mix_alpha", "dynamic_loss_warmup"),
 )
 
 
@@ -307,6 +319,29 @@ def typical_effect_for_parameter(param_name: str, action_space: dict[str, Any]) 
 def action_types_for_parameter(param_name: str, action_space: dict[str, Any]) -> list[str]:
     meta = parameter_metadata(action_space).get(str(param_name), {})
     return _string_list(meta.get("action_types"))
+
+
+def parameter_schema_type(param_name: str, action_space: dict[str, Any]) -> list[str]:
+    """Return JSON-schema type list for a parameter based on its declared values."""
+    meta = parameter_metadata(action_space).get(str(param_name), {})
+    values = meta.get("values", [])
+    if not isinstance(values, list):
+        return ["number", "null"]
+    has_string = any(isinstance(v, str) for v in values)
+    has_number = any(isinstance(v, (int, float)) for v in values)
+    if has_string and has_number:
+        return ["string", "number", "null"]
+    if has_string:
+        return ["string", "null"]
+    return ["number", "null"]
+
+
+def parameter_schema_map(action_space: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return a JSON-schema properties map for all declared parameters."""
+    return {
+        key: {"type": parameter_schema_type(key, action_space)}
+        for key in parameter_space_from_action_space(action_space)
+    }
 
 
 def method_space_projection(action_space: dict[str, Any]) -> dict[str, dict[str, Any]]:

@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -23,6 +24,140 @@ import validate_candidate_proposal as validate  # noqa: E402
 
 
 class AgentLoopTests(unittest.TestCase):
+    def test_custom_architecture_uses_nearest_parent_model_baseline(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        rec_agent.registry = [
+            {
+                "candidate_id": "cand_lightgcn_parent",
+                "base_model": "LightGCN",
+            },
+            {
+                "candidate_id": "cand_custom_child",
+                "base_model": "Custom",
+                "proposal_type": "architecture",
+                "runnable_level": "architecture_required",
+                "parent_candidate_id": "cand_lightgcn_parent",
+            },
+        ]
+        rec_agent.baselines_by_model = {
+            "LightGCN": {
+                "model": "LightGCN",
+                "status": "success",
+                "ndcg@10": 0.2671,
+            }
+        }
+        candidate = rec_agent.registry[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            result_path = Path(tmp) / "result.json"
+            result_path.write_text(
+                json.dumps(
+                    {
+                        "model": "CustomGraphRec",
+                        "status": "success",
+                        "ndcg@10": 0.271,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            _, compare_baseline, _, _ = rec_agent.evaluate(
+                candidate,
+                {
+                    "summary": {
+                        "run_id": "candidate_custom",
+                        "model": "CustomGraphRec",
+                        "result_json_path": str(result_path),
+                    }
+                },
+            )
+        self.assertEqual(compare_baseline["baseline_metric"], 0.2671)
+        self.assertEqual(compare_baseline["decision"], "keep")
+
+    def test_architecture_family_is_distinct_from_lineage_parent(self) -> None:
+        candidate = {
+            "candidate_id": "cand_custom_dual_path",
+            "parent_candidate_id": "cand_lightgcn_edge_dropout_residual_norm",
+            "base_model": "Custom",
+            "proposal_type": "architecture",
+            "runnable_level": "architecture_required",
+            "action_type": "propagation_mechanism",
+            "base_architecture": "graph_propagation",
+            "mechanism": "dual_path_alignment",
+        }
+        family = agent.RecClawAgent._candidate_family(candidate)
+        self.assertEqual(family, "architecture::graph_propagation")
+        self.assertEqual(
+            agent.RecClawAgent._family_key(
+                {
+                    "family": family,
+                    "parent_candidate_id": candidate["parent_candidate_id"],
+                    "candidate_id": candidate["candidate_id"],
+                }
+            ),
+            family,
+        )
+        self.assertEqual(
+            experience.candidate_family(
+                {
+                    "family": family,
+                    "parent_candidate_id": candidate["parent_candidate_id"],
+                    "candidate_id": candidate["candidate_id"],
+                }
+            ),
+            family,
+        )
+        self.assertEqual(experience.infer_base_model({"base_model": "Custom", **candidate}), "Custom")
+
+    def test_seed_validation_prefers_registered_custom_candidate_over_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    state_summary_path=Path(tmp) / "state.json",
+                )
+            )
+            rec_agent.registry = [
+                {
+                    "candidate_id": "cand_lightgcn_parent",
+                    "base_model": "LightGCN",
+                    "entrypoint": "recbole.model.general_recommender.lightgcn:LightGCN",
+                },
+                {
+                    "candidate_id": "cand_custom_child",
+                    "base_model": "Custom",
+                    "proposal_type": "architecture",
+                    "runnable_level": "architecture_required",
+                    "parent_candidate_id": "cand_lightgcn_parent",
+                    "entrypoint": "recclaw_ext.models.custom_child:CustomChild",
+                },
+            ]
+            rec_agent.memory = [
+                {
+                    "round_id": 1,
+                    "candidate_id": "cand_custom_child",
+                    "parent_candidate_id": "cand_lightgcn_parent",
+                    "decision": "keep",
+                    "params": {"embedding_size": 64},
+                    "compare_baseline": {"baseline_metric": 0.2671},
+                    "result": {"ndcg@10": 0.27},
+                }
+            ]
+            observed: dict[str, object] = {}
+
+            def fake_validation(candidate, params, baseline_metric):
+                observed["candidate"] = candidate
+                observed["params"] = params
+                observed["baseline_metric"] = baseline_metric
+                return {"status": "passed"}
+
+            rec_agent.run_seed_validation = fake_validation
+            rec_agent.verify_last_keep(round_id=2)
+
+        selected = observed["candidate"]
+        self.assertEqual(selected["candidate_id"], "cand_custom_child")
+        self.assertEqual(selected["base_model"], "Custom")
+        self.assertEqual(selected["entrypoint"], "recclaw_ext.models.custom_child:CustomChild")
+        self.assertNotIn("run_candidate_id", selected)
+
     def test_loop_mode_policies_cover_requested_modes(self) -> None:
         self.assertEqual(set(agent.LOOP_MODE_POLICIES), {"tuning", "mixed", "explore", "auto"})
         self.assertEqual(agent.LOOP_MODE_POLICIES["tuning"]["proposal_mode"], "conservative")
@@ -98,9 +233,15 @@ class AgentLoopTests(unittest.TestCase):
             for candidate in registry.get("candidates", [])
             for key in (candidate.get("consumes") or [])
         }
+        locally_declared = {
+            str(item.get("name"))
+            for candidate in registry.get("candidates", [])
+            for item in (candidate.get("new_parameters") or [])
+            if isinstance(item, dict) and str(item.get("name") or "").strip()
+        }
         ignored = {"train_neg_sample_args"}
-        missing_from_space = consumed - set(agent.AgentConfig().parameter_space) - ignored
-        missing_from_schema = consumed - set(agent.PROPOSAL_PARAMETER_KEYS) - ignored
+        missing_from_space = consumed - set(agent.AgentConfig().parameter_space) - locally_declared - ignored
+        missing_from_schema = consumed - set(agent.PROPOSAL_PARAMETER_KEYS) - locally_declared - ignored
         self.assertEqual(missing_from_space, set())
         self.assertEqual(missing_from_schema, set())
 
@@ -223,6 +364,96 @@ class AgentLoopTests(unittest.TestCase):
         self.assertTrue(rec_agent.config.enable_candidate_proposals)
         self.assertTrue(rec_agent.config.auto_implement_code_required)
 
+    def test_auto_round_policy_preserves_explicit_proposal_mode(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                loop_mode="auto",
+                proposal_mode="architecture_first",
+                proposal_mode_locked=True,
+            )
+        )
+        rec_agent.config.enable_candidate_proposals = False
+        rec_agent.config.auto_implement_code_required = False
+        rec_agent.reset_round_policy()
+        self.assertEqual(rec_agent.config.proposal_mode, "architecture_first")
+        self.assertTrue(rec_agent.config.enable_candidate_proposals)
+        self.assertTrue(rec_agent.config.auto_implement_code_required)
+
+    def test_locked_architecture_mode_only_plans_architecture_candidates(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                proposal_mode="architecture_first",
+                proposal_mode_locked=True,
+            )
+        )
+        rec_agent.registry = [
+            {
+                "candidate_id": "cand_legacy_bpr",
+                "base_model": "BPR",
+                "runner_type": "model",
+                "wired": True,
+                "status": "implemented",
+                "consumes": [],
+            },
+            {
+                "candidate_id": "cand_custom_attention",
+                "base_model": "Custom",
+                "proposal_type": "architecture",
+                "action_type": "graph_attention",
+                "base_architecture": "graph_attention",
+                "runnable_level": "architecture_required",
+                "runner_type": "model",
+                "wired": True,
+                "status": "implemented",
+                "consumes": [],
+            },
+        ]
+        candidate, _, _ = rec_agent.plan()
+        self.assertEqual(candidate["candidate_id"], "cand_custom_attention")
+
+    def test_locked_architecture_mode_refuses_legacy_only_budget(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                proposal_mode="architecture_first",
+                proposal_mode_locked=True,
+            )
+        )
+        rec_agent.registry = [
+            {
+                "candidate_id": "cand_legacy_lightgcn",
+                "base_model": "LightGCN",
+                "runner_type": "model",
+                "wired": True,
+                "status": "implemented",
+                "consumes": [],
+            }
+        ]
+        with self.assertRaisesRegex(RuntimeError, "locked proposal mode architecture_first"):
+            rec_agent.plan()
+
+    def test_auto_planner_preserves_explicit_architecture_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    loop_mode="auto",
+                    proposal_mode="architecture_first",
+                    proposal_mode_locked=True,
+                    allow_llm_fallback=False,
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    state_summary_path=Path(tmp) / "agent_state_summary.json",
+                )
+            )
+
+            def algorithm_action(*_args: object, **_kwargs: object) -> str:
+                return '{"action": "propose_algorithm", "reason": "planner default", "proposal_count": 1}'
+
+            rec_agent._chat_completion = algorithm_action  # type: ignore[method-assign]
+            rec_agent.apply_auto_planner(round_id=1)
+            self.assertEqual(rec_agent.last_planner_action["action"], "propose_algorithm")
+            self.assertEqual(rec_agent.config.proposal_mode, "architecture_first")
+            self.assertTrue(rec_agent.force_proposal_refresh)
+            self.assertTrue(rec_agent.config.auto_implement_code_required)
+
     def test_algorithm_first_planner_fallback_prefers_algorithm_proposal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             rec_agent = agent.RecClawAgent(
@@ -288,7 +519,7 @@ class AgentLoopTests(unittest.TestCase):
             {"action": "tune_after_algorithm_success", "reason": "keep repairing gate", "proposal_count": 3}
         )
 
-        self.assertEqual(payload["action"], "propose_algorithm")
+        self.assertEqual(payload["action"], "propose_objective")
         self.assertEqual(reason, "anti_plateau_force_algorithm_exploration")
         self.assertTrue(rec_agent._plateau_state()["plateau_detected"])
         self.assertFalse(rec_agent._has_pending_code_required_review())
@@ -1134,6 +1365,233 @@ class AgentLoopTests(unittest.TestCase):
         )
         self.assertEqual(entrypoint, "recclaw_ext.models.generated_variant:CustomBPRVariant")
 
+    def test_architecture_protocol_accepts_general_recommender_contract(self) -> None:
+        files = [
+            {
+                "path": "recclaw_ext/models/architecture_exploration.py",
+                "content": (
+                    "class CustomGraphAttention(GeneralRecommender):\n"
+                    "    input_type = InputType.PAIRWISE\n"
+                    "    def calculate_loss(self, interaction):\n"
+                    "        return self.some_scalar_loss\n"
+                    "    def predict(self, interaction):\n"
+                    "        return self.some_score\n"
+                    "    def full_sort_predict(self, interaction):\n"
+                    "        return self.some_full_sort_score\n"
+                ),
+            }
+        ]
+
+        implement.validate_architecture_protocol(
+            files,
+            "recclaw_ext.models.architecture_exploration:CustomGraphAttention",
+        )
+
+    def test_architecture_protocol_rejects_string_input_type(self) -> None:
+        files = [
+            {
+                "path": "recclaw_ext/models/architecture_exploration.py",
+                "content": (
+                    "class CustomGraphAttention(GeneralRecommender):\n"
+                    "    input_type = 'pairwise'\n"
+                    "    def calculate_loss(self, interaction):\n"
+                    "        return self.some_scalar_loss\n"
+                    "    def predict(self, interaction):\n"
+                    "        return self.some_score\n"
+                    "    def full_sort_predict(self, interaction):\n"
+                    "        return self.some_full_sort_score\n"
+                ),
+            }
+        ]
+
+        with self.assertRaisesRegex(ValueError, "InputType enum"):
+            implement.validate_architecture_protocol(
+                files,
+                "recclaw_ext.models.architecture_exploration:CustomGraphAttention",
+            )
+
+    def test_prepare_implementation_preserves_proposal_lineage_in_registry(self) -> None:
+        candidate_id = "cand_custom_registry_lineage_test"
+        implementation = {
+            "files": [
+                {
+                    "path": "recclaw_ext/models/custom_registry_lineage_test.py",
+                    "content": (
+                        "class RegistryLineageModel(GeneralRecommender):\n"
+                        "    input_type = InputType.PAIRWISE\n"
+                        "    def calculate_loss(self, interaction):\n"
+                        "        return self.some_scalar_loss\n"
+                        "    def predict(self, interaction):\n"
+                        "        return self.some_score\n"
+                        "    def full_sort_predict(self, interaction):\n"
+                        "        return self.some_full_sort_score\n"
+                    ),
+                }
+            ],
+            "candidate_config": {
+                "candidate_id": candidate_id,
+                "model": "RegistryLineageModel",
+                "architecture_gate_alpha": 0.2,
+            },
+            "registry_entry": {
+                "candidate_id": candidate_id,
+                "category": "Architecture",
+                "base_model": "Custom",
+                "rs_problem": "test",
+                "hypothesis": "test",
+                "implementation_type": "model",
+                "minimal_change": "test",
+                "priority": "high",
+                "status": "implemented",
+                "wired": True,
+                "runner_type": "model",
+                "entrypoint": "recclaw_ext.models.custom_registry_lineage_test:RegistryLineageModel",
+                "consumes": ["architecture_gate_alpha"],
+            },
+        }
+        proposal = {
+            "candidate_id": candidate_id,
+            "proposal_type": "architecture",
+            "action_type": "graph_attention",
+            "base_architecture": "graph_attention",
+            "runnable_level": "architecture_required",
+            "parent_candidate_id": "cand_lightgcn_parent",
+            "ablation_parent": "cand_lightgcn_parent",
+            "mechanism": "registry_lineage_test",
+            "mechanism_composition": ["graph_attention"],
+            "parameter_overrides": {},
+            "new_parameters": [
+                {
+                    "name": "architecture_gate_alpha",
+                    "type": "number",
+                    "default": 0.2,
+                    "search_space": [0.1, 0.2, 0.5],
+                }
+            ],
+            "consumes": ["architecture_gate_alpha"],
+        }
+        prepared = implement.prepare_implementation(implementation, proposal)
+        self.assertEqual(prepared.registry_entry["proposal_type"], "architecture")
+        self.assertEqual(prepared.registry_entry["action_type"], "graph_attention")
+        self.assertEqual(prepared.registry_entry["base_architecture"], "graph_attention")
+        self.assertEqual(prepared.registry_entry["runnable_level"], "architecture_required")
+        self.assertEqual(prepared.registry_entry["parent_candidate_id"], "cand_lightgcn_parent")
+        self.assertEqual(
+            prepared.registry_entry["new_parameters"][0]["name"],
+            "architecture_gate_alpha",
+        )
+
+    def test_candidate_config_params_include_declared_local_parameters(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        candidate_id = "cand_custom_local_parameter_test"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "configs" / "candidates"
+            config_dir.mkdir(parents=True)
+            (config_dir / f"{candidate_id}.yaml").write_text(
+                (
+                    f"candidate_id: {candidate_id}\n"
+                    "model: LocalModel\n"
+                    "embedding_size: 64\n"
+                    "architecture_gate_alpha: 0.2\n"
+                ),
+                encoding="utf-8",
+            )
+            candidate = {
+                "candidate_id": candidate_id,
+                "consumes": ["embedding_size", "architecture_gate_alpha"],
+                "new_parameters": [
+                    {
+                        "name": "architecture_gate_alpha",
+                        "default": 0.2,
+                        "search_space": [0.1, 0.2, 0.5],
+                    }
+                ],
+            }
+            with mock.patch.object(agent, "PROJECT_ROOT", root):
+                params = rec_agent._candidate_config_params(candidate)
+
+        self.assertEqual(
+            params,
+            {"embedding_size": 64, "architecture_gate_alpha": 0.2},
+        )
+        self.assertEqual(
+            rec_agent._candidate_parameter_values(candidate, "architecture_gate_alpha"),
+            [0.1, 0.2, 0.5],
+        )
+
+    def test_architecture_protocol_rejects_parent_model_subclass(self) -> None:
+        files = [
+            {
+                "path": "recclaw_ext/models/architecture_exploration.py",
+                "content": (
+                    "class CustomGraphAttention(LightGCN):\n"
+                    "    def calculate_loss(self, interaction):\n"
+                    "        return self.some_scalar_loss\n"
+                    "    def predict(self, interaction):\n"
+                    "        return self.some_score\n"
+                    "    def full_sort_predict(self, interaction):\n"
+                    "        return self.some_full_sort_score\n"
+                ),
+            }
+        ]
+
+        with self.assertRaisesRegex(ValueError, "not BPR/LightGCN"):
+            implement.validate_architecture_protocol(
+                files,
+                "recclaw_ext.models.architecture_exploration:CustomGraphAttention",
+            )
+
+    def test_architecture_protocol_rejects_raw_torch_module(self) -> None:
+        files = [
+            {
+                "path": "recclaw_ext/models/architecture_exploration.py",
+                "content": (
+                    "class CustomGraphAttention(nn.Module):\n"
+                    "    def calculate_loss(self, interaction):\n"
+                    "        return self.some_scalar_loss\n"
+                    "    def predict(self, interaction):\n"
+                    "        return self.some_score\n"
+                    "    def full_sort_predict(self, interaction):\n"
+                    "        return self.some_full_sort_score\n"
+                ),
+            }
+        ]
+
+        with self.assertRaisesRegex(ValueError, "raw torch Module"):
+            implement.validate_architecture_protocol(
+                files,
+                "recclaw_ext.models.architecture_exploration:CustomGraphAttention",
+            )
+
+    def test_implementation_schema_keeps_strict_candidate_config_with_new_params(self) -> None:
+        schema = implement.implementation_response_schema_for_proposal(
+            {
+                "new_parameters": [
+                    {
+                        "name": "architecture_gate_alpha",
+                        "type": "number",
+                        "default": 0.2,
+                        "search_space": [0.1, 0.2, 0.5],
+                    },
+                    {
+                        "name": "gate_mode",
+                        "type": "string",
+                        "default": "residual",
+                        "search_space": ["residual", "direct"],
+                    },
+                ]
+            }
+        )
+        candidate_schema = schema["properties"]["candidate_config"]
+
+        self.assertFalse(candidate_schema["additionalProperties"])
+        self.assertIn("architecture_gate_alpha", candidate_schema["properties"])
+        self.assertIn("gate_mode", candidate_schema["properties"])
+        self.assertIn("architecture_gate_alpha", candidate_schema["required"])
+        self.assertIn("gate_mode", candidate_schema["required"])
+        self.assertEqual(candidate_schema["properties"]["gate_mode"]["type"], ["string", "null"])
+
     def test_auto_implementation_locks_proposal_parameter_defaults(self) -> None:
         config = {"candidate_id": "cand_x", "model": "X", "debias_alpha": 0.5}
         proposal = {"parameter_overrides": {"debias_alpha": 0.1, "embedding_size": 128}}
@@ -1153,10 +1611,19 @@ class AgentLoopTests(unittest.TestCase):
             ),
             stderr="",
         )
-        summary = implement.compact_smoke_summary(completed, ["epochs=3", "stopping_step=2"])
+        summary = implement.compact_smoke_summary(
+            completed,
+            ["epochs=3", "stopping_step=2"],
+            candidate_config={
+                "candidate_id": "cand_x",
+                "model": "X",
+                "architecture_gate_alpha": 0.2,
+            },
+        )
         self.assertTrue(summary["metric_stagnation"])
         self.assertEqual(summary["valid_score_unique_count"], 1)
         self.assertEqual(summary["run_id"], "r1")
+        self.assertEqual(summary["candidate_parameters"], {"architecture_gate_alpha": 0.2})
 
     def test_auto_implementation_stops_after_repeated_smoke_failures(self) -> None:
         rec_agent = agent.RecClawAgent(agent.AgentConfig(max_failed_implementation_attempts=2))
@@ -1353,6 +1820,50 @@ class AgentLoopTests(unittest.TestCase):
             rec_agent.implement_needs_review_proposals(round_id=1)
             self.assertEqual(rec_agent.memory[-1]["event"], "implementation_skipped")
 
+    def test_auto_implementation_accepts_architecture_required_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(memory_path=Path(tmp) / "agent_memory.jsonl")
+            )
+            rec_agent.candidate_proposals = [
+                {
+                    "candidate_id": "cand_custom_architecture_proposal",
+                    "proposal_type": "architecture",
+                    "action_type": "graph_attention",
+                    "base_architecture": "graph_attention",
+                    "parent_candidate_id": "cand_lightgcn_parent",
+                }
+            ]
+            rec_agent.proposal_validation_report = {
+                "results": [
+                    {
+                        "candidate_id": "cand_custom_architecture_proposal",
+                        "status": "needs_review",
+                        "runnable_level": "architecture_required",
+                    }
+                ]
+            }
+            commands: list[list[str]] = []
+
+            def fake_command(cmd: list[str], *_args: object, **_kwargs: object) -> dict[str, object]:
+                commands.append(cmd)
+                return {
+                    "status": "implemented_and_smoke_passed",
+                    "candidate_id": "cand_custom_architecture",
+                    "entrypoint": "recclaw_ext.models.architecture_exploration:CustomGraphAttention",
+                }
+
+            rec_agent._run_json_command = fake_command  # type: ignore[method-assign]
+            rec_agent.implement_needs_review_proposals(round_id=4)
+
+            self.assertTrue(commands)
+            self.assertIn("--proposal-id", commands[0])
+            event = rec_agent.memory[-1]
+            self.assertEqual(event["event"], "implementation_result")
+            self.assertEqual(event["proposal_type"], "architecture")
+            self.assertEqual(event["runnable_level"], "architecture_required")
+            self.assertEqual(event["base_architecture"], "graph_attention")
+
     def test_v4_algorithm_templates_map_to_runnable_local_entrypoints(self) -> None:
         proposals = [
             {
@@ -1502,7 +2013,42 @@ class AgentLoopTests(unittest.TestCase):
             {"cand_existing"},
         )
         self.assertNotEqual(proposal["candidate_id"], "cand_existing")
-        self.assertIn("lambda_new", proposal["new_parameters"])
+        self.assertTrue(any(item.get("name") == "lambda_new" for item in proposal["new_parameters"]))
+
+    def test_llm_proposal_repair_does_not_mark_known_action_space_params_as_new(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        rec_agent.registry = [
+            {
+                "candidate_id": "cand_parent",
+                "consumes": ["embedding_size"],
+            },
+        ]
+        proposal = {
+            "candidate_id": "cand_architecture",
+            "parent_candidate_id": "cand_parent",
+            "runnable_level": "architecture_required",
+            "proposal_type": "architecture",
+            "action_type": "graph_attention",
+            "consumes": ["embedding_size", "attention_heads", "architecture_gate_alpha"],
+            "new_parameters": [
+                {
+                    "name": "attention_heads",
+                    "type": "number",
+                    "default": 1,
+                    "search_space": [1, 2, 4],
+                }
+            ],
+        }
+
+        rec_agent._repair_llm_proposal_metadata(
+            proposal,
+            {"cand_parent": rec_agent.registry[0]},
+            set(),
+        )
+
+        new_names = {item.get("name") for item in proposal["new_parameters"]}
+        self.assertNotIn("attention_heads", new_names)
+        self.assertIn("architecture_gate_alpha", new_names)
 
     def test_soft_l2_norm_penalty_accepts_legacy_positional_max_norm(self) -> None:
         try:

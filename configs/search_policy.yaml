@@ -1,10 +1,12 @@
-version: 3
+version: 4
 description: >
-  Runtime search-steering policy for RecClaw. v3 is algorithm-first: the LLM
-  agent should discover, compose, implement, and validate RS mechanisms before
-  falling back to local parameter tuning. This file does not expand the action
-  space; it prioritizes, budgets, and freezes exploration inside
-  configs/action_space.yaml.
+  Runtime search-steering policy for RecClaw. v4 introduces architecture-first
+  exploration: the LLM agent may propose genuinely new model families when the
+  frontier stagnates. The policy still locks the dataset, split, and evaluation
+  protocol, but it opens the method space beyond BPR/LightGCN descendants.
+
+  Architecture proposals are gated by smoke-run validation and a strict
+  consecutive-failure budget to prevent runaway resource use.
 
 protocol_lock:
   dataset: ml-1m
@@ -33,7 +35,8 @@ search_stages:
       - layer_interaction
       - auxiliary_loss
       - rank_aware_loss
-      - regularization
+      - loss_function
+      - objective_function
     proposal_mix:
       algorithmic_code_required: 0.60
       runnable_algorithm_variant: 0.30
@@ -72,9 +75,54 @@ search_stages:
       - layer_interaction
       - auxiliary_loss
       - rank_aware_loss
+      - loss_function
+      - objective_function
+  architecture_discovery:
+    description: >
+      When the global best has stagnated, one family is overused, high-candidate
+      screening shows local mechanisms are saturated, or HPO evidence suggests
+      tuning is near its ceiling, the agent must raise the search scale from
+      local repair to objective or architecture proposals. Custom architectures
+      keep the same ML-1M full-sort protocol and require architecture_required.
+    trigger:
+      plateau_rounds: 10
+      same_family_overuse_window: 20
+      hpo_saturation_evidence: optional
+      high_candidate_screen_saturation: optional
+    budget:
+      max_architecture_proposals_per_window: 2
+      max_concurrent_architectures: 1
+      architecture_warmup_rounds: 5
+      min_objective_or_architecture_proposals_per_20_rows: 2
+      min_architecture_formal_runs_per_50_rows: 1
+    preferred_actions:
+      - custom_encoder
+      - propagation_mechanism
+      - interaction_function
+      - graph_rewire
+      - graph_attention
+      - hybrid_graph_interaction
+      - transformer_interaction
+    exit_condition:
+      min_improvement_over_baseline: 0.005
+      description: "Exit architecture_discovery as soon as one new architecture beats tuned LightGCN + margin, then switch to exploit_architecture."
+  exploit_architecture:
+    description: Deeply tune and compose on top of a validated new architecture family.
+    preferred_actions:
+      - parameter_tuning
+      - local_loss
+      - regularization
+      - auxiliary_loss
+      - layer_interaction
+      - loss_function
+      - objective_function
+    proposal_mix:
+      parameter_sanity_tuning: 0.40
+      algorithmic_variant: 0.40
+      architecture_ablation: 0.20
 
 composition_rules:
-  max_mechanisms_per_proposal: 3
+  max_mechanisms_per_proposal: 4
   discourage_combinations:
     - [debias, pareto]
     - [pareto, contrastive]
@@ -83,6 +131,7 @@ composition_rules:
   prefer_single_axis_tuning: false
   parameter_tuning_only_after_algorithm_signal: true
   require_ablation_parent_for_algorithmic_variant: true
+  require_ablation_parent_for_architecture: false
 
 algorithm_first:
   enabled: true
@@ -121,6 +170,52 @@ algorithm_first:
       - return to hard-negative margin BPR only for mechanism-level sampling/loss changes, not broad parameter sweeps.
       - propose at least one genuinely new local architecture connection when the running best has not improved for a full plateau window.
 
+architecture_first:
+  enabled: true
+  description: >
+    When anti-plateau triggers, family repetition is high, or objective search
+    has stalled, the planner may switch to propose_architecture. This is gated
+    by architecture_gates and protected by a strict failure budget.
+  trigger:
+    - anti_plateau.plateau_detected
+    - rounds_without_global_best_improvement >= 15
+    - same_family_trials_in_recent_window >= max_same_family_trials
+    - hpo_or_screening_evidence_says_local_tuning_saturated
+  default_planner_action: propose_architecture
+  fallback_planner_action: propose_algorithm
+  proposal_mode: architecture_first
+  max_architecture_proposals_per_window: 2
+  max_concurrent_architectures: 1
+  architecture_warmup_rounds: 5
+  anchor_architectures:
+    - graph_attention
+    - transformer_style_interaction
+    - hybrid_graph_interaction
+    - graph_rewire
+  forced_architecture_tasks:
+    - propose a lightweight graph-attention recommender that keeps the full-sort protocol.
+    - explore transformer-style attention, FFN, residual, or layer-norm blocks as local user/item interaction modules under the current general-rec protocol.
+    - design a hybrid graph-interaction architecture that combines graph propagation with a learned scoring or interaction function.
+    - when proposing architecture, prefer one structural innovation at a time (e.g., new propagation OR new encoder, not both) to keep ablation interpretable.
+    - do not propose SASRec/BERT4Rec or temporal/sequence dataloaders in this experiment line; sequence recommendation needs a separate protocol.
+    - do not assume BPR or LightGCN inheritance for Custom architectures; implement calculate_loss, predict, and full_sort_predict.
+
+architecture_gates:
+  smoke_dataset: ml-1m
+  smoke_epochs: 3
+  smoke_min_ndcg: 0.05
+  max_new_params_per_architecture: 8
+  max_layers_for_new_gnn: 5
+  require_runner_contract: true
+  required_methods:
+    - calculate_loss
+    - predict
+    - full_sort_predict
+  disallow_current_formal_actions:
+    - sequence_aggregator
+    - multi_modal_fusion
+  human_review_default: false
+
 family_budget:
   consecutive_failures_before_downweight: 3
   crashes_before_freeze: 2
@@ -146,7 +241,9 @@ freeze_rules:
     - severe_collapse_rate
     - repeated_duplicate_signature
     - protocol_or_schema_risk
+    - architecture_smoke_failure_streak >= 2
   thaw_only_for:
     - minimal_repair
     - targeted_ablation
     - anchor_family_revisit
+    - architecture_variant_with_addressed_failure

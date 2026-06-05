@@ -1,18 +1,27 @@
-version: 2
+version: 4
 description: >
-  Runtime action-space contract for RecClaw. This file is the compact,
-  agent-readable boundary of what can be tuned or locally implemented. It is
-  derived from the method space, candidate registry, proposal schema, and
-  validator rules, but it is the runtime source of truth for parameter values.
+  Runtime action-space contract for RecClaw. v4 opens the loss/objective frontier:
+  agents may now replace the primary loss function (loss_function) and redefine
+  the overall optimization objective (objective_function). v3 opened the architecture
+  frontier for genuinely new model families (proposal_type: architecture) under
+  Custom base_model. Agents may compose modular encoder/layer/fusion blocks and
+  introduce new numeric parameters beyond the legacy BPR/LightGCN tuning space.
 
-  v2 adds conservative recommender-system metadata for currently wired or
-  implement-ready parameters: compatible_models, semantic_role, typical_effect,
-  and conditional_validity rules. Planned mechanisms are intentionally not part
-  of runnable parameter_groups until implementation and schema support exist.
+  Architecture-level proposals must still obey the runner contract (calculate_loss,
+  full_sort_predict) and stay inside allowed_implementation_roots.
 
 base_models:
   - BPR
   - LightGCN
+  - Custom
+
+base_architecture_families:
+  - matrix_factorization
+  - graph_convolution
+  - graph_attention
+  - transformer_style_interaction
+  - hybrid_graph_interaction
+  - custom
 
 runner_types:
   - config_only
@@ -46,6 +55,28 @@ action_types:
     description: Add local auxiliary objectives that preserve the primary RecBole protocol.
   rank_aware_loss:
     description: Use local ranking-aware weighting for pairwise objective terms.
+  loss_function:
+    description: Replace the primary training loss function (e.g., BPR loss → cross-entropy, MSE, contrastive loss, or custom ranking objective).
+  objective_function:
+    description: Redefine the overall optimization objective including loss composition, regularization scheduling, and multi-objective trade-offs.
+  custom_encoder:
+    description: Replace or add a new user/item encoder (e.g., Transformer, GRU, self-attention).
+  graph_rewire:
+    description: Change the graph construction logic (e.g., k-NN graph, hypergraph, multi-relation).
+  graph_attention:
+    description: Add attention weighting to graph propagation while preserving the current general-rec full-sort protocol.
+  interaction_function:
+    description: Replace the scoring function (e.g., from inner-product to MLP, kernel, or neural architecture).
+  propagation_mechanism:
+    description: Replace LightGCN's symmetric propagation with message passing, attention, or sampling-based variants.
+  hybrid_graph_interaction:
+    description: Compose graph propagation with a learned interaction or scoring head.
+  transformer_interaction:
+    description: Use transformer-style local attention, FFN, residual, or layer-norm blocks for user/item interaction under the general-rec protocol.
+  sequence_aggregator:
+    description: Design-only hook for temporal/session aggregation; formal sequential recommendation requires a separate protocol line.
+  multi_modal_fusion:
+    description: Design-only hook for auxiliary features; formal multimodal recommendation requires a separate protocol line.
 
 method_space_projection:
   Bias & Sample Construction:
@@ -66,6 +97,13 @@ method_space_projection:
       - graph_augmentation
       - layer_interaction
       - parameter_tuning
+      - custom_encoder
+      - graph_rewire
+      - graph_attention
+      - interaction_function
+      - propagation_mechanism
+      - hybrid_graph_interaction
+      - transformer_interaction
     example_parameters:
       - embedding_size
       - n_layers
@@ -73,12 +111,17 @@ method_space_projection:
       - edge_dropout
       - gate_dropout
       - residual_gate_scale
+      - hidden_size
+      - attention_heads
+      - dropout
   Objective & Optimization:
     executable_actions:
       - local_loss
       - pairwise_loss
       - auxiliary_loss
       - rank_aware_loss
+      - loss_function
+      - objective_function
       - regularization
       - parameter_tuning
     example_parameters:
@@ -91,6 +134,7 @@ method_space_projection:
       - rank_weight_alpha
       - cl_temperature
       - pareto_temperature
+      - dropout
   Result Distribution Quality:
     executable_actions:
       - posthoc_rerank
@@ -106,30 +150,31 @@ method_space_projection:
     example_parameters:
       - embedding_size
       - n_layers
+      - hidden_size
 
 parameter_space:
   embedding_size:
     values: [32, 64, 128]
     action_types: [parameter_tuning]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: model_capacity
     typical_effect: Higher values increase expressiveness and memory use; very large embeddings can overfit.
   learning_rate:
     values: [0.0001, 0.001, 0.005]
     action_types: [parameter_tuning]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: optimization_speed
     typical_effect: Too high can destabilize pairwise ranking optimization; keep formal comparisons at fixed train_batch_size.
   n_layers:
     values: [1, 2, 3]
     action_types: [parameter_tuning, aggregation, graph_propagation]
-    compatible_models: [LightGCN]
+    compatible_models: [LightGCN, Custom]
     semantic_role: propagation_depth
     typical_effect: LightGCN often benefits from two or three hops; deeper propagation can over-smooth.
   reg_weight:
     values: [0.000001, 0.00001, 0.0001]
     action_types: [parameter_tuning, regularization]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: l2_regularization
     typical_effect: Controls embedding shrinkage; too much regularization can underfit.
   margin:
@@ -156,19 +201,19 @@ parameter_space:
   lambda_pop:
     values: [0.0001, 0.001, 0.01]
     action_types: [parameter_tuning, regularization, posthoc_rerank]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: popularity_penalty_weight
     typical_effect: Reduces head-item dominance; too strong a penalty can lower top-k relevance.
   lambda_norm:
     values: [0.00001, 0.0001, 0.001]
     action_types: [parameter_tuning, regularization]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: norm_regularization_weight
     typical_effect: Stabilizes embedding scale; useful for BPR and the observed LightGCN residual-norm family.
   max_norm:
     values: [0.5, 1.0, 2.0]
     action_types: [parameter_tuning, regularization]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: norm_upper_bound
     typical_effect: Bounds embedding magnitude; values that are too small may constrain useful signal.
   hard_negative_ratio:
@@ -186,31 +231,31 @@ parameter_space:
   debias_alpha:
     values: [0.1, 0.2, 0.5]
     action_types: [parameter_tuning, sampling_wrapper, local_loss]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: exposure_debiasing_strength
     typical_effect: Corrects exposure/popularity bias but can distort true preference signal when too large.
   lambda_align:
     values: [0.0001, 0.001, 0.01]
     action_types: [parameter_tuning, local_loss, auxiliary_loss]
-    compatible_models: [LightGCN]
+    compatible_models: [LightGCN, Custom]
     semantic_role: layer_alignment_weight
     typical_effect: Encourages representation consistency across propagation layers; large values may fight ranking loss.
   rank_weight_alpha:
     values: [0.1, 0.2, 0.5]
     action_types: [parameter_tuning, local_loss, pairwise_loss, rank_aware_loss]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: rank_surrogate_weight
     typical_effect: Pushes training toward top-k ranking quality; sensitive to scale against the primary loss.
   lambda_coverage:
     values: [0.0001, 0.001, 0.01]
     action_types: [parameter_tuning, local_loss, posthoc_rerank]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: coverage_boost_weight
     typical_effect: May improve item spread; coverage gains should only break ties when NDCG is not regressing.
   edge_dropout:
     values: [0.05, 0.1, 0.2]
-    action_types: [parameter_tuning, aggregation, regularization, graph_augmentation]
-    compatible_models: [LightGCN]
+    action_types: [parameter_tuning, aggregation, regularization, graph_augmentation, graph_rewire, graph_attention, propagation_mechanism, hybrid_graph_interaction]
+    compatible_models: [LightGCN, Custom]
     semantic_role: structural_regularization
     conditional_validity:
       requires:
@@ -237,15 +282,75 @@ parameter_space:
   cl_temperature:
     values: [0.1, 0.2, 0.5]
     action_types: [parameter_tuning, local_loss]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: contrastive_temperature
     typical_effect: Lower values sharpen contrastive signals; too low can collapse representation learning.
   pareto_temperature:
     values: [0.2, 0.5, 1.0]
     action_types: [parameter_tuning, local_loss, posthoc_rerank]
-    compatible_models: [BPR, LightGCN]
+    compatible_models: [BPR, LightGCN, Custom]
     semantic_role: multi_objective_sharpness
     typical_effect: Controls trade-off sharpness; NDCG remains the primary metric and secondary metrics are tie-breakers.
+  dropout:
+    values: [0.0, 0.1, 0.2, 0.5]
+    action_types: [parameter_tuning, regularization, custom_encoder, interaction_function, graph_attention, transformer_interaction]
+    compatible_models: [Custom]
+    semantic_role: dropout_rate
+    typical_effect: General dropout for fully-connected or attention layers in custom architectures.
+  hidden_size:
+    values: [32, 64, 128]
+    action_types: [parameter_tuning, custom_encoder, interaction_function, propagation_mechanism, graph_attention, hybrid_graph_interaction, transformer_interaction]
+    compatible_models: [Custom]
+    semantic_role: hidden_dimension
+    typical_effect: Hidden size for MLP, Transformer, or custom propagation layers.
+  attention_heads:
+    values: [1, 2, 4]
+    action_types: [parameter_tuning, custom_encoder, interaction_function, graph_attention, transformer_interaction]
+    compatible_models: [Custom]
+    semantic_role: attention_head_count
+    typical_effect: Number of parallel attention heads; more heads increase expressiveness but also compute.
+  num_layers:
+    values: [1, 2, 3, 4]
+    action_types: [parameter_tuning, custom_encoder, graph_attention, transformer_interaction]
+    compatible_models: [Custom]
+    semantic_role: transformer_depth
+    typical_effect: Number of Transformer encoder blocks or sequential layers; more layers increase expressiveness but risk overfitting.
+  ffn_hidden_size:
+    values: [64, 128, 256, 512]
+    action_types: [parameter_tuning, custom_encoder, transformer_interaction]
+    compatible_models: [Custom]
+    semantic_role: feedforward_dimension
+    typical_effect: Hidden dimension of the point-wise feed-forward network in Transformer blocks; typically 2-4x the embedding size.
+  max_seq_len:
+    values: [50, 100, 200]
+    action_types: [parameter_tuning, sequence_aggregator]
+    compatible_models: [Custom]
+    semantic_role: sequence_length
+    typical_effect: Maximum sequence length for sequential recommendation models; longer sequences capture more history but increase compute.
+  positional_encoding:
+    values: [sinusoidal, learnable, none]
+    action_types: [parameter_tuning, transformer_interaction]
+    compatible_models: [Custom]
+    semantic_role: position_representation
+    typical_effect: Optional local positional or order-style encoding inside transformer-style interaction blocks; formal sequence protocols are separate.
+  attention_temperature:
+    values: [0.5, 1.0, 2.0]
+    action_types: [parameter_tuning, graph_attention, transformer_interaction, interaction_function]
+    compatible_models: [Custom]
+    semantic_role: attention_sharpness
+    typical_effect: Controls attention sharpness in graph or interaction modules; very low values can collapse attention.
+  objective_mix_alpha:
+    values: [0.1, 0.2, 0.5]
+    action_types: [parameter_tuning, objective_function, loss_function, auxiliary_loss]
+    compatible_models: [BPR, LightGCN, Custom]
+    semantic_role: objective_composition_weight
+    typical_effect: Balances the primary relevance loss against auxiliary alignment, contrastive, or regularization losses.
+  dynamic_loss_warmup:
+    values: [0, 5, 10]
+    action_types: [parameter_tuning, objective_function]
+    compatible_models: [BPR, LightGCN, Custom]
+    semantic_role: objective_schedule_warmup
+    typical_effect: Delays auxiliary objective pressure to reduce early training instability.
 
 parameter_groups:
   - [residual_weight]
@@ -268,6 +373,14 @@ parameter_groups:
   - [residual_gate_scale, gate_dropout]
   - [learning_rate]
   - [reg_weight]
+  - [dropout, hidden_size]
+  - [attention_heads, hidden_size]
+  - [num_layers, attention_heads, hidden_size]
+  - [num_layers, ffn_hidden_size]
+  - [attention_heads, attention_temperature]
+  - [objective_mix_alpha, dynamic_loss_warmup]
+  - [max_seq_len, positional_encoding]
+  - [embedding_size, hidden_size, dropout]
 
 conditional_validity_rules:
   - parameter: residual_weight
@@ -292,10 +405,31 @@ conditional_validity_rules:
   - parameter: edge_dropout
     incompatible_with_models: [BPR]
     reason: Edge dropout is a graph-structure operation and BPR has no graph.
+  - parameter: attention_heads
+    incompatible_with_models: [BPR, LightGCN]
+    reason: Attention heads are only meaningful for custom architectures with multi-head attention.
+  - parameter: hidden_size
+    incompatible_with_models: [BPR, LightGCN]
+    reason: hidden_size is reserved for custom architectures with dedicated hidden layers.
+  - parameter: num_layers
+    incompatible_with_models: [BPR]
+    reason: num_layers refers to graph/attention depth and is not meaningful for matrix factorization.
+  - parameter: ffn_hidden_size
+    incompatible_with_models: [BPR, LightGCN]
+    reason: ffn_hidden_size is reserved for Transformer-based custom architectures.
+  - parameter: max_seq_len
+    incompatible_with_models: [BPR, LightGCN, Custom]
+    reason: max_seq_len is sequence-protocol-only and is not allowed in the current general-rec formal line.
+  - parameter: positional_encoding
+    incompatible_with_models: [BPR, LightGCN]
+    reason: positional_encoding is only meaningful for sequential or Transformer-based architectures.
 
 allowed_implementation_roots:
   - recclaw_ext/models/
   - recclaw_ext/posthoc/
+  - recclaw_ext/models/layers/
+  - recclaw_ext/models/encoders/
+  - recclaw_ext/models/fusion/
 
 forbidden_changes:
   - RecBole core source files

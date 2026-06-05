@@ -20,4 +20,5 @@ results/overrides/*.yaml
 results/checkpoints/
 results/agent_memory.jsonl
 results/candidate_proposals.jsonl
+results/agent_state_summary.json
 RecClaw_LabLog/

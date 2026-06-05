@@ -1,0 +1,14 @@
+# Generic baseline defaults for custom architecture proposals.
+# Loaded when base_model is Custom or an unrecognized architecture family.
+embedding_size: 64
+learning_rate: 0.001
+reg_weight: 1e-05
+dropout: 0.1
+hidden_size: 64
+attention_heads: 1
+attention_temperature: 1.0
+objective_mix_alpha: 0.1
+dynamic_loss_warmup: 0
+num_layers: 2
+ffn_hidden_size: 128
+positional_encoding: sinusoidal

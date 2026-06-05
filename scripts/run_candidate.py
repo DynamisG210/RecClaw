@@ -44,6 +44,7 @@ COLLECT_SCRIPT = SCRIPT_DIR / "collect_result.py"
 BASE_CONFIGS = {
     "BPR": "bpr.yaml",
     "LightGCN": "lightgcn.yaml",
+    "Custom": "generic.yaml",
 }
 RUNNABLE_TYPES = {"config_only", "model"}
 
@@ -97,6 +98,8 @@ def normalize_base_model(raw: str | None, override: str | None = None) -> str:
         return "LightGCN"
     if "bpr" in text:
         return "BPR"
+    if "custom" in text:
+        return "Custom"
     raise ValueError(f"could not infer base model from: {raw!r}")
 
 
@@ -636,6 +639,7 @@ def main() -> int:
         "override_dir": str(override_dir),
         "registry_path": str(registry_path),
         "config_files": [str(path) for path in plan["config_files"]],
+        "candidate_config": plan["candidate_config"],
         "overrides": plan["overrides"],
         "recbole_root": str(recbole_root),
         "checkpoint_dir": str(run_checkpoint_dir),

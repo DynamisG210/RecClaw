@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib
 import json
 import os
@@ -25,6 +26,7 @@ try:
     from action_space import (
         allowed_implementation_roots,
         load_action_space,
+        parameter_schema_map,
         parameter_space_from_action_space,
     )
     from validate_candidate_proposal import load_jsonl, load_yaml
@@ -32,6 +34,7 @@ except ImportError:
     from .action_space import (
         allowed_implementation_roots,
         load_action_space,
+        parameter_schema_map,
         parameter_space_from_action_space,
     )
     from .validate_candidate_proposal import load_jsonl, load_yaml
@@ -54,9 +57,8 @@ FORBIDDEN_PATHS = {
     "recclaw_ext/posthoc/__init__.py",
 }
 IMPLEMENTATION_PARAMETER_KEYS = tuple(parameter_space_from_action_space(ACTION_SPACE))
-IMPLEMENTATION_PARAMETER_SCHEMA = {
-    key: {"type": ["number", "null"]} for key in IMPLEMENTATION_PARAMETER_KEYS
-}
+IMPLEMENTATION_PARAMETER_SCHEMA = parameter_schema_map(ACTION_SPACE)
+IMPLEMENTATION_REQUIRED_LEVELS = {"code_required", "architecture_required"}
 
 IMPLEMENTATION_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -85,7 +87,6 @@ IMPLEMENTATION_RESPONSE_SCHEMA: dict[str, Any] = {
             "required": [
                 "candidate_id",
                 "model",
-                *IMPLEMENTATION_PARAMETER_KEYS,
             ],
         },
         "registry_entry": {
@@ -126,6 +127,44 @@ IMPLEMENTATION_RESPONSE_SCHEMA: dict[str, Any] = {
     "required": ["files", "candidate_config", "registry_entry"],
 }
 
+
+def _schema_types_for_new_parameter(spec: dict[str, Any]) -> list[str]:
+    declared = str(spec.get("type") or "").strip().lower()
+    if declared in {"integer", "int", "number", "float"}:
+        return ["number", "null"]
+    if declared in {"string", "str"}:
+        return ["string", "null"]
+    if declared in {"boolean", "bool"}:
+        return ["boolean", "null"]
+    values = spec.get("search_space")
+    if isinstance(values, list):
+        types: list[str] = []
+        if any(isinstance(item, (int, float)) and not isinstance(item, bool) for item in values):
+            types.append("number")
+        if any(isinstance(item, str) for item in values):
+            types.append("string")
+        if any(isinstance(item, bool) for item in values):
+            types.append("boolean")
+        if types:
+            return [*types, "null"]
+    return ["number", "string", "boolean", "null"]
+
+
+def implementation_response_schema_for_proposal(proposal: dict[str, Any]) -> dict[str, Any]:
+    """Return strict structured-output schema including proposal-declared config keys."""
+    schema = json.loads(json.dumps(IMPLEMENTATION_RESPONSE_SCHEMA))
+    candidate_schema = schema["properties"]["candidate_config"]
+    candidate_properties = candidate_schema["properties"]
+    for item in proposal.get("new_parameters") or []:
+        if not isinstance(item, dict) or not item.get("name"):
+            continue
+        key = str(item["name"])
+        if key in candidate_properties:
+            continue
+        candidate_properties[key] = {"type": _schema_types_for_new_parameter(item)}
+    candidate_schema["required"] = list(candidate_properties)
+    return schema
+
 SELF_REG_LOSS_PATTERN = re.compile(r"\bself\.reg_loss\s*\(")
 FLOAT_CONFIG_INDEX_PATTERN = re.compile(r"\bfloat\s*\(\s*config\s*\[")
 SOFT_L2_POSITIONAL_MAX_NORM_PATTERN = re.compile(
@@ -165,6 +204,7 @@ def chat_completion(
     timeout: int,
     messages: list[dict[str, str]],
     retries: int = 2,
+    response_schema: dict[str, Any] | None = None,
 ) -> str:
     api_key = os.environ.get(api_key_env, "")
     if not api_key:
@@ -182,7 +222,7 @@ def chat_completion(
             "json_schema": {
                 "name": "recclaw_candidate_implementation",
                 "strict": True,
-                "schema": IMPLEMENTATION_RESPONSE_SCHEMA,
+                "schema": response_schema or IMPLEMENTATION_RESPONSE_SCHEMA,
             },
         }
     req = urlrequest.Request(
@@ -550,13 +590,96 @@ def validate_static_model_code(path: str, content: str) -> None:
         )
 
 
+def _ast_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _ast_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    if isinstance(node, ast.Subscript):
+        return _ast_name(node.value)
+    if isinstance(node, ast.Call):
+        return _ast_name(node.func)
+    return ""
+
+
+def validate_architecture_protocol(files: list[dict[str, str]], entrypoint: str) -> None:
+    """Check that a generated Custom architecture satisfies the runner contract."""
+    if ":" not in entrypoint:
+        raise ValueError("architecture entrypoint must use module:attribute")
+    module_name, class_name = entrypoint.split(":", 1)
+    module_path = module_name.replace(".", "/") + ".py"
+    content_by_path = {item["path"]: item.get("content") or "" for item in files}
+    content = content_by_path.get(module_path)
+    if content is None:
+        raise ValueError(f"architecture entrypoint module is not among generated files: {module_path}")
+    tree = ast.parse(content, filename=module_path)
+    target_class: ast.ClassDef | None = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            target_class = node
+            break
+    if target_class is None:
+        raise ValueError(f"architecture entrypoint class {class_name} is not defined in {module_path}")
+
+    methods = {node.name for node in target_class.body if isinstance(node, ast.FunctionDef)}
+    required_methods = {"calculate_loss", "predict", "full_sort_predict"}
+    missing = sorted(required_methods - methods)
+    if missing:
+        raise ValueError(f"architecture class must implement {missing}: {module_path}:{class_name}")
+
+    base_names = {_ast_name(base).split(".")[-1] for base in target_class.bases}
+    allowed_bases = {"GeneralRecommender", "AbstractRecommender"}
+    forbidden_parent_bases = {"BPR", "LightGCN"}
+    if base_names.intersection(forbidden_parent_bases):
+        raise ValueError(
+            "architecture_required Custom models should inherit a general RecBole recommender contract, "
+            "not BPR/LightGCN parent classes"
+        )
+    if not base_names.intersection(allowed_bases):
+        if base_names.intersection({"Module"}) or any(name.endswith("Module") for name in base_names):
+            raise ValueError(
+                "architecture class must inherit a RecBole recommender contract "
+                f"({sorted(allowed_bases)}), not a raw torch Module"
+            )
+        raise ValueError("architecture class must inherit GeneralRecommender or AbstractRecommender")
+
+    input_type_values: list[str] = []
+    for node in target_class.body:
+        if isinstance(node, ast.Assign):
+            targets = [_ast_name(target) for target in node.targets]
+        elif isinstance(node, ast.AnnAssign):
+            targets = [_ast_name(node.target)]
+        else:
+            continue
+        if "input_type" in targets:
+            input_type_values.append(_ast_name(node.value))
+    if not input_type_values:
+        raise ValueError(
+            "architecture class must set input_type = InputType.PAIRWISE or InputType.POINTWISE "
+            "so RecBole selects a supported dataloader format"
+        )
+    if not any(value in {"InputType.PAIRWISE", "InputType.POINTWISE"} for value in input_type_values):
+        raise ValueError(
+            "architecture class input_type must use the RecBole InputType enum, "
+            "not a string such as 'pairwise'"
+        )
+
+
 def enforce_proposal_parameter_defaults(candidate_config: dict[str, Any], proposal: dict[str, Any]) -> dict[str, Any]:
     config = dict(candidate_config)
+    new_parameters = proposal.get("new_parameters") or []
+    if isinstance(new_parameters, list):
+        for item in new_parameters:
+            if isinstance(item, dict) and item.get("name") and "default" in item:
+                key = str(item["name"])
+                if item.get("default") is not None:
+                    config.setdefault(key, item.get("default"))
     overrides = proposal.get("parameter_overrides") or {}
     if not isinstance(overrides, dict):
         return config
     for key, value in overrides.items():
-        if key in IMPLEMENTATION_PARAMETER_KEYS and value is not None:
+        if value is not None:
             config[key] = value
     return config
 
@@ -567,14 +690,21 @@ def validate_candidate_config_matches_proposal(candidate_config: dict[str, Any],
         overrides = {}
     mismatches: list[str] = []
     for key, value in overrides.items():
-        if key not in IMPLEMENTATION_PARAMETER_KEYS or value is None:
+        if value is None:
             continue
         if candidate_config.get(key) != value:
             mismatches.append(f"{key} expected {value!r}, got {candidate_config.get(key)!r}")
+    declared_new_defaults = {
+        str(item["name"]): item.get("default")
+        for item in proposal.get("new_parameters") or []
+        if isinstance(item, dict) and item.get("name") and "default" in item
+    }
     for key in proposal.get("consumes") or []:
         key_text = str(key)
         if key_text in IMPLEMENTATION_PARAMETER_KEYS and candidate_config.get(key_text) is None:
             mismatches.append(f"{key_text} consumed by proposal but missing non-null candidate_config default")
+        if key_text in declared_new_defaults and candidate_config.get(key_text) is None:
+            mismatches.append(f"{key_text} new parameter consumed by proposal but missing candidate_config default")
     if mismatches:
         raise ValueError("candidate_config must preserve proposal parameter_overrides: " + "; ".join(mismatches))
 
@@ -606,7 +736,24 @@ def prepare_implementation(implementation: dict[str, Any], proposal: dict[str, A
     if not entrypoint:
         raise ValueError("registry_entry.entrypoint is required")
     entrypoint = normalize_entrypoint(entrypoint, files)
+    if str(proposal.get("runnable_level") or "") == "architecture_required":
+        validate_architecture_protocol(files, entrypoint)
     registry_entry["entrypoint"] = entrypoint
+    for key in (
+        "proposal_type",
+        "action_type",
+        "base_architecture",
+        "runnable_level",
+        "parent_candidate_id",
+        "ablation_parent",
+        "mechanism",
+        "mechanism_composition",
+        "new_parameters",
+        "parameter_overrides",
+    ):
+        value = proposal.get(key)
+        if value not in (None, "", []):
+            registry_entry[key] = value
     return PreparedImplementation(
         candidate_id=candidate_id,
         files=files,
@@ -774,6 +921,20 @@ def run_training_smoke(candidate_id: str, smoke_sets: list[str]) -> subprocess.C
     )
 
 
+def run_contract_lint() -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "analysis" / "lint_recclaw_space.py"),
+        ],
+        cwd=PROJECT_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
 def parse_valid_scores(text: str) -> list[float]:
     values: list[float] = []
     for match in VALID_SCORE_PATTERN.finditer(text):
@@ -784,7 +945,11 @@ def parse_valid_scores(text: str) -> list[float]:
     return values
 
 
-def compact_smoke_summary(smoke_run: subprocess.CompletedProcess[str], smoke_sets: list[str]) -> dict[str, Any]:
+def compact_smoke_summary(
+    smoke_run: subprocess.CompletedProcess[str],
+    smoke_sets: list[str],
+    candidate_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     text = f"{smoke_run.stdout}\n{smoke_run.stderr}"
     valid_scores = parse_valid_scores(text)
     rounded_unique = {round(value, 8) for value in valid_scores}
@@ -793,6 +958,11 @@ def compact_smoke_summary(smoke_run: subprocess.CompletedProcess[str], smoke_set
     summary: dict[str, Any] = {
         "exit_code": smoke_run.returncode,
         "overrides": smoke_sets,
+        "candidate_parameters": {
+            key: value
+            for key, value in (candidate_config or {}).items()
+            if key not in {"candidate_id", "model"}
+        },
         "valid_scores": [round(value, 8) for value in valid_scores],
         "valid_score_unique_count": len(rounded_unique),
         "metric_stagnation": len(valid_scores) >= 3 and len(rounded_unique) <= 1,
@@ -827,8 +997,16 @@ def build_implementation_context(
     experiment_directive: str = "",
 ) -> dict[str, Any]:
     directive = str(experiment_directive or "").strip()
+    runnable_level = str(proposal.get("runnable_level") or "code_required")
+    proposal_type = str(proposal.get("proposal_type") or "")
+    is_architecture = runnable_level == "architecture_required" or proposal_type == "architecture"
+    task = (
+        "Implement one RecClaw architecture_required Custom model proposal under strict local allowlists."
+        if is_architecture
+        else "Implement one RecClaw code_required/objective candidate proposal under strict local allowlists."
+    )
     context = {
-        "task": "Implement one RecClaw code_required candidate proposal under strict local allowlists.",
+        "task": task,
         "proposal": proposal,
         "registry": registry,
         "steering_priority": [
@@ -857,13 +1035,34 @@ def build_implementation_context(
         "allowed_write_roots": list(ALLOWED_WRITE_ROOTS),
         "config_update": "Use candidate_config only; do not include configs/candidates/*.yaml in files.",
         "registry_update": "Use registry_entry only; do not include configs/candidate_registry.yaml in files.",
+        "architecture_contract": {
+            "enabled": bool(is_architecture),
+            "current_protocol": "general recommendation ML-1M full-sort only; do not introduce temporal split, sequence dataloader, or RecBole core changes",
+            "required_methods": ["calculate_loss", "predict", "full_sort_predict"],
+            "required_input_type": "Set class attribute input_type = InputType.PAIRWISE or InputType.POINTWISE; import InputType from recbole.utils. Do not use string values.",
+            "preferred_base": "recbole.model.abstract_recommender.GeneralRecommender for Custom architectures",
+            "allowed_transformer_style": [
+                "attention-based user/item interaction",
+                "graph-attention propagation",
+                "transformer-style residual block",
+                "layer norm",
+                "feed-forward block",
+                "MLP/attention scoring head",
+            ],
+            "disallowed_current_formal_line": [
+                "SASRec/BERT4Rec formal sequential candidate",
+                "sequence fields or sequence dataloaders",
+                "temporal split",
+                "multi-modal feature dependencies",
+            ],
+        },
         "forbidden": [
             "Do not modify RecBole core.",
             "Do not modify data split, evaluation protocol, baseline config, or task config.",
             "Do not write any __init__.py file; use concrete module entrypoints instead.",
             "Do not overwrite existing local helper/model files; return a new module file for this proposal.",
             "Do not include config files in files; candidate_config is written by this script.",
-            "Stay inside action_space; candidate_config knobs should use declared action_space parameters.",
+            "Stay inside action_space; candidate_config knobs should use declared action_space parameters or proposal.new_parameters.",
             "Use entrypoints like recclaw_ext.models.my_model:MyModel, not recclaw_ext.models:MyModel.",
             "If experiment_directive.enabled is true, follow experiment_directive.text unless it conflicts with forbidden rules or the proposal specification.",
             "RecBole Config is not a dict; never call config.get(...).",
@@ -872,7 +1071,10 @@ def build_implementation_context(
             "Do not call self.reg_loss unless the generated class defines reg_loss itself.",
             "Call soft_l2_norm_penalty with max_norm=... and weight=... keyword arguments; never pass scalar knobs positionally.",
             "Preserve proposal.parameter_overrides exactly in candidate_config defaults.",
-            "Do not override full_sort_predict unless the proposal explicitly requires it.",
+            "Objective/loss proposals may override calculate_loss, but calculate_loss must return a scalar tensor.",
+            "Custom architecture proposals must implement calculate_loss, predict, and full_sort_predict.",
+            "Custom architecture proposals must import InputType from recbole.utils and set input_type = InputType.PAIRWISE or InputType.POINTWISE; never set input_type to a raw string.",
+            "Do not introduce sequence-only SASRec/BERT4Rec formal candidates in this general-rec run; transformer-style local blocks are allowed.",
             "Return strict JSON only.",
             "Provide complete file contents, not patches.",
         ],
@@ -935,13 +1137,14 @@ def main() -> int:
         registry_path = Path(args.registry)
         proposal = load_proposal(proposals_path, args.proposal_id)
         registry = load_yaml(registry_path)
-        if str(proposal.get("runnable_level") or "") != "code_required":
-            raise ValueError("only code_required proposals can be auto-implemented")
+        if str(proposal.get("runnable_level") or "") not in IMPLEMENTATION_REQUIRED_LEVELS:
+            raise ValueError("only code_required or architecture_required proposals can be auto-implemented")
 
         prepared: PreparedImplementation | None = template_implementation_for_proposal(proposal)
         review_errors: list[str] = []
         if prepared is None:
             context = build_implementation_context(proposal, registry, args.experiment_directive)
+            response_schema = implementation_response_schema_for_proposal(proposal)
             if args.llm_provider == "openai":
                 default_model = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
                 default_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -984,6 +1187,9 @@ def main() -> int:
                                         "Do not call self.reg_loss unless this generated class defines it.",
                                         "Do not pass scalar knobs positionally to soft_l2_norm_penalty.",
                                         "Preserve proposal.parameter_overrides in candidate_config.",
+                                        "If this is architecture_required, implement calculate_loss, predict, and full_sort_predict on a RecBole recommender base.",
+                                        "If this is architecture_required, import InputType from recbole.utils and set input_type = InputType.PAIRWISE or InputType.POINTWISE, not a string.",
+                                        "If this is loss_function/objective_function, calculate_loss must return one scalar tensor.",
                                         "Keep entrypoint in a concrete generated recclaw_ext module.",
                                     ],
                                 },
@@ -1001,6 +1207,7 @@ def main() -> int:
                     timeout=max(1, args.llm_timeout),
                     retries=max(0, args.llm_retries),
                     messages=messages,
+                    response_schema=response_schema,
                 )
                 try:
                     implementation = parse_json_object(content)
@@ -1056,6 +1263,25 @@ def main() -> int:
         write_yaml(config_path, candidate_config)
         write_yaml(registry_path, registry_payload_with_entry(registry_path, registry_entry, wired=False, status="implement-ready"))
 
+        contract_lint = run_contract_lint()
+        if contract_lint.returncode != 0:
+            cleanup_artifacts(prepared, registry_path, previous_registry_text)
+            print(
+                json.dumps(
+                    status_report(
+                        "implementation_failed",
+                        proposal_id=args.proposal_id,
+                        candidate_id=candidate_id,
+                        reason="generated candidate failed runtime contract lint",
+                        stdout=contract_lint.stdout[-2000:],
+                        stderr=contract_lint.stderr[-2000:],
+                    ),
+                    ensure_ascii=True,
+                    indent=2,
+                )
+            )
+            return 1
+
         try:
             import_object(entrypoint)
         except Exception as exc:  # noqa: BLE001
@@ -1105,7 +1331,11 @@ def main() -> int:
             if not any(item.split("=", 1)[0] == "stopping_step" for item in smoke_sets if "=" in item):
                 smoke_sets.append("stopping_step=2")
             smoke_run = run_training_smoke(candidate_id, smoke_sets)
-            smoke_summary = compact_smoke_summary(smoke_run, smoke_sets)
+            smoke_summary = compact_smoke_summary(
+                smoke_run,
+                smoke_sets,
+                candidate_config=candidate_config,
+            )
             if smoke_run.returncode != 0 or smoke_summary.get("metric_stagnation"):
                 cleanup_artifacts(prepared, registry_path, previous_registry_text)
                 fail_reason = (

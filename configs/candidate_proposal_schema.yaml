@@ -1,8 +1,14 @@
-version: 1
+version: 2
 description: >
   Contract for candidate proposals generated before they are promoted into
   configs/candidate_registry.yaml. Proposals must be JSON-serializable and
   should stay runnable through the existing RecClaw runner contract.
+
+  v2 adds architecture-level proposals (proposal_type: architecture) and the
+  Custom base_model, allowing agents to propose genuinely new model families
+  that do not inherit from BPR or LightGCN. Architecture proposals must
+  implement the RecBole runner contract (calculate_loss, predict,
+  full_sort_predict) and preserve the current general-rec full-sort protocol.
 
 required_fields:
   - proposal_type
@@ -30,10 +36,12 @@ allowed_runnable_levels:
   - config_only
   - spec_only
   - code_required
+  - architecture_required
 
 allowed_base_models:
   - BPR
   - LightGCN
+  - Custom
 
 allowed_runner_types:
   - config_only
@@ -44,6 +52,7 @@ allowed_proposal_types:
   - tuning
   - algorithmic_variant
   - research_spec
+  - architecture
 
 allowed_action_types:
   - parameter_tuning
@@ -59,10 +68,24 @@ allowed_action_types:
   - layer_interaction
   - auxiliary_loss
   - rank_aware_loss
+  - loss_function
+  - objective_function
+  - custom_encoder
+  - graph_rewire
+  - graph_attention
+  - interaction_function
+  - propagation_mechanism
+  - hybrid_graph_interaction
+  - transformer_interaction
+  - sequence_aggregator
+  - multi_modal_fusion
 
 allowed_implementation_roots:
   - recclaw_ext/models/
   - recclaw_ext/posthoc/
+  - recclaw_ext/models/layers/
+  - recclaw_ext/models/encoders/
+  - recclaw_ext/models/fusion/
 
 disallowed_changes:
   - RecBole core source files
@@ -70,32 +93,33 @@ disallowed_changes:
   - data split definition
 
 field_contract:
-  proposal_type: "tuning for runnable parameter/config changes, algorithmic_variant for local-code method ideas, research_spec for higher-risk ideas that need design review."
+  proposal_type: "tuning for runnable parameter/config changes, algorithmic_variant for local-code method ideas, research_spec for higher-risk ideas that need design review, architecture for genuinely new model families that implement the runner contract."
   candidate_id: "New unique id. Must not already exist in candidate_registry.yaml."
-  parent_candidate_id: "Existing candidate_id used as the executable or conceptual parent."
-  base_model: "Exactly one of BPR or LightGCN."
+  parent_candidate_id: "Existing candidate_id used as the executable or conceptual parent. For architecture proposals this may be a conceptual anchor (e.g., LightGCN) even if the new model does not inherit it."
+  base_model: "One of BPR, LightGCN, or Custom. Use Custom when the proposal introduces a new architecture family that does not inherit from the existing base models."
   category: "Same style as registry category, for example Objective & Optimization."
-  action_type: "Executable action kind from configs/action_space.yaml, for example parameter_tuning, local_loss, aggregation, regularization, sampling_wrapper, negative_sampling, pairwise_loss, graph_propagation, graph_augmentation, layer_interaction, auxiliary_loss, rank_aware_loss, or posthoc_rerank."
+  action_type: "Executable action kind from configs/action_space.yaml, for example parameter_tuning, local_loss, aggregation, regularization, sampling_wrapper, negative_sampling, pairwise_loss, graph_propagation, graph_augmentation, layer_interaction, auxiliary_loss, rank_aware_loss, loss_function, objective_function, custom_encoder, graph_rewire, graph_attention, interaction_function, propagation_mechanism, hybrid_graph_interaction, transformer_interaction, sequence_aggregator, multi_modal_fusion, or posthoc_rerank. sequence_aggregator and multi_modal_fusion are design/spec hooks unless a separate protocol line is created."
   mechanism: "Short algorithm mechanism label, for example hard_negative_margin_tail_reweight or residual_norm_rank_alignment. Parameter-only proposals should still name the algorithm family being tested."
   mechanism_composition: "Required list of mechanism tokens being combined; use this to make algorithmic composition explicit instead of hiding it in parameter names."
-  novelty_claim: "Required concise statement of what is algorithmically new relative to the ablation_parent. Parameter-only proposals should state why the sanity/refinement point matters."
-  expected_failure_mode: "Required concise statement of how this algorithm can fail, such as over-regularization, popularity over-penalty, or representation collapse."
+  novelty_claim: "Required concise statement of what is algorithmically new relative to the ablation_parent. Parameter-only proposals should state why the sanity/refinement point matters. Architecture proposals must state what structural difference makes this a new family."
+  expected_failure_mode: "Required concise statement of how this algorithm can fail, such as over-regularization, popularity over-penalty, representation collapse, or instability in a new architecture."
   ablation_parent: "Required existing candidate_id that should be used as the ablation baseline for the new algorithm or parameter sanity check."
-  implementation_complexity: "Required one of low, medium, high. Use low for reuse/composition of existing helpers and high for genuinely new local model code."
+  implementation_complexity: "Required one of low, medium, high. Use low for reuse/composition of existing helpers and high for genuinely new local model code or full architecture implementations."
   hypothesis: "One sentence explaining why this proposal should improve a metric or risk dimension."
-  runnable_level: "parameter_only and config_only should be runnable without local code changes."
+  runnable_level: "parameter_only and config_only should be runnable without local code changes. architecture_required means a complete new model class must be generated."
   runner_type: "Must stay within the existing RecClaw runner contract."
-  consumes: "List of parameter/config keys the proposal wants to read or override."
+  consumes: "List of parameter/config keys the proposal wants to read or override. Architecture proposals may also consume newly declared parameters not yet in action_space."
   parameter_overrides: "Optional object with concrete values for consumes keys."
   parameter_signature: "Optional normalized signature in the form parent_candidate_id::{sorted parameter_overrides JSON}; used to avoid duplicate tuning runs. Protocol keys such as seed are excluded."
   expected_effect: "Object describing expected metric direction and rationale."
   risk: "Object describing quality, runtime, implementation, and evaluation risks."
   decision_rule: "Object or string describing the keep/revise/discard rule after execution."
   evaluation_plan: "Optional but recommended for tuning proposals; include primary_metric, validation_seeds, aggregation, and promotion criteria for multi-seed validation."
-  implementation_plan: "Optional but expected for code_required proposals; describe new local files/classes and runner wiring. Candidate config and registry wiring are generated by scripts, not listed as writable files."
+  implementation_plan: "Optional but expected for code_required and architecture_required proposals; describe new local files/classes and runner wiring. Candidate config and registry wiring are generated by scripts, not listed as writable files."
   allowed_files: "Optional list of local extension files/directories the implementation is allowed to touch. Do not include configs, registry, notes, or __init__.py."
-  new_parameters: "Optional list of new config keys introduced by code_required proposals."
+  new_parameters: "Optional list of new config keys introduced by code_required or architecture_required proposals."
   promotion_requirements: "Optional checklist for promoting proposal into registry and candidate config."
+  base_architecture: "Required non-empty architecture family label for architecture proposals, for example graph_attention, transformer_style_interaction, hybrid_graph_interaction, graph_rewire, or custom. Helps the agent track which frontier it is exploring."
 
 example_proposal:
   proposal_type: tuning
@@ -202,3 +226,72 @@ example_algorithmic_variant:
     - local model class imports successfully
     - candidate config contains all new parameters
     - registry entry has wired=true only after dry-run succeeds
+
+example_architecture:
+  proposal_type: architecture
+  candidate_id: cand_custom_graph_attention_001
+  parent_candidate_id: cand_lightgcn_residual_norm_constrained
+  base_model: Custom
+  base_architecture: graph_attention
+  category: Representation & Interaction
+  action_type: graph_attention
+  mechanism: lightweight_graph_attention_propagation
+  mechanism_composition:
+    - graph_attention
+    - residual_ego
+    - layer_norm
+  novelty_claim: replaces symmetric LightGCN propagation with a lightweight single-head graph attention that still respects the full-sort evaluation protocol.
+  expected_failure_mode: attention weights may collapse to uniform, degenerating to a slower LightGCN; training variance may increase.
+  ablation_parent: cand_lightgcn_residual_norm_constrained
+  implementation_complexity: high
+  hypothesis: Learnable edge attention can selectively amplify high-signal neighbors while suppressing noise.
+  runnable_level: architecture_required
+  runner_type: model
+  consumes:
+    - embedding_size
+    - n_layers
+    - dropout
+    - hidden_size
+    - reg_weight
+    - learning_rate
+    - attention_heads
+    - attention_temperature
+    - attention_residual_gate
+  new_parameters:
+    - name: attention_residual_gate
+      type: number
+      default: 0.2
+      search_space: [0.1, 0.2, 0.5]
+      meaning: controls how much of the attention branch is mixed back into the base embedding signal.
+      expected_effect: small gates should preserve collaborative signal while testing whether attention adds useful structure.
+  implementation_plan:
+    summary: Add a standalone graph-attention recommender implementing the RecBole runner contract.
+    entrypoint: recclaw_ext.models.custom_graph_attention:LightGraphAttentionRec
+    files:
+      - recclaw_ext/models/custom_graph_attention.py
+  allowed_files:
+    - recclaw_ext/models/
+  expected_effect:
+    primary_metric: ndcg@10
+    direction: increase
+    rationale: Attention over edges should improve neighbor selection compared to uniform symmetric propagation.
+  risk:
+    quality: Attention collapse or overfitting to graph structure.
+    runtime: Higher per-epoch cost due to attention computation.
+    implementation: Requires a full model class with calculate_loss, predict, and full_sort_predict.
+    recbole_core_change_required: false
+  decision_rule:
+    keep_if: ndcg@10 improves over the ablation parent under comparable training budget.
+    revise_if: metrics are close but training is stable; try tuning dropout and hidden_size.
+    discard_if: fails to import, crashes during smoke run, or ndcg@10 regresses below LightGCN baseline.
+  evaluation_plan:
+    primary_metric: ndcg@10
+    validation_seeds:
+      - 2026
+      - 2027
+      - 2028
+    aggregation: report mean and std over validation_seeds before claiming improvement
+  promotion_requirements:
+    - model class imports successfully and passes dry-run
+    - candidate config contains all declared new parameters
+    - smoke run shows stable training loss and non-zero valid_score
