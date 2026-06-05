@@ -1,0 +1,384 @@
+candidates:
+  - candidate_id: cand_bpr_uniform_neg_baseline_note
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "baseline uniform negative sampling reference"
+    hypothesis: "current uniform negatives serve as the reference supervision pattern for later sampling improvements"
+    implementation_type: "config"
+    minimal_change: "no method change; baseline note only"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "config_only"
+    entrypoint: "recbole.model.general_recommender.bpr:BPR"
+    consumes:
+      - train_neg_sample_args
+
+  - candidate_id: cand_bpr_hard_negative_mix
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "weak negative sampling"
+    hypothesis: "mixed hard negatives improve ranking signals"
+    implementation_type: "model"
+    minimal_change: "model-level negative sampling inside a local BPR subclass"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_sampling:BPRHardNegative"
+    consumes:
+      - hard_negative_ratio
+
+  - candidate_id: cand_bpr_popularity_aware_negative
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "negative sampling distribution mismatches realistic exposure"
+    hypothesis: "popularity-aware negatives reduce sampling bias"
+    implementation_type: "model"
+    minimal_change: "model-level popularity-aware negative sampling inside a local BPR subclass"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_sampling:BPRPopularityAwareNegative"
+    consumes:
+      - popularity_alpha
+
+  - candidate_id: cand_bpr_hard_negative_margin
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "negative sampling is weak and the pairwise boundary is soft"
+    hypothesis: "combining mixed hard negatives with margin-aware pairwise loss improves ranking separation"
+    implementation_type: "model"
+    minimal_change: "local BPR subclass reuses the hard-negative sampler and margin loss helper"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_composed:BPRHardNegativeMargin"
+    consumes:
+      - hard_negative_ratio
+      - margin
+
+  - candidate_id: cand_bpr_popularity_aware_margin
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "negative sampling and pairwise separation are both under-constrained"
+    hypothesis: "popularity-aware negatives plus a small margin may improve exposure-robust ranking"
+    implementation_type: "model"
+    minimal_change: "local BPR subclass reuses the popularity-aware sampler and margin loss helper"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_composed:BPRPopularityAwareMargin"
+    consumes:
+      - popularity_alpha
+      - margin
+
+  - candidate_id: cand_bpr_long_tail_reweight
+    category: "Bias & Sample Construction"
+    base_model: "BPR"
+    rs_problem: "head items dominate training and weaken tail sensitivity"
+    hypothesis: "long-tail reweighting improves tail-related learning signals"
+    implementation_type: "model"
+    minimal_change: "local BPR subclass reads tail_weight_alpha and calls an internal loss helper"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_regularized:BPRLongTailReweight"
+    consumes:
+      - tail_weight_alpha
+
+  - candidate_id: cand_lightgcn_debiased_negative_sampling
+    category: "Bias & Sample Construction"
+    base_model: "LightGCN"
+    rs_problem: "uniform negatives are too weak for graph ranking"
+    hypothesis: "harder or debiased negatives help learn finer ranking boundaries"
+    implementation_type: "model"
+    minimal_change: "model-level debiased negative sampling inside a local LightGCN subclass"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_sampling:LightGCNDebiasedNegative"
+    consumes:
+      - debias_alpha
+
+  - candidate_id: cand_lightgcn_layer_weighted_agg
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "rigid layer aggregation"
+    hypothesis: "learnable layer weights outperform uniform averaging"
+    implementation_type: "model"
+    minimal_change: "local LightGCN subclass changes aggregation in forward"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_lw:LightGCNLW"
+    consumes:
+      - embedding_size
+      - n_layers
+      - reg_weight
+
+  - candidate_id: cand_lightgcn_residual_layer_mix
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "multi-layer propagation fusion is too rigid"
+    hypothesis: "residual layer mixing improves layer information utilization"
+    implementation_type: "model"
+    minimal_change: "local LightGCN subclass mixes ego embeddings into layer aggregation"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_residual:LightGCNResidualMix"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+
+  - candidate_id: cand_lightgcn_residual_norm_constrained
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "residual propagation can still drift in embedding scale"
+    hypothesis: "residual layer mixing with soft norm control preserves strong signal while stabilizing propagated embeddings"
+    implementation_type: "model"
+    minimal_change: "local residual LightGCN subclass adds a soft norm penalty in calculate_loss"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormConstrained"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - lambda_norm
+      - max_norm
+
+  - candidate_id: cand_lightgcn_user_item_gate
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "user-item interaction remains too weak"
+    hypothesis: "a lightweight gate can improve matching expressiveness"
+    implementation_type: "model"
+    minimal_change: "interaction head extension"
+    priority: "medium"
+    status: "idea"
+    wired: false
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models:LightGCNUserItemGate"
+    consumes: []
+
+  - candidate_id: cand_lightgcn_edge_dropout_residual_mix
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "over-smoothing and brittle propagation"
+    hypothesis: "training-time sparse edge dropout regularizes residual propagation while preserving the full-sort protocol"
+    implementation_type: "model"
+    minimal_change: "local LightGCN residual subclass applies sparse edge dropout during training"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_edge_dropout_residual:LightGCNEdgeDropoutResidualMix"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+
+  - candidate_id: cand_lightgcn_edge_dropout_residual_norm
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "residual graph propagation needs both structural and scale regularization"
+    hypothesis: "edge-dropout residual propagation plus soft norm control may improve late-stage generalization"
+    implementation_type: "model"
+    minimal_change: "local edge-dropout residual LightGCN subclass reuses residual-norm loss control"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_residual_norm:LightGCNEdgeDropoutResidualNorm"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+      - lambda_norm
+      - max_norm
+
+  - candidate_id: cand_lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076
+    category: "Representation & Interaction"
+    base_model: "LightGCN"
+    rs_problem: "single-path graph propagation can overfit either clean or perturbed topology"
+    hypothesis: "averaging clean and edge-dropped propagation paths, then residual-mixing with ego embeddings and norm control, improves robustness without changing the full-sort protocol"
+    implementation_type: "model"
+    minimal_change: "local LightGCN subclass combines clean/dropout paths with residual-norm loss control"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076:LightGCNEdgeDropoutResidualNormDualPathBlend"
+    consumes:
+      - embedding_size
+      - n_layers
+      - residual_weight
+      - edge_dropout
+      - lambda_norm
+      - max_norm
+
+  - candidate_id: cand_bpr_mlp_head
+    category: "Representation & Interaction"
+    base_model: "BPR"
+    rs_problem: "pure dot-product scoring is too limited"
+    hypothesis: "a minimal MLP head improves nonlinear matching"
+    implementation_type: "model"
+    minimal_change: "scoring head replacement or extension"
+    priority: "medium"
+    status: "idea"
+    wired: false
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models:BPRMLPHead"
+    consumes: []
+
+  - candidate_id: cand_bpr_margin_loss
+    category: "Objective & Optimization"
+    base_model: "BPR"
+    rs_problem: "weak ranking boundary"
+    hypothesis: "margin-aware loss strengthens pairwise separation"
+    implementation_type: "model"
+    minimal_change: "local BPRMargin model overrides calculate_loss and reads margin"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_margin:BPRMargin"
+    consumes:
+      - margin
+
+  - candidate_id: cand_bpr_popularity_regularized
+    category: "Objective & Optimization"
+    base_model: "BPR"
+    rs_problem: "popular items dominate optimization"
+    hypothesis: "popularity-aware regularization reduces head dominance"
+    implementation_type: "model"
+    minimal_change: "local BPR subclass reads lambda_pop and calls an internal loss helper"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_regularized:BPRPopularityRegularized"
+    consumes:
+      - lambda_pop
+
+  - candidate_id: cand_bpr_norm_constrained
+    category: "Objective & Optimization"
+    base_model: "BPR"
+    rs_problem: "embedding scale drift"
+    hypothesis: "norm constraints improve optimization stability"
+    implementation_type: "model"
+    minimal_change: "local BPR subclass reads lambda_norm/max_norm and calls an internal loss helper"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.bpr_regularized:BPRNormConstrained"
+    consumes:
+      - lambda_norm
+      - max_norm
+
+  - candidate_id: cand_lightgcn_aux_alignment_loss
+    category: "Objective & Optimization"
+    base_model: "LightGCN"
+    rs_problem: "single objective may not coordinate propagation layers well"
+    hypothesis: "auxiliary alignment loss improves layer consistency"
+    implementation_type: "model"
+    minimal_change: "local LightGCN subclass returns layer embeddings and adds alignment loss"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_objectives:LightGCNAuxAlignment"
+    consumes:
+      - lambda_align
+
+  - candidate_id: cand_lightgcn_rank_aware_loss
+    category: "Objective & Optimization"
+    base_model: "LightGCN"
+    rs_problem: "training objective is insufficiently aligned with NDCG-oriented ranking"
+    hypothesis: "rank-aware objective better matches top-k ranking goals"
+    implementation_type: "model"
+    minimal_change: "local LightGCN subclass reads rank_weight_alpha and calls an internal loss helper"
+    priority: "medium"
+    status: "implemented"
+    wired: true
+    runner_type: "model"
+    entrypoint: "recclaw_ext.models.lightgcn_objectives:LightGCNRankAware"
+    consumes:
+      - rank_weight_alpha
+
+  - candidate_id: cand_rerank_popularity_penalty
+    category: "Result Distribution Quality"
+    base_model: "BPR / LightGCN"
+    rs_problem: "recommendation outputs are too concentrated on head items"
+    hypothesis: "post-hoc popularity penalty improves output distribution"
+    implementation_type: "posthoc"
+    minimal_change: "post-training score adjustment after a trained RecBole model produces scores"
+    priority: "low"
+    status: "implement-ready"
+    wired: false
+    runner_type: "posthoc"
+    entrypoint: "recclaw_ext.posthoc:PopularityPenaltyReranker"
+    consumes:
+      - lambda_pop
+
+  - candidate_id: cand_rerank_coverage_boost
+    category: "Result Distribution Quality"
+    base_model: "BPR / LightGCN"
+    rs_problem: "coverage is too low"
+    hypothesis: "rerank coverage boost improves item spread under limited precision loss"
+    implementation_type: "posthoc"
+    minimal_change: "post-training score adjustment after a trained RecBole model produces scores"
+    priority: "low"
+    status: "implement-ready"
+    wired: false
+    runner_type: "posthoc"
+    entrypoint: "recclaw_ext.posthoc:CoverageBoostReranker"
+    consumes:
+      - lambda_coverage
+
+  - candidate_id: cand_lightgcn_small_embedding
+    category: "Efficiency & Serving Constraints"
+    base_model: "LightGCN"
+    rs_problem: "embedding dimension may be unnecessarily large"
+    hypothesis: "smaller embeddings preserve near-baseline quality with lower complexity"
+    implementation_type: "config"
+    minimal_change: "RecBole-native embedding size and layer-count config"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "config_only"
+    entrypoint: "recbole.model.general_recommender.lightgcn:LightGCN"
+    consumes:
+      - embedding_size
+      - n_layers
+
+  - candidate_id: cand_lightgcn_shallow_layers
+    category: "Efficiency & Serving Constraints"
+    base_model: "LightGCN"
+    rs_problem: "graph propagation depth may be unnecessarily high"
+    hypothesis: "shallower propagation achieves similar quality with lower complexity"
+    implementation_type: "config"
+    minimal_change: "RecBole-native layer-count config"
+    priority: "high"
+    status: "implemented"
+    wired: true
+    runner_type: "config_only"
+    entrypoint: "recbole.model.general_recommender.lightgcn:LightGCN"
+    consumes:
+      - embedding_size
+      - n_layers

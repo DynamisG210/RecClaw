@@ -1,0 +1,6 @@
+candidate_id: cand_lightgcn_edge_dropout_residual_mix
+model: LightGCNEdgeDropoutResidualMix
+embedding_size: 64
+n_layers: 3
+residual_weight: 0.2
+edge_dropout: 0.1

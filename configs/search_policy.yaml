@@ -1,0 +1,242 @@
+version: 4
+description: >
+  Runtime search-steering policy for RecClaw. v4 introduces architecture-first
+  exploration: the LLM agent may propose genuinely new model families when the
+  frontier stagnates. The policy still locks the dataset, split, and evaluation
+  protocol, but it opens the method space beyond BPR/LightGCN descendants.
+
+  Architecture proposals are gated by smoke-run validation and a strict
+  consecutive-failure budget to prevent runaway resource use.
+
+protocol_lock:
+  dataset: ml-1m
+  split: configs/task_ml1m.yaml
+  eval_mode: fixed top-k evaluation
+  primary_metric: ndcg@10
+  immutable:
+    - dataset split definition
+    - evaluation protocol
+    - baseline task config
+    - RecBole core source files
+
+search_stages:
+  algorithm_discovery:
+    description: Prefer new or composed local RS mechanisms over single-axis tuning.
+    priority_families:
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+    preferred_actions:
+      - pairwise_loss
+      - negative_sampling
+      - local_loss
+      - graph_augmentation
+      - layer_interaction
+      - auxiliary_loss
+      - rank_aware_loss
+      - loss_function
+      - objective_function
+    proposal_mix:
+      algorithmic_code_required: 0.60
+      runnable_algorithm_variant: 0.30
+      parameter_sanity_tuning: 0.10
+  exploit:
+    description: Exploit only after an algorithm family has shown credible NDCG signal.
+    priority_families:
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+      - cand_lightgcn_residual_layer_mix
+      - cand_lightgcn_layer_weighted_agg
+    preferred_actions:
+      - pairwise_loss
+      - graph_augmentation
+      - regularization
+      - local_loss
+  repair:
+    description: Revisit high-potential or historical strong families as mechanism repairs or ablations.
+    max_repair_depth: 1
+    preferred_actions:
+      - pairwise_loss
+      - local_loss
+      - regularization
+      - layer_interaction
+  explore:
+    description: Introduce code_required families when the frontier stagnates or remains below tuned LightGCN.
+    max_code_required_per_window: 3
+    window_rounds: 5
+    preferred_actions:
+      - local_loss
+      - negative_sampling
+      - pairwise_loss
+      - graph_augmentation
+      - layer_interaction
+      - auxiliary_loss
+      - rank_aware_loss
+      - loss_function
+      - objective_function
+  architecture_discovery:
+    description: >
+      When the global best has stagnated for a full plateau window, or when the
+      running best is still below the architecture_ceiling, the agent is allowed
+      to propose up to K genuinely new model architectures (base_model: Custom)
+      that do not inherit from BPR or LightGCN. These proposals require
+      architecture_required runnable level and must implement the RecBole runner
+      contract (calculate_loss, full_sort_predict).
+    trigger:
+      plateau_rounds: 10
+      metric_ceiling: 0.290
+      below_tuned_lightgcn_after_rounds: 20
+    budget:
+      max_architecture_proposals_per_window: 2
+      max_concurrent_architectures: 1
+      architecture_warmup_rounds: 5
+    preferred_actions:
+      - custom_encoder
+      - propagation_mechanism
+      - interaction_function
+      - graph_rewire
+      - sequence_aggregator
+      - multi_modal_fusion
+    exit_condition:
+      min_improvement_over_baseline: 0.005
+      description: "Exit architecture_discovery as soon as one new architecture beats tuned LightGCN + margin, then switch to exploit_architecture."
+  exploit_architecture:
+    description: Deeply tune and compose on top of a validated new architecture family.
+    preferred_actions:
+      - parameter_tuning
+      - local_loss
+      - regularization
+      - auxiliary_loss
+      - layer_interaction
+      - loss_function
+      - objective_function
+    proposal_mix:
+      parameter_sanity_tuning: 0.40
+      algorithmic_variant: 0.40
+      architecture_ablation: 0.20
+
+composition_rules:
+  max_mechanisms_per_proposal: 4
+  discourage_combinations:
+    - [debias, pareto]
+    - [pareto, contrastive]
+    - [debias, pareto, contrastive]
+  require_declared_search_space: true
+  prefer_single_axis_tuning: false
+  parameter_tuning_only_after_algorithm_signal: true
+  require_ablation_parent_for_algorithmic_variant: true
+  require_ablation_parent_for_architecture: false
+
+algorithm_first:
+  enabled: true
+  tuned_lightgcn_mean: 0.274367
+  old_first50_best: 0.2765
+  below_tuned_lightgcn_after_rounds: 20
+  default_planner_action: propose_algorithm
+  fallback_planner_action: propose_algorithm
+  proposal_mode: algorithm_first
+  algorithm_budget_per_window: 3
+  window_rounds: 5
+  max_pending_implemented: 4
+  anchor_families:
+    - cand_bpr_hard_negative_margin
+    - cand_lightgcn_shallow_layers
+    - cand_lightgcn_residual_norm_constrained
+    - cand_lightgcn_edge_dropout_residual_norm
+  revisit_floor_ndcg: 0.274
+  parameter_tuning_cap_fraction: 0.10
+  required_algorithmic_formal_fraction: 0.60
+  anti_plateau:
+    enabled: true
+    window_metric_rows: 30
+    min_global_improvement: 0.0005
+    family_overuse_window: 20
+    max_same_family_trials: 8
+    weak_family_ceiling: 0.280
+    forced_exploration_families:
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+    forced_algorithm_tasks:
+      - revisit residual-norm constrained LightGCN with architectural ablations rather than shallow/gate-only repairs.
+      - compose edge-drop residual-norm propagation with one objective-side signal, then ablate each mechanism.
+      - return to hard-negative margin BPR only for mechanism-level sampling/loss changes, not broad parameter sweeps.
+      - propose at least one genuinely new local architecture connection when the running best has not improved for a full plateau window.
+
+architecture_first:
+  enabled: true
+  description: >
+    When anti-plateau triggers or the global best stays below the ceiling for
+    too long, the planner may switch to propose_architecture. This is gated by
+    architecture_gates and protected by a strict failure budget.
+  trigger:
+    - anti_plateau.plateau_detected
+    - rounds_without_global_best_improvement >= 15
+    - best_metric < architecture_ceiling
+  architecture_ceiling: 0.290
+  default_planner_action: propose_architecture
+  fallback_planner_action: propose_algorithm
+  proposal_mode: architecture_first
+  max_architecture_proposals_per_window: 2
+  max_concurrent_architectures: 1
+  architecture_warmup_rounds: 5
+  anchor_architectures:
+    - graph_attention
+    - sequential_encoder
+    - transformer
+    - hybrid_fusion
+  forced_architecture_tasks:
+    - propose a lightweight graph-attention recommender that keeps the full-sort protocol.
+    - explore a sequential encoder (e.g., Transformer-based like SASRec or BERT4Rec) for session-aware ranking.
+    - design a hybrid fusion architecture that combines graph propagation with a learned interaction function.
+    - when proposing architecture, prefer one structural innovation at a time (e.g., new propagation OR new encoder, not both) to keep ablation interpretable.
+    - for transformer variants, follow the canonical structure: item_embedding → positional_encoding → multi_head_self_attention → layer_norm → point_wise_feed_forward → ranking_head.
+    - do not assume BPR or LightGCN inheritance for transformer architectures; implement calculate_loss and full_sort_predict from scratch.
+
+architecture_gates:
+  smoke_dataset: ml-1m
+  smoke_epochs: 3
+  smoke_min_ndcg: 0.05
+  max_new_params_per_architecture: 8
+  max_layers_for_new_gnn: 5
+  require_runner_contract: true
+  required_methods:
+    - calculate_loss
+    - full_sort_predict
+  human_review_default: false
+
+family_budget:
+  consecutive_failures_before_downweight: 3
+  crashes_before_freeze: 2
+  collapse_rate_before_freeze: 0.50
+  severe_collapse_rate_before_freeze: 0.25
+  no_gain_after_budget: 8
+  max_active_families_per_stage: 6
+  max_code_required_per_window: 3
+  window_rounds: 5
+  protect_anchor_families_from_discard_freeze: true
+
+validation_gates:
+  keep_requires_multiseed: true
+  minimum_validation_seeds: 3
+  strong_claim_requires:
+    - tuned_baseline_comparison
+    - random_baseline_comparison
+    - no_history_or_weak_memory_ablation
+
+freeze_rules:
+  freeze_if:
+    - repeated_crash
+    - severe_collapse_rate
+    - repeated_duplicate_signature
+    - protocol_or_schema_risk
+    - architecture_smoke_failure_streak >= 2
+  thaw_only_for:
+    - minimal_repair
+    - targeted_ablation
+    - anchor_family_revisit
+    - architecture_variant_with_addressed_failure

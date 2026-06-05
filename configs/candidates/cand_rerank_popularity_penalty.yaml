@@ -1,0 +1,4 @@
+candidate_id: cand_rerank_popularity_penalty
+base_model: BPR / LightGCN
+posthoc: popularity_penalty
+lambda_pop: 0.01

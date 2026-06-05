@@ -1,0 +1,3 @@
+candidate_id: cand_lightgcn_aux_alignment_loss
+model: LightGCNAuxAlignment
+lambda_align: 1e-3

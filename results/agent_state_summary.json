@@ -1,0 +1,59 @@
+{
+  "algorithm_first_targets": {
+    "algorithm_budget_per_window": 3,
+    "algorithm_first_explore_rounds": 20,
+    "anchor_families": [
+      "cand_bpr_hard_negative_margin",
+      "cand_lightgcn_shallow_layers",
+      "cand_lightgcn_residual_norm_constrained",
+      "cand_lightgcn_edge_dropout_residual_norm"
+    ],
+    "enabled": false,
+    "guidance": "If best_metric_so_far is below tuned_lightgcn_mean, prioritize propose_algorithm, implement_algorithm, and run_algorithm_variant over parameter-only tuning. Planner-triggered seed validation is reserved for keeps meeting seed_validation_min_metric. If anti_plateau.plateau_detected is true, cap local repairs on anti_plateau.local_repair_capped_families and force cross-family algorithm exploration around anti_plateau.forced_exploration_families. If post_validation_followup.needs_structured_followup is true, stop adding nearby code siblings for the validated best and switch to one-axis ablation, stability replication, or parameter-region refinement.",
+    "old_recclaw_first50_best": 0.2765,
+    "seed_validation_min_metric": 0.0,
+    "tuned_lightgcn_mean": 0.274367
+  },
+  "anchor_family_stats": [],
+  "anti_plateau": {
+    "enabled": true,
+    "forced_exploration_families": [
+      "cand_bpr_hard_negative_margin",
+      "cand_lightgcn_shallow_layers",
+      "cand_lightgcn_residual_norm_constrained",
+      "cand_lightgcn_edge_dropout_residual_norm"
+    ],
+    "local_repair_capped_families": [],
+    "metric_rows": 0,
+    "plateau_detected": false,
+    "window_metric_rows": 30
+  },
+  "bad_families": [],
+  "best_by_model": {},
+  "best_metric_so_far": null,
+  "decision_counts": {},
+  "experiment_directive": {
+    "enabled": false
+  },
+  "family_stats": [],
+  "focused_exploitation": {},
+  "generated_at": "2026-06-04T23:36:40",
+  "metric": "ndcg@10",
+  "pending_implemented_candidates": [],
+  "planner_gates": {
+    "max_pending_implemented": 3,
+    "pending_implemented_count": 0,
+    "quarantined_count": 0,
+    "unverified_keep_count": 0
+  },
+  "post_validation_followup": {
+    "enabled": false
+  },
+  "quarantined_candidates": [],
+  "recent_duplicate_rejections": [],
+  "recent_forbidden_parameter_signatures": [],
+  "search_intensity": "balanced",
+  "top_frontier": [],
+  "trial_count": 0,
+  "validated_best": {}
+}

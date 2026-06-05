@@ -1,0 +1,115 @@
+version: 3
+description: >
+  Policy for building short runtime experience summaries from current
+  results/ memory. This file is agent-runtime configuration, not LabLog
+  evidence.
+
+  v3 keeps NDCG@10 as the primary metric while separating genuinely dead
+  families from underperforming but historically or structurally promising
+  algorithm families. Reflection should steer algorithm discovery, not collapse
+  the loop into repeated parameter tuning.
+
+metric: ndcg@10
+minimum_successful_runs: 3
+minimum_family_runs_for_policy: 2
+baseline_reference:
+  BPR: 0.2567
+  LightGCN: 0.2671
+
+thresholds:
+  strong_lift: 0.01
+  weak_lift: 0.003
+  collapse_ndcg: 0.2171
+  high_collapse_rate: 0.25
+
+decision_guards:
+  primary_metric_hard_guard: true
+  secondary_metrics_tie_break_only: true
+  do_not_encourage_below_baseline: true
+  protect_high_potential_from_discard_freeze: true
+
+algorithm_first:
+  tuned_lightgcn_mean: 0.274367
+  historical_anchor_floor: 0.274
+  old_first50_best: 0.2765
+  high_potential_policy_bucket: revisit
+  revisit_not_avoid: true
+  anchor_families:
+    cand_bpr_hard_negative_margin:
+      historical_best: 0.2769
+      mechanism: hard_negative + margin pairwise loss
+    cand_lightgcn_shallow_layers:
+      historical_best: 0.275
+      mechanism: shallow graph propagation
+    cand_lightgcn_residual_norm_constrained:
+      historical_best: 0.2856
+      mechanism: residual propagation + norm control
+    cand_lightgcn_edge_dropout_residual_norm:
+      historical_best: 0.273
+      mechanism: edge dropout + residual propagation + norm control
+  algorithm_tasks:
+    - compose hard-negative sampling, pairwise margin, and tail/popularity reweighting in BPR.
+    - revisit shallow LightGCN and residual-norm LightGCN with mechanism ablations rather than broad tuning.
+    - combine LightGCN propagation changes with one objective-side signal such as alignment or rank-aware weighting.
+    - quarantine weak implementations quickly and return budget to anchor families.
+  plateau_policy:
+    enabled: true
+    window_metric_rows: 30
+    min_global_improvement: 0.0005
+    family_overuse_window: 20
+    max_same_family_trials: 8
+    weak_family_ceiling: 0.280
+    forced_exploration_families:
+      - cand_lightgcn_residual_norm_constrained
+      - cand_lightgcn_edge_dropout_residual_norm
+      - cand_bpr_hard_negative_margin
+      - cand_lightgcn_shallow_layers
+    forced_algorithm_tasks:
+      - force cross-family residual-norm / edge-drop residual-norm exploration after a stale global best.
+      - cap repeated local shallow/gate/rank-aware repair when it stops improving the running best.
+      - require architecture-level or loss/sampling-level novelty before spending more budget in a plateau family.
+
+domain_priors:
+  LightGCN:
+    optimal_layers_range: [2, 3]
+    over_smoothing_threshold: 4
+    known_failure_modes:
+      - n_layers above the declared action space often over-smooths.
+      - edge_dropout above the declared action space can destroy useful multi-hop signal.
+      - residual mechanisms require multi-hop propagation to be meaningful.
+  BPR:
+    margin_sensitivity: high
+    hard_negative_risk: unstable_training
+    known_failure_modes:
+      - high margin values can destabilize pairwise ranking.
+      - high hard_negative_ratio can increase training variance.
+      - graph propagation parameters such as n_layers do not apply to BPR.
+  general:
+    coverage_note: Coverage or diversity gains are useful only when NDCG is near baseline or improving.
+    batch_note: Do not mix train_batch_size changes into formal comparison results.
+
+convergence_trend:
+  enable: true
+  min_runs_for_trend: 3
+  improving_slope_threshold: 0.001
+  degrading_slope_threshold: -0.001
+  high_variance_cv_threshold: 0.10
+  trend_influence_on_bucket: false
+
+summary_limits:
+  encourage: 5
+  caution: 5
+  avoid: 5
+
+output_contract:
+  required_sections:
+    - Encourage
+    - Caution
+    - Revisit
+    - Avoid
+    - Domain Prior Notes
+    - Trend Notes
+    - Plateau / Anti-Locality
+    - Next Proposal Policy
+  max_lines: 80
+  include_raw_tables: false
