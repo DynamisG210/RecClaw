@@ -58,6 +58,7 @@ MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
 STATE_SUMMARY_PATH = PROJECT_ROOT / "results" / "agent_state_summary.json"
 NOTES_DIR = PROJECT_ROOT / "notes"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
+PROPOSAL_HISTORY_PATH = PROJECT_ROOT / "results" / "candidate_proposal_history.jsonl"
 PROPOSAL_SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
 ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
 CANDIDATE_TREE_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.json"
@@ -383,6 +384,7 @@ class AgentConfig:
     loop_mode: str = "mixed"
     enable_candidate_proposals: bool = True
     proposal_path: Path = PROPOSAL_PATH
+    proposal_history_path: Path = PROPOSAL_HISTORY_PATH
     proposal_mode: str = "mixed"
     proposal_mode_locked: bool = False
     proposal_count: int = 5
@@ -396,6 +398,10 @@ class AgentConfig:
     max_implement_per_round: int = 1
     implementation_smoke_run: bool = True
     max_failed_implementation_attempts: int = 2
+    enable_smoke_quality_gate: bool = True
+    architecture_smoke_min_best_score: float = 0.16
+    objective_smoke_min_best_score: float = 0.16
+    smoke_quality_min_unique_scores: int = 2
     search_intensity: str = "balanced"
     algorithm_budget_per_window: int = 3
     algorithm_first_explore_rounds: int = 20
@@ -414,6 +420,17 @@ class AgentConfig:
             "cand_lightgcn_shallow_layers",
             "cand_lightgcn_residual_norm_constrained",
             "cand_lightgcn_edge_dropout_residual_norm",
+        ]
+    )
+    architecture_anchor_families: list[str] = field(
+        default_factory=lambda: [
+            "architecture::graph_attention",
+            "architecture::bipartite_rewire",
+            "architecture::low_rank_router_head",
+            "architecture::clean_residual_propagation",
+            "architecture::contrastive_rank_objective",
+            "architecture::hybrid_graph_interaction",
+            "architecture::transformer_style_interaction",
         ]
     )
     tuned_lightgcn_mean: float = 0.274367
@@ -545,6 +562,7 @@ class RecClawAgent:
         self.best_by_model: dict[str, dict[str, Any]] = {}
         self.results_rows: list[dict[str, Any]] = []
         self.candidate_proposals: list[dict[str, Any]] = []
+        self.proposal_history: list[dict[str, Any]] = []
         self.proposal_validation_report: dict[str, Any] = {}
         self.scheduled_candidate_ids: set[str] = set()
         self.scheduled_param_signatures: set[str] = set()
@@ -568,9 +586,18 @@ class RecClawAgent:
         self.history_by_candidate = {}
         self.best_by_model = {}
         self.results_rows = []
+        self.proposal_history = []
         self.scheduled_param_signatures = set()
         self.scheduled_execution_signatures = set()
         self.recorded_proposal_events = set()
+        for path in (
+            self.config.proposal_path,
+            self.config.proposal_history_path,
+            self.config.memory_path,
+            self.config.results_csv,
+            self.config.registry_path,
+        ):
+            reject_runtime_lablog_path(path)
         payload = load_yaml(self.config.registry_path)
         self.registry = payload.get("candidates", [])
         if not isinstance(self.registry, list):
@@ -598,6 +625,8 @@ class RecClawAgent:
                     f"[Observe] skipped_invalid_memory_lines={skipped_memory_lines}",
                     file=sys.stderr,
                 )
+
+        self.proposal_history = self._load_jsonl_path(self.config.proposal_history_path)
 
         if self.config.results_csv.exists():
             with self.config.results_csv.open("r", encoding="utf-8", newline="") as handle:
@@ -1199,6 +1228,23 @@ class RecClawAgent:
     @staticmethod
     def _coarse_family_key(family: str) -> str:
         family = str(family or "")
+        if family.startswith("architecture::"):
+            identity = family.split("::", 1)[1].lower()
+            if "transformer" in identity or "attention_ffn" in identity or "ffn" in identity:
+                return "architecture::transformer_style_interaction"
+            if "graph" in identity and "attention" in identity:
+                return "architecture::graph_attention"
+            if "rewire" in identity or "shortcut" in identity or "bipartite" in identity:
+                return "architecture::bipartite_rewire"
+            if "router" in identity or "low_rank" in identity or "interaction_head" in identity or "scoring" in identity:
+                return "architecture::low_rank_router_head"
+            if "contrast" in identity or "rank" in identity or "objective" in identity or "loss" in identity:
+                return "architecture::contrastive_rank_objective"
+            if "hybrid" in identity:
+                return "architecture::hybrid_graph_interaction"
+            if "residual" in identity or "norm" in identity or "propagation" in identity or "restart" in identity:
+                return "architecture::clean_residual_propagation"
+            return family
         known_prefixes = (
             "cand_lightgcn_shallow_alignment_rankaware_gate",
             "cand_lightgcn_shallow_rankaware_lastlayeralign",
@@ -1212,6 +1258,14 @@ class RecClawAgent:
                 return prefix
         parts = family.split("_")
         return "_".join(parts[:4]) if len(parts) >= 4 else family
+
+    def _architecture_search_active(self) -> bool:
+        return self.config.proposal_mode in {"architecture_first", "architecture_ablation"}
+
+    def _active_anchor_families(self) -> list[str]:
+        if self._architecture_search_active():
+            return list(self.config.architecture_anchor_families)
+        return list(self.config.anchor_families)
 
     def _metric_trial_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -1238,7 +1292,8 @@ class RecClawAgent:
         window = max(1, self.config.plateau_window_metric_rows)
         overuse_window = max(1, self.config.plateau_family_overuse_window)
         min_improvement = max(0.0, self.config.plateau_min_global_improvement)
-        default_forced = list(self.config.anchor_families)
+        active_anchors = self._active_anchor_families()
+        default_forced = list(active_anchors)
         if not self.config.anti_plateau_enabled or len(rows) <= window:
             return {
                 "enabled": bool(self.config.anti_plateau_enabled),
@@ -1272,7 +1327,7 @@ class RecClawAgent:
             overused = count >= self.config.max_same_family_repair_streak
             weak_recent_frontier = recent_best <= self.config.plateau_weak_family_ceiling
             stale_global_best = rows_since_best >= window
-            is_anchor = any(self._family_matches(family, anchor) for anchor in self.config.anchor_families)
+            is_anchor = any(self._family_matches(family, anchor) for anchor in active_anchors)
             if overused and stale_global_best and (weak_recent_frontier or not is_anchor):
                 capped_families.append(family)
 
@@ -1284,13 +1339,13 @@ class RecClawAgent:
             stale_best_family = self._coarse_family_key(str(best_row.get("family") or ""))
             stale_best_is_anchor = any(
                 self._family_matches(stale_best_family, anchor)
-                for anchor in self.config.anchor_families
+                for anchor in active_anchors
             )
             if stale_best_family and not stale_best_is_anchor and stale_best_family not in capped_families:
                 capped_families.append(stale_best_family)
         forced = [
             family
-            for family in self.config.anchor_families
+            for family in active_anchors
             if not any(self._family_matches(family, capped) for capped in capped_families)
         ] or default_forced
         return {
@@ -1310,8 +1365,7 @@ class RecClawAgent:
             "forced_exploration_families": forced,
             "instruction": (
                 "Plateau detected: cap local repairs on overused families and force cross-family "
-                "algorithm proposals around residual-norm, edge-drop residual-norm, hard-negative margin, "
-                "or other architecture-level mechanisms."
+                "proposals around architecture-native mechanisms instead of repeating nearby local repairs."
             )
             if plateau_detected
             else "",
@@ -1323,7 +1377,7 @@ class RecClawAgent:
         if str(candidate.get("candidate_id") or "") in self._pending_implemented_candidate_ids():
             return 0.0
         adjustment = 0.0
-        family = str(candidate.get("parent_candidate_id") or candidate.get("candidate_id") or "")
+        family = self._candidate_family(candidate)
         plateau = self._plateau_state()
         if plateau.get("plateau_detected"):
             capped = [str(item) for item in plateau.get("local_repair_capped_families", [])]
@@ -1341,7 +1395,7 @@ class RecClawAgent:
         return adjustment
 
     def _plateau_allows_family(self, family: str) -> bool:
-        if self.config.search_intensity != "algorithm_first":
+        if self.config.search_intensity != "algorithm_first" and not self._architecture_search_active():
             return True
         plateau = self._plateau_state()
         if not plateau.get("plateau_detected"):
@@ -1585,10 +1639,14 @@ class RecClawAgent:
         return {}
 
     def _load_candidate_proposals(self) -> list[dict[str, Any]]:
-        if not self.config.proposal_path.exists():
+        return self._load_jsonl_path(self.config.proposal_path)
+
+    @staticmethod
+    def _load_jsonl_path(path: Path) -> list[dict[str, Any]]:
+        if not path.exists():
             return []
-        proposals: list[dict[str, Any]] = []
-        for line in self.config.proposal_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        rows: list[dict[str, Any]] = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
                 continue
@@ -1597,8 +1655,49 @@ class RecClawAgent:
             except json.JSONDecodeError:
                 continue
             if isinstance(parsed, dict):
-                proposals.append(parsed)
-        return proposals
+                rows.append(parsed)
+        return rows
+
+    def append_proposal_history(self, payload: dict[str, Any]) -> None:
+        reject_runtime_lablog_path(self.config.proposal_history_path)
+        event = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            **payload,
+        }
+        self.config.proposal_history_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.config.proposal_history_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True) + "\n")
+        self.proposal_history.append(event)
+
+    def _proposal_by_id(self) -> dict[str, dict[str, Any]]:
+        return {
+            str(item.get("candidate_id") or ""): item
+            for item in self.candidate_proposals
+            if isinstance(item, dict) and item.get("candidate_id")
+        }
+
+    def record_generated_proposals_history(self, round_id: int, generated: dict[str, Any]) -> None:
+        proposals = self._load_candidate_proposals()
+        source = str(generated.get("proposal_source") or self.current_proposal_source or self.config.proposal_source)
+        mode = str(generated.get("mode") or self.config.proposal_mode)
+        for proposal in proposals:
+            proposal_id = str(proposal.get("candidate_id") or "")
+            self.append_proposal_history(
+                {
+                    "event": "proposal_generated",
+                    "round_id": round_id,
+                    "proposal_source": source,
+                    "proposal_mode": mode,
+                    "candidate_id": proposal_id,
+                    "proposal_type": proposal.get("proposal_type", ""),
+                    "action_type": proposal.get("action_type", ""),
+                    "runnable_level": proposal.get("runnable_level", ""),
+                    "base_architecture": proposal.get("base_architecture", ""),
+                    "mechanism": proposal.get("mechanism", ""),
+                    "proposal": proposal,
+                    "active_queue_path": str(self.config.proposal_path),
+                }
+            )
 
     def _notes_excerpt(self, names: tuple[str, ...], limit: int = 12000) -> dict[str, str]:
         excerpts: dict[str, str] = {}
@@ -1931,7 +2030,9 @@ class RecClawAgent:
             if pending_architecture:
                 return "implement_architecture"
             return "implement_algorithm" if self.config.search_intensity == "algorithm_first" else "implement_needs_review"
-        if self.config.search_intensity == "algorithm_first" and self._plateau_state().get("plateau_detected"):
+        if (self.config.search_intensity == "algorithm_first" or self._architecture_search_active()) and self._plateau_state().get("plateau_detected"):
+            if self._architecture_search_active():
+                return "propose_architecture"
             recent = self._recent_planner_actions(limit=4)
             if recent.count("propose_objective") >= 2 or recent[-2:] == ["propose_objective", "propose_objective"]:
                 return "propose_architecture"
@@ -1998,7 +2099,7 @@ class RecClawAgent:
             if any("already run" in str(error) for error in (row.get("errors") or []))
         ]
         family_stats = self._family_stats_summary()
-        anchor_family_set = set(self.config.anchor_families)
+        anchor_family_set = set(self._active_anchor_families())
         anchor_family_stats = [
             item for item in family_stats if str(item.get("family") or "") in anchor_family_set
         ]
@@ -2065,6 +2166,7 @@ class RecClawAgent:
                 "tuned_lightgcn_mean": self.config.tuned_lightgcn_mean,
                 "old_recclaw_first50_best": 0.2765,
                 "anchor_families": list(self.config.anchor_families),
+                "architecture_anchor_families": list(self.config.architecture_anchor_families),
                 "algorithm_budget_per_window": self.config.algorithm_budget_per_window,
                 "algorithm_first_explore_rounds": self.config.algorithm_first_explore_rounds,
                 "seed_validation_min_metric": self.config.seed_validation_min_metric,
@@ -2145,6 +2247,7 @@ class RecClawAgent:
         runtime_paths = (
             self.config.registry_path,
             self.config.proposal_path,
+            self.config.proposal_history_path,
             self.config.memory_path,
             self.config.results_csv,
             self.config.candidate_tree_path,
@@ -2235,6 +2338,7 @@ class RecClawAgent:
         self._write_agent_state_summary(self.agent_state_summary)
         tail_limit = max(0, min(self.config.memory_read_limit or len(self.memory), self.config.prompt_memory_tail))
         memory = self.memory[-tail_limit:] if tail_limit > 0 else []
+        proposal_history_tail = self.proposal_history[-80:]
         results_tail = self.results_rows[-50:]
         pending_implemented = sorted(self._pending_implemented_candidate_ids())
         return {
@@ -2245,6 +2349,7 @@ class RecClawAgent:
             "search_intensity": self.config.search_intensity,
             "algorithm_budget_per_window": self.config.algorithm_budget_per_window,
             "anchor_families": list(self.config.anchor_families),
+            "architecture_anchor_families": list(self.config.architecture_anchor_families),
             "tuned_lightgcn_mean": self.config.tuned_lightgcn_mean,
             "steering_priority": [
                 "hard_constraints and schema validity",
@@ -2279,10 +2384,16 @@ class RecClawAgent:
                     "If local tuning or same-family repair is saturated, propose loss/objective first, "
                     "then graph/interaction architecture; if architecture passes smoke, propose ablation/exploit."
                 ),
+                "proposal_quality_requirements": [
+                    "For architecture proposals, state structural_novelty and how it differs from recent failure signatures.",
+                    "Mark repair=true only for an explicit implementation bug repair; low-scoring siblings should not be repaired by default.",
+                    "Use architecture-native family identity such as graph-attention propagation, bipartite rewiring, low-rank/router head, clean residual propagation, contrastive/rank objective head, or transformer-style interaction block.",
+                ],
             },
             "registry": self.registry,
             "agent_state_summary": self.agent_state_summary,
             "recent_agent_memory": memory,
+            "proposal_history_tail": proposal_history_tail,
             "recent_results": results_tail,
             "notes": self._notes_excerpt(
                 (
@@ -2304,6 +2415,8 @@ class RecClawAgent:
                 "Every proposal must stay inside action_space; use action_space.method_space_projection as the compact method-space guide.",
                 "Do not propose exact parameter signatures listed in agent_state_summary.recent_forbidden_parameter_signatures.",
                 "If agent_state_summary.anti_plateau.plateau_detected is true, do not spend the next proposal set on minor variants of agent_state_summary.anti_plateau.local_repair_capped_families; include cross-family algorithmic proposals from agent_state_summary.anti_plateau.forced_exploration_families.",
+                "For architecture_first mode, forced families are architecture-native mechanisms, not LightGCN/BPR parent identities.",
+                "Every architecture proposal must explain structural novelty, recent-failure difference, and whether it is a genuine new mechanism or a repair.",
                 "If agent_state_summary.post_validation_followup.needs_structured_followup is true, do not propose more nearby code_required siblings for that validated best; propose a one-axis ablation, seed-stability replication, or parameter-region refinement using the validated parent/family.",
                 "If agent_state_summary.focused_exploitation is non-empty, include focused local variants around it unless the planner explicitly asks only for reporting.",
                 "Do not propose or run candidates listed in agent_state_summary.quarantined_candidates unless explicitly proposing a repair.",
@@ -2630,7 +2743,8 @@ class RecClawAgent:
                 continue
             if row.get("next_action") == "promote_to_implementation_queue":
                 parent_id = str(row.get("parent_candidate_id") or "")
-                if not self._plateau_allows_family(parent_id or proposal_id):
+                proposal = self._proposal_by_id().get(proposal_id, {"candidate_id": proposal_id, "parent_candidate_id": parent_id})
+                if not self._plateau_allows_family(self._candidate_family(proposal)):
                     continue
                 return True
         return False
@@ -2681,7 +2795,7 @@ class RecClawAgent:
             ).strip()
             return updated, "post_validation_structured_followup"
         plateau = self._plateau_state()
-        if self.config.search_intensity == "algorithm_first" and plateau.get("plateau_detected"):
+        if (self.config.search_intensity == "algorithm_first" or self._architecture_search_active()) and plateau.get("plateau_detected"):
             local_actions = {
                 "propose_tuning",
                 "propose_mixed",
@@ -3156,6 +3270,7 @@ class RecClawAgent:
                 f"source={generated.get('proposal_source', self.config.proposal_source)}"
             )
             self.current_proposal_source = str(generated.get("proposal_source") or self.config.proposal_source)
+            self.record_generated_proposals_history(round_id, generated)
             self.remember_event(
                 {
                     "event": "proposal_generated",
@@ -3282,12 +3397,31 @@ class RecClawAgent:
                 continue
             proposal_id = str(row.get("candidate_id") or "")
             status = str(row.get("status") or "")
+            proposal = by_id.get(proposal_id, {})
+            if proposal_id:
+                self.append_proposal_history(
+                    {
+                        "event": "proposal_validated",
+                        "round_id": round_id,
+                        "candidate_id": proposal_id,
+                        "status": status,
+                        "parent_candidate_id": proposal.get("parent_candidate_id", ""),
+                        "proposal_type": proposal.get("proposal_type", ""),
+                        "action_type": proposal.get("action_type", ""),
+                        "runnable_level": proposal.get("runnable_level", ""),
+                        "base_architecture": proposal.get("base_architecture", ""),
+                        "mechanism": proposal.get("mechanism", ""),
+                        "parameter_signature": row.get("parameter_signature", ""),
+                        "errors": row.get("errors", []),
+                        "review_reasons": row.get("review_reasons", []),
+                        "next_action": row.get("next_action", ""),
+                    }
+                )
             event_key = f"{proposal_id}:{status}"
             if not proposal_id or event_key in self.recorded_proposal_events:
                 continue
             if status not in {"rejected", "needs_review"}:
                 continue
-            proposal = by_id.get(proposal_id, {})
             self.recorded_proposal_events.add(event_key)
             mechanism = proposal.get("mechanism")
             if not mechanism:
@@ -3315,6 +3449,51 @@ class RecClawAgent:
                     "next_action": row.get("next_action", ""),
                 }
             )
+
+    def _smoke_quality_gate(self, proposal: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+        status = str(report.get("status") or "")
+        if not self.config.enable_smoke_quality_gate or status != "implemented_and_smoke_passed":
+            return {"passed": True, "status": "not_applicable"}
+        runnable_level = str(proposal.get("runnable_level") or "")
+        proposal_type = str(proposal.get("proposal_type") or "")
+        action_type = str(proposal.get("action_type") or "")
+        gated = (
+            runnable_level == "architecture_required"
+            or proposal_type == "architecture"
+            or action_type in {"loss_function", "objective_function"}
+        )
+        if not gated:
+            return {"passed": True, "status": "not_applicable"}
+        threshold = (
+            self.config.architecture_smoke_min_best_score
+            if runnable_level == "architecture_required" or proposal_type == "architecture"
+            else self.config.objective_smoke_min_best_score
+        )
+        smoke = report.get("smoke") if isinstance(report.get("smoke"), dict) else {}
+        valid_scores = []
+        for value in smoke.get("valid_scores") or []:
+            parsed = self._to_float(value)
+            if parsed is not None:
+                valid_scores.append(parsed)
+        best_score = max(valid_scores) if valid_scores else None
+        unique_count = int(smoke.get("valid_score_unique_count") or len({round(item, 8) for item in valid_scores}))
+        metric_stagnation = bool(smoke.get("metric_stagnation"))
+        reasons: list[str] = []
+        if best_score is None:
+            reasons.append("no_valid_scores_in_smoke")
+        elif best_score < threshold:
+            reasons.append(f"best_smoke_{self.config.metric}_below_threshold")
+        if metric_stagnation or (len(valid_scores) >= 3 and unique_count < max(1, self.config.smoke_quality_min_unique_scores)):
+            reasons.append("collapsed_or_stagnant_smoke_curve")
+        return {
+            "passed": not reasons,
+            "status": "passed" if not reasons else "smoke_pass_but_quality_rejected",
+            "metric": self.config.metric,
+            "best_valid_score": None if best_score is None else round(best_score, 8),
+            "threshold": round(float(threshold), 8),
+            "valid_score_unique_count": unique_count,
+            "reasons": reasons,
+        }
 
     def implement_needs_review_proposals(self, round_id: int) -> None:
         implemented_this_round = 0
@@ -3362,13 +3541,15 @@ class RecClawAgent:
                 {},
             )
             parent_id = str(proposal.get("parent_candidate_id") or "")
-            if not self._plateau_allows_family(parent_id or proposal_id):
+            proposal_family = self._candidate_family({**proposal, "candidate_id": proposal_id})
+            if not self._plateau_allows_family(proposal_family):
                 self.remember_event(
                     {
                         "event": "implementation_skipped",
                         "round_id": round_id,
                         "proposal_id": proposal_id,
                         "parent_candidate_id": parent_id,
+                        "family": proposal_family,
                         "runnable_level": runnable_level,
                         "reason": "anti_plateau_capped_family",
                     }
@@ -3437,6 +3618,29 @@ class RecClawAgent:
             review_errors = report.get("review_errors", [])
             if not isinstance(review_errors, list):
                 review_errors = []
+            smoke_quality_gate = self._smoke_quality_gate(proposal, report)
+            memory_status = str(report.get("status") or "implementation_failed")
+            if not smoke_quality_gate.get("passed", True):
+                memory_status = "implemented_smoke_quality_rejected"
+                candidate_id_for_gate = str(report.get("candidate_id") or "")
+                if candidate_id_for_gate:
+                    self.quarantined_candidate_ids.add(candidate_id_for_gate)
+            self.append_proposal_history(
+                {
+                    "event": "proposal_implemented",
+                    "round_id": round_id,
+                    "proposal_id": proposal_id,
+                    "candidate_id": report.get("candidate_id", ""),
+                    "status": memory_status,
+                    "raw_status": report.get("status", "implementation_failed"),
+                    "smoke_quality_gate": smoke_quality_gate,
+                    "reason": report.get("reason", ""),
+                    "entrypoint": report.get("entrypoint", ""),
+                    "source": report.get("source", ""),
+                    "smoke": report.get("smoke", {}),
+                    "review_errors": review_errors[-5:],
+                }
+            )
             self.remember_event(
                 {
                     "event": "implementation_result",
@@ -3446,19 +3650,21 @@ class RecClawAgent:
                     "action_type": proposal.get("action_type", ""),
                     "base_architecture": proposal.get("base_architecture", ""),
                     "runnable_level": runnable_level,
-                    "status": report.get("status", "implementation_failed"),
+                    "status": memory_status,
+                    "raw_status": report.get("status", "implementation_failed"),
                     "candidate_id": report.get("candidate_id", ""),
                     "reason": report.get("reason", ""),
                     "entrypoint": report.get("entrypoint", ""),
                     "source": report.get("source", ""),
                     "files": report.get("files", []),
                     "smoke": report.get("smoke", {}),
+                    "smoke_quality_gate": smoke_quality_gate,
                     "review_errors": review_errors[-5:],
                 }
             )
             print(f"[Round {round_id}] implementation_result={json.dumps(report, ensure_ascii=True, sort_keys=True)}")
             implemented_this_round += 1
-            if str(report.get("status") or "") in IMPLEMENTATION_RUNNABLE_STATUSES:
+            if memory_status in IMPLEMENTATION_RUNNABLE_STATUSES:
                 self._reload_registry()
 
     # ===== Evaluate =====
@@ -3743,6 +3949,24 @@ class RecClawAgent:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
         self.memory.append(payload)
         self.history_by_candidate.setdefault(record.candidate_id, []).append(payload)
+        if record.proposal_id:
+            self.append_proposal_history(
+                {
+                    "event": "proposal_formal_result",
+                    "round_id": record.round_id,
+                    "proposal_id": record.proposal_id,
+                    "candidate_id": record.candidate_id,
+                    "run_id": record.run_id,
+                    "status": record.status,
+                    "decision": record.decision,
+                    "reason": record.reason,
+                    "metric": self.config.metric,
+                    "metric_value": self._to_float(record.result.get(self.config.metric)),
+                    "compare_baseline": record.compare_baseline,
+                    "compare_history_best": record.compare_history_best,
+                    "seed_validation": record.seed_validation,
+                }
+            )
         self.agent_state_summary = self._build_agent_state_summary()
         self._write_agent_state_summary(self.agent_state_summary)
 
@@ -4001,6 +4225,11 @@ def main() -> int:
     )
     parser.add_argument("--proposal-path", default=str(PROPOSAL_PATH), help="Candidate proposal JSONL path")
     parser.add_argument(
+        "--proposal-history-path",
+        default=os.environ.get("RECCLAW_PROPOSAL_HISTORY_PATH", str(PROPOSAL_HISTORY_PATH)),
+        help="Append-only candidate proposal history JSONL path used for audit and anti-locality",
+    )
+    parser.add_argument(
         "--proposal-mode",
         choices=(
             "conservative",
@@ -4039,6 +4268,29 @@ def main() -> int:
         type=int,
         default=1,
         help="Maximum code_required proposals to auto-implement in one round",
+    )
+    parser.add_argument(
+        "--disable-smoke-quality-gate",
+        action="store_true",
+        help="Disable architecture/objective smoke quality screening before formal scheduling",
+    )
+    parser.add_argument(
+        "--architecture-smoke-min-best-score",
+        type=float,
+        default=float(os.environ.get("RECCLAW_ARCHITECTURE_SMOKE_MIN_BEST_SCORE", "0.16")),
+        help="Minimum short-smoke best validation score for architecture_required candidates to enter formal budget",
+    )
+    parser.add_argument(
+        "--objective-smoke-min-best-score",
+        type=float,
+        default=float(os.environ.get("RECCLAW_OBJECTIVE_SMOKE_MIN_BEST_SCORE", "0.16")),
+        help="Minimum short-smoke best validation score for loss/objective candidates to enter formal budget",
+    )
+    parser.add_argument(
+        "--smoke-quality-min-unique-scores",
+        type=int,
+        default=int(os.environ.get("RECCLAW_SMOKE_QUALITY_MIN_UNIQUE_SCORES", "2")),
+        help="Minimum distinct validation scores expected in smoke unless the run is too short",
     )
     parser.add_argument(
         "--search-intensity",
@@ -4210,6 +4462,7 @@ def main() -> int:
         recent_schedule_penalty=max(0.0, args.recent_schedule_penalty),
         enable_candidate_proposals=enable_candidate_proposals,
         proposal_path=Path(args.proposal_path),
+        proposal_history_path=Path(args.proposal_history_path),
         proposal_mode=selected_proposal_mode,
         proposal_mode_locked=args.proposal_mode is not None,
         proposal_count=max(1, args.proposal_count),
@@ -4221,6 +4474,10 @@ def main() -> int:
         max_pending_implemented=max(1, args.max_pending_implemented),
         max_implement_per_round=max(0, args.max_implement_per_round),
         implementation_smoke_run=not bool(args.disable_implementation_smoke),
+        enable_smoke_quality_gate=not bool(args.disable_smoke_quality_gate),
+        architecture_smoke_min_best_score=max(0.0, args.architecture_smoke_min_best_score),
+        objective_smoke_min_best_score=max(0.0, args.objective_smoke_min_best_score),
+        smoke_quality_min_unique_scores=max(1, args.smoke_quality_min_unique_scores),
         search_intensity=str(args.search_intensity),
         algorithm_budget_per_window=max(0, args.algorithm_budget_per_window),
         algorithm_first_explore_rounds=max(0, args.algorithm_first_explore_rounds),

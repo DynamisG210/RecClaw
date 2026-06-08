@@ -588,6 +588,7 @@ def validate_static_model_code(path: str, content: str) -> None:
             f"generated model passes max_norm/lambda_norm positionally to soft_l2_norm_penalty in {path}; "
             "call soft_l2_norm_penalty(emb1, emb2, max_norm=..., weight=...) so scalar values are not treated as tensors"
         )
+    validate_soft_l2_norm_penalty_calls(path, content)
 
 
 def _ast_name(node: ast.AST) -> str:
@@ -601,6 +602,46 @@ def _ast_name(node: ast.AST) -> str:
     if isinstance(node, ast.Call):
         return _ast_name(node.func)
     return ""
+
+
+def validate_soft_l2_norm_penalty_calls(path: str, content: str) -> None:
+    tree = ast.parse(content, filename=path)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func_name = _ast_name(node.func)
+        if not func_name.endswith("soft_l2_norm_penalty"):
+            continue
+        keyword_names = {kw.arg for kw in node.keywords if kw.arg}
+        unknown_keywords = sorted(name for name in keyword_names if name not in {"max_norm", "weight"})
+        if unknown_keywords:
+            raise ValueError(
+                f"generated model calls soft_l2_norm_penalty with unsupported keywords {unknown_keywords} in {path}; "
+                "only max_norm=... and weight=... are accepted"
+            )
+        missing_keywords = sorted({"max_norm", "weight"} - keyword_names)
+        if missing_keywords:
+            raise ValueError(
+                f"generated model must pass {missing_keywords} by keyword to soft_l2_norm_penalty in {path}; "
+                "avoid relying on helper defaults for generated candidates"
+            )
+        for arg in node.args[1:]:
+            arg_name = _ast_name(arg).lower()
+            if isinstance(arg, (ast.List, ast.Tuple)):
+                raise ValueError(
+                    f"generated model passes a list/tuple positionally to soft_l2_norm_penalty in {path}; "
+                    "expand tensor embeddings and pass scalar knobs by keyword"
+                )
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, (int, float)):
+                raise ValueError(
+                    f"generated model passes a numeric scalar positionally to soft_l2_norm_penalty in {path}; "
+                    "pass max_norm=... and weight=... by keyword"
+                )
+            if any(token in arg_name for token in ("max_norm", "lambda_norm", "norm_weight", "l2_weight")):
+                raise ValueError(
+                    f"generated model passes scalar knob {arg_name or '<expr>'} positionally to soft_l2_norm_penalty in {path}; "
+                    "pass max_norm=... and weight=... by keyword"
+                )
 
 
 def validate_architecture_protocol(files: list[dict[str, str]], entrypoint: str) -> None:
@@ -953,6 +994,9 @@ def compact_smoke_summary(
     text = f"{smoke_run.stdout}\n{smoke_run.stderr}"
     valid_scores = parse_valid_scores(text)
     rounded_unique = {round(value, 8) for value in valid_scores}
+    best_valid_score = max(valid_scores) if valid_scores else None
+    final_valid_score = valid_scores[-1] if valid_scores else None
+    first_valid_score = valid_scores[0] if valid_scores else None
     run_ids = re.findall(r'"run_id"\s*:\s*"([^"]+)"', text)
     log_paths = re.findall(r'"log_path"\s*:\s*"([^"]+)"', text)
     summary: dict[str, Any] = {
@@ -966,6 +1010,12 @@ def compact_smoke_summary(
         "valid_scores": [round(value, 8) for value in valid_scores],
         "valid_score_unique_count": len(rounded_unique),
         "metric_stagnation": len(valid_scores) >= 3 and len(rounded_unique) <= 1,
+        "best_valid_score": None if best_valid_score is None else round(best_valid_score, 8),
+        "final_valid_score": None if final_valid_score is None else round(final_valid_score, 8),
+        "valid_score_delta": None
+        if first_valid_score is None or final_valid_score is None
+        else round(final_valid_score - first_valid_score, 8),
+        "near_collapse": bool(best_valid_score is not None and best_valid_score < 0.16),
     }
     if run_ids:
         summary["run_id"] = run_ids[-1]

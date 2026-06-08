@@ -674,6 +674,23 @@ class AgentLoopTests(unittest.TestCase):
         text = experience.build_markdown({**summary, "experience_policy": policy}, {"minimum_successful_runs": 1}, policy)
         self.assertIn("Prefer families", text)
 
+    def test_insufficient_evidence_summary_does_not_leak_policy_preferences(self) -> None:
+        summary = {
+            "successful_metric_rows": 0,
+            "experience_policy": {
+                "next_proposal_policy": {
+                    "prefer_families": ["cand_lightgcn_edge_dropout_residual_norm"],
+                    "algorithm_tasks": ["revisit old LightGCN repair"],
+                }
+            },
+        }
+        policy = summary["experience_policy"]
+        text = experience.build_markdown(summary, {"minimum_successful_runs": 3}, policy)
+        self.assertIn("Prefer families: none inferred yet", text)
+        self.assertIn("Algorithm tasks: none inferred yet", text)
+        self.assertNotIn("cand_lightgcn_edge_dropout_residual_norm", text)
+        self.assertNotIn("revisit old LightGCN repair", text)
+
     def test_experience_policy_removes_avoid_families_from_prefer_and_repair(self) -> None:
         summary = {
             "family_summaries": [
@@ -1160,6 +1177,26 @@ class AgentLoopTests(unittest.TestCase):
                 "        return soft_l2_norm_penalty(emb, self.max_norm)\n",
             )
 
+    def test_auto_implementation_rejects_bad_soft_l2_keywords(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsupported keywords"):
+            implement.validate_static_model_code(
+                "recclaw_ext/models/generated_bad_norm_kwargs.py",
+                "from recclaw_ext.models._utils import soft_l2_norm_penalty\n"
+                "class X:\n"
+                "    def _norm_penalty(self, emb):\n"
+                "        return soft_l2_norm_penalty(emb, user_all=emb, weight=0.1)\n",
+            )
+
+    def test_auto_implementation_rejects_soft_l2_without_explicit_keywords(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must pass"):
+            implement.validate_static_model_code(
+                "recclaw_ext/models/generated_bad_norm_defaults.py",
+                "from recclaw_ext.models._utils import soft_l2_norm_penalty\n"
+                "class X:\n"
+                "    def _norm_penalty(self, emb):\n"
+                "        return soft_l2_norm_penalty(emb)\n",
+            )
+
     def test_auto_implementation_rejects_direct_float_config_index(self) -> None:
         with self.assertRaisesRegex(ValueError, "config_float"):
             implement.validate_static_model_code(
@@ -1622,6 +1659,8 @@ class AgentLoopTests(unittest.TestCase):
         )
         self.assertTrue(summary["metric_stagnation"])
         self.assertEqual(summary["valid_score_unique_count"], 1)
+        self.assertEqual(summary["best_valid_score"], 0.1077)
+        self.assertTrue(summary["near_collapse"])
         self.assertEqual(summary["run_id"], "r1")
         self.assertEqual(summary["candidate_parameters"], {"architecture_gate_alpha": 0.2})
 
@@ -1676,41 +1715,73 @@ class AgentLoopTests(unittest.TestCase):
         self.assertIn("promotion floor", reason)
 
     def test_proposal_route_records_algorithm_metadata(self) -> None:
-        rec_agent = agent.RecClawAgent(agent.AgentConfig())
-        rec_agent.current_proposal_source = "llm"
-        rec_agent.candidate_proposals = [
-            {
-                "candidate_id": "cand_alg",
-                "parent_candidate_id": "cand_parent",
-                "action_type": "auxiliary_loss",
-                "proposal_type": "algorithmic_variant",
-                "runnable_level": "code_required",
-                "mechanism_composition": ["alignment", "rank-aware"],
-                "novelty_claim": "minimal mechanism ablation",
-                "expected_failure_mode": "loss scale instability",
-                "ablation_parent": "cand_parent",
-                "implementation_complexity": "low",
-            }
-        ]
-        rec_agent.proposal_validation_report = {
-            "results": [
+        with tempfile.TemporaryDirectory() as tmp:
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    proposal_history_path=Path(tmp) / "candidate_proposal_history.jsonl",
+                )
+            )
+            rec_agent.current_proposal_source = "llm"
+            rec_agent.candidate_proposals = [
                 {
                     "candidate_id": "cand_alg",
-                    "status": "needs_review",
-                    "parameter_signature": "",
-                    "errors": [],
-                    "review_reasons": [],
-                    "next_action": "promote_to_implementation_queue",
+                    "parent_candidate_id": "cand_parent",
+                    "action_type": "auxiliary_loss",
+                    "proposal_type": "algorithmic_variant",
+                    "runnable_level": "code_required",
+                    "mechanism_composition": ["alignment", "rank-aware"],
+                    "novelty_claim": "minimal mechanism ablation",
+                    "expected_failure_mode": "loss scale instability",
+                    "ablation_parent": "cand_parent",
+                    "implementation_complexity": "low",
                 }
             ]
-        }
+            rec_agent.proposal_validation_report = {
+                "results": [
+                    {
+                        "candidate_id": "cand_alg",
+                        "status": "needs_review",
+                        "parameter_signature": "",
+                        "errors": [],
+                        "review_reasons": [],
+                        "next_action": "promote_to_implementation_queue",
+                    }
+                ]
+            }
 
-        rec_agent.record_proposal_routes(round_id=7)
+            rec_agent.record_proposal_routes(round_id=7)
 
-        event = rec_agent.memory[-1]
-        self.assertEqual(event["mechanism"], "alignment+rank-aware")
-        self.assertEqual(event["proposal_type"], "algorithmic_variant")
-        self.assertEqual(event["runnable_level"], "code_required")
+            event = rec_agent.memory[-1]
+            self.assertEqual(event["mechanism"], "alignment+rank-aware")
+            self.assertEqual(event["proposal_type"], "algorithmic_variant")
+            self.assertEqual(event["runnable_level"], "code_required")
+            history = rec_agent._load_jsonl_path(rec_agent.config.proposal_history_path)
+            self.assertEqual(history[-1]["event"], "proposal_validated")
+            self.assertEqual(history[-1]["status"], "needs_review")
+
+    def test_proposal_history_is_append_only_while_active_queue_overwrites(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            proposal_path = Path(tmp) / "candidate_proposals.jsonl"
+            history_path = Path(tmp) / "candidate_proposal_history.jsonl"
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    proposal_path=proposal_path,
+                    proposal_history_path=history_path,
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                )
+            )
+            first = {"candidate_id": "cand_arch_a", "proposal_type": "architecture", "action_type": "graph_attention"}
+            second = {"candidate_id": "cand_arch_b", "proposal_type": "architecture", "action_type": "graph_rewire"}
+            proposal_path.write_text(json.dumps(first) + "\n", encoding="utf-8")
+            rec_agent.record_generated_proposals_history(1, {"proposal_source": "llm", "mode": "architecture_first"})
+            proposal_path.write_text(json.dumps(second) + "\n", encoding="utf-8")
+            rec_agent.record_generated_proposals_history(2, {"proposal_source": "llm", "mode": "architecture_first"})
+
+            active = rec_agent._load_jsonl_path(proposal_path)
+            history = rec_agent._load_jsonl_path(history_path)
+            self.assertEqual([row["candidate_id"] for row in active], ["cand_arch_b"])
+            self.assertEqual([row["candidate_id"] for row in history], ["cand_arch_a", "cand_arch_b"])
 
     def test_smoke_results_csv_is_isolated_from_runtime_results(self) -> None:
         old_results = os.environ.get("RECCLAW_RESULTS_CSV")
@@ -1788,7 +1859,10 @@ class AgentLoopTests(unittest.TestCase):
     def test_auto_implementation_skips_promoted_known_parent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             rec_agent = agent.RecClawAgent(
-                agent.AgentConfig(memory_path=Path(tmp) / "agent_memory.jsonl")
+                agent.AgentConfig(
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    proposal_history_path=Path(tmp) / "candidate_proposal_history.jsonl",
+                )
             )
             rec_agent.registry = [
                 {
@@ -1851,6 +1925,10 @@ class AgentLoopTests(unittest.TestCase):
                     "status": "implemented_and_smoke_passed",
                     "candidate_id": "cand_custom_architecture",
                     "entrypoint": "recclaw_ext.models.architecture_exploration:CustomGraphAttention",
+                    "smoke": {
+                        "valid_scores": [0.17, 0.18, 0.181],
+                        "valid_score_unique_count": 3,
+                    },
                 }
 
             rec_agent._run_json_command = fake_command  # type: ignore[method-assign]
@@ -1863,6 +1941,82 @@ class AgentLoopTests(unittest.TestCase):
             self.assertEqual(event["proposal_type"], "architecture")
             self.assertEqual(event["runnable_level"], "architecture_required")
             self.assertEqual(event["base_architecture"], "graph_attention")
+
+    def test_architecture_smoke_quality_gate_rejects_low_signal_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    memory_path=Path(tmp) / "agent_memory.jsonl",
+                    proposal_history_path=Path(tmp) / "candidate_proposal_history.jsonl",
+                    architecture_smoke_min_best_score=0.16,
+                )
+            )
+            rec_agent.candidate_proposals = [
+                {
+                    "candidate_id": "cand_custom_low_signal",
+                    "proposal_type": "architecture",
+                    "action_type": "interaction_function",
+                    "base_architecture": "low_rank_router_head",
+                    "parent_candidate_id": "cand_lightgcn_parent",
+                }
+            ]
+            rec_agent.proposal_validation_report = {
+                "results": [
+                    {
+                        "candidate_id": "cand_custom_low_signal",
+                        "status": "needs_review",
+                        "runnable_level": "architecture_required",
+                    }
+                ]
+            }
+
+            def fake_command(_cmd: list[str], *_args: object, **_kwargs: object) -> dict[str, object]:
+                return {
+                    "status": "implemented_and_smoke_passed",
+                    "candidate_id": "cand_custom_low_signal",
+                    "entrypoint": "recclaw_ext.models.low_signal:LowSignal",
+                    "smoke": {
+                        "valid_scores": [0.108, 0.109, 0.109],
+                        "valid_score_unique_count": 2,
+                    },
+                }
+
+            rec_agent._run_json_command = fake_command  # type: ignore[method-assign]
+            rec_agent.implement_needs_review_proposals(round_id=5)
+
+            event = rec_agent.memory[-1]
+            self.assertEqual(event["status"], "implemented_smoke_quality_rejected")
+            self.assertFalse(event["smoke_quality_gate"]["passed"])
+            self.assertNotIn("cand_custom_low_signal", rec_agent._pending_implemented_candidate_ids())
+            history = rec_agent._load_jsonl_path(rec_agent.config.proposal_history_path)
+            self.assertEqual(history[-1]["status"], "implemented_smoke_quality_rejected")
+
+    def test_architecture_first_plateau_uses_architecture_native_families(self) -> None:
+        rec_agent = agent.RecClawAgent(
+            agent.AgentConfig(
+                proposal_mode="architecture_first",
+                plateau_window_metric_rows=3,
+                plateau_family_overuse_window=5,
+                max_same_family_repair_streak=3,
+            )
+        )
+        rec_agent.memory = [
+            {
+                "round_id": idx,
+                "candidate_id": f"cand_arch_{idx}",
+                "status": "success",
+                "decision": "discard",
+                "family": "architecture::clean_residual_propagation",
+                "result": {"ndcg@10": value},
+            }
+            for idx, value in enumerate([0.2738, 0.271, 0.270, 0.269, 0.268, 0.267], start=1)
+        ]
+        state = rec_agent._plateau_state()
+        self.assertTrue(state["plateau_detected"])
+        self.assertTrue(all(str(item).startswith("architecture::") for item in state["forced_exploration_families"]))
+        self.assertNotIn("cand_lightgcn_residual_norm_constrained", state["forced_exploration_families"])
+        self.assertFalse(rec_agent._plateau_allows_family("architecture::clean_residual_propagation"))
+        self.assertTrue(rec_agent._plateau_allows_family("architecture::graph_attention"))
 
     def test_v4_algorithm_templates_map_to_runnable_local_entrypoints(self) -> None:
         proposals = [

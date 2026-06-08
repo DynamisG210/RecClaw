@@ -938,9 +938,6 @@ def build_markdown(
     experience_policy = experience_policy or summary.get("experience_policy") or {}
     minimum = int(policy.get("minimum_successful_runs", 3))
     if summary["successful_metric_rows"] < minimum:
-        next_policy = experience_policy.get("next_proposal_policy") if isinstance(experience_policy, dict) else {}
-        prefer = next_policy.get("prefer_families") if isinstance(next_policy, dict) else []
-        tasks = next_policy.get("algorithm_tasks") if isinstance(next_policy, dict) else []
         return "\n".join(
             [
                 "# RecClaw Experience Summary",
@@ -948,7 +945,8 @@ def build_markdown(
                 "Status: insufficient evidence",
                 "",
                 f"Only {summary['successful_metric_rows']} successful metric rows were available.",
-                "Do not infer family preferences yet. Continue with the declared action space only.",
+                "Do not infer family preferences or algorithm tasks from memory yet.",
+                "Follow only the static experiment directive and the active search policy.",
                 "",
                 "## Domain Prior Notes",
                 "- none",
@@ -957,8 +955,8 @@ def build_markdown(
                 "- none",
                 "",
                 "## Next Proposal Policy",
-                f"- Prefer families: {', '.join(prefer) if prefer else 'use search_policy defaults'}",
-                f"- Algorithm tasks: {'; '.join(str(item) for item in tasks[:4]) if tasks else 'use algorithm_first search_policy defaults'}",
+                "- Prefer families: none inferred yet",
+                "- Algorithm tasks: none inferred yet",
                 "- Keep all proposals inside configs/action_space.yaml and configs/search_policy.yaml.",
                 "",
             ]

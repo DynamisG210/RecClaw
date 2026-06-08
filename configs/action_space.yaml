@@ -19,6 +19,10 @@ base_architecture_families:
   - matrix_factorization
   - graph_convolution
   - graph_attention
+  - bipartite_rewire
+  - low_rank_router_head
+  - clean_residual_propagation
+  - contrastive_rank_objective
   - transformer_style_interaction
   - hybrid_graph_interaction
   - custom

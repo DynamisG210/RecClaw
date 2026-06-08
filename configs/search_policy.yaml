@@ -1,9 +1,10 @@
-version: 4
+version: 5
 description: >
-  Runtime search-steering policy for RecClaw. v4 introduces architecture-first
-  exploration: the LLM agent may propose genuinely new model families when the
-  frontier stagnates. The policy still locks the dataset, split, and evaluation
-  protocol, but it opens the method space beyond BPR/LightGCN descendants.
+  Runtime search-steering policy for RecClaw. v5 keeps the architecture-first
+  harness but upgrades search quality: proposal history is append-only, smoke
+  quality screens low-signal implementations before formal budget, and
+  anti-locality uses architecture-native mechanism families instead of legacy
+  BPR/LightGCN parent identities.
 
   Architecture proposals are gated by smoke-run validation and a strict
   consecutive-failure budget to prevent runaway resource use.
@@ -103,6 +104,14 @@ search_stages:
       - graph_attention
       - hybrid_graph_interaction
       - transformer_interaction
+    architecture_native_families:
+      - architecture::graph_attention
+      - architecture::bipartite_rewire
+      - architecture::low_rank_router_head
+      - architecture::clean_residual_propagation
+      - architecture::contrastive_rank_objective
+      - architecture::hybrid_graph_interaction
+      - architecture::transformer_style_interaction
     exit_condition:
       min_improvement_over_baseline: 0.005
       description: "Exit architecture_discovery as soon as one new architecture beats tuned LightGCN + margin, then switch to exploit_architecture."
@@ -189,11 +198,26 @@ architecture_first:
   architecture_warmup_rounds: 5
   anchor_architectures:
     - graph_attention
+    - bipartite_rewire
+    - low_rank_router_head
+    - clean_residual_propagation
+    - contrastive_rank_objective
     - transformer_style_interaction
     - hybrid_graph_interaction
     - graph_rewire
+  architecture_native_families:
+    - architecture::graph_attention
+    - architecture::bipartite_rewire
+    - architecture::low_rank_router_head
+    - architecture::clean_residual_propagation
+    - architecture::contrastive_rank_objective
+    - architecture::hybrid_graph_interaction
+    - architecture::transformer_style_interaction
   forced_architecture_tasks:
-    - propose a lightweight graph-attention recommender that keeps the full-sort protocol.
+    - propose a lightweight graph-attention propagation mechanism that keeps the full-sort protocol.
+    - propose bipartite graph rewiring or shortcut propagation that changes connectivity without changing data split or evaluation.
+    - propose a low-rank/router interaction head or clean residual propagation mechanism instead of another residual-norm sibling.
+    - propose a contrastive or rank-aware objective head only when it changes training signal, not just scalar regularization.
     - explore transformer-style attention, FFN, residual, or layer-norm blocks as local user/item interaction modules under the current general-rec protocol.
     - design a hybrid graph-interaction architecture that combines graph propagation with a learned scoring or interaction function.
     - when proposing architecture, prefer one structural innovation at a time (e.g., new propagation OR new encoder, not both) to keep ablation interpretable.
@@ -203,7 +227,10 @@ architecture_first:
 architecture_gates:
   smoke_dataset: ml-1m
   smoke_epochs: 3
-  smoke_min_ndcg: 0.05
+  smoke_min_ndcg: 0.16
+  objective_smoke_min_ndcg: 0.16
+  smoke_quality_gate: true
+  reject_smoke_pass_but_quality_rejected: true
   max_new_params_per_architecture: 8
   max_layers_for_new_gnn: 5
   require_runner_contract: true
