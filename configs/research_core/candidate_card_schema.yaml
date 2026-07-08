@@ -1,0 +1,32 @@
+version: 1
+schema_name: recclaw_candidate_card_v0_1
+required_fields:
+- candidate_id
+- family
+- candidate_role
+- parent_anchor
+- cited_memory_ids
+- cited_mechanism_ids
+- mechanism_hypothesis
+- minimal_intervention
+- activation_probe
+- expected_metric_signature
+- falsification_rule
+- claim_ceiling
+- policy_features
+required_policy_features:
+- opportunity_score
+- positive_memory_similarity
+- activation_observability
+- information_value
+- implementation_feasibility
+- metric_smoke_plausibility
+- duplicate_or_negative_collision
+- implementation_cost
+- strong_baseline_risk
+- protocol_risk
+forbidden_fields:
+- recommended_next_action
+claim_boundary:
+  search_quality_supported: false
+  formal_success_supported: false

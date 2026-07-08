@@ -1,0 +1,6 @@
+status: selected_candidate_queue_ready
+selected_candidates:
+- rank: 1
+  candidate_id: fixture_lightgcn_residual_norm_depth_variance
+  family: LightGCN
+  candidate_role: opportunity_candidate

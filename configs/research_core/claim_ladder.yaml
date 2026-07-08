@@ -1,0 +1,16 @@
+version: 1
+current_supported_scope: candidate_foundry_fixture_replay_only
+supported_claims:
+- typed_memory_ingestion
+- deterministic_memory_retrieval
+- deterministic_policy_ranking
+- selected_candidate_queue_output
+- claim_boundary_verification
+unsupported_claims:
+- search_quality_improvement
+- metric_improvement
+- formal_recommender_improvement
+- autonomous_discovery
+- M5_ready
+- runtime_kernel_ready
+next_project_requires_separate_user_approval: true
