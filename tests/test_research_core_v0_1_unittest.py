@@ -9,7 +9,7 @@ from recclaw_core.policy import rank_candidates, select_candidate_queue
 from recclaw_core.verifier import verify_claim_boundary
 
 
-FIXTURE = Path("artifacts/research_core/golden_foundry_fixture")
+FIXTURE = Path("tests/fixtures/research_core/golden_foundry_fixture")
 
 
 class ResearchCoreV01Test(unittest.TestCase):
