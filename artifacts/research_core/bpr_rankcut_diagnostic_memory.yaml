@@ -1,0 +1,44 @@
+memory_id: mem_bpr_rankcut_activation_metric_mismatch
+memory_type: diagnostic_negative_memory
+family: BPR
+mechanism: rank_cut_margin
+candidate_id: phase7_bpr_rankcut_balanced_band_001
+parent_anchor: BPRMargin parent local-loss scaffold with margin=0.0
+outcome: mechanism_negative_activation_metric_mismatch
+observed_failure: activation signal did not translate to full-sort ranking metrics
+active_metric_delta_summary:
+  ndcg@10: -0.0683
+  recall@10: -0.0533
+  mrr@10: -0.0958
+disabled_metric_equivalence:
+  disabled_metric_equivalent: true
+  metric_deltas_disabled_minus_parent:
+    ndcg@10: 0.0
+    recall@10: 0.0
+    mrr@10: 0.0
+retrieval_terms:
+- bpr
+- rankcut
+- rank cut
+- rank surrogate
+- batch local cutoff
+- top-k surrogate
+- activation metric mismatch
+- full-sort metric regression
+allowed_effect:
+- penalize future batch-local rank-cut performance candidates
+- allow diagnostic reference
+- require global top-k alignment evidence for revival
+what_to_avoid:
+- do not promote batch-local rank-cut as a performance candidate
+- do not claim search-quality improvement
+- do not claim metric improvement
+future_revival_condition:
+- only revisit through a globally aligned top-k surrogate or exposure-aware objective
+claim_ceiling: diagnostic negative memory only; no metric, formal, M5, runtime-kernel,
+  or search-quality claim
+source_policy:
+  controlled_structured_artifacts_only: true
+  uses_codex_chat: false
+  uses_lablog_prose: false
+  uses_architecture_memo: false

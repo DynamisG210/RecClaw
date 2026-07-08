@@ -1,0 +1,23 @@
+version: 1
+schema_name: recclaw_typed_memory_v0_1
+required_fields:
+- memory_id
+- memory_type
+- family
+- mechanism
+- outcome
+- observed_failure
+- retrieval_terms
+- allowed_effect
+- what_to_avoid
+- future_revival_condition
+- claim_ceiling
+- source_policy
+forbidden_source_policy:
+  uses_codex_chat: false
+  uses_lablog_prose: false
+  uses_architecture_memo: false
+claim_boundary:
+  search_quality_supported: false
+  metric_improvement_supported: false
+  formal_success_supported: false

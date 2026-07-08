@@ -1,0 +1,14 @@
+status: phase9_final_adjudication_complete
+active_phase9_outcome: activation_metric_mismatch
+active_phase9_metric_deltas:
+  ndcg@10: -0.0683
+  recall@10: -0.0533
+  mrr@10: -0.0958
+disabled_metric_equivalent: true
+final_outcome: mechanism_negative_activation_metric_mismatch
+typed_memory_type: diagnostic_negative_memory
+search_quality_supported: false
+metric_improvement_supported: false
+formal_success_supported: false
+M5_ready: false
+runtime_kernel_ready: false

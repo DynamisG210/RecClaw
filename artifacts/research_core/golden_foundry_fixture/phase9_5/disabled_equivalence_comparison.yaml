@@ -1,0 +1,15 @@
+status: disabled_equivalence_comparison_complete
+comparison_type: metric_level_disabled_equivalence_control
+parent_status: metric_smoke_arm_success
+disabled_candidate_status: metric_smoke_arm_success
+metric_deltas_disabled_minus_parent:
+  ndcg@10: 0.0
+  recall@10: 0.0
+  mrr@10: 0.0
+tolerance_by_metric:
+  ndcg@10: 0.001
+  recall@10: 0.001
+  mrr@10: 0.001
+disabled_metric_equivalent: true
+claim_ceiling: disabled metric-equivalence control only; no metric improvement or
+  search-quality claim
