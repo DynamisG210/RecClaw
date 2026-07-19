@@ -1,0 +1,68 @@
+{
+  "record_type": "RECCLAW_PHASE1_AB002_NEUTRAL_RUN_AUDIT_POLICY",
+  "schema_version": "recclaw.phase1.ab002.neutral_run_audit_policy.v1",
+  "policy_id": "AB002-NEUTRAL-RUN-AUDIT-POLICY-V1",
+  "status": "LOCAL_COMPLETE",
+  "frozen_before_canary": true,
+  "implementation": "src/recclaw_phase1/neutral_outcome_auditor.py:audit_raw_run",
+  "implementation_file_sha256": "07281a3766121cab3980116c760a371713f279226e4aa8fa3ccdbaa54f5413b5",
+  "dataset": "ml-1m",
+  "dataset_snapshot_sha256": "sha256:532f0c05827ee06d1b5f81de9686bb8cf4288e67260a55853bc45d092c82f9dd",
+  "dataset_snapshot_algorithm": "sha256 over sorted relative-path UTF-8 bytes, NUL, file bytes, NUL",
+  "dataset_files_sha256": {
+    "README.md": "a6c23e9d5328281ffdb48691e33d7d5a337b44bc3b506351dff814c1a5db8679",
+    "ml-1m.inter": "e943abb91013a54c385828fdf5ab4ce49e957ca3a772adb30cde2a7d5539b389",
+    "ml-1m.item": "6eff097333db47adf003039eb90cb6ab13978fa9577d915d2366e4d073844dc3",
+    "ml-1m.user": "bbc7b4f8d3204d00e0465cf1451b8e8bae2c9e94378292223603c229cf2df09f"
+  },
+  "recbole_runtime_files_sha256": {
+    "recbole/config/configurator.py": "fa9bc256b8bed0c364ab5a9939465f905695d194cdf1c195beb195b47f392618",
+    "recbole/data/dataset/dataset.py": "0e8c17f6e33d3a8dc775121d7523af18264f385357f5c3fd571e70f0b560a6dd",
+    "recbole/evaluator/evaluator.py": "d2364abd625d65c59037168eb92156cdb96a520f1e03b658a6ae6650e1732ca3",
+    "recbole/model/general_recommender/bpr.py": "d7f859638fc1578ee1ab1b0c147b11bc3cda797f4aedb029100466eea4d6a151",
+    "recbole/model/general_recommender/lightgcn.py": "4c79858b25bde0fa17872d29549201c76b912e6a1c31cc5f61bb793813e3251c",
+    "recbole/quick_start/quick_start.py": "72088c35784d802a046a7beac00909dcf31eaa3664102ef12c29ac0afb229060",
+    "recbole/trainer/trainer.py": "a4d17d0f748eb78e26ae3e790adf44ae7513b099c5ab8070049b32c71ea0b9fb",
+    "run_recbole.py": "d0af23a38b248cf971df9be15e521a71f47d37d96c9779c48b5e10890a76a5bc"
+  },
+  "allowed_training_seeds": [2026, 2027, 2028],
+  "expected_log_facts": {
+    "reproducibility": true,
+    "epochs": 100,
+    "train_batch_size": 2048,
+    "learner": "adam",
+    "learning_rate": 0.001,
+    "train_neg_sample_args": {
+      "distribution": "uniform",
+      "sample_num": 1,
+      "alpha": 1.0,
+      "dynamic": false,
+      "candidate_num": 0
+    },
+    "eval_step": 1,
+    "stopping_step": 10,
+    "eval_args": {
+      "split": {"RS": [0.8, 0.1, 0.1]},
+      "order": "RO",
+      "group_by": "user",
+      "mode": {"valid": "full", "test": "full"}
+    },
+    "repeatable": false,
+    "metrics": ["Recall", "NDCG", "MRR", "Hit", "Precision"],
+    "topk": [10],
+    "valid_metric": "NDCG@10",
+    "valid_metric_bigger": true,
+    "eval_batch_size": 65536,
+    "worker": 8,
+    "valid_neg_sample_args": {"distribution": "uniform", "sample_num": "none"},
+    "test_neg_sample_args": {"distribution": "uniform", "sample_num": "none"}
+  },
+  "required_metrics": ["ndcg@10", "recall@10", "mrr@10", "hit@10", "precision@10"],
+  "required_candidate_artifact_roles": ["candidate_config", "candidate_source"],
+  "candidate_universe_binding": "full-sort plus exact frozen RecBole 1.2.1 runtime-file identities and shared-state before/after records",
+  "arm_blind_input_required": true,
+  "reads_online_guard_classification": false,
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

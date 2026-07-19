@@ -29,11 +29,15 @@ REMOVED_BASE_PATHS = (
     "scripts/sync_to_server.sh",
 )
 MIGRATED_PATHS = (
+    ".gitattributes",
     "configs/phase1/ab002/arm_manifest.json",
-    "configs/phase1/ab002/evidence_guard_contract.json",
+    "configs/phase1/ab002/common_llm_broker_spec.json",
+    "configs/phase1/ab002/experiment_contract.json",
+    "configs/phase1/ab002/experiment_contract.md",
+    "configs/phase1/ab002/neutral_run_audit_policy.json",
     "configs/phase1/ab002/outcome_audit_policy.json",
-    "configs/phase1/ab002/s0_manifest.json",
     "phase1/overlays/treatment_agent.patch",
+    "pyproject.toml",
     "schemas/evidence_guard_envelope.schema.json",
     "schemas/evidence_guard_result.schema.json",
     "schemas/phase1_ab002_contract.schema.json",
@@ -46,7 +50,17 @@ MIGRATED_PATHS = (
     "src/recclaw_core/exploration/original_recclaw_guard_hook.py",
     "src/recclaw_phase1/__init__.py",
     "src/recclaw_phase1/ab002_analysis.py",
+    "src/recclaw_phase1/ab002_blind_packager.py",
+    "src/recclaw_phase1/ab002_canary_audit.py",
+    "src/recclaw_phase1/ab002_canary_orchestrator.py",
+    "src/recclaw_phase1/ab002_canary_probes.py",
+    "src/recclaw_phase1/ab002_candidate_confirmation.py",
+    "src/recclaw_phase1/ab002_final_analysis.py",
     "src/recclaw_phase1/ab002_launcher.py",
+    "src/recclaw_phase1/ab002_pair_runner.py",
+    "src/recclaw_phase1/ab002_preflight.py",
+    "src/recclaw_phase1/ab002_s0.py",
+    "src/recclaw_phase1/ab002_three_seed_baseline.py",
     "src/recclaw_phase1/neutral_outcome_auditor.py",
     "src/recclaw_phase1/paired_llm_broker.py",
     "tests/exploration/__init__.py",
@@ -55,10 +69,28 @@ MIGRATED_PATHS = (
     "tests/exploration/test_original_recclaw_treatment_overlay.py",
     "tests/phase1/__init__.py",
     "tests/phase1/test_ab002_analysis.py",
+    "tests/phase1/test_ab002_blind_packager.py",
+    "tests/phase1/test_ab002_canary_probes.py",
+    "tests/phase1/test_ab002_candidate_confirmation.py",
+    "tests/phase1/test_ab002_final_analysis.py",
     "tests/phase1/test_ab002_launcher.py",
+    "tests/phase1/test_ab002_pair_runner.py",
+    "tests/phase1/test_ab002_preflight.py",
+    "tests/phase1/test_ab002_s0_runner_budget.py",
+    "tests/phase1/test_ab002_three_seed_baseline.py",
+    "tests/phase1/test_neutral_run_auditor.py",
     "tests/phase1/test_paired_llm_broker.py",
     "tests/phase1/test_phase1_schemas.py",
 )
+
+
+def migrated_paths(root: Path) -> tuple[str, ...]:
+    s0_paths = sorted(
+        path.relative_to(root).as_posix()
+        for path in (root / "phase1/s0/ab002").rglob("*")
+        if path.is_file()
+    )
+    return tuple(sorted(set((*MIGRATED_PATHS, *s0_paths))))
 
 
 def sha256_file(path: Path) -> str:
@@ -185,7 +217,7 @@ def build(root: Path, archive_dir: Path) -> None:
     }
     write_json(root / "excluded_file_inventory.json", exclusion_index)
 
-    migrated_rows = file_rows(root, MIGRATED_PATHS)
+    migrated_rows = file_rows(root, migrated_paths(root))
     allowlist = {
         "record_type": "RECCLAW_PHASE1_MIGRATED_FILE_ALLOWLIST",
         "schema_version": "recclaw.phase1.migrated_file_allowlist.v1",
@@ -195,7 +227,7 @@ def build(root: Path, archive_dir: Path) -> None:
         "migrated_functional_file_count": len(migrated_rows),
         "migrated_functional_files": migrated_rows,
         "common_base_modifications": [
-            "scripts/run_reflection_pilot.py adds an explicit search-seed input shared by both arms"
+            "the closed S0 common source carries identical search-seed, budget, and leakage-sanitization changes for both arms"
         ],
         "control_guard_source_count": 0,
         "treatment_guard_binding": "src/recclaw_phase1/ab002_launcher.py:FROZEN_GUARD_FILES",

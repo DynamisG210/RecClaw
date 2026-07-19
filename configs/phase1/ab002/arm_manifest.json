@@ -5,13 +5,18 @@
   "status": "LOCAL_COMPLETE",
   "run_status": "NOT_STARTED",
   "start_authorized": false,
-  "base_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
-  "base_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
-  "search_seeds": [42, 43, 44],
+  "base_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98",
+  "base_tree": "35e0e9d7d557d086bc47bf2527bb023a51b4bf70",
+  "base_identity_role": "PREPARATION_PARENT_NOT_PRE_CANARY_RELEASE_IDENTITY",
+  "pre_canary_release_identity": "RESOLVE_FROM_TAG_AND_PREFLIGHT_RECORD",
+  "s0_id": "AB002-RECONSTRUCTED-CLEAN-START-S0-V1",
+  "s0_source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",
+  "canary": {"search_seed": 9001, "rounds": 3, "included_in_final_outcomes": false},
+  "search_seeds": [42, 43, 44, 45, 46, 47],
   "rounds": {"start": 1, "end": 20},
   "training_seed": 2026,
   "validation_seeds": [2026, 2027, 2028],
-  "s0_manifest": "configs/phase1/ab002/s0_manifest.json",
+  "s0_manifest": "phase1/s0/ab002/initial_state_manifest.json",
   "runtime_root_policy": "absolute external path outside the source checkout; must not exist before materialization",
   "control": {
     "guard_enabled": false,
@@ -23,10 +28,17 @@
   },
   "paired_llm_broker": {
     "required": true,
+    "spec": "configs/phase1/ab002/common_llm_broker_spec.json",
     "base_url_shape": "http://BROKER_HOST:BROKER_PORT/v1/pairs/PAIR_ID/ARM",
-    "identical_request_policy": "same pair sequence and canonical request digest replays one exact provider response",
+    "identical_request_policy": "same pair, canonical request digest, and per-arm digest occurrence replays one exact provider response even if divergent calls intervene",
     "divergent_request_policy": "call upstream separately and record the divergence rather than pretending prompts were matched",
     "secrets_recorded": false
+  },
+  "resource_envelope": {
+    "maximum_candidate_executions_per_full_arm_repetition": 20,
+    "maximum_candidate_executions_per_canary_arm": 6,
+    "maximum_llm_requests_per_arm_per_pair": 60,
+    "maximum_requested_output_tokens_per_arm_per_pair": 245760
   },
   "output_roots": {
     "control": "${RUNTIME_ROOT}/runs/control/search_seed_${SEARCH_SEED}/outputs",

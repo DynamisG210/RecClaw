@@ -11,13 +11,21 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+
+from recclaw_phase1.ab002_s0 import (
+    BASELINE_INPUTS,
+    INITIAL_STATE_MANIFEST,
+    S0_ID,
+    copy_s0_source,
+    validate_records,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = PROJECT_ROOT / "configs/phase1/ab002/evidence_guard_contract.json"
+CONTRACT = PROJECT_ROOT / "configs/phase1/ab002/experiment_contract.json"
 ARM_MANIFEST = PROJECT_ROOT / "configs/phase1/ab002/arm_manifest.json"
-S0_MANIFEST = PROJECT_ROOT / "configs/phase1/ab002/s0_manifest.json"
+S0_MANIFEST = INITIAL_STATE_MANIFEST
 TREATMENT_OVERLAY = PROJECT_ROOT / "phase1/overlays/treatment_agent.patch"
 FROZEN_GUARD_FILES = {
     "src/recclaw_core/__init__.py": "ef861a60d2af26d298c91a1b54dc3860e34d5f7b17e3fbd096bc6e28805fb07b",
@@ -27,10 +35,10 @@ FROZEN_GUARD_FILES = {
     "src/recclaw_core/exploration/original_recclaw_guard_hook.py": "a63a4fc1067313a8cf7799d9a1b75593221c8e4acd34d553abf8deaa32165340",
 }
 FROZEN_TREATMENT_OVERLAY_SHA256 = (
-    "2bfeeb6f4fd7893784899278ae2c4beee5e539da57d0532670edb5102f3e24c4"
+    "48a0a65e8e940679a3880a058b2978508bc050eb1b022a4053f8f54fdb49dfc0"
 )
 FROZEN_TREATMENT_AGENT_SHA256 = (
-    "00705ed1dcbd28c57dec145dfebcf6a04bcadc053013e488f2555b446835e79a"
+    "f5a26e7def57cdb325a1e48ae69295187b615d41e319be3205da70f6d6929c1f"
 )
 TREATMENT_PATCH_HEADER = (
     "diff --git a/scripts/agent.py b/scripts/agent.py\n",
@@ -46,20 +54,34 @@ TREATMENT_ONLY_ENV_KEYS = (
     "RECCLAW_EVIDENCE_GUARD_CONTRACT",
     "RECCLAW_EVIDENCE_GUARD_FEEDBACK",
 )
-RUNTIME_SCRIPT_FILES = (
-    "scripts/action_space.py",
-    "scripts/agent.py",
-    "scripts/analysis/build_candidate_search_tree.py",
-    "scripts/analysis/lint_recclaw_space.py",
-    "scripts/build_experience_summary.py",
-    "scripts/collect_result.py",
-    "scripts/compare_runs.py",
-    "scripts/implement_candidate_proposal.py",
-    "scripts/promote_candidate_proposal.py",
-    "scripts/propose_candidate.py",
-    "scripts/run_candidate.py",
-    "scripts/run_reflection_pilot.py",
-    "scripts/validate_candidate_proposal.py",
+UPSTREAM_ONLY_ENV_KEYS = (
+    "RECCLAW_LAB_LLM_API_KEY",
+    "RECCLAW_LAB_LLM_BASE_URL",
+)
+CANARY_SEED = 9001
+FULL_SEARCH_SEEDS = (42, 43, 44, 45, 46, 47)
+SEARCH_SEEDS = (CANARY_SEED, *FULL_SEARCH_SEEDS)
+FULL_EXPERIMENT_DIRECTIVE = (
+    "RecClaw algorithm-first pilot: keep the ML-1M full-sort general-rec protocol unchanged; "
+    "prioritize LLM-driven algorithm discovery, mechanism composition, local extension implementation, "
+    "smoke verification, and formal runs. Parameter-only tuning is allowed only as a small sanity/refinement "
+    "budget after credible algorithm signal. Do not propose sequential recommendation in this experiment line."
+)
+CANARY_EXPERIMENT_DIRECTIVE = (
+    "AB-002 integration Canary under the unchanged ML-1M full-sort protocol. In the first scheduled proposal "
+    "batch include at least one genuinely code_required BPR or LightGCN candidate so the common implementation, "
+    "training, result interpretation, and memory paths are exercised. Do not change split, sampling, candidate "
+    "universe, metric, baseline, model family, or resource budget."
+)
+RUNTIME_GUARD_CONTRACT_KEYS = (
+    "claim",
+    "protocol",
+    "protocol_implementation",
+    "live_postcheck_binding",
+    "current_evidence",
+    "metric_projection",
+    "seed_policy",
+    "execution_environment",
 )
 
 
@@ -96,32 +118,74 @@ def validate_runtime_root(runtime_root: Path) -> Path:
     return resolved
 
 
-def runtime_source_files() -> list[Path]:
-    files = [PROJECT_ROOT / rel for rel in RUNTIME_SCRIPT_FILES]
-    files.extend(sorted((PROJECT_ROOT / "configs").glob("*.yaml")))
-    files.extend(sorted((PROJECT_ROOT / "configs/candidates").glob("*.yaml")))
-    files.extend(sorted((PROJECT_ROOT / "recclaw_ext").rglob("*.py")))
-    missing = [str(path) for path in files if not path.is_file()]
-    if missing:
-        raise FileNotFoundError("runtime source allowlist is incomplete: " + ", ".join(missing))
-    return sorted(set(files), key=lambda path: path.relative_to(PROJECT_ROOT).as_posix())
-
-
 def copy_allowlisted_source(destination: Path) -> list[dict[str, Any]]:
-    rows = []
-    for source in runtime_source_files():
-        rel = source.relative_to(PROJECT_ROOT)
-        target = destination / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        rows.append(
-            {
-                "path": rel.as_posix(),
-                "size_bytes": target.stat().st_size,
-                "sha256": sha256_file(target),
-            }
+    return copy_s0_source(destination)
+
+
+def expected_rounds(search_seed: int) -> int:
+    if search_seed == CANARY_SEED:
+        return 3
+    if search_seed in FULL_SEARCH_SEEDS:
+        return 20
+    raise ValueError(f"unsupported AB-002 search seed: {search_seed}")
+
+
+def expected_candidate_executions(search_seed: int) -> int:
+    if search_seed == CANARY_SEED:
+        return 6
+    if search_seed in FULL_SEARCH_SEEDS:
+        return 20
+    raise ValueError(f"unsupported AB-002 search seed: {search_seed}")
+
+
+def expected_pair_id(search_seed: int) -> str:
+    return f"AB002-SEED-{search_seed}"
+
+
+def expected_gpu_id(search_seed: int, arm: str) -> int:
+    if arm not in {"control", "treatment"}:
+        raise ValueError("arm must be control or treatment")
+    control_gpu = 0 if search_seed == CANARY_SEED or search_seed % 2 == 0 else 1
+    return control_gpu if arm == "control" else 1 - control_gpu
+
+
+def validate_baseline_inputs(baseline_dir: Path) -> list[dict[str, Any]]:
+    root = baseline_dir.expanduser().resolve()
+    if not root.is_dir():
+        raise ValueError(f"baseline directory missing: {root}")
+    expected_names = {str(item["filename"]) for item in BASELINE_INPUTS}
+    actual_names = {path.name for path in root.glob("*.log") if path.is_file()}
+    if actual_names != expected_names:
+        raise ValueError(
+            f"baseline log inventory drift: {sorted(actual_names)} != {sorted(expected_names)}"
         )
+    rows = []
+    for item in BASELINE_INPUTS:
+        path = root / str(item["filename"])
+        actual = sha256_file(path)
+        if actual != item["sha256"]:
+            raise ValueError(f"baseline log digest drift: {path.name}")
+        rows.append({"path": str(path), "sha256": actual, "model": item["model"]})
     return rows
+
+
+def runtime_guard_contract() -> dict[str, Any]:
+    source = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    projected = {
+        "record_type": "RECCLAW_PHASE1_AB002_RUNTIME_GUARD_CONTRACT",
+        "schema_version": "recclaw.phase1.ab002.runtime_guard_contract.v1",
+        "contract_id": source["contract_id"],
+        **{key: source[key] for key in RUNTIME_GUARD_CONTRACT_KEYS},
+        "historical_reporting_references_present": False,
+        "authority": "NONE",
+        "evidence_class": "DEVELOPMENT_ONLY",
+        "formal_acceptance": False,
+    }
+    serialized = json.dumps(projected, ensure_ascii=True, sort_keys=True)
+    for forbidden in ("0.2908", "0.289067", "0.274367", "historical_v4m"):
+        if forbidden in serialized:
+            raise ValueError(f"runtime Guard contract contains reporting-only reference: {forbidden}")
+    return projected
 
 
 def _assert_frozen_guard_source() -> None:
@@ -209,6 +273,7 @@ def materialize_arm(
         raise FileExistsError(f"repetition root must be absent: {repetition}")
     source_root = repetition / "source"
     source_root.mkdir(parents=True)
+    s0_manifest = validate_records()
     source_rows = copy_allowlisted_source(source_root)
     integration_rows: list[dict[str, Any]] = []
     integration_root: Path | None = None
@@ -221,6 +286,13 @@ def materialize_arm(
         patched_agent = sha256_file(source_root / "scripts/agent.py")
         if patched_agent != FROZEN_TREATMENT_AGENT_SHA256:
             raise ValueError(f"patched treatment agent drift: {patched_agent}")
+        for row in source_rows:
+            if row["path"] == "scripts/agent.py":
+                row["common_s0_sha256"] = row["sha256"]
+                row["sha256"] = patched_agent
+                row["size_bytes"] = (source_root / "scripts/agent.py").stat().st_size
+                row["treatment_overlay_sha256"] = FROZEN_TREATMENT_OVERLAY_SHA256
+                break
         integration_root = repetition / "treatment_integration"
         for rel, expected in FROZEN_GUARD_FILES.items():
             source = PROJECT_ROOT / rel
@@ -234,7 +306,7 @@ def materialize_arm(
                 {"path": rel, "size_bytes": target.stat().st_size, "sha256": actual}
             )
         contract_target = integration_root / "evidence_guard_contract.json"
-        shutil.copy2(CONTRACT, contract_target)
+        canonical_write(contract_target, runtime_guard_contract())
         integration_rows.append(
             {
                 "path": "evidence_guard_contract.json",
@@ -261,6 +333,8 @@ def materialize_arm(
         "run_status": "NOT_STARTED",
         "arm": arm,
         "search_seed": search_seed,
+        "s0_id": S0_ID,
+        "s0_source_tree_sha256": s0_manifest["source_tree_sha256"],
         "source_root": str(source_root),
         "source_files": source_rows,
         "integration_root": None if integration_root is None else str(integration_root),
@@ -286,6 +360,17 @@ def build_launch_plan(
     python_executable: str,
 ) -> dict[str, Any]:
     root = validate_runtime_root(runtime_root)
+    if search_seed not in SEARCH_SEEDS:
+        raise ValueError(f"unsupported AB-002 search seed: {search_seed}")
+    if pair_id != expected_pair_id(search_seed):
+        raise ValueError(
+            f"pair id must bind the search seed: {pair_id} != {expected_pair_id(search_seed)}"
+        )
+    expected_gpu = expected_gpu_id(search_seed, arm)
+    if gpu_id != expected_gpu:
+        raise ValueError(
+            f"GPU assignment drift for seed {search_seed} {arm}: {gpu_id} != {expected_gpu}"
+        )
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
     recbole_root = contract["execution_environment"]["recbole_root"]
     repetition = root / "runs" / arm / f"search_seed_{search_seed}"
@@ -298,7 +383,7 @@ def build_launch_plan(
         "--gpu-id",
         str(gpu_id),
         "--rounds",
-        "20",
+        str(expected_rounds(search_seed)),
         "--start-round",
         "1",
         "--search-seed",
@@ -315,6 +400,8 @@ def build_launch_plan(
         "compatible",
         "--llm-model",
         "gpt-5.4",
+        "--llm-temperature",
+        "0.2",
         "--llm-base-url",
         broker_base,
         "--llm-timeout",
@@ -331,12 +418,22 @@ def build_launch_plan(
         "algorithm_first",
         "--algorithm-budget-per-window",
         "3",
+        "--max-implement-per-round",
+        "1" if search_seed == CANARY_SEED else "2",
+        "--experiment-directive",
+        CANARY_EXPERIMENT_DIRECTIVE if search_seed == CANARY_SEED else FULL_EXPERIMENT_DIRECTIVE,
     ]
     environment = {
         "RECCLAW_AB_ARM": arm,
         "RECCLAW_LLM_PAIR_ID": pair_id,
         "RECCLAW_SEARCH_SEED": str(search_seed),
         "RECCLAW_RUNTIME_ROOT": str(root),
+        "RECCLAW_CANDIDATE_EXECUTION_BUDGET": str(
+            expected_candidate_executions(search_seed)
+        ),
+        "RECCLAW_CANDIDATE_EXECUTION_LEDGER": str(
+            repetition / "candidate_execution_budget.jsonl"
+        ),
         "RECBOLE_ROOT": recbole_root,
         "PYTHONNOUSERSITE": "1",
         "OPENAI_API_KEY": "FROM_RECCLAW_BROKER_CLIENT_TOKEN",
@@ -364,6 +461,8 @@ def build_launch_plan(
         "pair_id": pair_id,
         "search_seed": search_seed,
         "gpu_id": gpu_id,
+        "round_budget": expected_rounds(search_seed),
+        "maximum_candidate_executions": expected_candidate_executions(search_seed),
         "source_root": str(source_root),
         "output_root": str(output_root),
         "command_argv": command,
@@ -377,10 +476,10 @@ def build_launch_plan(
 
 
 def _build_execution_environment(
-    plan: dict[str, Any], *, client_token: str
+    plan: dict[str, Any], *, client_token: str, client_token_env: str = "RECCLAW_BROKER_CLIENT_TOKEN"
 ) -> dict[str, str]:
     env = dict(os.environ)
-    for key in TREATMENT_ONLY_ENV_KEYS:
+    for key in (*TREATMENT_ONLY_ENV_KEYS, *UPSTREAM_ONLY_ENV_KEYS, client_token_env):
         env.pop(key, None)
     for key, value in plan["environment_without_secrets"].items():
         if key != "OPENAI_API_KEY":
@@ -402,9 +501,12 @@ def _execute(plan: dict[str, Any], *, client_token_env: str) -> int:
     if output_root.exists():
         raise SystemExit(f"output root must be absent: {output_root}")
     baseline = Path(plan["command_argv"][plan["command_argv"].index("--baseline-dir") + 1])
-    if not baseline.is_dir():
-        raise SystemExit(f"baseline directory missing: {baseline}")
-    env = _build_execution_environment(plan, client_token=token)
+    validate_baseline_inputs(baseline)
+    env = _build_execution_environment(
+        plan,
+        client_token=token,
+        client_token_env=client_token_env,
+    )
     repetition = source_root.parent
     stdout_path = repetition / "launcher_stdout.log"
     stderr_path = repetition / "launcher_stderr.log"
@@ -423,7 +525,7 @@ def _execute(plan: dict[str, Any], *, client_token_env: str) -> int:
 def build_parser(arm: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=f"Prepare or launch AB-002 {arm}")
     parser.add_argument("--runtime-root", type=Path, required=True)
-    parser.add_argument("--search-seed", type=int, choices=(42, 43, 44), required=True)
+    parser.add_argument("--search-seed", type=int, choices=SEARCH_SEEDS, required=True)
     parser.add_argument("--gpu-id", type=int, required=True)
     parser.add_argument("--pair-id", required=True)
     parser.add_argument("--broker-url", required=True)

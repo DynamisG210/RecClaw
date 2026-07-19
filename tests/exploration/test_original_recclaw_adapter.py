@@ -25,7 +25,7 @@ def protocol() -> dict[str, object]:
         "protocol_id": "ORIGINAL-RECCLAW-ML1M-RANDOM-FULL-V1",
         "profile_family": "OFFLINE_TOPN",
         "dataset": "ml-1m",
-        "dataset_snapshot": "sha256:783d2bce46ebb614de8ef0a365a34aa69c16dc63a50bce6f17c90f4aefe8a841",
+        "dataset_snapshot": "sha256:532f0c05827ee06d1b5f81de9686bb8cf4288e67260a55853bc45d092c82f9dd",
         "split": {
             "strategy": "random_user_holdout",
             "ratio": [0.8, 0.1, 0.1],

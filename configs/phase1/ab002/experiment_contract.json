@@ -5,12 +5,15 @@
   "status": "LOCAL_COMPLETE",
   "gate_status": "NOT_STARTED",
   "control_identity": {
-    "name": "action-space self-reflection RecClaw v4m final",
-    "git_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
-    "equivalent_finalization_commit": "1f501e5085838bdef44690b92a822023971ef33d",
-    "git_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
-    "historical_run_name": "reflection_pilot_20260529_v4m_openai_anti_plateau_continue_from_v4k140_clean",
-    "historical_run_role": "REFERENCE_ONLY_NOT_CONTEMPORANEOUS_CONTROL",
+    "name": "Original RecClaw reconstructed clean-start S0",
+    "git_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98",
+    "git_tree": "35e0e9d7d557d086bc47bf2527bb023a51b4bf70",
+    "git_identity_role": "PREPARATION_PARENT_NOT_PRE_CANARY_RELEASE_IDENTITY",
+    "pre_canary_release_identity": "RESOLVE_FROM_SIGNED_OFF_TAG_AND_PREFLIGHT_RECORD",
+    "s0_id": "AB002-RECONSTRUCTED-CLEAN-START-S0-V1",
+    "s0_manifest": "phase1/s0/ab002/initial_state_manifest.json",
+    "s0_source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",
+    "historical_v4m_role": "REPORTING_REFERENCE_ONLY_NOT_RUNTIME_STATE",
     "failed_research_loop_role": "EXCLUDED_FROM_CONTROL_AND_PRIMARY_REHEARSAL"
   },
   "claim": {
@@ -41,7 +44,7 @@
     "protocol_id": "ORIGINAL-RECCLAW-ML1M-RANDOM-FULL-V1",
     "profile_family": "OFFLINE_TOPN",
     "dataset": "ml-1m",
-    "dataset_snapshot": "sha256:783d2bce46ebb614de8ef0a365a34aa69c16dc63a50bce6f17c90f4aefe8a841",
+    "dataset_snapshot": "sha256:532f0c05827ee06d1b5f81de9686bb8cf4288e67260a55853bc45d092c82f9dd",
     "split": {
       "strategy": "random_user_holdout",
       "recbole_token": "RS",
@@ -146,7 +149,12 @@
     "direction": "higher_is_better",
     "min_improvement_delta": 0.00001,
     "primary_claim_comparator": "fixed_lightgcn_0.2671",
-    "frontier_interpretation": "separate_from_claim_comparator"
+    "frontier_interpretation": "separate_from_claim_comparator",
+    "neutral_run_audit_policy_sha256": "dc3b9131e768da381f8fd9f6def3ad58384ae917e9b01e50ead1f8d9f57bc22a",
+    "neutral_outcome_policy_sha256": "860b0a625066b3b5266105994a41faa27f37da214c65f723245ce7108243c88e",
+    "three_seed_baseline_implementation_sha256": "91374a0769a9464cd90b6e6dd870b89895538b1d5d3f334e6c149654080c19a5",
+    "blind_packager_implementation_sha256": "3bf5ac9b2be9fb96a3a56b42e7ff81c8cdc7079210e4422f61104b811649631e",
+    "candidate_confirmation_implementation_sha256": "3a55539660da29b06a3acd3c5e3a951547036fee59fd5b765a6ad2af581bfd19"
   },
   "metric_projection": {
     "ndcg": "ndcg@10",
@@ -167,12 +175,15 @@
     "search_and_training_seeds_are_distinct": true
   },
   "search_budget": {
-    "design_basis": "matched development A/B budget; 20 rounds follows the historical algorithm_first exploration window and the user-approved 10-20 round range, not a recovered historical protocol fact",
-    "search_repetitions_per_group": 3,
+    "design_basis": "frozen clean-start matched development A/B budget",
+    "search_repetitions_per_group": 6,
     "search_seeds": [
       42,
       43,
-      44
+      44,
+      45,
+      46,
+      47
     ],
     "scheduling_round_budget_per_repetition": 20,
     "maximum_ordinary_candidate_executions_per_repetition": 20,
@@ -189,6 +200,19 @@
     "pairing_policy": "run control and treatment for the same search seed concurrently when two clean GPU slots are available; rotate GPU assignment across pairs",
     "full_ab_started": false
   },
+  "canary": {
+    "search_seed": 9001,
+    "rounds_per_arm": 3,
+    "maximum_candidate_executions_per_arm": 6,
+    "max_implement_per_round": 1,
+    "excluded_from_primary_outcomes": true,
+    "run_status": "NOT_STARTED",
+    "gate_status": "NOT_STARTED",
+    "preflight_implementation_sha256": "281def3e9422473a43c061a789a2264386e086147a406e53952936a7be23ea74",
+    "audit_implementation_sha256": "b0db821bba1d06d5898cbecd9e65e5cc0eaea6403d9019c274f2bb36ae23f96d",
+    "orchestrator_implementation_sha256": "fcb43322e444241e49f4beda0afc356dc29bb82e2acb7c37c20142f54e4f0f92",
+    "controlled_probes_implementation_sha256": "5bb060d3eff74f040d47a1ebd5435a43d9da3af54f9559ef971e3f5ae5987111"
+  },
   "original_loop_configuration": {
     "loop_mode": "auto",
     "proposal_source": "llm",
@@ -199,18 +223,18 @@
     "max_pending_implemented": 6,
     "max_implement_per_round": 2,
     "algorithm_first_explore_rounds": 20,
-    "seed_validation_min_metric": 0.274,
-    "planner_triggered_multiseed_validation": true,
+    "seed_validation_min_metric": 0.2671,
+    "planner_triggered_multiseed_validation": false,
     "plateau_window_metric_rows": 30,
     "plateau_min_global_improvement": 0.0005,
     "plateau_family_overuse_window": 20,
     "max_same_family_repair_streak": 8,
-    "plateau_weak_family_ceiling": 0.28,
+    "plateau_weak_family_ceiling": 0.2671,
     "checkpoint_policy": "cleanup_all"
   },
   "common_experiment_harness": {
     "base_script": "scripts/run_reflection_pilot.py",
-    "base_script_sha256": "1a741f2f573d373f0043bbc60028d180cc645f3a067f9ea394e5f394db8bc90b",
+    "base_script_sha256": "56e5143bb3d31fb173d8941bf7d5cfa8205c84c9e3c1212d9378e8fd5e6d3eea",
     "materialization": "the common search-seed harness is committed directly and copied identically to both runtime arms",
     "applied_to_groups": [
       "control",
@@ -233,17 +257,22 @@
   },
   "common_paired_llm_broker": {
     "implementation": "recclaw_phase1.paired_llm_broker",
+    "spec_sha256": "7d4a9df1998d7fd2acf67b4115d7286c0a54a6b121bb9bb3b61c68cc069ecb77",
+    "implementation_sha256": "2714934546416bd4b81ce22518684c028655169727083736b564cac2dc640fcb",
     "runtime_store": "external SQLite ledger under the AB-002 runtime root",
     "client_auth": "ephemeral bearer token supplied by environment and never persisted",
     "upstream_auth": "laboratory API key read only by the broker process from an execution-time environment variable",
-    "control_treatment_pairing_key": "pair_id plus per-arm request sequence",
+    "control_treatment_pairing_key": "pair_id plus canonical request digest plus per-arm digest occurrence index",
     "identical_request_behavior": "single upstream request followed by exact-byte replay to the paired arm",
     "divergent_request_behavior": "separate upstream requests with an explicit DIVERGENT_REQUEST audit classification",
     "provider_request_seed_available": false
   },
   "initial_state": {
-    "policy": "same fresh empty S0 for every control and treatment repetition",
-    "manifest": "configs/phase1/ab002/s0_manifest.json",
+    "policy": "same reconstructed leak-audited pre-search S0 for every control and treatment repetition",
+    "s0_id": "AB002-RECONSTRUCTED-CLEAN-START-S0-V1",
+    "manifest": "phase1/s0/ab002/initial_state_manifest.json",
+    "source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",
+    "historical_leakage_audit": "phase1/s0/ab002/historical_leakage_audit.json",
     "historical_search_outputs": [],
     "historical_search_output_count": 0,
     "runtime_initialization": "the per-arm output root must be absent before launch; no --seed-from argument is permitted"
@@ -303,6 +332,13 @@
     "guard_latency_ms"
   ],
   "execution_environment": {
+    "dataset_snapshot_algorithm": "sha256 over sorted relative-path UTF-8 bytes, NUL, file bytes, NUL",
+    "dataset_files_sha256": {
+      "README.md": "a6c23e9d5328281ffdb48691e33d7d5a337b44bc3b506351dff814c1a5db8679",
+      "ml-1m.inter": "e943abb91013a54c385828fdf5ab4ce49e957ca3a772adb30cde2a7d5539b389",
+      "ml-1m.item": "6eff097333db47adf003039eb90cb6ab13978fa9577d915d2366e4d073844dc3",
+      "ml-1m.user": "bbc7b4f8d3204d00e0465cf1451b8e8bae2c9e94378292223603c229cf2df09f"
+    },
     "preferred_host": "gpu5",
     "verified_gpu_class": "NVIDIA RTX 4090",
     "verified_free_gpu_slots_at_inspection": [
@@ -322,6 +358,7 @@
       "recbole/evaluator/evaluator.py": "d2364abd625d65c59037168eb92156cdb96a520f1e03b658a6ae6650e1732ca3",
       "recbole/trainer/trainer.py": "a4d17d0f748eb78e26ae3e790adf44ae7513b099c5ab8070049b32c71ea0b9fb",
       "recbole/quick_start/quick_start.py": "72088c35784d802a046a7beac00909dcf31eaa3664102ef12c29ac0afb229060",
+      "recbole/model/general_recommender/bpr.py": "d7f859638fc1578ee1ab1b0c147b11bc3cda797f4aedb029100466eea4d6a151",
       "recbole/model/general_recommender/lightgcn.py": "4c79858b25bde0fa17872d29549201c76b912e6a1c31cc5f61bb793813e3251c"
     },
     "environment_status": "INSPECTED_NOT_RESERVED",

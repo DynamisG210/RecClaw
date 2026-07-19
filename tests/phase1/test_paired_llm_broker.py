@@ -21,6 +21,7 @@ def _request(prompt: str, *, stream: bool = False) -> bytes:
             "model": "test-model",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
+            "max_tokens": 4096,
             "stream": stream,
         }
     ).encode()
@@ -47,10 +48,10 @@ class PairedLLMBrokerTests(unittest.TestCase):
                 return {"status": 200, "body": b'{"choices":[{"message":{"content":"x"}}]}', "content_type": "application/json"}
 
             first, first_meta = process_request(
-                config=config, pair_id="PAIR-42", arm="control", body=_request("same"), upstream=upstream
+                config=config, pair_id="AB002-SEED-42", arm="control", body=_request("same"), upstream=upstream
             )
             second, second_meta = process_request(
-                config=config, pair_id="PAIR-42", arm="treatment", body=_request("same"), upstream=upstream
+                config=config, pair_id="AB002-SEED-42", arm="treatment", body=_request("same"), upstream=upstream
             )
             self.assertEqual(1, len(calls))
             self.assertEqual(first, second)
@@ -72,7 +73,7 @@ class PairedLLMBrokerTests(unittest.TestCase):
             def invoke(arm: str) -> None:
                 try:
                     results.append(process_request(
-                        config=config, pair_id="PAIR-43", arm=arm, body=_request("same"), upstream=upstream
+                        config=config, pair_id="AB002-SEED-43", arm=arm, body=_request("same"), upstream=upstream
                     )[0])
                 except Exception as exc:  # pragma: no cover - surfaced below
                     errors.append(exc)
@@ -98,12 +99,55 @@ class PairedLLMBrokerTests(unittest.TestCase):
                 calls.append(body)
                 return {"status": 200, "body": body, "content_type": "application/json"}
 
-            process_request(config=config, pair_id="PAIR-44", arm="control", body=_request("a"), upstream=upstream)
+            process_request(config=config, pair_id="AB002-SEED-44", arm="control", body=_request("a"), upstream=upstream)
             _, metadata = process_request(
-                config=config, pair_id="PAIR-44", arm="treatment", body=_request("b"), upstream=upstream
+                config=config, pair_id="AB002-SEED-44", arm="treatment", body=_request("b"), upstream=upstream
             )
             self.assertEqual(2, len(calls))
             self.assertEqual("DIVERGENT_REQUEST", metadata["pair_relation"])
+
+    def test_prompt_hash_pairing_survives_different_intervening_call_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = self.config(Path(temporary))
+            calls = []
+
+            def upstream(_config: BrokerConfig, body: bytes) -> dict[str, object]:
+                calls.append(body)
+                return {"status": 200, "body": body, "content_type": "application/json"}
+
+            control_a, _ = process_request(
+                config=config,
+                pair_id="AB002-SEED-47",
+                arm="control",
+                body=_request("a"),
+                upstream=upstream,
+            )
+            control_b, _ = process_request(
+                config=config,
+                pair_id="AB002-SEED-47",
+                arm="control",
+                body=_request("b"),
+                upstream=upstream,
+            )
+            treatment_b, meta_b = process_request(
+                config=config,
+                pair_id="AB002-SEED-47",
+                arm="treatment",
+                body=_request("b"),
+                upstream=upstream,
+            )
+            treatment_a, meta_a = process_request(
+                config=config,
+                pair_id="AB002-SEED-47",
+                arm="treatment",
+                body=_request("a"),
+                upstream=upstream,
+            )
+            self.assertEqual(2, len(calls))
+            self.assertEqual(control_a, treatment_a)
+            self.assertEqual(control_b, treatment_b)
+            self.assertEqual("IDENTICAL_PAIRED_REQUEST", meta_a["pair_relation"])
+            self.assertEqual("IDENTICAL_PAIRED_REQUEST", meta_b["pair_relation"])
 
     def test_secrets_are_not_written_to_sqlite(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -113,7 +157,7 @@ class PairedLLMBrokerTests(unittest.TestCase):
             def upstream(_config: BrokerConfig, _body: bytes) -> dict[str, object]:
                 return {"status": 200, "body": b"{}", "content_type": "application/json"}
 
-            process_request(config=config, pair_id="PAIR-42", arm="control", body=_request("safe"), upstream=upstream)
+            process_request(config=config, pair_id="AB002-SEED-42", arm="control", body=_request("safe"), upstream=upstream)
             raw = (root / "broker.sqlite3").read_bytes()
             self.assertNotIn(config.client_token.encode(), raw)
             self.assertNotIn(config.upstream_api_key.encode(), raw)
@@ -121,6 +165,67 @@ class PairedLLMBrokerTests(unittest.TestCase):
     def test_streaming_request_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             canonical_request(_request("stream", stream=True))
+
+    def test_provider_identity_usage_and_latency_are_persisted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = self.config(root)
+
+            def upstream(_config: BrokerConfig, _body: bytes) -> dict[str, object]:
+                return {
+                    "status": 200,
+                    "body": b'{"id":"req-123","model":"gpt-5.4","usage":{"total_tokens":12}}',
+                    "content_type": "application/json",
+                    "provider_request_id": "req-123",
+                    "returned_model": "gpt-5.4",
+                    "usage_json": '{"total_tokens":12}',
+                    "upstream_latency_ms": 7.5,
+                }
+
+            process_request(
+                config=config,
+                pair_id="AB002-SEED-45",
+                arm="control",
+                body=_request("metadata"),
+                upstream=upstream,
+            )
+            import sqlite3
+
+            with sqlite3.connect(root / "broker.sqlite3") as connection:
+                row = connection.execute(
+                    "SELECT provider_request_id, returned_model, usage_json, upstream_latency_ms "
+                    "FROM requests"
+                ).fetchone()
+            self.assertEqual(("req-123", "gpt-5.4", '{"total_tokens":12}', 7.5), row)
+
+    def test_single_fault_request_budget_exhaustion_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = BrokerConfig(
+                **{
+                    **self.config(root).__dict__,
+                    "max_requests_per_arm_per_pair": 1,
+                }
+            )
+
+            def upstream(_config: BrokerConfig, body: bytes) -> dict[str, object]:
+                return {"status": 200, "body": body, "content_type": "application/json"}
+
+            process_request(
+                config=config,
+                pair_id="AB002-SEED-46",
+                arm="control",
+                body=_request("first"),
+                upstream=upstream,
+            )
+            with self.assertRaisesRegex(ValueError, "request budget exhausted"):
+                process_request(
+                    config=config,
+                    pair_id="AB002-SEED-46",
+                    arm="control",
+                    body=_request("second"),
+                    upstream=upstream,
+                )
 
 
 if __name__ == "__main__":

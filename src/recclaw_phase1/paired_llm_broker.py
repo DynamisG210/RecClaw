@@ -27,7 +27,7 @@ from urllib import request as urlrequest
 
 
 PAIR_PATH = re.compile(
-    r"^/v1/pairs/(?P<pair>[A-Za-z0-9_.-]{1,96})/"
+    r"^/v1/pairs/(?P<pair>AB002-SEED-(?:42|43|44|45|46|47|9001))/"
     r"(?P<arm>control|treatment)/chat/completions$"
 )
 MAX_REQUEST_BYTES = 4 * 1024 * 1024
@@ -78,7 +78,9 @@ class BrokerStore:
                     sequence_index INTEGER NOT NULL,
                     arm TEXT NOT NULL CHECK (arm IN ('control', 'treatment')),
                     request_sha256 TEXT NOT NULL,
+                    match_index INTEGER NOT NULL,
                     canonical_request BLOB NOT NULL,
+                    requested_max_tokens INTEGER NOT NULL,
                     state TEXT NOT NULL,
                     pair_relation TEXT NOT NULL,
                     upstream_status INTEGER,
@@ -86,6 +88,11 @@ class BrokerStore:
                     response_sha256 TEXT,
                     content_type TEXT,
                     error_class TEXT,
+                    error_detail TEXT,
+                    provider_request_id TEXT,
+                    returned_model TEXT,
+                    usage_json TEXT,
+                    upstream_latency_ms REAL,
                     created_unix_ms INTEGER NOT NULL,
                     completed_unix_ms INTEGER,
                     PRIMARY KEY (pair_id, sequence_index, arm)
@@ -100,6 +107,9 @@ class BrokerStore:
         arm: str,
         request_sha256: str,
         canonical_body: bytes,
+        requested_max_tokens: int,
+        max_requests_per_arm: int,
+        max_requested_output_tokens_per_arm: int,
     ) -> dict[str, Any]:
         other_arm = "treatment" if arm == "control" else "control"
         now = int(time.time() * 1000)
@@ -110,6 +120,24 @@ class BrokerStore:
                 (pair_id, arm),
             ).fetchone()
             index = int(row["next_index"]) if row else 0
+            if index >= max_requests_per_arm:
+                connection.execute("ROLLBACK")
+                raise ValueError(
+                    f"LLM request budget exhausted for {pair_id}/{arm}: "
+                    f"{index}/{max_requests_per_arm}"
+                )
+            token_row = connection.execute(
+                "SELECT COALESCE(SUM(requested_max_tokens), 0) AS total "
+                "FROM requests WHERE pair_id=? AND arm=?",
+                (pair_id, arm),
+            ).fetchone()
+            requested_total = int(token_row["total"]) + requested_max_tokens
+            if requested_total > max_requested_output_tokens_per_arm:
+                connection.execute("ROLLBACK")
+                raise ValueError(
+                    f"LLM requested-output-token budget exhausted for {pair_id}/{arm}: "
+                    f"{requested_total}/{max_requested_output_tokens_per_arm}"
+                )
             if row:
                 connection.execute(
                     "UPDATE arm_counters SET next_index=? WHERE pair_id=? AND arm=?",
@@ -120,35 +148,46 @@ class BrokerStore:
                     "INSERT INTO arm_counters(pair_id, arm, next_index) VALUES(?,?,?)",
                     (pair_id, arm, 1),
                 )
+            match_row = connection.execute(
+                "SELECT COUNT(*) AS count FROM requests "
+                "WHERE pair_id=? AND arm=? AND request_sha256=?",
+                (pair_id, arm, request_sha256),
+            ).fetchone()
+            match_index = int(match_row["count"])
             other = connection.execute(
-                "SELECT * FROM requests WHERE pair_id=? AND sequence_index=? AND arm=?",
-                (pair_id, index, other_arm),
+                "SELECT * FROM requests WHERE pair_id=? AND request_sha256=? "
+                "AND match_index=? AND arm=?",
+                (pair_id, request_sha256, match_index, other_arm),
             ).fetchone()
             relation = "FIRST_ARRIVAL"
             action = "CALL_UPSTREAM"
             if other is not None:
-                if other["request_sha256"] == request_sha256:
-                    relation = "IDENTICAL_PAIRED_REQUEST"
-                    action = (
-                        "REPLAY"
-                        if other["state"] == "COMPLETE"
-                        else "WAIT_FOR_PAIR"
-                    )
-                else:
+                relation = "IDENTICAL_PAIRED_REQUEST"
+                action = "REPLAY" if other["state"] == "COMPLETE" else "WAIT_FOR_PAIR"
+            else:
+                sequence_peer = connection.execute(
+                    "SELECT request_sha256 FROM requests "
+                    "WHERE pair_id=? AND sequence_index=? AND arm=?",
+                    (pair_id, index, other_arm),
+                ).fetchone()
+                if sequence_peer is not None and sequence_peer["request_sha256"] != request_sha256:
                     relation = "DIVERGENT_REQUEST"
             connection.execute(
                 """
                 INSERT INTO requests(
-                    pair_id, sequence_index, arm, request_sha256,
-                    canonical_request, state, pair_relation, created_unix_ms
-                ) VALUES(?,?,?,?,?,?,?,?)
+                    pair_id, sequence_index, arm, request_sha256, match_index,
+                    canonical_request, requested_max_tokens, state, pair_relation,
+                    created_unix_ms
+                ) VALUES(?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     pair_id,
                     index,
                     arm,
                     request_sha256,
+                    match_index,
                     canonical_body,
+                    requested_max_tokens,
                     "PENDING" if action == "WAIT_FOR_PAIR" else "UPSTREAM_OWNER",
                     relation,
                     now,
@@ -158,17 +197,24 @@ class BrokerStore:
         return {
             "sequence_index": index,
             "other_arm": other_arm,
+            "match_index": match_index,
             "action": action,
             "pair_relation": relation,
         }
 
     def paired_response(
-        self, *, pair_id: str, sequence_index: int, other_arm: str
+        self,
+        *,
+        pair_id: str,
+        request_sha256: str,
+        match_index: int,
+        other_arm: str,
     ) -> dict[str, Any] | None:
         with _connect(self.path) as connection:
             row = connection.execute(
-                "SELECT * FROM requests WHERE pair_id=? AND sequence_index=? AND arm=?",
-                (pair_id, sequence_index, other_arm),
+                "SELECT * FROM requests WHERE pair_id=? AND request_sha256=? "
+                "AND match_index=? AND arm=?",
+                (pair_id, request_sha256, match_index, other_arm),
             ).fetchone()
         if row is None or row["state"] != "COMPLETE":
             return None
@@ -176,6 +222,10 @@ class BrokerStore:
             "status": int(row["upstream_status"]),
             "body": bytes(row["response_body"]),
             "content_type": str(row["content_type"] or "application/json"),
+            "provider_request_id": row["provider_request_id"],
+            "returned_model": row["returned_model"],
+            "usage_json": row["usage_json"],
+            "upstream_latency_ms": row["upstream_latency_ms"],
         }
 
     def complete(
@@ -187,13 +237,19 @@ class BrokerStore:
         status: int,
         body: bytes,
         content_type: str,
+        provider_request_id: str | None = None,
+        returned_model: str | None = None,
+        usage_json: str | None = None,
+        upstream_latency_ms: float | None = None,
     ) -> None:
         with _connect(self.path) as connection:
             connection.execute(
                 """
                 UPDATE requests
                 SET state='COMPLETE', upstream_status=?, response_body=?,
-                    response_sha256=?, content_type=?, completed_unix_ms=?
+                    response_sha256=?, content_type=?, provider_request_id=?,
+                    returned_model=?, usage_json=?, upstream_latency_ms=?,
+                    completed_unix_ms=?
                 WHERE pair_id=? AND sequence_index=? AND arm=?
                 """,
                 (
@@ -201,6 +257,10 @@ class BrokerStore:
                     body,
                     hashlib.sha256(body).hexdigest(),
                     content_type,
+                    provider_request_id,
+                    returned_model,
+                    usage_json,
+                    upstream_latency_ms,
                     int(time.time() * 1000),
                     pair_id,
                     sequence_index,
@@ -223,19 +283,36 @@ class BrokerStore:
             status=int(response["status"]),
             body=bytes(response["body"]),
             content_type=str(response["content_type"]),
+            provider_request_id=response.get("provider_request_id"),
+            returned_model=response.get("returned_model"),
+            usage_json=response.get("usage_json"),
+            upstream_latency_ms=response.get("upstream_latency_ms"),
         )
 
     def fail(
-        self, *, pair_id: str, sequence_index: int, arm: str, error_class: str
+        self,
+        *,
+        pair_id: str,
+        sequence_index: int,
+        arm: str,
+        error_class: str,
+        error_detail: str = "",
     ) -> None:
         with _connect(self.path) as connection:
             connection.execute(
                 """
                 UPDATE requests
-                SET state='FAILED', error_class=?, completed_unix_ms=?
+                SET state='FAILED', error_class=?, error_detail=?, completed_unix_ms=?
                 WHERE pair_id=? AND sequence_index=? AND arm=?
                 """,
-                (error_class, int(time.time() * 1000), pair_id, sequence_index, arm),
+                (
+                    error_class,
+                    error_detail[:1000],
+                    int(time.time() * 1000),
+                    pair_id,
+                    sequence_index,
+                    arm,
+                ),
             )
 
 
@@ -247,6 +324,8 @@ class BrokerConfig:
     upstream_api_key: str
     upstream_timeout_seconds: float
     pair_wait_seconds: float
+    max_requests_per_arm_per_pair: int = 60
+    max_requested_output_tokens_per_arm_per_pair: int = 245760
 
 
 def call_upstream(config: BrokerConfig, canonical_body: bytes) -> dict[str, Any]:
@@ -259,21 +338,57 @@ def call_upstream(config: BrokerConfig, canonical_body: bytes) -> dict[str, Any]
         },
         method="POST",
     )
+    started = time.monotonic()
     try:
         with urlrequest.urlopen(
             request, timeout=config.upstream_timeout_seconds
         ) as response:
+            body = response.read()
+            metadata = _response_metadata(body, dict(response.headers.items()))
             return {
                 "status": int(response.status),
-                "body": response.read(),
+                "body": body,
                 "content_type": response.headers.get_content_type(),
+                "upstream_latency_ms": (time.monotonic() - started) * 1000,
+                **metadata,
             }
     except urlerror.HTTPError as exc:
+        body = exc.read()
+        metadata = _response_metadata(body, dict(exc.headers.items()))
         return {
             "status": int(exc.code),
-            "body": exc.read(),
+            "body": body,
             "content_type": exc.headers.get_content_type(),
+            "upstream_latency_ms": (time.monotonic() - started) * 1000,
+            **metadata,
         }
+
+
+def _response_metadata(body: bytes, headers: dict[str, str]) -> dict[str, str | None]:
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    request_id = payload.get("id")
+    if not isinstance(request_id, str) or not request_id:
+        lowered = {str(key).lower(): str(value) for key, value in headers.items()}
+        request_id = lowered.get("x-request-id") or lowered.get("openai-request-id")
+    returned_model = payload.get("model")
+    if not isinstance(returned_model, str):
+        returned_model = None
+    usage = payload.get("usage")
+    usage_json = (
+        json.dumps(usage, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if isinstance(usage, dict)
+        else None
+    )
+    return {
+        "provider_request_id": request_id,
+        "returned_model": returned_model,
+        "usage_json": usage_json,
+    }
 
 
 def process_request(
@@ -285,17 +400,27 @@ def process_request(
     upstream: Callable[[BrokerConfig, bytes], dict[str, Any]] = call_upstream,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     canonical_body, request_sha256 = canonical_request(body)
+    request_value = json.loads(canonical_body)
+    requested_max_tokens = request_value.get("max_tokens")
+    if not isinstance(requested_max_tokens, int) or isinstance(requested_max_tokens, bool):
+        raise ValueError("chat completion request must declare integer max_tokens")
+    if requested_max_tokens < 1:
+        raise ValueError("chat completion max_tokens must be positive")
     allocation = config.store.allocate(
         pair_id=pair_id,
         arm=arm,
         request_sha256=request_sha256,
         canonical_body=canonical_body,
+        requested_max_tokens=requested_max_tokens,
+        max_requests_per_arm=config.max_requests_per_arm_per_pair,
+        max_requested_output_tokens_per_arm=config.max_requested_output_tokens_per_arm_per_pair,
     )
     index = int(allocation["sequence_index"])
     if allocation["action"] == "REPLAY":
         response = config.store.paired_response(
             pair_id=pair_id,
-            sequence_index=index,
+            request_sha256=request_sha256,
+            match_index=int(allocation["match_index"]),
             other_arm=str(allocation["other_arm"]),
         )
         if response is None:
@@ -312,7 +437,8 @@ def process_request(
         while time.monotonic() < deadline:
             response = config.store.paired_response(
                 pair_id=pair_id,
-                sequence_index=index,
+                request_sha256=request_sha256,
+                match_index=int(allocation["match_index"]),
                 other_arm=str(allocation["other_arm"]),
             )
             if response is not None:
@@ -329,6 +455,7 @@ def process_request(
             sequence_index=index,
             arm=arm,
             error_class="PAIR_WAIT_TIMEOUT",
+            error_detail="identical paired response did not complete before pair wait deadline",
         )
         raise TimeoutError("timed out waiting for identical paired response")
     try:
@@ -339,8 +466,16 @@ def process_request(
             sequence_index=index,
             arm=arm,
             error_class=type(exc).__name__,
+            error_detail=str(exc),
         )
         raise
+    response = {
+        "provider_request_id": None,
+        "returned_model": None,
+        "usage_json": None,
+        "upstream_latency_ms": None,
+        **response,
+    }
     config.store.complete(
         pair_id=pair_id,
         sequence_index=index,
@@ -348,12 +483,16 @@ def process_request(
         status=int(response["status"]),
         body=bytes(response["body"]),
         content_type=str(response.get("content_type") or "application/json"),
+        provider_request_id=response.get("provider_request_id"),
+        returned_model=response.get("returned_model"),
+        usage_json=response.get("usage_json"),
+        upstream_latency_ms=response.get("upstream_latency_ms"),
     )
     return response, allocation
 
 
 class PairedBrokerHandler(BaseHTTPRequestHandler):
-    server_version = "RecClawPairedBroker/0.2"
+    server_version = "RecClawPairedBroker/0.3"
 
     @property
     def config(self) -> BrokerConfig:
@@ -445,6 +584,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--upstream-timeout", type=float, default=300.0)
     parser.add_argument("--pair-wait", type=float, default=330.0)
+    parser.add_argument("--max-requests-per-arm-per-pair", type=int, default=60)
+    parser.add_argument(
+        "--max-requested-output-tokens-per-arm-per-pair",
+        type=int,
+        default=245760,
+    )
     return parser
 
 
@@ -463,6 +608,10 @@ def main(argv: list[str] | None = None) -> int:
         upstream_api_key=upstream_key,
         upstream_timeout_seconds=max(1.0, float(args.upstream_timeout)),
         pair_wait_seconds=max(1.0, float(args.pair_wait)),
+        max_requests_per_arm_per_pair=max(1, int(args.max_requests_per_arm_per_pair)),
+        max_requested_output_tokens_per_arm_per_pair=max(
+            1, int(args.max_requested_output_tokens_per_arm_per_pair)
+        ),
     )
     server = PairedBrokerServer((str(args.host), int(args.port)), config)
     print(json.dumps({

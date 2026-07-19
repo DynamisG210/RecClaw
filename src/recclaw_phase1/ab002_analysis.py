@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SEEDS = (42, 43, 44)
+SEEDS = (42, 43, 44, 45, 46, 47)
 
 
 def _outside_source(path: Path) -> Path:
@@ -244,8 +244,8 @@ def analyze(runtime_root: Path, output_dir: Path, baseline: float) -> dict[str, 
         and pair["treatment"]["status"] == "LOCAL_COMPLETE"
     ]
     result = {
-        "record_type": "RECCLAW_PHASE1_AB002_ANALYSIS",
-        "schema_version": "recclaw.phase1.ab002.analysis.v1",
+        "record_type": "RECCLAW_PHASE1_AB002_DEVELOPMENT_TRACE_ANALYSIS",
+        "schema_version": "recclaw.phase1.ab002.development_trace_analysis.v2",
         "status": "LOCAL_COMPLETE" if len(complete_pairs) == len(SEEDS) else "IN_PROGRESS",
         "experiment_run_status": "NOT_STARTED" if not complete_pairs else "IN_PROGRESS",
         "complete_pair_count": len(complete_pairs),
@@ -270,6 +270,8 @@ def analyze(runtime_root: Path, output_dir: Path, baseline: float) -> dict[str, 
             "valid_action_false_block_oracle": "INDEPENDENT_ADJUDICATION_REQUIRED",
         },
         "broker": broker_metrics(root / "broker/paired_llm.sqlite3"),
+        "primary_performance_analysis": False,
+        "primary_analysis_implementation": "recclaw_phase1.ab002_final_analysis",
         "authority": "NONE",
         "evidence_class": "DEVELOPMENT_ONLY",
         "formal_acceptance": False,

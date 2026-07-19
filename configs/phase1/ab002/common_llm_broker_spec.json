@@ -1,0 +1,42 @@
+{
+  "record_type": "RECCLAW_PHASE1_AB002_COMMON_LLM_BROKER_SPEC",
+  "schema_version": "recclaw.phase1.ab002.common_llm_broker_spec.v1",
+  "spec_id": "AB002-COMMON-PAIRED-LLM-BROKER-V1",
+  "status": "LOCAL_COMPLETE",
+  "frozen_before_canary": true,
+  "implementation": "src/recclaw_phase1/paired_llm_broker.py",
+  "implementation_sha256": "2714934546416bd4b81ce22518684c028655169727083736b564cac2dc640fcb",
+  "endpoint_shape": "/v1/pairs/AB002-SEED-{42|43|44|45|46|47|9001}/{control|treatment}/chat/completions",
+  "upstream": {
+    "provider": "laboratory_openai_compatible",
+    "model": "gpt-5.4",
+    "temperature": 0.2,
+    "timeout_seconds": 300,
+    "retries": 3,
+    "reasoning_effort": "OMITTED_AS_IN_ORIGINAL_REQUEST",
+    "service_tier": "OMITTED_AS_IN_ORIGINAL_REQUEST"
+  },
+  "canonicalization": "UTF-8 canonical JSON with sorted keys, compact separators, finite values, and streaming disabled",
+  "identical_request_policy": "one upstream call for the same pair, canonical prompt hash, and per-arm occurrence index followed by exact response-byte replay; intervening divergent calls do not break later matching",
+  "divergent_request_policy": "independent upstream calls with DIVERGENT_REQUEST classification",
+  "cross_seed_cache": "FORBIDDEN_BY_SEED_BOUND_PAIR_ID",
+  "maximum_requests_per_arm_per_pair": 60,
+  "maximum_requested_output_tokens_per_arm_per_pair": 245760,
+  "persisted_fields": [
+    "canonical_request",
+    "request_sha256",
+    "response_body",
+    "response_sha256",
+    "provider_request_id",
+    "returned_model",
+    "usage_json",
+    "upstream_latency_ms",
+    "HTTP_status",
+    "bounded_error_diagnostic"
+  ],
+  "secret_policy": "client bearer token and upstream API key are environment-only and never persisted",
+  "treatment_extra_llm_calls": "FORBIDDEN",
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

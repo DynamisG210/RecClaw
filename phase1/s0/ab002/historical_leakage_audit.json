@@ -1,0 +1,65 @@
+{
+  "authority": "NONE",
+  "checks": {
+    "closed_source_inventory": "PASS",
+    "dynamic_search_artifact_scan": "PASS",
+    "forbidden_runtime_token_scan": "PASS",
+    "historical_candidate_overlap": "PASS",
+    "initial_memory_absent": "PASS"
+  },
+  "dynamic_artifact_findings": [],
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "forbidden_runtime_tokens": [
+    "cand_lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076",
+    "cand_lightgcn_shallow_alignment_rankaware_gate",
+    "cand_lightgcn_shallow_rankaware_lastlayeralign",
+    "historical_v4m_best",
+    "historical_best",
+    "continue_from_v4",
+    "v4k",
+    "v4m",
+    "0.2908",
+    "0.289067",
+    "0.2856",
+    "0.2769",
+    "0.2765",
+    "0.274367"
+  ],
+  "formal_acceptance": false,
+  "historical_audit_sources": [
+    {
+      "logical_path": "RecClaw_LabLog/2026.05.28/v4k_75_checkpoint_analysis/agent_memory_current.jsonl",
+      "sha256": "687df25ad7e589a6f394173758f5c4542b70235838d4c6f088856b3281dfaf51"
+    },
+    {
+      "logical_path": "RecClaw_LabLog/2026.05.28/v4k_75_checkpoint_analysis/candidate_proposals_current.jsonl",
+      "sha256": "9f766478c9aaba9ffe0d156b920d1ec5bb03998d89cb26eefc63e882f664f4e8"
+    },
+    {
+      "logical_path": "RecClaw_LabLog/2026.05.30/v4m_200_final_analysis/agent_memory.jsonl",
+      "sha256": "f3ece4863226c728f042d7e48334a3c242a544d3629487338a8aab5a314466da"
+    },
+    {
+      "logical_path": "RecClaw_LabLog/2026.05.30/v4m_200_final_analysis/candidate_proposals.jsonl",
+      "sha256": "ccaccb9662b5210b1d6c7d89bda75031d1feb103da37498433654ea8162b7177"
+    },
+    {
+      "logical_path": "RecClaw_LabLog/2026.05.30/v4m_200_final_analysis/v4m_final_summary.md",
+      "sha256": "c9839ae447b8b1b6d74c21c3f5da764213763672bf83f2eae7de7c48db96f62c"
+    }
+  ],
+  "historical_lineage_facts": [
+    "v4k began from an empty metric summary but generated candidates from round 1",
+    "v4m continued from v4k140 and therefore is not a clean start",
+    "the final dual-path candidate and the two learned family prefixes post-date the recovered pre-search registry"
+  ],
+  "known_limit": "This is a bounded known-leakage audit over the recovered Git and approved LabLog evidence, not proof that no undiscovered historical artifact exists.",
+  "record_type": "RECCLAW_PHASE1_AB002_HISTORICAL_LEAKAGE_AUDIT",
+  "s0_id": "AB002-RECONSTRUCTED-CLEAN-START-S0-V1",
+  "scanned_bytes": 578637,
+  "scanned_file_count": 59,
+  "schema_version": "recclaw.phase1.ab002.historical_leakage_audit.v1",
+  "status": "LOCAL_COMPLETE",
+  "token_findings": [],
+  "verdict": "NO_KNOWN_HISTORICAL_SEARCH_LEAKAGE_DETECTED"
+}

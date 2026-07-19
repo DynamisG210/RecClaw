@@ -1,0 +1,617 @@
+{
+  "authority": "NONE",
+  "baseline_inputs": [
+    {
+      "filename": "baseline_bpr_20260509_080916.log",
+      "model": "BPR",
+      "reference_ndcg_at_10": 0.2567,
+      "sha256": "48c75d62d5e21dae5b3d2de2d56398e8a613468eba9e6a94db9f372d7db071a3"
+    },
+    {
+      "filename": "baseline_lightgcn_20260509_081256.log",
+      "model": "LightGCN",
+      "reference_ndcg_at_10": 0.2671,
+      "sha256": "e1ef2f7f15e3596386e61b259ac771f89f1fe7eb4014fdc97ef3089335520fba"
+    }
+  ],
+  "candidate_registry_count": 23,
+  "candidate_registry_ids": [
+    "cand_bpr_uniform_neg_baseline_note",
+    "cand_bpr_hard_negative_mix",
+    "cand_bpr_popularity_aware_negative",
+    "cand_bpr_hard_negative_margin",
+    "cand_bpr_popularity_aware_margin",
+    "cand_bpr_long_tail_reweight",
+    "cand_lightgcn_debiased_negative_sampling",
+    "cand_lightgcn_layer_weighted_agg",
+    "cand_lightgcn_residual_layer_mix",
+    "cand_lightgcn_residual_norm_constrained",
+    "cand_lightgcn_user_item_gate",
+    "cand_lightgcn_edge_dropout_residual_mix",
+    "cand_lightgcn_edge_dropout_residual_norm",
+    "cand_bpr_mlp_head",
+    "cand_bpr_margin_loss",
+    "cand_bpr_popularity_regularized",
+    "cand_bpr_norm_constrained",
+    "cand_lightgcn_aux_alignment_loss",
+    "cand_lightgcn_rank_aware_loss",
+    "cand_rerank_popularity_penalty",
+    "cand_rerank_coverage_boost",
+    "cand_lightgcn_small_embedding",
+    "cand_lightgcn_shallow_layers"
+  ],
+  "classification": "RECONSTRUCTED_CLEAN_START_S0",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "exact_pre_first_iteration_snapshot_recovered": false,
+  "formal_acceptance": false,
+  "historical_reference_visibility": "REPORTING_ONLY_NOT_COPIED_TO_RUNTIME",
+  "historical_search_output_count": 0,
+  "initial_dynamic_state": {
+    "agent_memory": "ABSENT",
+    "candidate_proposals": "ABSENT",
+    "candidate_search_tree": "ABSENT",
+    "experience_summary": "ABSENT",
+    "reflection_memory": "ABSENT",
+    "result_rows": 0,
+    "seed_from_argument": "FORBIDDEN"
+  },
+  "leakage_audit": "phase1/s0/ab002/historical_leakage_audit.json",
+  "reconstruction": {
+    "budget_instrumented_common_files": [
+      "scripts/agent.py",
+      "scripts/implement_candidate_proposal.py",
+      "scripts/run_candidate.py"
+    ],
+    "final_common_source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98",
+    "final_common_source_tree": "35e0e9d7d557d086bc47bf2527bb023a51b4bf70",
+    "pre_search_library_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8",
+    "pre_search_library_tree": "9160182744c6ac595426739413c79e3f61322886",
+    "reason": "The final v4m run continued from v4k140 and no single exact clean pre-first snapshot contains the final valid runtime code without learned search state.",
+    "sanitization_scope": "remove post-start candidate-family names and historical performance thresholds while retaining the final common runner logic",
+    "sanitized_common_files": [
+      "scripts/agent.py",
+      "scripts/build_experience_summary.py",
+      "scripts/run_reflection_pilot.py"
+    ]
+  },
+  "record_type": "RECCLAW_PHASE1_AB002_INITIAL_STATE_MANIFEST",
+  "s0_id": "AB002-RECONSTRUCTED-CLEAN-START-S0-V1",
+  "schema_version": "recclaw.phase1.ab002.initial_state.v2",
+  "source_file_count": 59,
+  "source_files": [
+    {
+      "path": "configs/action_space.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "e45b93d6118412ed3d324fdd0d50c617a78f36e3973acb6aedb2f4c4d88e0f24",
+      "size_bytes": 11674
+    },
+    {
+      "path": "configs/bpr.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "75057ba9b44e789a7d9a75ecda7ef2d5ead72f6ac2c0f3a985f6ec768fd32c10",
+      "size_bytes": 40
+    },
+    {
+      "path": "configs/candidate_proposal_schema.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "e0423f1b94c17892cf7eca8f40230e9ada8845d5784c911a4efa0c71f28e6d7b",
+      "size_bytes": 7258
+    },
+    {
+      "path": "configs/candidate_registry.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "a2562c637265dce1347baf6dc72246b3cefee48a0c5207b9576a36ad04a04d49",
+      "size_bytes": 13907
+    },
+    {
+      "path": "configs/candidates/cand_bpr_hard_negative_margin.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "ed3ba45732adf935f8e0e06db3964b3992a12555646c6ba730e27674623113a1",
+      "size_bytes": 110
+    },
+    {
+      "path": "configs/candidates/cand_bpr_hard_negative_mix.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "471e038cacfc91786ecfb5ddefdfb99015e95db671401e26e7cba33d507abe0a",
+      "size_bytes": 89
+    },
+    {
+      "path": "configs/candidates/cand_bpr_long_tail_reweight.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "2c8cbc386c955b5089e74bc5a70395f99bdcd4263e139a2f8eaa576fd11000c9",
+      "size_bytes": 92
+    },
+    {
+      "path": "configs/candidates/cand_bpr_margin_loss.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "50ac8dce0cba9f2dc5b2f82d64d92b926fb286dbcd7f6d8e863d5f789a404b65",
+      "size_bytes": 64
+    },
+    {
+      "path": "configs/candidates/cand_bpr_norm_constrained.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "3eb922a6c83cc09275c641f78dc2596b792b7c35c9450e81834c2ddbaec51a04",
+      "size_bytes": 98
+    },
+    {
+      "path": "configs/candidates/cand_bpr_popularity_aware_margin.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "e9f406f56b3f0a39aa3be1fa3c00c7076257805582bbe87be17c23e7fa9d4e84",
+      "size_bytes": 113
+    },
+    {
+      "path": "configs/candidates/cand_bpr_popularity_aware_negative.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "fc1f46c657b1477771f71d195b3bd7bcb0abe1c70a3fc8ed7c4b06cce477cb06",
+      "size_bytes": 105
+    },
+    {
+      "path": "configs/candidates/cand_bpr_popularity_regularized.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "cfba631ff8622bbfba32a7446bfa6f90aacce8b05d44537921eaf9371d94357d",
+      "size_bytes": 95
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_aux_alignment_loss.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "a3b9ec4cf573af7bacb406974276137d6d80c4d2476083a7aaffb87c4e198e35",
+      "size_bytes": 94
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_debiased_negative_sampling.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "89032092ea035c5b7e0960ad21a3940ce2f46192067672144c6c79887f047c8d",
+      "size_bytes": 105
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_edge_dropout_residual_mix.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "26292f96ad389ee5383d89148a296cd689d5ea7d57a31fffcbfbbef765b148eb",
+      "size_bytes": 162
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_edge_dropout_residual_norm.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "1072df75e281b48780e442efdb13246c6206d7bc9c33f586e8536d2e85b651a0",
+      "size_bytes": 197
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_layer_weighted_agg.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "a1aba7ddce34594edc376eeaacdbfa895fec0cf82bfa7649bb8ebc3949a57ed9",
+      "size_bytes": 113
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_rank_aware_loss.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "6a8f1f6170eb019de3fc4e403f6e6825ebe19f3588d82f0880a15b3d950d7085",
+      "size_bytes": 92
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_residual_layer_mix.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "8e1116c12d290b7f1b39da1ead328160526be9740fb8f08b5bafebe8c45e479f",
+      "size_bytes": 126
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_residual_norm_constrained.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "1269e91cd55c422ccf0e19b335b775c679c603c5cc5e078066f4b0026e7916d0",
+      "size_bytes": 178
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_shallow_layers.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "f26c6db00fd8c0e3a1b875d2d393099e93d236b479c32bd9a02b0cef160e547b",
+      "size_bytes": 90
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_small_embedding.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "96429a9cd855bdfe5c68c587826e01fe6501538670b2f40ad616d357a30ebd39",
+      "size_bytes": 91
+    },
+    {
+      "path": "configs/candidates/cand_rerank_coverage_boost.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "b724953c8f5dbc4602e17e9b4445d5cdcdfb424797065edb716a40ca31689304",
+      "size_bytes": 114
+    },
+    {
+      "path": "configs/candidates/cand_rerank_popularity_penalty.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "fe8fbd2e71264940a33193c2b30905fb43c758313480423a42c465960fd503c9",
+      "size_bytes": 117
+    },
+    {
+      "path": "configs/lightgcn.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "4a001d34ea551520adb42daa95efac39394cada70f7ec50f5c3d9bf5d64d1ede",
+      "size_bytes": 48
+    },
+    {
+      "path": "configs/lightgcn_metrics.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "fdc11a17e3f0d8e3d6d6991204620d8bf5a1551e5aabbd9b4b5d4f122ddc6ed6",
+      "size_bytes": 156
+    },
+    {
+      "path": "configs/reflection_policy.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "c1cb3b365d09c391f6b4573181a7c2b2994b50b2ab4253e6775ca03bcb939291",
+      "size_bytes": 2069
+    },
+    {
+      "path": "configs/search_policy.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "78169865aac7104bf5c392a29bbe9ffffb8a96d764fc3e3a5af52493bdb688f6",
+      "size_bytes": 2430
+    },
+    {
+      "path": "configs/task_ml1m.yaml",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "77f27c6c1fe70e3b340961b6b530d500cd0821782d95ac4650334081f426fe5c",
+      "size_bytes": 493
+    },
+    {
+      "path": "recclaw_ext/__init__.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "6de06e8d42f5522a27602ae1bc81476c92aeeb18cbe6951046ad474142de26fb",
+      "size_bytes": 96
+    },
+    {
+      "path": "recclaw_ext/models/__init__.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "a7884dcfc57ea850769350c97cca6d28cbdf56d5d583765ae1670fc0ef61c21b",
+      "size_bytes": 2041
+    },
+    {
+      "path": "recclaw_ext/models/_losses.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "1ad3cfb7f68fb51c80725f38f4467287a07013f8de7d3ece47eda89729ca1ad2",
+      "size_bytes": 5052
+    },
+    {
+      "path": "recclaw_ext/models/_samplers.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "c835a4a793c0480a1c7cc057dd2a7fbc8072d2eabed40b68a39f6ed397d563fe",
+      "size_bytes": 6428
+    },
+    {
+      "path": "recclaw_ext/models/_utils.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "61fcea7ffb024446a1a4b10a058ce333a7c0c2a503d545f29037215f4f67bcf9",
+      "size_bytes": 2095
+    },
+    {
+      "path": "recclaw_ext/models/bpr_composed.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "33140c493969beabe978f73f9a2f81f0313f1023e158f0bd739640b09087bf64",
+      "size_bytes": 2140
+    },
+    {
+      "path": "recclaw_ext/models/bpr_margin.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "e7c896cfd5682e026aeaf1c741d263434d57b31baab9953a1bddc2149c914539",
+      "size_bytes": 951
+    },
+    {
+      "path": "recclaw_ext/models/bpr_regularized.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "6f9a1e799efb7457a5a44c403f735f60b98de4b5e53930160ac9c66f6ef66a18",
+      "size_bytes": 4120
+    },
+    {
+      "path": "recclaw_ext/models/bpr_sampling.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "98f4bbcdd00e86720ed8158109138809c7b03f511dd9c5251df887b6d96abcd8",
+      "size_bytes": 3672
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_edge_dropout_residual.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "2805881fcda8d42c0c499cc8cda2c5d8679e49c6e0ba1cde194966867c81373d",
+      "size_bytes": 2290
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_lw.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "34498e38f616764331fdda355574668a39a2135639bdc5561f4a307a7341246a",
+      "size_bytes": 1648
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_objectives.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "dc9d2ed60e29a1d9227228c88eef624cc01cb375c0f62b670300edb4685fcee4",
+      "size_bytes": 4617
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_residual.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "797ed3da55199ac80ae5a60d81ebdd452bfd4fe8fd61ee3df572779efd80b631",
+      "size_bytes": 1335
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_residual_norm.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "c8a3a470c0cb74999e0895ab6f4986530f375f13188f0638051fb3be71586298",
+      "size_bytes": 2487
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_sampling.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "3490c820655b7a39041dcd0ed5ea32712125b9ba6c55d360134041cc1a3952fb",
+      "size_bytes": 2131
+    },
+    {
+      "path": "recclaw_ext/posthoc/__init__.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "28873940f995a67ec4d7a063161a0d68ca7d9d57dcea548e6a1de22d5b317134",
+      "size_bytes": 202
+    },
+    {
+      "path": "recclaw_ext/posthoc/adjustments.py",
+      "provenance": {
+        "kind": "EXACT_PRE_SEARCH_LIBRARY_SOURCE",
+        "source_commit": "b3dc5a7e33fd1cbec60b5dfb9ae7097c67d0b5e8"
+      },
+      "sha256": "36db93a5b7b87e32283bfd7a5fe059352cf79fdf7e34ff28267ccac3f838b37b",
+      "size_bytes": 1237
+    },
+    {
+      "path": "scripts/action_space.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "b9befe128d0aa89a5fa892a16478fafc184cca3f2b3e28a0b7b1cd9d7b367e78",
+      "size_bytes": 11833
+    },
+    {
+      "path": "scripts/agent.py",
+      "provenance": {
+        "kind": "FINAL_COMMON_SOURCE_WITH_S0_SANITIZATION_AND_AB002_BUDGET_INSTRUMENTATION",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "341bacc6ecf749fabd0e7af1d2dc9da589bd54ed1ca9f5821877914d4c966784",
+      "size_bytes": 184908
+    },
+    {
+      "path": "scripts/analysis/build_candidate_search_tree.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "f7c780848a83a243744195ea67eff70309f83d2c0478849ebf91404f665c0ef3",
+      "size_bytes": 18009
+    },
+    {
+      "path": "scripts/analysis/lint_recclaw_space.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "ba1e12d0ea788159d576a01dfbb7b51b46510b9b8393b90518c0ea8cb38c4c04",
+      "size_bytes": 26661
+    },
+    {
+      "path": "scripts/build_experience_summary.py",
+      "provenance": {
+        "kind": "FINAL_COMMON_SOURCE_WITH_S0_SANITIZATION",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "80badb2ee5e4064028aef793cb468916ab0b759cd1a4fdd4c1b42d6853e928aa",
+      "size_bytes": 48703
+    },
+    {
+      "path": "scripts/collect_result.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "92d71c159a29b8d9541296d483928db271e73d3ada3275f9ca53ed8d2f63c255",
+      "size_bytes": 17442
+    },
+    {
+      "path": "scripts/compare_runs.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "b4a6f237323b15c47a683280e9cdc245fcc1b61cd30f2d79bff0b756cd214698",
+      "size_bytes": 7677
+    },
+    {
+      "path": "scripts/implement_candidate_proposal.py",
+      "provenance": {
+        "kind": "FINAL_COMMON_SOURCE_WITH_AB002_BUDGET_INSTRUMENTATION",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "16b7bb7f7f175db4c2a67efba6d744ef4383737f19dff7381f2594b3c19c015e",
+      "size_bytes": 50328
+    },
+    {
+      "path": "scripts/promote_candidate_proposal.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "652c0148f2565a8d7163bdfa4d7fca38c3a2d276f8c4c9e6e425f790dc5f9106",
+      "size_bytes": 8301
+    },
+    {
+      "path": "scripts/propose_candidate.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "c158dab2c118ed6c2c668f65c4a2c2d7220bc93f6b1e9da41e77af3dfb9698fe",
+      "size_bytes": 46682
+    },
+    {
+      "path": "scripts/run_candidate.py",
+      "provenance": {
+        "kind": "FINAL_COMMON_SOURCE_WITH_AB002_BUDGET_INSTRUMENTATION",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "076bc03de21d857336e7c21c8b338f740f493c05f8e8990cffc9c9a4fef1fbc5",
+      "size_bytes": 27158
+    },
+    {
+      "path": "scripts/run_reflection_pilot.py",
+      "provenance": {
+        "kind": "FINAL_COMMON_SOURCE_WITH_S0_SANITIZATION",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "56e5143bb3d31fb173d8941bf7d5cfa8205c84c9e3c1212d9378e8fd5e6d3eea",
+      "size_bytes": 20961
+    },
+    {
+      "path": "scripts/validate_candidate_proposal.py",
+      "provenance": {
+        "kind": "EXACT_FINAL_COMMON_SOURCE",
+        "source_commit": "c25598aca6c803ed3e2a2a37cb6480fbccc1ed98"
+      },
+      "sha256": "8dabbb49351c5745da9ba4b7d5edbb4c8c7f5c568e385bb1dd964cdb915073d5",
+      "size_bytes": 27112
+    }
+  ],
+  "source_root": "phase1/s0/ab002/source",
+  "source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",
+  "status": "LOCAL_COMPLETE"
+}

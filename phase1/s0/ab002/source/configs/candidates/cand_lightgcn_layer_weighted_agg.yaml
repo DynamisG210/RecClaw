@@ -1,0 +1,5 @@
+candidate_id: cand_lightgcn_layer_weighted_agg
+model: LightGCNLW
+embedding_size: 64
+n_layers: 3
+reg_weight: 1e-4

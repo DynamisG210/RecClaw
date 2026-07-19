@@ -18,20 +18,24 @@
     "dirty_provenance_workspace_status_matches_archive_inventory": "PASS",
     "full_relevant_unittest_suite": {
       "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -t . -p 'test_*.py' -v",
-      "passed": 167,
+      "passed": 191,
       "skipped_missing_optional_torch_recbole": 4,
       "failed": 0,
-      "total": 171,
+      "total": 195,
       "result": "PASS"
     },
     "delivery_secret_scan": {
       "command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase1/scan_secrets.py --root . --include-untracked",
-      "expected_scanned_file_count": 116,
+      "expected_scanned_file_count": 199,
       "finding_count": 0,
       "result": "PASS"
     },
     "control_guard_files_or_imports": {
       "observed_count": 0,
+      "result": "PASS"
+    },
+    "arm_upstream_provider_credentials_exposed": {
+      "observed": false,
       "result": "PASS"
     },
     "treatment_frozen_guard_hash_replay": "PASS",
@@ -46,34 +50,23 @@
     "materialized_treatment_agent_help": "PASS",
     "source_sha256sums": "PASS",
     "precommit_staged_diff_check": {
-      "result": "KNOWN_EXACT_BYTE_EXCEPTIONS_ONLY",
-      "exceptions": [
-        {
-          "path": "phase1/overlays/treatment_agent.patch",
-          "diagnostic": "line 63 trailing whitespace",
-          "sha256": "2bfeeb6f4fd7893784899278ae2c4beee5e539da57d0532670edb5102f3e24c4"
-        },
-        {
-          "path": "src/recclaw_core/__init__.py",
-          "diagnostic": "new blank line at EOF",
-          "sha256": "ef861a60d2af26d298c91a1b54dc3860e34d5f7b17e3fbd096bc6e28805fb07b"
-        }
-      ],
-      "rationale": "Both files are frozen Treatment inputs with exact hash bindings; changing either byte would invalidate the frozen integration. No other whitespace diagnostic was observed."
+      "command": "git diff --check",
+      "result": "PASS",
+      "exceptions": []
     },
     "gitless_treatment_materialization": {
       "gpu5_failure_reproduced": "FileNotFoundError: git",
-      "pure_python_overlay_local_targeted_tests": 12,
+      "pure_python_overlay_local_targeted_tests": 43,
       "single_fault_context_negative": "PASS",
       "full_local_regression": "PASS",
-      "gpu5_reverification_status": "LOCAL_COMPLETE"
+      "gpu5_reverification_status": "LOCAL_COMPLETE_PRIOR_RELEASE_C25598A_ONLY"
     },
     "gpu5_full_relevant_unittest_suite": {
       "passed": 171,
       "skipped": 0,
       "failed": 0,
       "total": 171,
-      "result": "PASS"
+      "result": "PASS_PRIOR_RELEASE_C25598A_ONLY"
     },
     "gpu5_control_treatment_isolation": {
       "shared_environment_guard_exposure_reproduced": true,
@@ -82,8 +75,18 @@
       "control_recbole_import": "1.2.1",
       "control_torch_import": "2.4.1+cu121",
       "treatment_guard_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
-      "result": "PASS"
+      "result": "PASS_PRIOR_RELEASE_C25598A_ONLY"
     }
+  },
+  "current_pre_canary_release": {
+    "remote_verification_status": "NOT_STARTED",
+    "local_phase1_tests": 43,
+    "local_full_tests": 195,
+    "local_full_tests_skipped": 4,
+    "s0_source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",
+    "dataset_tree_sha256_inspected_on_gpu5": "532f0c05827ee06d1b5f81de9686bb8cf4288e67260a55853bc45d092c82f9dd",
+    "gpu5_recbole_critical_files_match_contract": true,
+    "gpu5_slots_0_and_1_free_at_inspection_not_reserved": true
   },
   "runtime_environment": {
     "status": "LOCAL_COMPLETE",

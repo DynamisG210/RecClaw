@@ -53,10 +53,10 @@ class AB002AnalysisTests(unittest.TestCase):
                 )
             output = Path(temporary) / "analysis"
             result = analyze(root, output, 0.2671)
-            self.assertEqual(3, result["complete_pair_count"])
+            self.assertEqual(6, result["complete_pair_count"])
             self.assertAlmostEqual(0.290, result["aggregate"]["treatment_mean_final_best"])
             self.assertAlmostEqual(0.281, result["aggregate"]["control_mean_final_best"])
-            self.assertEqual(3, result["aggregate"]["quarantined_original_trial_count"])
+            self.assertEqual(6, result["aggregate"]["quarantined_original_trial_count"])
             self.assertTrue((output / "ab002_running_best.svg").is_file())
 
     def test_neutral_auditor_requires_independent_false_block_input(self) -> None:
@@ -64,14 +64,17 @@ class AB002AnalysisTests(unittest.TestCase):
             (PROJECT_ROOT / "configs/phase1/ab002/outcome_audit_policy.json").read_text()
         )
         analysis = {
-            "complete_pair_count": 3,
+            "assigned_pair_count": 6,
+            "complete_pair_count": 6,
             "aggregate": {
-                "control_mean_final_best": 0.28,
-                "treatment_mean_final_best": 0.29,
+                "paired_mean_primary_difference": 0.001,
+                "paired_median_primary_difference": 0.001,
+                "treatment_primary_win_count": 4,
                 "valid_action_false_block_rate": None,
-                "quarantined_original_trial_count": 2,
-                "protocol_mismatch_count": 0,
-                "mean_guard_latency_ms": 2.0,
+                "invalid_feedback_relative_reduction": 0.5,
+                "valid_informative_signal_rate_delta": 0.1,
+                "critical_valid_action_false_block_count": 0,
+                "simple_rule_same_benefit": False,
             },
             "pairs": [],
         }
@@ -79,21 +82,24 @@ class AB002AnalysisTests(unittest.TestCase):
         self.assertEqual("INCONCLUSIVE", first["experiment_outcome"])
         analysis["aggregate"]["valid_action_false_block_rate"] = 0.0
         second = audit_outcome(analysis, policy)
-        self.assertEqual("POSITIVE", second["experiment_outcome"])
+        self.assertEqual("STRONG_POSITIVE", second["experiment_outcome"])
 
     def test_neutral_auditor_reports_negative_without_reinterpretation(self) -> None:
         policy = json.loads(
             (PROJECT_ROOT / "configs/phase1/ab002/outcome_audit_policy.json").read_text()
         )
         analysis = {
-            "complete_pair_count": 3,
+            "assigned_pair_count": 6,
+            "complete_pair_count": 6,
             "aggregate": {
-                "control_mean_final_best": 0.29,
-                "treatment_mean_final_best": 0.27,
+                "paired_mean_primary_difference": -0.002,
+                "paired_median_primary_difference": -0.002,
+                "treatment_primary_win_count": 1,
                 "valid_action_false_block_rate": 0.0,
-                "quarantined_original_trial_count": 4,
-                "protocol_mismatch_count": 1,
-                "mean_guard_latency_ms": 2.0,
+                "invalid_feedback_relative_reduction": 0.5,
+                "valid_informative_signal_rate_delta": 0.1,
+                "critical_valid_action_false_block_count": 0,
+                "simple_rule_same_benefit": False,
             },
             "pairs": [],
         }

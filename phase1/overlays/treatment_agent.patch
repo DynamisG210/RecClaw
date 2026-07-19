@@ -18,7 +18,7 @@ diff --git a/scripts/agent.py b/scripts/agent.py
 +            print(f"[EvidenceGuard] initialization failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
          self.memory = []
          self.registry = []
-@@ -2791,17 +2800,33 @@ class RecClawAgent:
+@@ -2795,17 +2804,33 @@ class RecClawAgent:
              parameter_signature = self._parameter_signature(parent_id, dict(params))
          compare_baseline = target.get("compare_baseline") if isinstance(target.get("compare_baseline"), dict) else {}
          validation = self.run_seed_validation(candidate, dict(params), self._to_float(compare_baseline.get("baseline_metric")))
@@ -63,7 +63,7 @@ diff --git a/scripts/agent.py b/scripts/agent.py
  
      def _run_json_command(self, cmd: list[str], *, allow_json_failure: bool = False) -> dict[str, Any]:
          completed = subprocess.run(
-@@ -3459,3 +3484,23 @@ class RecClawAgent:
+@@ -3463,3 +3488,23 @@ class RecClawAgent:
 +    def remember_guard_feedback(self, event: dict[str, Any]) -> bool:
 +        if self.guard_hook is None:
 +            return False
@@ -87,7 +87,7 @@ diff --git a/scripts/agent.py b/scripts/agent.py
      def run(self) -> None:
          start_round = max(1, self.config.start_round)
          end_round = max(start_round, self.config.rounds)
-@@ -3473,3 +3518,16 @@ class RecClawAgent:
+@@ -3477,3 +3522,16 @@ class RecClawAgent:
                  self.refresh_candidate_proposals(round_id)
                  candidate, params, context = self.plan()
 +                if self.guard_hook is not None:
@@ -104,7 +104,7 @@ diff --git a/scripts/agent.py b/scripts/agent.py
 +                    except Exception as exc:  # Guard cannot block on integration failure
 +                        print(f"[EvidenceGuard] precheck failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
                  candidate_id = str(candidate.get("candidate_id"))
-@@ -3541,5 +3599,23 @@ class RecClawAgent:
+@@ -3545,5 +3603,23 @@ class RecClawAgent:
                      seed_validation=seed_validation,
                  )
 -                self.remember(record)

@@ -21,14 +21,29 @@
       "the shared ML environment exposed the Evidence Guard package to Control"
     ],
     "local_remediation_status": "LOCAL_COMPLETE",
-    "local_targeted_tests": 12,
-    "local_full_tests": 171,
+    "local_targeted_tests": 43,
+    "local_full_tests": 195,
+    "local_full_tests_skipped": 4,
     "remote_full_tests": 171,
+    "remote_full_tests_role": "SUPERSEDED_PRIOR_RC_EVIDENCE_PENDING_CURRENT_RELEASE_REMOTE_RERUN",
     "remote_gitless_materialization": "PASS",
     "remote_frozen_recbole_root_projection": "PASS",
     "remote_control_guard_import_isolation": "PASS",
     "remote_treatment_guard_digest_binding": "PASS",
-    "remote_reverification_status": "LOCAL_COMPLETE"
+    "upstream_credentials_scrubbed_from_arm_environments": "PASS",
+    "remote_reverification_status": "IN_PROGRESS"
+  },
+  "ab002_release_candidate": {
+    "s0_id": "AB002-RECONSTRUCTED-CLEAN-START-S0-V1",
+    "s0_source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",
+    "historical_leakage_verdict": "NO_KNOWN_HISTORICAL_SEARCH_LEAKAGE_DETECTED",
+    "dataset_tree_sha256": "532f0c05827ee06d1b5f81de9686bb8cf4288e67260a55853bc45d092c82f9dd",
+    "paired_seeds": [42, 43, 44, 45, 46, 47],
+    "canary_seed": 9001,
+    "common_broker_frozen": true,
+    "neutral_auditors_frozen": true,
+    "canary_orchestrator_present": true,
+    "blind_confirmation_path_present": true
   },
   "authority": "NONE",
   "evidence_class": "DEVELOPMENT_ONLY",

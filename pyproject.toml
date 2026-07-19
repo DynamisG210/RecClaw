@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recclaw-phase1"
-version = "0.2.0.dev0"
+version = "0.3.0.dev0"
 description = "Minimal RecClaw Phase-1 Evidence Guard A/B delivery"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -14,8 +14,18 @@ dependencies = ["PyYAML==6.0.2", "jsonschema==4.26.0"]
 recclaw-ab002-broker = "recclaw_phase1.paired_llm_broker:main"
 recclaw-ab002-launch-control = "recclaw_phase1.ab002_launcher:control_main"
 recclaw-ab002-launch-treatment = "recclaw_phase1.ab002_launcher:treatment_main"
-recclaw-ab002-analyze = "recclaw_phase1.ab002_analysis:main"
+recclaw-ab002-run-pair = "recclaw_phase1.ab002_pair_runner:main"
+recclaw-ab002-preflight = "recclaw_phase1.ab002_preflight:main"
+recclaw-ab002-canary-probes = "recclaw_phase1.ab002_canary_probes:main"
+recclaw-ab002-audit-canary = "recclaw_phase1.ab002_canary_audit:main"
+recclaw-ab002-run-canary = "recclaw_phase1.ab002_canary_orchestrator:main"
+recclaw-ab002-run-three-seed-baseline = "recclaw_phase1.ab002_three_seed_baseline:main"
+recclaw-ab002-blind-run = "recclaw_phase1.ab002_blind_packager:main"
+recclaw-ab002-confirm-blind-run = "recclaw_phase1.ab002_candidate_confirmation:main"
+recclaw-ab002-analyze = "recclaw_phase1.ab002_final_analysis:main"
+recclaw-ab002-analyze-trace = "recclaw_phase1.ab002_analysis:main"
 recclaw-ab002-audit-outcome = "recclaw_phase1.neutral_outcome_auditor:main"
+recclaw-ab002-s0 = "recclaw_phase1.ab002_s0:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -19,7 +19,7 @@
       "type": "object",
       "required": ["search_seeds", "start_round", "end_round", "full_ab_started"],
       "properties": {
-        "search_seeds": {"const": [42, 43, 44]},
+        "search_seeds": {"const": [42, 43, 44, 45, 46, 47]},
         "start_round": {"const": 1},
         "end_round": {"const": 20},
         "full_ab_started": {"const": false}

@@ -1,0 +1,3 @@
+# Preserve the reconstructed S0 snapshot as exact historical bytes.  Its source
+# commit contains CRLF records, so CR at end-of-line is not trailing whitespace.
+phase1/s0/ab002/source/** whitespace=cr-at-eol
