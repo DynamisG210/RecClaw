@@ -10,6 +10,7 @@ from recclaw_phase1.ab002_preflight import (
     exact_file_identities,
     resolve_release_identity,
     tree_identity,
+    validate_leakage_audit,
     verify_clean_tree_manifest,
 )
 
@@ -37,6 +38,20 @@ class AB002PreflightTests(unittest.TestCase):
             (root / "runtime.py").write_bytes(b"expected")
             with self.assertRaisesRegex(ValueError, "identity drift"):
                 exact_file_identities(root, {"runtime.py": "0" * 64})
+
+    def test_frozen_leakage_record_uses_preflight_verdict_contract(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        payload = json.loads(
+            (root / "phase1/s0/ab002/historical_leakage_audit.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            "NO_KNOWN_HISTORICAL_SEARCH_LEAKAGE_DETECTED",
+            validate_leakage_audit(payload),
+        )
+        with self.assertRaisesRegex(ValueError, "did not pass"):
+            validate_leakage_audit({"audit_verdict": payload["verdict"]})
 
     def test_gitless_release_sidecar_binds_archive_and_exact_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

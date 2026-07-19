@@ -21,8 +21,8 @@
       "the shared ML environment exposed the Evidence Guard package to Control"
     ],
     "local_remediation_status": "LOCAL_COMPLETE",
-    "local_targeted_tests": 44,
-    "local_full_tests": 196,
+    "local_targeted_tests": 45,
+    "local_full_tests": 197,
     "local_full_tests_skipped": 4,
     "remote_full_tests": 171,
     "remote_full_tests_role": "SUPERSEDED_PRIOR_RC_EVIDENCE_PENDING_CURRENT_RELEASE_REMOTE_RERUN",
@@ -34,6 +34,20 @@
     "gitless_release_archive_sidecar_preflight": "LOCAL_COMPLETE",
     "remote_reverification_status": "IN_PROGRESS"
   },
+  "stopped_pre_canary_attempts": [
+    {
+      "release_tag": "phase1-ab002-pre-canary-r4",
+      "runtime_root": "/NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002/runtime_1144b5c_canary_9001",
+      "stage": "PRE_CANARY_PREFLIGHT",
+      "status": "STOPPED",
+      "failure_class": "KeyError",
+      "failure_detail": "historical leakage verdict field contract mismatch",
+      "broker_health_only": true,
+      "llm_api_used": false,
+      "training_started": false,
+      "primary_runs_root_created": false
+    }
+  ],
   "ab002_release_candidate": {
     "s0_id": "AB002-RECONSTRUCTED-CLEAN-START-S0-V1",
     "s0_source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",

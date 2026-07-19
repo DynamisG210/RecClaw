@@ -27,7 +27,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "a8a8cad42cc3b0a53348921bff83293466ecf30fe05db042dbd19797c69c7df6",
+      "sha256": "bcc335609807c0199244be2dc4394387bdce14e80c9e09f313c85d2381d4d8f6",
       "size_bytes": 16409
     },
     {
@@ -462,8 +462,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_preflight.py",
-      "sha256": "799cb6f35de15b35916897caf116a6024c5fb0ea33d198defae638372453db6d",
-      "size_bytes": 17317
+      "sha256": "4a72400fc07742948e9fb66d4eb6a524436ba4d7bbe0f72d3df7d3eee7c75b44",
+      "size_bytes": 17502
     },
     {
       "path": "src/recclaw_phase1/ab002_s0.py",
@@ -547,8 +547,8 @@
     },
     {
       "path": "tests/phase1/test_ab002_preflight.py",
-      "sha256": "f977a07b86a6a1462b2a6b2f22933653949c5fee279948ae73fda446dc70ab38",
-      "size_bytes": 4096
+      "sha256": "3c1d670dd81b896e140af576b1f1d1d8c1e111df47ca1961afa34fd72edda225",
+      "size_bytes": 4704
     },
     {
       "path": "tests/phase1/test_ab002_s0_runner_budget.py",

@@ -81,6 +81,14 @@ def verify_source_sums(root: Path, sums_path: Path) -> int:
     return checked
 
 
+def validate_leakage_audit(payload: dict[str, Any]) -> str:
+    expected = "NO_KNOWN_HISTORICAL_SEARCH_LEAKAGE_DETECTED"
+    verdict = payload.get("verdict")
+    if verdict != expected:
+        raise ValueError(f"S0 historical leakage audit did not pass: {verdict!r}")
+    return expected
+
+
 def verify_clean_tree_manifest(root: Path, manifest_path: Path) -> int:
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     rows = payload.get("files")
@@ -256,8 +264,7 @@ def build_preflight(
     source_count = verify_source_sums(PROJECT_ROOT, SOURCE_SUMS)
     s0 = validate_records()
     leakage = json.loads(LEAKAGE_AUDIT.read_text(encoding="utf-8"))
-    if leakage["audit_verdict"] != "NO_KNOWN_HISTORICAL_SEARCH_LEAKAGE_DETECTED":
-        raise ValueError("S0 historical leakage audit did not pass")
+    leakage_verdict = validate_leakage_audit(leakage)
 
     recbole_root = Path(contract["execution_environment"]["recbole_root"]).resolve()
     expected_recbole = contract["execution_environment"]["recbole_runtime_files_sha256"]
@@ -334,7 +341,7 @@ def build_preflight(
             "source_tree_sha256": s0["source_tree_sha256"],
             "manifest_sha256": sha256_file(PROJECT_ROOT / "phase1/s0/ab002/initial_state_manifest.json"),
             "leakage_audit_sha256": sha256_file(LEAKAGE_AUDIT),
-            "leakage_verdict": leakage["audit_verdict"],
+            "leakage_verdict": leakage_verdict,
         },
         "environment": {
             "python": platform.python_version(),

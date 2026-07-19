@@ -29,12 +29,12 @@
     },
     {
       "path": "SOURCE_SHA256SUMS",
-      "sha256": "77775e5d0d360130f5e8102ef7ad5cf6c22398af60984f20b54bbece73710907",
+      "sha256": "f587eb1cbc91a51a7dfb903e363ee868029fd4e99284f3c56f6b8868e858cb80",
       "size_bytes": 22266
     },
     {
       "path": "clean_tree_verification_report.json",
-      "sha256": "6af02da79fc8cc75a45d6a5ae6c679ab5cadc855a91cbdf6a7c85aeeb1b20dfd",
+      "sha256": "9a9c3f0eb5c937ae86d5a6e7e2fb71f36767b932bf9f049b4452d42ada53809f",
       "size_bytes": 4367
     },
     {
@@ -184,7 +184,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "a8a8cad42cc3b0a53348921bff83293466ecf30fe05db042dbd19797c69c7df6",
+      "sha256": "bcc335609807c0199244be2dc4394387bdce14e80c9e09f313c85d2381d4d8f6",
       "size_bytes": 16409
     },
     {
@@ -249,7 +249,7 @@
     },
     {
       "path": "migrated_file_allowlist.json",
-      "sha256": "cc9fb33b51e4cf1866bddb62b1a3c31ecddd689e22fd35680c949b5d9bd39c49",
+      "sha256": "32eed8d2254776c94ae1bdbf4f56959807e8c1cf2cf0c4580dfa59398f1a4bd8",
       "size_bytes": 22452
     },
     {
@@ -664,8 +664,8 @@
     },
     {
       "path": "records/phase1/ab002_preparation.json",
-      "sha256": "e6d229ca11bcaff71e01a16f365417ff456fb5a58251a69dc13d4e6b4a33a822",
-      "size_bytes": 2340
+      "sha256": "6efac2abc055ed663c9db3cf897b7d9ba496d4088ea56b62c5f825c75dcebcf3",
+      "size_bytes": 2881
     },
     {
       "path": "records/phase1/canary.json",
@@ -859,8 +859,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_preflight.py",
-      "sha256": "799cb6f35de15b35916897caf116a6024c5fb0ea33d198defae638372453db6d",
-      "size_bytes": 17317
+      "sha256": "4a72400fc07742948e9fb66d4eb6a524436ba4d7bbe0f72d3df7d3eee7c75b44",
+      "size_bytes": 17502
     },
     {
       "path": "src/recclaw_phase1/ab002_s0.py",
@@ -949,8 +949,8 @@
     },
     {
       "path": "tests/phase1/test_ab002_preflight.py",
-      "sha256": "f977a07b86a6a1462b2a6b2f22933653949c5fee279948ae73fda446dc70ab38",
-      "size_bytes": 4096
+      "sha256": "3c1d670dd81b896e140af576b1f1d1d8c1e111df47ca1961afa34fd72edda225",
+      "size_bytes": 4704
     },
     {
       "path": "tests/phase1/test_ab002_s0_runner_budget.py",
@@ -1003,6 +1003,6 @@
   "manifest_self_excluded": true,
   "record_type": "RECCLAW_PHASE1_CLEAN_TREE_MANIFEST",
   "schema_version": "recclaw.phase1.clean_tree_manifest.v1",
-  "source_sha256sums_sha256": "77775e5d0d360130f5e8102ef7ad5cf6c22398af60984f20b54bbece73710907",
+  "source_sha256sums_sha256": "f587eb1cbc91a51a7dfb903e363ee868029fd4e99284f3c56f6b8868e858cb80",
   "training_started": false
 }
