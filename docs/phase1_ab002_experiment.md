@@ -53,4 +53,4 @@ Final analysis reports all six pairs, paired mean and median, deterministic pair
 
 ## Gate boundary
 
-Canary execution may start only after the preflight record proves exact source/S0/Guard/environment/dataset/shared-state identities and non-empty secrets without recording secret values. The implementation agent may evaluate the mechanical Canary criteria and assemble a review packet, but it cannot approve Canary GO for the six-pair Full A/B.
+Canary execution may start only after the preflight record proves exact source/S0/Guard/environment/dataset/shared-state identities and non-empty secrets without recording secret values. On a host without Git, the source proof additionally requires an external release-identity sidecar that binds commit/tree/tag, the retained release archive, `SOURCE_SHA256SUMS`, and the complete clean-tree manifest. The implementation agent may evaluate the mechanical Canary criteria and assemble a review packet, but it cannot approve Canary GO for the six-pair Full A/B.

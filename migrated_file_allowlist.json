@@ -27,7 +27,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "980159b7050bf0755fd9d1493e280a16cddfd3de35dc02d1d507c1a82df8c185",
+      "sha256": "a8a8cad42cc3b0a53348921bff83293466ecf30fe05db042dbd19797c69c7df6",
       "size_bytes": 16409
     },
     {
@@ -432,8 +432,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_orchestrator.py",
-      "sha256": "fcb43322e444241e49f4beda0afc356dc29bb82e2acb7c37c20142f54e4f0f92",
-      "size_bytes": 7191
+      "sha256": "43d9abdf65bb91c36490f5e57d2b5d1a89d46db8e941728d797dfee361730f82",
+      "size_bytes": 7419
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_probes.py",
@@ -462,8 +462,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_preflight.py",
-      "sha256": "281def3e9422473a43c061a789a2264386e086147a406e53952936a7be23ea74",
-      "size_bytes": 12524
+      "sha256": "799cb6f35de15b35916897caf116a6024c5fb0ea33d198defae638372453db6d",
+      "size_bytes": 17317
     },
     {
       "path": "src/recclaw_phase1/ab002_s0.py",
@@ -547,8 +547,8 @@
     },
     {
       "path": "tests/phase1/test_ab002_preflight.py",
-      "sha256": "5e13ab365d6a31de843ce307aeb52315c4476f8712bd663154e367d81643f789",
-      "size_bytes": 1163
+      "sha256": "f977a07b86a6a1462b2a6b2f22933653949c5fee279948ae73fda446dc70ab38",
+      "size_bytes": 4096
     },
     {
       "path": "tests/phase1/test_ab002_s0_runner_budget.py",

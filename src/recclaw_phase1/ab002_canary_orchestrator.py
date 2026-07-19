@@ -34,7 +34,12 @@ def _wait_for_broker(url: str, process: subprocess.Popen[bytes]) -> None:
 
 
 def run_canary(
-    *, runtime_root: Path, baseline_dir: Path, expected_tag: str, port: int
+    *,
+    runtime_root: Path,
+    baseline_dir: Path,
+    expected_tag: str,
+    release_identity_path: Path | None,
+    port: int,
 ) -> dict[str, object]:
     root = runtime_root.expanduser().resolve()
     api_key = os.environ.get("RECCLAW_LAB_LLM_API_KEY", "")
@@ -107,6 +112,7 @@ def run_canary(
                 baseline_dir=baseline_dir,
                 broker_url=broker_url,
                 expected_tag=expected_tag,
+                release_identity_path=release_identity_path,
                 upstream_key_env="RECCLAW_LAB_LLM_API_KEY",
                 client_token_env="RECCLAW_BROKER_CLIENT_TOKEN",
             )
@@ -174,12 +180,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runtime-root", type=Path, required=True)
     parser.add_argument("--baseline-dir", type=Path, required=True)
     parser.add_argument("--expected-tag", required=True)
+    parser.add_argument("--release-identity", type=Path)
     parser.add_argument("--port", type=int, default=18082)
     args = parser.parse_args(argv)
     record = run_canary(
         runtime_root=args.runtime_root,
         baseline_dir=args.baseline_dir,
         expected_tag=args.expected_tag,
+        release_identity_path=args.release_identity,
         port=args.port,
     )
     print(json.dumps(record, ensure_ascii=True, sort_keys=True))

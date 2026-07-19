@@ -8,6 +8,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -32,6 +33,9 @@ from recclaw_phase1.ab002_s0 import LEAKAGE_AUDIT, validate_records
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_SUMS = PROJECT_ROOT / "SOURCE_SHA256SUMS"
+CLEAN_MANIFEST = PROJECT_ROOT / "clean_tree_manifest.json"
+HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+HEX_GIT_ID = re.compile(r"^[0-9a-f]{40}$")
 
 
 def tree_identity(root: Path) -> tuple[str, dict[str, str]]:
@@ -75,6 +79,106 @@ def verify_source_sums(root: Path, sums_path: Path) -> int:
     if checked == 0:
         raise ValueError("source checksum inventory is empty")
     return checked
+
+
+def verify_clean_tree_manifest(root: Path, manifest_path: Path) -> int:
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    rows = payload.get("files")
+    if not isinstance(rows, list) or int(payload.get("file_count", -1)) != len(rows):
+        raise ValueError("clean-tree manifest file count is invalid")
+    expected: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("clean-tree manifest row is invalid")
+        relative = str(row.get("path") or "")
+        wanted = str(row.get("sha256") or "")
+        candidate = Path(relative)
+        if (
+            not relative
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or relative in expected
+            or not HEX_SHA256.fullmatch(wanted)
+        ):
+            raise ValueError("clean-tree manifest path or digest is invalid")
+        path = root / candidate
+        if not path.is_file() or sha256_file(path) != wanted:
+            raise ValueError(f"clean-tree file identity drift: {relative}")
+        expected[relative] = wanted
+    actual = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(root).parts
+    }
+    allowed = set(expected) | {manifest_path.relative_to(root).as_posix()}
+    if actual != allowed:
+        extras = sorted(actual - allowed)
+        missing = sorted(allowed - actual)
+        raise ValueError(f"clean-tree inventory drift: extras={extras}, missing={missing}")
+    return len(expected) + 1
+
+
+def resolve_release_identity(
+    *,
+    root: Path,
+    expected_tag: str,
+    release_identity_path: Path | None,
+    source_sums_path: Path,
+    clean_manifest_path: Path,
+) -> dict[str, Any]:
+    git = shutil.which("git")
+    if git and (root / ".git").exists():
+        if git_value("status", "--porcelain"):
+            raise ValueError("preflight requires a clean delivery checkout")
+        head = git_value("rev-parse", "HEAD")
+        tree = git_value("rev-parse", "HEAD^{tree}")
+        tag_commit = git_value("rev-list", "-n", "1", expected_tag)
+        if tag_commit != head:
+            raise ValueError(f"release tag does not resolve to HEAD: {tag_commit} != {head}")
+        return {
+            "commit": head,
+            "tree": tree,
+            "tag": expected_tag,
+            "verification_mode": "LIVE_GIT_AND_EXACT_FILE_MANIFEST",
+        }
+    if release_identity_path is None:
+        raise ValueError("gitless preflight requires an external release identity record")
+    identity_path = release_identity_path.expanduser().resolve()
+    payload = json.loads(identity_path.read_text(encoding="utf-8"))
+    required = {
+        "record_type": "RECCLAW_PHASE1_AB002_EXTERNAL_RELEASE_IDENTITY",
+        "schema_version": "recclaw.phase1.ab002.external_release_identity.v1",
+        "status": "LOCAL_COMPLETE",
+        "tag": expected_tag,
+        "authority": "NONE",
+        "evidence_class": "DEVELOPMENT_ONLY",
+        "formal_acceptance": False,
+    }
+    for key, wanted in required.items():
+        if payload.get(key) != wanted:
+            raise ValueError(f"external release identity field mismatch: {key}")
+    commit = str(payload.get("commit") or "")
+    tree = str(payload.get("tree") or "")
+    if not HEX_GIT_ID.fullmatch(commit) or not HEX_GIT_ID.fullmatch(tree):
+        raise ValueError("external release identity has invalid Git identities")
+    archive = Path(str(payload.get("source_archive_path") or "")).expanduser().resolve()
+    archive_sha256 = str(payload.get("source_archive_sha256") or "")
+    if not archive.is_file() or sha256_file(archive) != archive_sha256:
+        raise ValueError("external release archive identity drift")
+    if payload.get("source_sha256s_sha256") != sha256_file(source_sums_path):
+        raise ValueError("external release SOURCE_SHA256SUMS identity drift")
+    if payload.get("clean_tree_manifest_sha256") != sha256_file(clean_manifest_path):
+        raise ValueError("external release clean-tree manifest identity drift")
+    return {
+        "commit": commit,
+        "tree": tree,
+        "tag": expected_tag,
+        "verification_mode": "EXTERNAL_RELEASE_ARCHIVE_AND_EXACT_FILE_MANIFEST",
+        "release_identity_record": str(identity_path),
+        "release_identity_record_sha256": sha256_file(identity_path),
+        "source_archive": str(archive),
+        "source_archive_sha256": archive_sha256,
+    }
 
 
 def git_value(*args: str) -> str:
@@ -135,18 +239,20 @@ def build_preflight(
     baseline_dir: Path,
     broker_url: str,
     expected_tag: str,
+    release_identity_path: Path | None,
     upstream_key_env: str,
     client_token_env: str,
 ) -> dict[str, Any]:
     root = validate_runtime_root(runtime_root)
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
-    if git_value("status", "--porcelain"):
-        raise ValueError("preflight requires a clean delivery checkout")
-    head = git_value("rev-parse", "HEAD")
-    tree = git_value("rev-parse", "HEAD^{tree}")
-    tag_commit = git_value("rev-list", "-n", "1", expected_tag)
-    if tag_commit != head:
-        raise ValueError(f"release tag does not resolve to HEAD: {tag_commit} != {head}")
+    clean_tree_count = verify_clean_tree_manifest(PROJECT_ROOT, CLEAN_MANIFEST)
+    release = resolve_release_identity(
+        root=PROJECT_ROOT,
+        expected_tag=expected_tag,
+        release_identity_path=release_identity_path,
+        source_sums_path=SOURCE_SUMS,
+        clean_manifest_path=CLEAN_MANIFEST,
+    )
     source_count = verify_source_sums(PROJECT_ROOT, SOURCE_SUMS)
     s0 = validate_records()
     leakage = json.loads(LEAKAGE_AUDIT.read_text(encoding="utf-8"))
@@ -217,11 +323,11 @@ def build_preflight(
         "full_ab_started": False,
         "host": platform.node(),
         "release": {
-            "commit": head,
-            "tree": tree,
-            "tag": expected_tag,
+            **release,
             "source_sha256s_digest": sha256_file(SOURCE_SUMS),
             "source_sha256_checked_count": source_count,
+            "clean_tree_manifest_digest": sha256_file(CLEAN_MANIFEST),
+            "clean_tree_checked_count": clean_tree_count,
         },
         "s0": {
             "s0_id": s0["s0_id"],
@@ -289,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baseline-dir", type=Path, required=True)
     parser.add_argument("--broker-url", required=True)
     parser.add_argument("--expected-tag", required=True)
+    parser.add_argument("--release-identity", type=Path)
     parser.add_argument("--upstream-api-key-env", default="RECCLAW_LAB_LLM_API_KEY")
     parser.add_argument("--client-token-env", default="RECCLAW_BROKER_CLIENT_TOKEN")
     parser.add_argument("--output", type=Path, required=True)
@@ -298,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         baseline_dir=args.baseline_dir,
         broker_url=args.broker_url,
         expected_tag=args.expected_tag,
+        release_identity_path=args.release_identity,
         upstream_key_env=args.upstream_api_key_env,
         client_token_env=args.client_token_env,
     )

@@ -54,10 +54,13 @@ The frozen gpu5 Canary path is one credential-in-memory orchestration command:
 recclaw-ab002-run-canary \
   --runtime-root /NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002/runtime_<release> \
   --baseline-dir /home/tingrangan/projects/RecClaw/results/baseline \
-  --expected-tag <pre-canary-tag>
+  --expected-tag <pre-canary-tag> \
+  --release-identity /NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002/releases/<release>/release_identity.json
 ```
 
 It requires non-empty `RECCLAW_LAB_LLM_API_KEY` and `RECCLAW_LAB_LLM_BASE_URL`, starts the paired broker, writes the exact preflight, runs only seed-9001 Control/Treatment, stops the broker, runs the fixed controlled fail-open/quarantine probes, and writes `canary_report.json`. Credentials and the ephemeral broker client token are never written. The resulting report keeps `gate_status=NOT_STARTED` and `full_ab_authorized=false`; an independent read-only Canary review is still required.
+
+On the gitless `gpu5` host, `release_identity.json` binds the locally resolved commit/tree/tag to the retained exact release archive, `SOURCE_SHA256SUMS`, and `clean_tree_manifest.json`. Preflight then verifies the complete extracted file inventory and bytes; it does not infer source identity from a directory name.
 
 ## Frozen execution layout
 

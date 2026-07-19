@@ -21,8 +21,8 @@
       "the shared ML environment exposed the Evidence Guard package to Control"
     ],
     "local_remediation_status": "LOCAL_COMPLETE",
-    "local_targeted_tests": 43,
-    "local_full_tests": 195,
+    "local_targeted_tests": 44,
+    "local_full_tests": 196,
     "local_full_tests_skipped": 4,
     "remote_full_tests": 171,
     "remote_full_tests_role": "SUPERSEDED_PRIOR_RC_EVIDENCE_PENDING_CURRENT_RELEASE_REMOTE_RERUN",
@@ -31,6 +31,7 @@
     "remote_control_guard_import_isolation": "PASS",
     "remote_treatment_guard_digest_binding": "PASS",
     "upstream_credentials_scrubbed_from_arm_environments": "PASS",
+    "gitless_release_archive_sidecar_preflight": "LOCAL_COMPLETE",
     "remote_reverification_status": "IN_PROGRESS"
   },
   "ab002_release_candidate": {
