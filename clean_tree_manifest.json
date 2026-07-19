@@ -29,7 +29,7 @@
     },
     {
       "path": "SOURCE_SHA256SUMS",
-      "sha256": "55d94eac9d283a4d51b3a8ad1f175166f33316281724d24df8d53c4c34f73d40",
+      "sha256": "9ae0d9d9a4c78f7faf9b865018589df7014a1c1ffa108d2ab285cec7f94ae4db",
       "size_bytes": 22379
     },
     {
@@ -184,7 +184,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "c1742618861c56c43546932175d5a961dfbd34078d88ce5cfaad06d8137b603a",
+      "sha256": "27352f0d3e5db60b314caaa0e73cac5957d870d84f3b21b2e6eb6f30c237b70f",
       "size_bytes": 16409
     },
     {
@@ -249,7 +249,7 @@
     },
     {
       "path": "migrated_file_allowlist.json",
-      "sha256": "cf1e904b5e7f82c61ede96ddf57cffb61b9f801d697da8abfa32a55bb7b47e17",
+      "sha256": "c1c202789d2527779c21b6d299e36f2360ffd789c73e25469b959db8c92aca2b",
       "size_bytes": 22638
     },
     {
@@ -664,8 +664,8 @@
     },
     {
       "path": "records/phase1/ab002_preparation.json",
-      "sha256": "12ce92ce422f5315cd46b2166a82abeea72fb8c61dc0eb5989b618fcbc5a9bea",
-      "size_bytes": 3403
+      "sha256": "688e7369375566e3e8262b2806a486b2b7b9c3cdbd1553f0b9abac2accc06b56",
+      "size_bytes": 3956
     },
     {
       "path": "records/phase1/canary.json",
@@ -859,8 +859,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_preflight.py",
-      "sha256": "4a72400fc07742948e9fb66d4eb6a524436ba4d7bbe0f72d3df7d3eee7c75b44",
-      "size_bytes": 17502
+      "sha256": "df6aef418c755444ad1fa42e28437cce59e5331ef0f553eadeda1cad72fe333a",
+      "size_bytes": 17565
     },
     {
       "path": "src/recclaw_phase1/ab002_s0.py",
@@ -1008,6 +1008,6 @@
   "manifest_self_excluded": true,
   "record_type": "RECCLAW_PHASE1_CLEAN_TREE_MANIFEST",
   "schema_version": "recclaw.phase1.clean_tree_manifest.v1",
-  "source_sha256sums_sha256": "55d94eac9d283a4d51b3a8ad1f175166f33316281724d24df8d53c4c34f73d40",
+  "source_sha256sums_sha256": "9ae0d9d9a4c78f7faf9b865018589df7014a1c1ffa108d2ab285cec7f94ae4db",
   "training_started": false
 }

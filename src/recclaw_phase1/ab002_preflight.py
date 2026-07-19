@@ -268,7 +268,7 @@ def build_preflight(
 
     recbole_root = Path(contract["execution_environment"]["recbole_root"]).resolve()
     expected_recbole = contract["execution_environment"]["recbole_runtime_files_sha256"]
-    recbole = exact_file_identities(recbole_root, expected_recbole)
+    recbole_files = exact_file_identities(recbole_root, expected_recbole)
     dataset_root = recbole_root / "dataset" / contract["protocol"]["dataset"]
     dataset_tree, dataset_files = tree_identity(dataset_root)
     expected_dataset = str(contract["protocol"]["dataset_snapshot"]).removeprefix("sha256:")
@@ -313,10 +313,10 @@ def build_preflight(
 
     try:
         import torch
-        import recbole
+        import recbole as recbole_package
     except ImportError as exc:
         raise ValueError(f"required runtime import failed: {exc}") from exc
-    if recbole.__version__ != contract["execution_environment"]["recbole"]:
+    if recbole_package.__version__ != contract["execution_environment"]["recbole"]:
         raise ValueError("imported RecBole version drift")
     if torch.__version__ != contract["execution_environment"]["torch"]:
         raise ValueError("imported PyTorch version drift")
@@ -347,8 +347,8 @@ def build_preflight(
             "python": platform.python_version(),
             "python_executable": sys.executable,
             "recclaw_distribution": importlib.metadata.version("recclaw-phase1"),
-            "recbole": recbole.__version__,
-            "torch": torch.__version__,
+            "recbole": str(recbole_package.__version__),
+            "torch": str(torch.__version__),
             "torch_cuda": torch.version.cuda,
             "cuda_available": torch.cuda.is_available(),
             "cuda_device_count": torch.cuda.device_count(),
@@ -360,11 +360,11 @@ def build_preflight(
             "files_sha256": dataset_files,
         },
         "recbole_root": str(recbole_root),
-        "recbole_runtime_files_sha256": recbole,
+        "recbole_runtime_files_sha256": recbole_files,
         "baseline_inputs": baseline_rows,
         "shared_state_before": {
             "dataset_tree_sha256": dataset_tree,
-            "recbole_runtime_files_sha256": recbole,
+            "recbole_runtime_files_sha256": recbole_files,
         },
         "materialization": {
             "root": str(preflight_materialization),

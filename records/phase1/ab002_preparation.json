@@ -32,6 +32,15 @@
     "remote_treatment_guard_digest_binding": "PASS",
     "upstream_credentials_scrubbed_from_arm_environments": "PASS",
     "gitless_release_archive_sidecar_preflight": "LOCAL_COMPLETE",
+    "runtime_distribution_wheel": {
+      "path": "/NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002/releases/7d220fa/wheels/recclaw_phase1-0.3.0.dev0-py3-none-any.whl",
+      "sha256": "567ad9ea470e5cb9574c7277c6d875d0a6ad5946b4a1478b70ffa0ff697f7945",
+      "installed_in_dedicated_venv": true
+    },
+    "preflight_rehearsal_findings": [
+      "dedicated venv initially lacked recclaw-phase1 distribution metadata",
+      "preflight record reused the imported recbole module where the frozen file-identity map was required"
+    ],
     "remote_reverification_status": "IN_PROGRESS"
   },
   "stopped_pre_canary_attempts": [

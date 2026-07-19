@@ -27,7 +27,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "c1742618861c56c43546932175d5a961dfbd34078d88ce5cfaad06d8137b603a",
+      "sha256": "27352f0d3e5db60b314caaa0e73cac5957d870d84f3b21b2e6eb6f30c237b70f",
       "size_bytes": 16409
     },
     {
@@ -462,8 +462,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_preflight.py",
-      "sha256": "4a72400fc07742948e9fb66d4eb6a524436ba4d7bbe0f72d3df7d3eee7c75b44",
-      "size_bytes": 17502
+      "sha256": "df6aef418c755444ad1fa42e28437cce59e5331ef0f553eadeda1cad72fe333a",
+      "size_bytes": 17565
     },
     {
       "path": "src/recclaw_phase1/ab002_s0.py",
