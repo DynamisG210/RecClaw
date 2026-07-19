@@ -48,6 +48,21 @@ Before Canary, record without secret values:
 - Treatment integration hash replay and overlay result;
 - paired GPU assignment and start authorization.
 
+Treatment materialization does not depend on an ambient Git executable. The
+launcher applies the single frozen UTF-8 overlay with strict hunk/context
+matching and verifies the resulting `scripts/agent.py` digest before writing
+the runtime manifest. A missing Git binary therefore cannot change or weaken
+the Treatment source projection.
+
+The launcher also projects the exact `RECBOLE_ROOT` from the frozen AB-002
+contract into both arms. Candidate execution therefore does not depend on an
+ambient shell variable or on an adjacent source checkout.
+
+The shared ML environment contains dependencies only, not the RecClaw package.
+At child-process launch the Control arm clears ambient Python and Evidence Guard
+paths and disables the user site; the Treatment arm then receives only its
+materialized, digest-bound integration path.
+
 The launcher additionally requires `RECCLAW_AB002_START_AUTHORIZED=YES` for execution. This environment variable is a mechanical accident guard, not a permission or scientific gate.
 
 ## Outputs

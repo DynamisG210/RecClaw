@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,20 @@ FROZEN_TREATMENT_OVERLAY_SHA256 = (
 )
 FROZEN_TREATMENT_AGENT_SHA256 = (
     "00705ed1dcbd28c57dec145dfebcf6a04bcadc053013e488f2555b446835e79a"
+)
+TREATMENT_PATCH_HEADER = (
+    "diff --git a/scripts/agent.py b/scripts/agent.py\n",
+    "--- a/scripts/agent.py\n",
+    "+++ b/scripts/agent.py\n",
+)
+HUNK_HEADER = re.compile(
+    r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?\n?$"
+)
+TREATMENT_ONLY_ENV_KEYS = (
+    "PYTHONPATH",
+    "RECCLAW_EVIDENCE_GUARD_MODE",
+    "RECCLAW_EVIDENCE_GUARD_CONTRACT",
+    "RECCLAW_EVIDENCE_GUARD_FEEDBACK",
 )
 RUNTIME_SCRIPT_FILES = (
     "scripts/action_space.py",
@@ -119,6 +134,70 @@ def _assert_frozen_guard_source() -> None:
         raise ValueError(f"treatment overlay drift: {overlay}")
 
 
+def apply_frozen_treatment_overlay(source: Path, overlay: Path) -> bytes:
+    """Apply the one frozen UTF-8 unified diff without an ambient Git binary."""
+    source_lines = source.read_bytes().decode("utf-8").splitlines(keepends=True)
+    patch_lines = overlay.read_bytes().decode("utf-8").splitlines(keepends=True)
+    if tuple(patch_lines[:3]) != TREATMENT_PATCH_HEADER:
+        raise ValueError("treatment overlay has an unexpected target header")
+
+    output: list[str] = []
+    source_index = 0
+    patch_index = 3
+    hunk_count = 0
+    while patch_index < len(patch_lines):
+        match = HUNK_HEADER.fullmatch(patch_lines[patch_index])
+        if match is None:
+            raise ValueError(f"unexpected treatment overlay line {patch_index + 1}")
+        old_start = int(match.group(1))
+        old_count = int(match.group(2) or "1")
+        new_start = int(match.group(3))
+        new_count = int(match.group(4) or "1")
+        hunk_source_index = old_start - 1
+        if hunk_source_index < source_index or hunk_source_index > len(source_lines):
+            raise ValueError("treatment overlay hunks are overlapping or out of range")
+        output.extend(source_lines[source_index:hunk_source_index])
+        if new_start - 1 != len(output):
+            raise ValueError("treatment overlay new-line position is inconsistent")
+        source_index = hunk_source_index
+        patch_index += 1
+        observed_old = 0
+        observed_new = 0
+
+        while patch_index < len(patch_lines) and not patch_lines[patch_index].startswith("@@ "):
+            patch_line = patch_lines[patch_index]
+            if not patch_line or patch_line[0] not in {" ", "+", "-"}:
+                raise ValueError(f"unsupported treatment overlay line {patch_index + 1}")
+            marker = patch_line[0]
+            payload = patch_line[1:]
+            if marker in {" ", "-"}:
+                if source_index >= len(source_lines) or source_lines[source_index] != payload:
+                    raise ValueError(
+                        f"treatment overlay context mismatch at source line {source_index + 1}"
+                    )
+                source_index += 1
+                observed_old += 1
+            if marker in {" ", "+"}:
+                output.append(payload)
+                observed_new += 1
+            patch_index += 1
+
+        if observed_old != old_count or observed_new != new_count:
+            raise ValueError(
+                "treatment overlay hunk count mismatch: "
+                f"old {observed_old}/{old_count}, new {observed_new}/{new_count}"
+            )
+        hunk_count += 1
+
+    if hunk_count == 0:
+        raise ValueError("treatment overlay contains no hunks")
+    output.extend(source_lines[source_index:])
+    patched = "".join(output).encode("utf-8")
+    if hashlib.sha256(patched).hexdigest() != FROZEN_TREATMENT_AGENT_SHA256:
+        raise ValueError("patched treatment agent does not match the frozen digest")
+    return patched
+
+
 def materialize_arm(
     *, runtime_root: Path, arm: str, search_seed: int
 ) -> dict[str, Any]:
@@ -135,24 +214,10 @@ def materialize_arm(
     integration_root: Path | None = None
     if arm == "treatment":
         _assert_frozen_guard_source()
-        completed = subprocess.run(
-            ["git", "apply", "--check", str(TREATMENT_OVERLAY)],
-            cwd=source_root,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
+        patched_bytes = apply_frozen_treatment_overlay(
+            source_root / "scripts/agent.py", TREATMENT_OVERLAY
         )
-        if completed.returncode != 0:
-            raise RuntimeError("treatment overlay check failed: " + completed.stderr.strip())
-        subprocess.run(
-            ["git", "apply", str(TREATMENT_OVERLAY)],
-            cwd=source_root,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        )
+        (source_root / "scripts/agent.py").write_bytes(patched_bytes)
         patched_agent = sha256_file(source_root / "scripts/agent.py")
         if patched_agent != FROZEN_TREATMENT_AGENT_SHA256:
             raise ValueError(f"patched treatment agent drift: {patched_agent}")
@@ -221,6 +286,8 @@ def build_launch_plan(
     python_executable: str,
 ) -> dict[str, Any]:
     root = validate_runtime_root(runtime_root)
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    recbole_root = contract["execution_environment"]["recbole_root"]
     repetition = root / "runs" / arm / f"search_seed_{search_seed}"
     source_root = repetition / "source"
     output_root = repetition / "outputs"
@@ -270,6 +337,8 @@ def build_launch_plan(
         "RECCLAW_LLM_PAIR_ID": pair_id,
         "RECCLAW_SEARCH_SEED": str(search_seed),
         "RECCLAW_RUNTIME_ROOT": str(root),
+        "RECBOLE_ROOT": recbole_root,
+        "PYTHONNOUSERSITE": "1",
         "OPENAI_API_KEY": "FROM_RECCLAW_BROKER_CLIENT_TOKEN",
     }
     if arm == "treatment":
@@ -307,6 +376,19 @@ def build_launch_plan(
     }
 
 
+def _build_execution_environment(
+    plan: dict[str, Any], *, client_token: str
+) -> dict[str, str]:
+    env = dict(os.environ)
+    for key in TREATMENT_ONLY_ENV_KEYS:
+        env.pop(key, None)
+    for key, value in plan["environment_without_secrets"].items():
+        if key != "OPENAI_API_KEY":
+            env[key] = str(value)
+    env["OPENAI_API_KEY"] = client_token
+    return env
+
+
 def _execute(plan: dict[str, Any], *, client_token_env: str) -> int:
     if os.environ.get("RECCLAW_AB002_START_AUTHORIZED") != "YES":
         raise SystemExit("execution requires RECCLAW_AB002_START_AUTHORIZED=YES")
@@ -322,11 +404,7 @@ def _execute(plan: dict[str, Any], *, client_token_env: str) -> int:
     baseline = Path(plan["command_argv"][plan["command_argv"].index("--baseline-dir") + 1])
     if not baseline.is_dir():
         raise SystemExit(f"baseline directory missing: {baseline}")
-    env = dict(os.environ)
-    for key, value in plan["environment_without_secrets"].items():
-        if key != "OPENAI_API_KEY":
-            env[key] = str(value)
-    env["OPENAI_API_KEY"] = token
+    env = _build_execution_environment(plan, client_token=token)
     repetition = source_root.parent
     stdout_path = repetition / "launcher_stdout.log"
     stderr_path = repetition / "launcher_stderr.log"

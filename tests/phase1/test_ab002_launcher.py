@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from recclaw_phase1.ab002_launcher import (
     FROZEN_GUARD_FILES,
+    _build_execution_environment,
+    apply_frozen_treatment_overlay,
     build_launch_plan,
     materialize_arm,
     validate_runtime_root,
@@ -70,6 +74,72 @@ class AB002LauncherTests(unittest.TestCase):
             )
             self.assertTrue((integration / "evidence_guard_contract.json").is_file())
 
+    def test_treatment_materialization_does_not_require_git(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with mock.patch(
+                "recclaw_phase1.ab002_launcher.subprocess.run",
+                side_effect=AssertionError("materialization must not invoke an external process"),
+            ):
+                record = materialize_arm(
+                    runtime_root=Path(temporary) / "runtime",
+                    arm="treatment",
+                    search_seed=42,
+                )
+        self.assertEqual("LOCAL_COMPLETE", record["status"])
+
+    def test_frozen_overlay_rejects_single_context_fault(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "agent.py"
+            overlay = Path(temporary) / "overlay.patch"
+            source.write_bytes((PROJECT_ROOT / "scripts/agent.py").read_bytes())
+            overlay_bytes = (PROJECT_ROOT / "phase1/overlays/treatment_agent.patch").read_bytes()
+            overlay.write_bytes(overlay_bytes.replace(b" try:\n", b" nope:\n", 1))
+            with self.assertRaisesRegex(ValueError, "context mismatch"):
+                apply_frozen_treatment_overlay(source, overlay)
+
+    def test_control_execution_environment_clears_ambient_guard_paths(self) -> None:
+        control_plan = {
+            "environment_without_secrets": {
+                "RECCLAW_AB_ARM": "control",
+                "RECBOLE_ROOT": "/frozen/recbole",
+                "PYTHONNOUSERSITE": "1",
+                "OPENAI_API_KEY": "FROM_RECCLAW_BROKER_CLIENT_TOKEN",
+            }
+        }
+        treatment_plan = {
+            "environment_without_secrets": {
+                **control_plan["environment_without_secrets"],
+                "RECCLAW_AB_ARM": "treatment",
+                "PYTHONPATH": "/frozen/treatment/integration",
+                "RECCLAW_EVIDENCE_GUARD_MODE": "active",
+                "RECCLAW_EVIDENCE_GUARD_CONTRACT": "/frozen/treatment/contract",
+                "RECCLAW_EVIDENCE_GUARD_FEEDBACK": "/frozen/treatment/feedback",
+            }
+        }
+        ambient = {
+            "PYTHONPATH": "/ambient/guard",
+            "RECCLAW_EVIDENCE_GUARD_MODE": "ambient",
+            "RECCLAW_EVIDENCE_GUARD_CONTRACT": "/ambient/contract",
+            "RECCLAW_EVIDENCE_GUARD_FEEDBACK": "/ambient/feedback",
+        }
+        with mock.patch.dict(os.environ, ambient, clear=False):
+            control = _build_execution_environment(control_plan, client_token="token")
+            treatment = _build_execution_environment(treatment_plan, client_token="token")
+        for key in ambient:
+            self.assertNotIn(key, control)
+        self.assertEqual("/frozen/treatment/integration", treatment["PYTHONPATH"])
+        self.assertEqual("active", treatment["RECCLAW_EVIDENCE_GUARD_MODE"])
+        self.assertEqual(
+            "/frozen/treatment/contract",
+            treatment["RECCLAW_EVIDENCE_GUARD_CONTRACT"],
+        )
+        self.assertEqual(
+            "/frozen/treatment/feedback",
+            treatment["RECCLAW_EVIDENCE_GUARD_FEEDBACK"],
+        )
+        self.assertEqual("/frozen/recbole", control["RECBOLE_ROOT"])
+        self.assertEqual("1", control["PYTHONNOUSERSITE"])
+
     def test_dry_plan_is_external_and_has_no_seed_from(self) -> None:
         before = _tree_digest(PROJECT_ROOT)
         with tempfile.TemporaryDirectory() as temporary:
@@ -89,6 +159,10 @@ class AB002LauncherTests(unittest.TestCase):
         self.assertTrue(plan["all_outputs_external"])
         self.assertNotIn("--seed-from", plan["command_argv"])
         self.assertNotIn("PYTHONPATH", plan["environment_without_secrets"])
+        self.assertEqual(
+            "/home/tingrangan/projects/RecBole",
+            plan["environment_without_secrets"]["RECBOLE_ROOT"],
+        )
 
     def test_s0_manifest_has_no_historical_outputs(self) -> None:
         manifest = json.loads(

@@ -24,13 +24,13 @@
     },
     {
       "path": "SOURCE_SHA256SUMS",
-      "sha256": "3ea2b5f79a35ad31f9964414768a35c999cea70579985e642c952ee839b6f16a",
+      "sha256": "b1bcd26e4b19ed656ede3717dd1202130b5d899889417a892da2856f10b5062d",
       "size_bytes": 12024
     },
     {
       "path": "clean_tree_verification_report.json",
-      "sha256": "277585f3fe0c971f436370ebbc0dec3052bd030e0b8b7620f1a02cb95187b60a",
-      "size_bytes": 3092
+      "sha256": "2ec0c0a05886d0b71fb5b5fad7d697545d4512c4a79225939d196490ed8d47cc",
+      "size_bytes": 4232
     },
     {
       "path": "configs/action_space.yaml",
@@ -214,8 +214,8 @@
     },
     {
       "path": "docs/reproducibility.md",
-      "sha256": "979c56eaa8e3cf7c8c65696212416f5244557ddb09da22832e32e9366f065b6b",
-      "size_bytes": 2713
+      "sha256": "0e90d84ce3e9a40434a39e4de674db2ec5d3cc9e6cc270b3f57fb5a7cd91ccc9",
+      "size_bytes": 3543
     },
     {
       "path": "docs/specs/recclaw_research_core_architecture_execution_spec_v2_0_rc2.md",
@@ -234,7 +234,7 @@
     },
     {
       "path": "migrated_file_allowlist.json",
-      "sha256": "182a857fee880e06f6362bada2d8fa813ce0238902cbe0a7f704180a32684c1c",
+      "sha256": "8d2ca41baf8bb77bbdd9f8cbccb02ddc37aa6daa6af815cec0f1f30985f789b5",
       "size_bytes": 5987
     },
     {
@@ -344,8 +344,8 @@
     },
     {
       "path": "records/phase1/ab002_preparation.json",
-      "sha256": "eb64abbfd7bba922b145510733964c758238d398a7d300e67fdf7e06d4e27615",
-      "size_bytes": 821
+      "sha256": "b1703d3ab59683f0e97ca00a228c9f8cde5c03a13eb81673b49fbd18d016b6dc",
+      "size_bytes": 1485
     },
     {
       "path": "records/phase1/canary.json",
@@ -499,8 +499,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_launcher.py",
-      "sha256": "8d54571fa0dfc66b4237cce61af598aa364514d2983738690b09cbee6ece9064",
-      "size_bytes": 15172
+      "sha256": "b5c33ab890b53488125bda0e4cdf1f6ee3d8c99721aeb6d10ee0f4a35b1f3ec1",
+      "size_bytes": 18592
     },
     {
       "path": "src/recclaw_phase1/neutral_outcome_auditor.py",
@@ -549,8 +549,8 @@
     },
     {
       "path": "tests/phase1/test_ab002_launcher.py",
-      "sha256": "7c04ae7ae18fe73dc4ae1bf51da6e27dea02ce894e3dda76c787e91a099ec155",
-      "size_bytes": 3824
+      "sha256": "f65828b143714b6b2ad65838ee773d4183073ec1552045cdfd0b9842fea5b5f9",
+      "size_bytes": 7323
     },
     {
       "path": "tests/phase1/test_paired_llm_broker.py",
@@ -588,6 +588,6 @@
   "manifest_self_excluded": true,
   "record_type": "RECCLAW_PHASE1_CLEAN_TREE_MANIFEST",
   "schema_version": "recclaw.phase1.clean_tree_manifest.v1",
-  "source_sha256sums_sha256": "3ea2b5f79a35ad31f9964414768a35c999cea70579985e642c952ee839b6f16a",
+  "source_sha256sums_sha256": "b1bcd26e4b19ed656ede3717dd1202130b5d899889417a892da2856f10b5062d",
   "training_started": false
 }

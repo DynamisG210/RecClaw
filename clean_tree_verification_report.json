@@ -18,10 +18,10 @@
     "dirty_provenance_workspace_status_matches_archive_inventory": "PASS",
     "full_relevant_unittest_suite": {
       "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -t . -p 'test_*.py' -v",
-      "passed": 164,
+      "passed": 167,
       "skipped_missing_optional_torch_recbole": 4,
       "failed": 0,
-      "total": 168,
+      "total": 171,
       "result": "PASS"
     },
     "delivery_secret_scan": {
@@ -60,11 +60,45 @@
         }
       ],
       "rationale": "Both files are frozen Treatment inputs with exact hash bindings; changing either byte would invalidate the frozen integration. No other whitespace diagnostic was observed."
+    },
+    "gitless_treatment_materialization": {
+      "gpu5_failure_reproduced": "FileNotFoundError: git",
+      "pure_python_overlay_local_targeted_tests": 12,
+      "single_fault_context_negative": "PASS",
+      "full_local_regression": "PASS",
+      "gpu5_reverification_status": "LOCAL_COMPLETE"
+    },
+    "gpu5_full_relevant_unittest_suite": {
+      "passed": 171,
+      "skipped": 0,
+      "failed": 0,
+      "total": 171,
+      "result": "PASS"
+    },
+    "gpu5_control_treatment_isolation": {
+      "shared_environment_guard_exposure_reproduced": true,
+      "shared_environment_contains_recclaw_package_after_remediation": false,
+      "control_guard_import_spec": null,
+      "control_recbole_import": "1.2.1",
+      "control_torch_import": "2.4.1+cu121",
+      "treatment_guard_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+      "result": "PASS"
     }
   },
   "runtime_environment": {
-    "status": "NOT_STARTED",
-    "blocker": "The inspected gpu5 legacy Python 3.8.10 cannot parse the frozen Python >=3.11 integration; a new AB-002 environment must be materialized and verified before Canary."
+    "status": "LOCAL_COMPLETE",
+    "root": "/NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002",
+    "python": "3.11.15",
+    "torch": "2.4.1+cu121",
+    "torch_cuda": "12.1",
+    "cuda_available": true,
+    "cuda_device_count": 4,
+    "recbole": "1.2.1",
+    "numpy": "1.24.4",
+    "scipy": "1.10.1",
+    "pandas": "2.0.3",
+    "experiment_runtime_root_exists": false,
+    "gpu_slots_inspected_not_reserved": [0, 1]
   },
   "canary_started": false,
   "full_ab_started": false,
@@ -74,7 +108,8 @@
     "formal acceptance",
     "permission release",
     "scientific claim support",
-    "Canary readiness in an execution environment"
+    "Canary start authorization",
+    "GPU reservation at execution time"
   ],
   "authority": "NONE",
   "evidence_class": "DEVELOPMENT_ONLY",

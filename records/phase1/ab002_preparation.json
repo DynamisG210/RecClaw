@@ -11,8 +11,25 @@
   "full_ab_started": false,
   "llm_api_used": false,
   "training_started": false,
-  "runtime_environment_status": "NOT_STARTED",
-  "runtime_environment_blocker": "gpu5 inspected legacy Python 3.8.10 cannot parse the frozen Python >=3.11 Guard integration; materialize and verify an AB-002 environment before Canary",
+  "runtime_environment_status": "LOCAL_COMPLETE",
+  "runtime_environment_root": "/NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002",
+  "runtime_environment_blocker": null,
+  "execution_environment_remediation": {
+    "reproduced_on_gpu5": [
+      "Treatment materialization failed with FileNotFoundError: git",
+      "the frozen RecBole root was not projected into the child environment",
+      "the shared ML environment exposed the Evidence Guard package to Control"
+    ],
+    "local_remediation_status": "LOCAL_COMPLETE",
+    "local_targeted_tests": 12,
+    "local_full_tests": 171,
+    "remote_full_tests": 171,
+    "remote_gitless_materialization": "PASS",
+    "remote_frozen_recbole_root_projection": "PASS",
+    "remote_control_guard_import_isolation": "PASS",
+    "remote_treatment_guard_digest_binding": "PASS",
+    "remote_reverification_status": "LOCAL_COMPLETE"
+  },
   "authority": "NONE",
   "evidence_class": "DEVELOPMENT_ONLY",
   "formal_acceptance": false
