@@ -5,7 +5,7 @@
   "branch": "phase1/evidence-guard-ab002",
   "canary_started": false,
   "evidence_class": "DEVELOPMENT_ONLY",
-  "file_count": 198,
+  "file_count": 199,
   "files": [
     {
       "path": ".gitattributes",
@@ -29,12 +29,12 @@
     },
     {
       "path": "SOURCE_SHA256SUMS",
-      "sha256": "f587eb1cbc91a51a7dfb903e363ee868029fd4e99284f3c56f6b8868e858cb80",
-      "size_bytes": 22266
+      "sha256": "55d94eac9d283a4d51b3a8ad1f175166f33316281724d24df8d53c4c34f73d40",
+      "size_bytes": 22379
     },
     {
       "path": "clean_tree_verification_report.json",
-      "sha256": "9a9c3f0eb5c937ae86d5a6e7e2fb71f36767b932bf9f049b4452d42ada53809f",
+      "sha256": "8b05062d2b872523114599f4d31a253ce6e3eac1aa2993c1c4f8537be2e4abb6",
       "size_bytes": 4367
     },
     {
@@ -184,7 +184,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "bcc335609807c0199244be2dc4394387bdce14e80c9e09f313c85d2381d4d8f6",
+      "sha256": "c1742618861c56c43546932175d5a961dfbd34078d88ce5cfaad06d8137b603a",
       "size_bytes": 16409
     },
     {
@@ -249,8 +249,8 @@
     },
     {
       "path": "migrated_file_allowlist.json",
-      "sha256": "32eed8d2254776c94ae1bdbf4f56959807e8c1cf2cf0c4580dfa59398f1a4bd8",
-      "size_bytes": 22452
+      "sha256": "cf1e904b5e7f82c61ede96ddf57cffb61b9f801d697da8abfa32a55bb7b47e17",
+      "size_bytes": 22638
     },
     {
       "path": "phase1/overlays/treatment_agent.patch",
@@ -664,8 +664,8 @@
     },
     {
       "path": "records/phase1/ab002_preparation.json",
-      "sha256": "6efac2abc055ed663c9db3cf897b7d9ba496d4088ea56b62c5f825c75dcebcf3",
-      "size_bytes": 2881
+      "sha256": "12ce92ce422f5315cd46b2166a82abeea72fb8c61dc0eb5989b618fcbc5a9bea",
+      "size_bytes": 3403
     },
     {
       "path": "records/phase1/canary.json",
@@ -749,8 +749,8 @@
     },
     {
       "path": "scripts/phase1/build_delivery_manifests.py",
-      "sha256": "be8ac3ec5fb4458cdfdab9a31e224a283525818a6aef6278dc830f89b734ffdc",
-      "size_bytes": 11146
+      "sha256": "9c06b0ff72ec35c38d5e7840170698eebef0dc569b395da94b81206df5014303",
+      "size_bytes": 11200
     },
     {
       "path": "scripts/phase1/scan_secrets.py",
@@ -829,8 +829,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_orchestrator.py",
-      "sha256": "43d9abdf65bb91c36490f5e57d2b5d1a89d46db8e941728d797dfee361730f82",
-      "size_bytes": 7419
+      "sha256": "10d6c5b115858a2dfd413067f66c36f3298b5607f269bd1a0785a253bd0a4a7a",
+      "size_bytes": 7463
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_probes.py",
@@ -923,6 +923,11 @@
       "size_bytes": 2177
     },
     {
+      "path": "tests/phase1/test_ab002_canary_orchestrator.py",
+      "sha256": "87b92c3b477f1a9ae89e02715c7d40e538e3ec33659b87cda8ee6707467d8037",
+      "size_bytes": 3135
+    },
+    {
       "path": "tests/phase1/test_ab002_canary_probes.py",
       "sha256": "fa470a636d001abfa3bff8f998c9a69578e48aa8d04cfc9296b6f0c40d188088",
       "size_bytes": 476
@@ -1003,6 +1008,6 @@
   "manifest_self_excluded": true,
   "record_type": "RECCLAW_PHASE1_CLEAN_TREE_MANIFEST",
   "schema_version": "recclaw.phase1.clean_tree_manifest.v1",
-  "source_sha256sums_sha256": "f587eb1cbc91a51a7dfb903e363ee868029fd4e99284f3c56f6b8868e858cb80",
+  "source_sha256sums_sha256": "55d94eac9d283a4d51b3a8ad1f175166f33316281724d24df8d53c4c34f73d40",
   "training_started": false
 }

@@ -18,15 +18,15 @@
     "dirty_provenance_workspace_status_matches_archive_inventory": "PASS",
     "full_relevant_unittest_suite": {
       "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -t . -p 'test_*.py' -v",
-      "passed": 193,
+      "passed": 194,
       "skipped_missing_optional_torch_recbole": 4,
       "failed": 0,
-      "total": 197,
+      "total": 198,
       "result": "PASS"
     },
     "delivery_secret_scan": {
       "command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase1/scan_secrets.py --root . --include-untracked",
-      "expected_scanned_file_count": 199,
+      "expected_scanned_file_count": 200,
       "finding_count": 0,
       "result": "PASS"
     },
@@ -57,7 +57,7 @@
     },
     "gitless_treatment_materialization": {
       "gpu5_failure_reproduced": "FileNotFoundError: git",
-      "pure_python_overlay_local_targeted_tests": 45,
+      "pure_python_overlay_local_targeted_tests": 46,
       "single_fault_context_negative": "PASS",
       "full_local_regression": "PASS",
       "gpu5_reverification_status": "LOCAL_COMPLETE_PRIOR_RELEASE_C25598A_ONLY"
@@ -81,8 +81,8 @@
   },
   "current_pre_canary_release": {
     "remote_verification_status": "NOT_STARTED",
-    "local_phase1_tests": 45,
-    "local_full_tests": 197,
+    "local_phase1_tests": 46,
+    "local_full_tests": 198,
     "local_full_tests_skipped": 4,
     "s0_source_tree_sha256": "47f478ca51f2ea3703861ab288513462f6fdc7b933901814303845e6acd296cf",
     "dataset_tree_sha256_inspected_on_gpu5": "532f0c05827ee06d1b5f81de9686bb8cf4288e67260a55853bc45d092c82f9dd",

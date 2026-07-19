@@ -8,7 +8,7 @@
   "control_guard_source_count": 0,
   "evidence_class": "DEVELOPMENT_ONLY",
   "formal_acceptance": false,
-  "migrated_functional_file_count": 113,
+  "migrated_functional_file_count": 114,
   "migrated_functional_files": [
     {
       "path": ".gitattributes",
@@ -27,7 +27,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "bcc335609807c0199244be2dc4394387bdce14e80c9e09f313c85d2381d4d8f6",
+      "sha256": "c1742618861c56c43546932175d5a961dfbd34078d88ce5cfaad06d8137b603a",
       "size_bytes": 16409
     },
     {
@@ -432,8 +432,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_orchestrator.py",
-      "sha256": "43d9abdf65bb91c36490f5e57d2b5d1a89d46db8e941728d797dfee361730f82",
-      "size_bytes": 7419
+      "sha256": "10d6c5b115858a2dfd413067f66c36f3298b5607f269bd1a0785a253bd0a4a7a",
+      "size_bytes": 7463
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_probes.py",
@@ -519,6 +519,11 @@
       "path": "tests/phase1/test_ab002_blind_packager.py",
       "sha256": "08e04ff03c5b5a38b088b7a8ab34a474416c903d91135f5d372da3c4aaf3b280",
       "size_bytes": 2177
+    },
+    {
+      "path": "tests/phase1/test_ab002_canary_orchestrator.py",
+      "sha256": "87b92c3b477f1a9ae89e02715c7d40e538e3ec33659b87cda8ee6707467d8037",
+      "size_bytes": 3135
     },
     {
       "path": "tests/phase1/test_ab002_canary_probes.py",

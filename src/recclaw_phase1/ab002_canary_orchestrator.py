@@ -106,20 +106,20 @@ def run_canary(
                 stderr=subprocess.STDOUT,
             )
             _wait_for_broker(broker_url, process)
-            preflight_path = root / "preflight" / "pre_canary.json"
-            preflight = build_preflight(
-                runtime_root=root,
-                baseline_dir=baseline_dir,
-                broker_url=broker_url,
-                expected_tag=expected_tag,
-                release_identity_path=release_identity_path,
-                upstream_key_env="RECCLAW_LAB_LLM_API_KEY",
-                client_token_env="RECCLAW_BROKER_CLIENT_TOKEN",
-            )
-            canonical_write(preflight_path, preflight)
             previous = dict(os.environ)
             os.environ.update(environment)
             try:
+                preflight_path = root / "preflight" / "pre_canary.json"
+                preflight = build_preflight(
+                    runtime_root=root,
+                    baseline_dir=baseline_dir,
+                    broker_url=broker_url,
+                    expected_tag=expected_tag,
+                    release_identity_path=release_identity_path,
+                    upstream_key_env="RECCLAW_LAB_LLM_API_KEY",
+                    client_token_env="RECCLAW_BROKER_CLIENT_TOKEN",
+                )
+                canonical_write(preflight_path, preflight)
                 pair = run_pair(
                     runtime_root=root,
                     search_seed=9001,

@@ -71,6 +71,7 @@ MIGRATED_PATHS = (
     "tests/phase1/test_ab002_analysis.py",
     "tests/phase1/test_ab002_blind_packager.py",
     "tests/phase1/test_ab002_canary_probes.py",
+    "tests/phase1/test_ab002_canary_orchestrator.py",
     "tests/phase1/test_ab002_candidate_confirmation.py",
     "tests/phase1/test_ab002_final_analysis.py",
     "tests/phase1/test_ab002_launcher.py",
