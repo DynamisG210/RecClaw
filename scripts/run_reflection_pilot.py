@@ -195,6 +195,7 @@ def build_commands(
     paths: PilotPaths,
     rounds: int,
     start_round: int,
+    search_seed: int,
     gpu_id: int,
     proposal_source: str,
     loop_mode: str,
@@ -254,6 +255,8 @@ def build_commands(
         str(rounds),
         "--start-round",
         str(start_round),
+        "--seed",
+        str(search_seed),
         "--loop-mode",
         loop_mode,
         "--proposal-source",
@@ -378,6 +381,7 @@ def plan_payload(
     gpu_id: int,
     baseline_dir: Path,
     start_round: int,
+    search_seed: int,
     search_intensity: str,
     algorithm_budget_per_window: int,
     anchor_families: list[str],
@@ -386,6 +390,7 @@ def plan_payload(
     return {
         "run_dir": str(paths.run_dir),
         "start_round": start_round,
+        "search_seed": search_seed,
         "proposal_source": proposal_source,
         "loop_mode": loop_mode,
         "llm_provider": llm_provider,
@@ -418,6 +423,7 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="First agent round id for continuation runs; use 51 with --rounds 200 after a 50-round pilot",
     )
+    parser.add_argument("--search-seed", type=int, required=True, help="Agent scheduling and selection RNG seed")
     parser.add_argument("--refresh-experience-every", type=int, default=10, help="Refresh cadence in rounds")
     parser.add_argument("--proposal-source", choices=("llm", "heuristic"), default=None)
     parser.add_argument(
@@ -494,6 +500,7 @@ def main(argv: list[str] | None = None) -> int:
         paths=paths,
         rounds=rounds,
         start_round=start_round,
+        search_seed=int(args.search_seed),
         gpu_id=int(args.gpu_id),
         proposal_source=proposal_source,
         loop_mode=loop_mode,
@@ -521,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
         int(args.gpu_id),
         baseline_dir,
         start_round,
+        int(args.search_seed),
         str(args.search_intensity),
         max(0, int(args.algorithm_budget_per_window)),
         anchor_families,

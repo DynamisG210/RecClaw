@@ -1,0 +1,19 @@
+{
+  "archive_basename": "RecClaw_development_provenance_20260719T185515CST.tar.gz",
+  "archive_external_path": "/root/projects/RecClaw_development_provenance_20260719T185515CST/RecClaw_development_provenance_20260719T185515CST.tar.gz",
+  "archive_manifest_sha256": "74266f154f8700e94055a6940689b5284f847d46e74d39819057fef5aa1ec0b4",
+  "archive_sha256": "7a57f68fd934b672c9f970be4cfa12d7213452466be8d1a60fbab19f58df5287",
+  "archive_sha256sums_sha256": "1f792ded2e2897d6d55fb5fff4b7923e155b6d3c5c8d5101394fbcef05fea9be",
+  "archive_size_bytes": 16704918,
+  "archived_workspace_branch": null,
+  "archived_workspace_head": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
+  "archived_workspace_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "excluded_candidate_count": 2274,
+  "formal_acceptance": false,
+  "included_file_count": 3058,
+  "record_type": "RECCLAW_PHASE1_PROVENANCE_ARCHIVE_INDEX",
+  "schema_version": "recclaw.phase1.provenance_archive_index.v1",
+  "source_workspace_files_modified": false
+}

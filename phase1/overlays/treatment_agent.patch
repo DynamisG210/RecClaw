@@ -1,0 +1,132 @@
+diff --git a/scripts/agent.py b/scripts/agent.py
+--- a/scripts/agent.py
++++ b/scripts/agent.py
+@@ -32,3 +32,7 @@
++from recclaw_core.exploration.original_recclaw_guard_hook import (
++    OriginalRecClawGuardHook,
++)
++
+ try:
+     from .action_space import (
+         allowed_action_types,
+@@ -517,3 +521,8 @@ class RecClawAgent:
+     def observe(self) -> None:
++        try:
++            self.guard_hook = OriginalRecClawGuardHook.from_environment()
++        except Exception as exc:  # fail open before the original loop starts
++            self.guard_hook = None
++            print(f"[EvidenceGuard] initialization failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
+         self.memory = []
+         self.registry = []
+@@ -2791,17 +2800,33 @@ class RecClawAgent:
+             parameter_signature = self._parameter_signature(parent_id, dict(params))
+         compare_baseline = target.get("compare_baseline") if isinstance(target.get("compare_baseline"), dict) else {}
+         validation = self.run_seed_validation(candidate, dict(params), self._to_float(compare_baseline.get("baseline_metric")))
+-        self.remember_event(
+-            {
+-                "event": "seed_validation",
+-                "round_id": round_id,
+-                "candidate_id": candidate_id,
+-                "parent_candidate_id": parent_id,
+-                "params": params,
+-                "parameter_signature": parameter_signature,
+-                "seed_validation": validation,
+-            }
+-        )
++        remember_original_validation = True
++        if self.guard_hook is not None:
++            try:
++                guard_postcheck, guard_event = self.guard_hook.postcheck_seed_validation(
++                    candidate=candidate,
++                    params=params,
++                    round_id=round_id,
++                    seed_validation=validation,
++                )
++                disposition = self.guard_hook.original_trial_memory_disposition(guard_postcheck)
++                feedback_recorded = self.remember_guard_feedback(guard_event)
++                if feedback_recorded:
++                    remember_original_validation = disposition != "QUARANTINE_ORIGINAL_TRIAL"
++            except Exception as exc:  # Guard failure preserves the original validation event
++                print(f"[EvidenceGuard] seed validation failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
++        if remember_original_validation:
++            self.remember_event(
++                {
++                    "event": "seed_validation",
++                    "round_id": round_id,
++                    "candidate_id": candidate_id,
++                    "parent_candidate_id": parent_id,
++                    "params": params,
++                    "parameter_signature": parameter_signature,
++                    "seed_validation": validation,
++                }
++            )
+ 
+     def _run_json_command(self, cmd: list[str], *, allow_json_failure: bool = False) -> dict[str, Any]:
+         completed = subprocess.run(
+@@ -3459,3 +3484,23 @@ class RecClawAgent:
++    def remember_guard_feedback(self, event: dict[str, Any]) -> bool:
++        if self.guard_hook is None:
++            return False
++        payload = {"timestamp": datetime.now().isoformat(timespec="seconds"), **event}
++        payload = self.guard_hook.prepare_feedback_for_original_memory(payload)
++        try:
++            self.guard_hook.persist_feedback(payload, self.config.memory_path)
++        except Exception as exc:  # feedback persistence must not stop Original RecClaw
++            print(f"[EvidenceGuard] feedback write failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
++            return False
++        if payload.get("expose_to_next_iteration") is not True:
++            return True
++        self.memory.append(payload)
++        candidate_id = str(payload.get("candidate_id") or "")
++        if candidate_id:
++            self.history_by_candidate.setdefault(candidate_id, []).append(payload)
++        self.agent_state_summary = self._build_agent_state_summary()
++        self._write_agent_state_summary(self.agent_state_summary)
++        return True
++
+     def run(self) -> None:
+         start_round = max(1, self.config.start_round)
+         end_round = max(start_round, self.config.rounds)
+@@ -3473,3 +3518,16 @@ class RecClawAgent:
+                 self.refresh_candidate_proposals(round_id)
+                 candidate, params, context = self.plan()
++                if self.guard_hook is not None:
++                    try:
++                        guard_precheck, guard_event = self.guard_hook.precheck(
++                            candidate=candidate,
++                            params=params,
++                            round_id=round_id,
++                        )
++                        feedback_recorded = self.remember_guard_feedback(guard_event)
++                        if feedback_recorded and self.guard_hook.should_defer(guard_precheck):
++                            print(f"[Round {round_id}] Evidence Guard requested revision or protocol branch")
++                            continue
++                    except Exception as exc:  # Guard cannot block on integration failure
++                        print(f"[EvidenceGuard] precheck failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
+                 candidate_id = str(candidate.get("candidate_id"))
+@@ -3541,5 +3599,23 @@ class RecClawAgent:
+                     seed_validation=seed_validation,
+                 )
+-                self.remember(record)
+-                self._update_history_best(candidate.get("base_model") or candidate_result.get("model"), candidate_result)
++                remember_original_trial = True
++                update_primary_frontier = True
++                if self.guard_hook is not None:
++                    try:
++                        guard_postcheck, guard_event = self.guard_hook.postcheck(
++                            candidate=candidate,
++                            candidate_result=candidate_result,
++                            original_record=record,
++                        )
++                        disposition = self.guard_hook.original_trial_memory_disposition(guard_postcheck)
++                        feedback_recorded = self.remember_guard_feedback(guard_event)
++                        if feedback_recorded and disposition == "QUARANTINE_ORIGINAL_TRIAL":
++                            remember_original_trial = False
++                            update_primary_frontier = False
++                    except Exception as exc:  # Guard failure preserves Original RecClaw behavior
++                        print(f"[EvidenceGuard] postcheck failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
++                if remember_original_trial:
++                    self.remember(record)
++                if update_primary_frontier:
++                    self._update_history_best(candidate.get("base_model") or candidate_result.get("model"), candidate_result)
+                 if self.config.refresh_experience_every > 0 and round_id % self.config.refresh_experience_every == 0:

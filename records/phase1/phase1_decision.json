@@ -1,0 +1,12 @@
+{
+  "record_type": "RECCLAW_PHASE1_MILESTONE_RECORD",
+  "schema_version": "recclaw.phase1.milestone_record.v1",
+  "milestone_id": "PHASE1-FINAL-DECISION",
+  "status": "NOT_STARTED",
+  "gate_status": "NOT_STARTED",
+  "eligible_outcomes": ["POSITIVE", "NEUTRAL_USEFUL", "NEGATIVE", "INCONCLUSIVE"],
+  "decision_rule": "configs/phase1/ab002/outcome_audit_policy.json",
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

@@ -1,40 +1,66 @@
-# RecClaw
+# RecClaw Phase 1: Evidence Guard A/B
 
-RecClaw is a recommender-system research agent workspace built around RecBole.
-It is used to propose, validate, implement, run, and reflect on candidate
-recommendation algorithms under a fixed evaluation protocol.
+This branch is the minimal pre-Canary delivery for a contemporaneous development comparison:
 
-The current runtime focuses on controlled BPR/LightGCN action-space exploration
-with local extension code under `recclaw_ext/`.
+- Control: the final effective action-space self-reflection RecClaw;
+- Treatment: the same RecClaw with the frozen development Evidence Guard;
+- baseline source identity: commit `0b44db72f2e44bfbf8139b43c9624e1e89f52b35`, tree `3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c`.
 
-## Main Pieces
+The failed permission-expanded/research-loop implementation, historical search outputs, ADMMSLIM follow-up environment, stopped work packages, and broad v2 infrastructure are not part of this delivery tree. They remain in the external provenance archive.
 
-- `configs/action_space.yaml`: runtime boundary for what the agent may change.
-- `configs/candidate_registry.yaml`: runnable candidate catalog.
-- `scripts/agent.py`: Observe -> Plan -> Propose -> Validate -> Run -> Reflect loop.
-- `scripts/run_candidate.py`: isolated candidate execution.
-- `scripts/build_experience_summary.py`: reflection memory and search steering.
-- `recclaw_ext/`: local model/loss/sampler extensions.
-- `recclaw_program.md`: operating manual for the agent and experiments.
+## Status and authority
 
-## Quick Checks
+The code and preparation records are development artifacts:
 
-```bash
-python3 scripts/analysis/lint_recclaw_space.py
-python3 -m unittest discover -s tests
+```text
+authority = NONE
+evidence_class = DEVELOPMENT_ONLY
+formal_acceptance = false
+Canary = NOT_STARTED
+Full A/B = NOT_STARTED
 ```
 
-## Pilot Entry
+The Evidence Guard does not authorize execution, admit authoritative evidence, update accepted claim state, promote artifacts, or approve a gate.
 
-Use an isolated output directory for each run:
+## Fresh setup
+
+Python `>=3.11,<3.14` is required. The inspected legacy gpu5 Python 3.8 environment is not eligible for the frozen Guard integration.
 
 ```bash
-python3 scripts/run_reflection_pilot.py \
-  --rounds 50 \
-  --proposal-source llm \
-  --search-intensity algorithm_first \
-  --gpu-id 0
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e .
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Keep `RecClaw_LabLog` out of runtime inputs. Use it only for human-facing
-analysis, plots, and reports.
+Run the secret scan:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/phase1/scan_secrets.py --root . --include-untracked
+```
+
+## Safe dry-run
+
+Dry-run only builds a plan. It does not create the runtime root, contact the LLM provider, reserve a GPU, or start training.
+
+```bash
+.venv/bin/recclaw-ab002-launch-control \
+  --runtime-root /tmp/recclaw-ab002-dry-run \
+  --search-seed 42 --gpu-id 0 --pair-id PAIR-42 \
+  --broker-url http://127.0.0.1:18080 \
+  --baseline-dir /external/fixed-baseline \
+  --dry-run
+```
+
+Use the dedicated Treatment entry point for the other arm. Both launchers refuse a runtime root inside, equal to, or containing the source checkout.
+
+## Repository map
+
+- `src/recclaw_core/exploration/`: frozen Evidence Guard and Original RecClaw adapters;
+- `src/recclaw_phase1/`: paired broker, arm materializer/launcher, analysis, and neutral outcome auditor;
+- `configs/phase1/ab002/`: fixed Claim/Protocol, fresh S0, arm and outcome contracts;
+- `phase1/overlays/`: frozen Treatment-only agent overlay;
+- `records/phase1/`: only the five milestone-level machine records;
+- `docs/`: current architecture, trustworthy-evidence line, experiment, reproducibility, and the active RC2 specification.
+
+See [the experiment contract](docs/phase1_ab002_experiment.md) and [reproducibility guide](docs/reproducibility.md) before any execution. Do not start the Canary without a verified Python/RecBole environment and explicit user authorization.

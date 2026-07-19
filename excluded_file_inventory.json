@@ -1,0 +1,40 @@
+{
+  "authority": "NONE",
+  "delivery_migration_exclusions": [
+    "superseded drafts",
+    "intermediate Codex work packages",
+    "stopped package candidates and duplicate handoffs",
+    "local wheel, tar, and unpacked source copies",
+    "raw review transcripts and temporary source snapshots",
+    "pycache, pyc, cache, environment-dump, and temporary log files",
+    "large raw artifacts and historical experiment outputs",
+    "historical execution records other than five Phase-1 milestones",
+    "failed permission-expanded research-loop implementation"
+  ],
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "path_level_inventory_count": 2274,
+  "path_level_inventory_location": "/root/projects/RecClaw_development_provenance_20260719T185515CST/RecClaw_development_provenance_v2/inventory/archive_excluded_file_inventory.json",
+  "path_level_inventory_sha256": "a37fd57551b567a66f34baf669ab39a737727a54fe525782f3115badef9bf90c",
+  "rationale": "The exact path-level exclusion inventory remains in the external provenance archive so historical names and bulk inventory do not expand the minimal delivery tree.",
+  "reason_counts": {
+    "binary_log_model_data_or_archive": 21,
+    "cache_temporary_or_unpacked_copy": 879,
+    "non_regular_file": 1374
+  },
+  "record_type": "RECCLAW_PHASE1_EXCLUDED_FILE_INVENTORY_INDEX",
+  "removed_from_base_tree": [
+    "notes/candidate_library.md",
+    "notes/candidate_proposal_workflow.md",
+    "notes/experiment_log.md",
+    "notes/method_change_space.md",
+    "recclaw_program.md",
+    "results/baseline/.gitkeep",
+    "results/candidates/.gitkeep",
+    "results/results.csv",
+    "scripts/analysis/summarize_ablation_results.py",
+    "scripts/run_baseline.sh",
+    "scripts/sync_to_server.sh"
+  ],
+  "schema_version": "recclaw.phase1.excluded_file_inventory.v1"
+}

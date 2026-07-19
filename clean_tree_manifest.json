@@ -1,0 +1,593 @@
+{
+  "authority": "NONE",
+  "base_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
+  "base_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
+  "branch": "phase1/evidence-guard-ab002",
+  "canary_started": false,
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "file_count": 115,
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "905b7bc5232eb32f1ea133792cef731c534c234423b1c51f6abd9713ae020d95",
+      "size_bytes": 372
+    },
+    {
+      "path": ".python-version",
+      "sha256": "fa682ae9d943f5c8076e68335c9ba3ab4d063ad035c07ac6928653dd4ac50af7",
+      "size_bytes": 7
+    },
+    {
+      "path": "README.md",
+      "sha256": "88c299f0d59c7dd43c06e788b492cf219b0ead222860ba50af3ed6dfc03d71a9",
+      "size_bytes": 2856
+    },
+    {
+      "path": "SOURCE_SHA256SUMS",
+      "sha256": "3ea2b5f79a35ad31f9964414768a35c999cea70579985e642c952ee839b6f16a",
+      "size_bytes": 12024
+    },
+    {
+      "path": "clean_tree_verification_report.json",
+      "sha256": "277585f3fe0c971f436370ebbc0dec3052bd030e0b8b7620f1a02cb95187b60a",
+      "size_bytes": 3092
+    },
+    {
+      "path": "configs/action_space.yaml",
+      "sha256": "e45b93d6118412ed3d324fdd0d50c617a78f36e3973acb6aedb2f4c4d88e0f24",
+      "size_bytes": 11674
+    },
+    {
+      "path": "configs/bpr.yaml",
+      "sha256": "75057ba9b44e789a7d9a75ecda7ef2d5ead72f6ac2c0f3a985f6ec768fd32c10",
+      "size_bytes": 40
+    },
+    {
+      "path": "configs/candidate_proposal_schema.yaml",
+      "sha256": "a1fca4c546bc945b6a6ee5acc406a166a855bc0fb7355a1e5cd148a0e9b826a6",
+      "size_bytes": 9210
+    },
+    {
+      "path": "configs/candidate_registry.yaml",
+      "sha256": "be918d7d140f02cc547a57077f3fd0b808cea1a22a36600b0f7010a1f45c4f33",
+      "size_bytes": 14855
+    },
+    {
+      "path": "configs/candidates/cand_bpr_hard_negative_margin.yaml",
+      "sha256": "ed3ba45732adf935f8e0e06db3964b3992a12555646c6ba730e27674623113a1",
+      "size_bytes": 110
+    },
+    {
+      "path": "configs/candidates/cand_bpr_hard_negative_mix.yaml",
+      "sha256": "471e038cacfc91786ecfb5ddefdfb99015e95db671401e26e7cba33d507abe0a",
+      "size_bytes": 89
+    },
+    {
+      "path": "configs/candidates/cand_bpr_long_tail_reweight.yaml",
+      "sha256": "2c8cbc386c955b5089e74bc5a70395f99bdcd4263e139a2f8eaa576fd11000c9",
+      "size_bytes": 92
+    },
+    {
+      "path": "configs/candidates/cand_bpr_margin_loss.yaml",
+      "sha256": "50ac8dce0cba9f2dc5b2f82d64d92b926fb286dbcd7f6d8e863d5f789a404b65",
+      "size_bytes": 64
+    },
+    {
+      "path": "configs/candidates/cand_bpr_norm_constrained.yaml",
+      "sha256": "3eb922a6c83cc09275c641f78dc2596b792b7c35c9450e81834c2ddbaec51a04",
+      "size_bytes": 98
+    },
+    {
+      "path": "configs/candidates/cand_bpr_popularity_aware_margin.yaml",
+      "sha256": "e9f406f56b3f0a39aa3be1fa3c00c7076257805582bbe87be17c23e7fa9d4e84",
+      "size_bytes": 113
+    },
+    {
+      "path": "configs/candidates/cand_bpr_popularity_aware_negative.yaml",
+      "sha256": "fc1f46c657b1477771f71d195b3bd7bcb0abe1c70a3fc8ed7c4b06cce477cb06",
+      "size_bytes": 105
+    },
+    {
+      "path": "configs/candidates/cand_bpr_popularity_regularized.yaml",
+      "sha256": "cfba631ff8622bbfba32a7446bfa6f90aacce8b05d44537921eaf9371d94357d",
+      "size_bytes": 95
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_aux_alignment_loss.yaml",
+      "sha256": "a3b9ec4cf573af7bacb406974276137d6d80c4d2476083a7aaffb87c4e198e35",
+      "size_bytes": 94
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_debiased_negative_sampling.yaml",
+      "sha256": "89032092ea035c5b7e0960ad21a3940ce2f46192067672144c6c79887f047c8d",
+      "size_bytes": 105
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_edge_dropout_residual_mix.yaml",
+      "sha256": "26292f96ad389ee5383d89148a296cd689d5ea7d57a31fffcbfbbef765b148eb",
+      "size_bytes": 162
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_edge_dropout_residual_norm.yaml",
+      "sha256": "1072df75e281b48780e442efdb13246c6206d7bc9c33f586e8536d2e85b651a0",
+      "size_bytes": 197
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076.yaml",
+      "sha256": "1c097f89cedd05c6461a8422900a335105c544e9cb5d7c829da2046d52aad775",
+      "size_bytes": 237
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_layer_weighted_agg.yaml",
+      "sha256": "a1aba7ddce34594edc376eeaacdbfa895fec0cf82bfa7649bb8ebc3949a57ed9",
+      "size_bytes": 113
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_rank_aware_loss.yaml",
+      "sha256": "6a8f1f6170eb019de3fc4e403f6e6825ebe19f3588d82f0880a15b3d950d7085",
+      "size_bytes": 92
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_residual_layer_mix.yaml",
+      "sha256": "8e1116c12d290b7f1b39da1ead328160526be9740fb8f08b5bafebe8c45e479f",
+      "size_bytes": 126
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_residual_norm_constrained.yaml",
+      "sha256": "1269e91cd55c422ccf0e19b335b775c679c603c5cc5e078066f4b0026e7916d0",
+      "size_bytes": 178
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_shallow_layers.yaml",
+      "sha256": "f26c6db00fd8c0e3a1b875d2d393099e93d236b479c32bd9a02b0cef160e547b",
+      "size_bytes": 90
+    },
+    {
+      "path": "configs/candidates/cand_lightgcn_small_embedding.yaml",
+      "sha256": "96429a9cd855bdfe5c68c587826e01fe6501538670b2f40ad616d357a30ebd39",
+      "size_bytes": 91
+    },
+    {
+      "path": "configs/candidates/cand_rerank_coverage_boost.yaml",
+      "sha256": "b724953c8f5dbc4602e17e9b4445d5cdcdfb424797065edb716a40ca31689304",
+      "size_bytes": 114
+    },
+    {
+      "path": "configs/candidates/cand_rerank_popularity_penalty.yaml",
+      "sha256": "fe8fbd2e71264940a33193c2b30905fb43c758313480423a42c465960fd503c9",
+      "size_bytes": 117
+    },
+    {
+      "path": "configs/lightgcn.yaml",
+      "sha256": "4a001d34ea551520adb42daa95efac39394cada70f7ec50f5c3d9bf5d64d1ede",
+      "size_bytes": 48
+    },
+    {
+      "path": "configs/lightgcn_metrics.yaml",
+      "sha256": "fdc11a17e3f0d8e3d6d6991204620d8bf5a1551e5aabbd9b4b5d4f122ddc6ed6",
+      "size_bytes": 156
+    },
+    {
+      "path": "configs/phase1/ab002/arm_manifest.json",
+      "sha256": "cbf9ef4def5a7d39353599b653660b0329ce49dc49d3188d5aade8aced646356",
+      "size_bytes": 1856
+    },
+    {
+      "path": "configs/phase1/ab002/evidence_guard_contract.json",
+      "sha256": "253590f85e8990e37f5992dab451e26113d005cbe8ca896d7cd026cd3c64ec32",
+      "size_bytes": 13966
+    },
+    {
+      "path": "configs/phase1/ab002/outcome_audit_policy.json",
+      "sha256": "47f012a2448a5078d2fdd9a6b495bdb2a893e55292741f0fa0ec6181336e79a2",
+      "size_bytes": 640
+    },
+    {
+      "path": "configs/phase1/ab002/s0_manifest.json",
+      "sha256": "56c3e0646f42ecc51aac0e4549ee6c116b67e4e45de220805c07e4f78bfd9be9",
+      "size_bytes": 632
+    },
+    {
+      "path": "configs/reflection_policy.yaml",
+      "sha256": "9f70190fff603523261f59424d8c0d9629fc281fc7155235cd391512ac018348",
+      "size_bytes": 4079
+    },
+    {
+      "path": "configs/search_policy.yaml",
+      "sha256": "f53849d14ce2cfe4452641c7c24cd08b5098b36cd6e08d8adbd0fd9b261ba039",
+      "size_bytes": 5048
+    },
+    {
+      "path": "configs/task_ml1m.yaml",
+      "sha256": "77f27c6c1fe70e3b340961b6b530d500cd0821782d95ac4650334081f426fe5c",
+      "size_bytes": 493
+    },
+    {
+      "path": "docs/architecture_overview.md",
+      "sha256": "5bbcbcee19fb47d50184b7dd9fcc2babbdb42ead12216f5d524b8c9ad95ea98d",
+      "size_bytes": 1942
+    },
+    {
+      "path": "docs/phase1_ab002_experiment.md",
+      "sha256": "84f662129cb5b2786fc6876542532d6239d0befe760c88c29d626da037f394a9",
+      "size_bytes": 2925
+    },
+    {
+      "path": "docs/reproducibility.md",
+      "sha256": "979c56eaa8e3cf7c8c65696212416f5244557ddb09da22832e32e9366f065b6b",
+      "size_bytes": 2713
+    },
+    {
+      "path": "docs/specs/recclaw_research_core_architecture_execution_spec_v2_0_rc2.md",
+      "sha256": "2084eb7db0c6534c65e7627c61bac02c15c175def763857627f1980124feb6af",
+      "size_bytes": 89318
+    },
+    {
+      "path": "docs/trustworthy_evidence_line.md",
+      "sha256": "7f61ec886830c3966392cd9fae17f56b4d7c1b94a35a2d2319ac300986a16135",
+      "size_bytes": 1664
+    },
+    {
+      "path": "excluded_file_inventory.json",
+      "sha256": "44b38def68a7ed88e6140178209fe3d5add35b2b95a90ed1702898ea5426706f",
+      "size_bytes": 1834
+    },
+    {
+      "path": "migrated_file_allowlist.json",
+      "sha256": "182a857fee880e06f6362bada2d8fa813ce0238902cbe0a7f704180a32684c1c",
+      "size_bytes": 5987
+    },
+    {
+      "path": "phase1/overlays/treatment_agent.patch",
+      "sha256": "2bfeeb6f4fd7893784899278ae2c4beee5e539da57d0532670edb5102f3e24c4",
+      "size_bytes": 7129
+    },
+    {
+      "path": "provenance_archive_manifest.json",
+      "sha256": "a0a7620dda72deed8d33cddfbfb3ff8fe449954add47bbf054b74b5281773bfb",
+      "size_bytes": 1068
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "c98f6b3d5ffbccfd1e847961126327dc7cc1e5705da1b2a79333cd56aa952007",
+      "size_bytes": 860
+    },
+    {
+      "path": "recclaw_ext/__init__.py",
+      "sha256": "6de06e8d42f5522a27602ae1bc81476c92aeeb18cbe6951046ad474142de26fb",
+      "size_bytes": 96
+    },
+    {
+      "path": "recclaw_ext/models/__init__.py",
+      "sha256": "ace64b57d522218c7321bf7ae0a748ed4ab92c5b3e1fd93085ca67ddcd6df6b3",
+      "size_bytes": 2221
+    },
+    {
+      "path": "recclaw_ext/models/_losses.py",
+      "sha256": "1ad3cfb7f68fb51c80725f38f4467287a07013f8de7d3ece47eda89729ca1ad2",
+      "size_bytes": 5052
+    },
+    {
+      "path": "recclaw_ext/models/_samplers.py",
+      "sha256": "c835a4a793c0480a1c7cc057dd2a7fbc8072d2eabed40b68a39f6ed397d563fe",
+      "size_bytes": 6428
+    },
+    {
+      "path": "recclaw_ext/models/_utils.py",
+      "sha256": "61fcea7ffb024446a1a4b10a058ce333a7c0c2a503d545f29037215f4f67bcf9",
+      "size_bytes": 2095
+    },
+    {
+      "path": "recclaw_ext/models/bpr_composed.py",
+      "sha256": "065e06b57a16cd0d92497b43ca9bb53db5fa4d9843800265a93724412d31efd0",
+      "size_bytes": 5031
+    },
+    {
+      "path": "recclaw_ext/models/bpr_margin.py",
+      "sha256": "e7c896cfd5682e026aeaf1c741d263434d57b31baab9953a1bddc2149c914539",
+      "size_bytes": 951
+    },
+    {
+      "path": "recclaw_ext/models/bpr_regularized.py",
+      "sha256": "6f9a1e799efb7457a5a44c403f735f60b98de4b5e53930160ac9c66f6ef66a18",
+      "size_bytes": 4120
+    },
+    {
+      "path": "recclaw_ext/models/bpr_sampling.py",
+      "sha256": "98f4bbcdd00e86720ed8158109138809c7b03f511dd9c5251df887b6d96abcd8",
+      "size_bytes": 3672
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_edge_dropout_residual.py",
+      "sha256": "2805881fcda8d42c0c499cc8cda2c5d8679e49c6e0ba1cde194966867c81373d",
+      "size_bytes": 2290
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_edge_dropout_residual_norm_dualpathblend_repair_076.py",
+      "sha256": "a1007a16435a857610d0213d633c483c7ed81ffe6bd7b4af8081ab70baa80b2c",
+      "size_bytes": 4014
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_lw.py",
+      "sha256": "34498e38f616764331fdda355574668a39a2135639bdc5561f4a307a7341246a",
+      "size_bytes": 1648
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_objectives.py",
+      "sha256": "dc9d2ed60e29a1d9227228c88eef624cc01cb375c0f62b670300edb4685fcee4",
+      "size_bytes": 4617
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_residual.py",
+      "sha256": "797ed3da55199ac80ae5a60d81ebdd452bfd4fe8fd61ee3df572779efd80b631",
+      "size_bytes": 1335
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_residual_norm.py",
+      "sha256": "0b5bfe936d1bf306887467a96f0b5dd8f3e6d5ea3fb382f49aaba4a12b198a21",
+      "size_bytes": 7380
+    },
+    {
+      "path": "recclaw_ext/models/lightgcn_sampling.py",
+      "sha256": "3490c820655b7a39041dcd0ed5ea32712125b9ba6c55d360134041cc1a3952fb",
+      "size_bytes": 2131
+    },
+    {
+      "path": "recclaw_ext/posthoc/__init__.py",
+      "sha256": "28873940f995a67ec4d7a063161a0d68ca7d9d57dcea548e6a1de22d5b317134",
+      "size_bytes": 202
+    },
+    {
+      "path": "recclaw_ext/posthoc/adjustments.py",
+      "sha256": "36db93a5b7b87e32283bfd7a5fe059352cf79fdf7e34ff28267ccac3f838b37b",
+      "size_bytes": 1237
+    },
+    {
+      "path": "records/phase1/ab002_preparation.json",
+      "sha256": "eb64abbfd7bba922b145510733964c758238d398a7d300e67fdf7e06d4e27615",
+      "size_bytes": 821
+    },
+    {
+      "path": "records/phase1/canary.json",
+      "sha256": "952db1ebf9b4e92f04af3e677361c721c026e678a9340b4d7f9840ece7af3035",
+      "size_bytes": 455
+    },
+    {
+      "path": "records/phase1/evidence_guard_development_baseline.json",
+      "sha256": "d1b8d8da284bc7535bef8fa4cbd399c4127b0cefc3e6316a50b6689b122b5927",
+      "size_bytes": 1202
+    },
+    {
+      "path": "records/phase1/full_ab.json",
+      "sha256": "cd3c9a7730bcd666354f6391bc8a3046ffaf9649045e1b9d2d8aeb1e6ff3f95e",
+      "size_bytes": 464
+    },
+    {
+      "path": "records/phase1/phase1_decision.json",
+      "sha256": "4bd7553b5251990787b735c0508e5b24ed4b87ef34393398c9f50efdca0749a5",
+      "size_bytes": 460
+    },
+    {
+      "path": "schemas/evidence_guard_envelope.schema.json",
+      "sha256": "58c4e1bf71e1f6e8516d6325cea67eee1c232edd265b01eb4366b0ab9faf255f",
+      "size_bytes": 5132
+    },
+    {
+      "path": "schemas/evidence_guard_result.schema.json",
+      "sha256": "1892cbb278cdf4b46bf4894fdeb27c1fdca896dae5b9db1eb326f8780db90640",
+      "size_bytes": 1208
+    },
+    {
+      "path": "schemas/phase1_ab002_contract.schema.json",
+      "sha256": "aa4171be8e72ad5f40af73b03028fd8e712ff2a361cf6e1f945fc84cc76b8a63",
+      "size_bytes": 1835
+    },
+    {
+      "path": "schemas/phase1_milestone_record.schema.json",
+      "sha256": "a91f740a1b8cc70a1e053198db40f6be8e0287594fbd80b47f83f3a80d85e8af",
+      "size_bytes": 875
+    },
+    {
+      "path": "scripts/action_space.py",
+      "sha256": "b9befe128d0aa89a5fa892a16478fafc184cca3f2b3e28a0b7b1cd9d7b367e78",
+      "size_bytes": 11833
+    },
+    {
+      "path": "scripts/agent.py",
+      "sha256": "2c73c25fc9212a27a506d465e5aaca1606e7d729c827c5f7e67a0984b926b6d0",
+      "size_bytes": 184828
+    },
+    {
+      "path": "scripts/analysis/build_candidate_search_tree.py",
+      "sha256": "f7c780848a83a243744195ea67eff70309f83d2c0478849ebf91404f665c0ef3",
+      "size_bytes": 18009
+    },
+    {
+      "path": "scripts/analysis/lint_recclaw_space.py",
+      "sha256": "ba1e12d0ea788159d576a01dfbb7b51b46510b9b8393b90518c0ea8cb38c4c04",
+      "size_bytes": 26661
+    },
+    {
+      "path": "scripts/build_experience_summary.py",
+      "sha256": "5a0e1494a8831748ebdb39eaa942249cfcff10da4d6774a51a39696ec608e60c",
+      "size_bytes": 49093
+    },
+    {
+      "path": "scripts/collect_result.py",
+      "sha256": "92d71c159a29b8d9541296d483928db271e73d3ada3275f9ca53ed8d2f63c255",
+      "size_bytes": 17442
+    },
+    {
+      "path": "scripts/compare_runs.py",
+      "sha256": "b4a6f237323b15c47a683280e9cdc245fcc1b61cd30f2d79bff0b756cd214698",
+      "size_bytes": 7677
+    },
+    {
+      "path": "scripts/implement_candidate_proposal.py",
+      "sha256": "a04bdbfb7fb6f00477652dd4dbf5f8e1aff0b8bcbd17dfa7ed6fc6bf4b4840d9",
+      "size_bytes": 50280
+    },
+    {
+      "path": "scripts/phase1/build_delivery_manifests.py",
+      "sha256": "9620cc8e44f41f07a30b6ab3d3313e887ffb6016e89ed5a584064bd5dff4394e",
+      "size_bytes": 9744
+    },
+    {
+      "path": "scripts/phase1/scan_secrets.py",
+      "sha256": "88535db77c0b0187625c1e1e4f865351fb053d2e9df6213d17445e127865237b",
+      "size_bytes": 2774
+    },
+    {
+      "path": "scripts/promote_candidate_proposal.py",
+      "sha256": "652c0148f2565a8d7163bdfa4d7fca38c3a2d276f8c4c9e6e425f790dc5f9106",
+      "size_bytes": 8301
+    },
+    {
+      "path": "scripts/propose_candidate.py",
+      "sha256": "c158dab2c118ed6c2c668f65c4a2c2d7220bc93f6b1e9da41e77af3dfb9698fe",
+      "size_bytes": 46682
+    },
+    {
+      "path": "scripts/run_candidate.py",
+      "sha256": "25a8b69ac4df279efdae9e7d308adbd5d4244aa007b1deaabf688dc72301d15f",
+      "size_bytes": 24488
+    },
+    {
+      "path": "scripts/run_reflection_pilot.py",
+      "sha256": "1a741f2f573d373f0043bbc60028d180cc645f3a067f9ea394e5f394db8bc90b",
+      "size_bytes": 19986
+    },
+    {
+      "path": "scripts/validate_candidate_proposal.py",
+      "sha256": "8dabbb49351c5745da9ba4b7d5edbb4c8c7f5c568e385bb1dd964cdb915073d5",
+      "size_bytes": 27112
+    },
+    {
+      "path": "src/recclaw_core/__init__.py",
+      "sha256": "ef861a60d2af26d298c91a1b54dc3860e34d5f7b17e3fbd096bc6e28805fb07b",
+      "size_bytes": 288
+    },
+    {
+      "path": "src/recclaw_core/exploration/__init__.py",
+      "sha256": "e7f8d2c9cdba82c7af5239208e94df70c9016a6e75c33d255546e9dd18f60438",
+      "size_bytes": 735
+    },
+    {
+      "path": "src/recclaw_core/exploration/evidence_guard.py",
+      "sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+      "size_bytes": 27503
+    },
+    {
+      "path": "src/recclaw_core/exploration/original_recclaw_adapter.py",
+      "sha256": "acd25fb34be71bde445a91614f115cd4ada0aad58c66754ae3a2a6dca1d5aa35",
+      "size_bytes": 30404
+    },
+    {
+      "path": "src/recclaw_core/exploration/original_recclaw_guard_hook.py",
+      "sha256": "a63a4fc1067313a8cf7799d9a1b75593221c8e4acd34d553abf8deaa32165340",
+      "size_bytes": 44737
+    },
+    {
+      "path": "src/recclaw_phase1/__init__.py",
+      "sha256": "4e8d05a7032cf854917d6d5fdcc7fb93caeb7e73ad23ca4e2660be033cd517c3",
+      "size_bytes": 146
+    },
+    {
+      "path": "src/recclaw_phase1/ab002_analysis.py",
+      "sha256": "c85d7b4940f5900797f6a349a848855a54f1c7c964145c873d9a41e90bb0c64d",
+      "size_bytes": 11698
+    },
+    {
+      "path": "src/recclaw_phase1/ab002_launcher.py",
+      "sha256": "8d54571fa0dfc66b4237cce61af598aa364514d2983738690b09cbee6ece9064",
+      "size_bytes": 15172
+    },
+    {
+      "path": "src/recclaw_phase1/neutral_outcome_auditor.py",
+      "sha256": "51ffb9e164c0a2e5d65fd6ebd6d8ccd2e0b07be297b35897de8b39c13b60382c",
+      "size_bytes": 4758
+    },
+    {
+      "path": "src/recclaw_phase1/paired_llm_broker.py",
+      "sha256": "6ff664dfcc615a3ec10cf6ebcbc91fa5b012437f1272c3f26be20ff3e3fc1938",
+      "size_bytes": 17220
+    },
+    {
+      "path": "tests/__init__.py",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "size_bytes": 1
+    },
+    {
+      "path": "tests/exploration/__init__.py",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "size_bytes": 1
+    },
+    {
+      "path": "tests/exploration/test_evidence_guard.py",
+      "sha256": "d18f92c760f83084f6870171ce6a352180ba3cac7b63af6ec698daf6ee055d56",
+      "size_bytes": 11259
+    },
+    {
+      "path": "tests/exploration/test_original_recclaw_adapter.py",
+      "sha256": "1abc6d5460ac3a0779a350a42252797371dbb2f420a1add35d0eebe8657599c6",
+      "size_bytes": 33932
+    },
+    {
+      "path": "tests/exploration/test_original_recclaw_treatment_overlay.py",
+      "sha256": "2463b9e6493cfa86e735d4637e7bcd4984e509d0552ca9c71229e960156fe8e9",
+      "size_bytes": 7125
+    },
+    {
+      "path": "tests/phase1/__init__.py",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "size_bytes": 1
+    },
+    {
+      "path": "tests/phase1/test_ab002_analysis.py",
+      "sha256": "d752029e2370444d436e1583ec23310b1070fc2cd2ce0c5875facf5782c7bb13",
+      "size_bytes": 4592
+    },
+    {
+      "path": "tests/phase1/test_ab002_launcher.py",
+      "sha256": "7c04ae7ae18fe73dc4ae1bf51da6e27dea02ce894e3dda76c787e91a099ec155",
+      "size_bytes": 3824
+    },
+    {
+      "path": "tests/phase1/test_paired_llm_broker.py",
+      "sha256": "f7c1c79a7f576f191764390da3f03869adc3e093eb00dbaeccf7cf1bfd4a417a",
+      "size_bytes": 5078
+    },
+    {
+      "path": "tests/phase1/test_phase1_schemas.py",
+      "sha256": "051a5facd0d23dc8e0f0f47d7974e592012343d3897f640fd18b1dbc7cd73e51",
+      "size_bytes": 2557
+    },
+    {
+      "path": "tests/test_agent_loop.py",
+      "sha256": "b981b55a1f3fbbf551a0ba9cc8bd360ceef73b9abbd53441e72351a5197c135a",
+      "size_bytes": 74918
+    },
+    {
+      "path": "tests/test_candidate_proposal.py",
+      "sha256": "bb6c2223f4ee6479bd9edf7c4c4e173336b15927f9238dac155c85fc166dd120",
+      "size_bytes": 20916
+    },
+    {
+      "path": "tests/test_lint_recclaw_space.py",
+      "sha256": "1c1e6363a5ab23f54508a054fe40711465bab01bbc6794136dae650f7a2677cb",
+      "size_bytes": 5623
+    },
+    {
+      "path": "tests/test_reflection_pilot.py",
+      "sha256": "62130a117912252025a6c035fa96ca0463ee98fe4095e0dc0c64d953b246d526",
+      "size_bytes": 10803
+    }
+  ],
+  "formal_acceptance": false,
+  "llm_api_used": false,
+  "manifest_self_excluded": true,
+  "record_type": "RECCLAW_PHASE1_CLEAN_TREE_MANIFEST",
+  "schema_version": "recclaw.phase1.clean_tree_manifest.v1",
+  "source_sha256sums_sha256": "3ea2b5f79a35ad31f9964414768a35c999cea70579985e642c952ee839b6f16a",
+  "training_started": false
+}

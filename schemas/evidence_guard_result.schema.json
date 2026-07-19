@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.dev/schemas/phase1/evidence_guard_result.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["record_type", "schema_version", "authority", "evidence_class", "formal_acceptance", "input_digest", "action_legality", "protocol_diagnostics", "evidence_admissibility", "affected_claim_scope", "claim_ceiling", "router_directive", "does_not_create"],
+  "properties": {
+    "record_type": {"const": "DEVELOPMENT_EVIDENCE_GUARD_RESULT"},
+    "schema_version": {"const": "recclaw.exploration.development_evidence_guard_result.v1"},
+    "authority": {"const": "NONE"},
+    "evidence_class": {"const": "DEVELOPMENT_ONLY"},
+    "formal_acceptance": {"const": false},
+    "input_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "action_legality": {"type": "object"},
+    "protocol_diagnostics": {"type": "array"},
+    "evidence_admissibility": {"type": "object"},
+    "affected_claim_scope": {"type": "object"},
+    "claim_ceiling": {"type": "object"},
+    "router_directive": {"type": "string"},
+    "does_not_create": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+  }
+}

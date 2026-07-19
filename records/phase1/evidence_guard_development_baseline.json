@@ -1,0 +1,26 @@
+{
+  "record_type": "RECCLAW_PHASE1_MILESTONE_RECORD",
+  "schema_version": "recclaw.phase1.milestone_record.v1",
+  "milestone_id": "PHASE1-EVIDENCE-GUARD-DEVELOPMENT-BASELINE",
+  "status": "LOCAL_COMPLETE",
+  "gate_status": "NOT_STARTED",
+  "source_baseline": {
+    "evidence_guard_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+    "original_recclaw_adapter_sha256": "acd25fb34be71bde445a91614f115cd4ada0aad58c66754ae3a2a6dca1d5aa35",
+    "original_recclaw_guard_hook_sha256": "a63a4fc1067313a8cf7799d9a1b75593221c8e4acd34d553abf8deaa32165340",
+    "treatment_overlay_sha256": "2bfeeb6f4fd7893784899278ae2c4beee5e539da57d0532670edb5102f3e24c4",
+    "ab001_release_sha256": "fcc949fb7f44f610fdcaf4f5ec687dbe20e9b7a71c62a22e7b5751abc5c7cc62"
+  },
+  "development_rehearsal": {
+    "candidate_count": 5,
+    "valid_improvement": 3,
+    "informative_negative": 1,
+    "runtime_blocker": 1,
+    "suspected_false_block": 0
+  },
+  "independent_read_only_rereview": "LOCAL_DEVELOPMENT_GO",
+  "does_not_establish": ["formal_acceptance", "permission_release", "scientific_claim_support"],
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

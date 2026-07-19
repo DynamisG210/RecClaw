@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.dev/schemas/phase1/milestone_record.v1.json",
+  "type": "object",
+  "required": ["record_type", "schema_version", "milestone_id", "status", "gate_status", "authority", "evidence_class", "formal_acceptance"],
+  "properties": {
+    "record_type": {"const": "RECCLAW_PHASE1_MILESTONE_RECORD"},
+    "schema_version": {"const": "recclaw.phase1.milestone_record.v1"},
+    "milestone_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["NOT_STARTED", "IN_PROGRESS", "LOCAL_COMPLETE", "GATE_PENDING", "ACCEPTED", "STOPPED"]},
+    "gate_status": {"enum": ["NOT_STARTED", "IN_PROGRESS", "LOCAL_COMPLETE", "GATE_PENDING", "ACCEPTED", "STOPPED"]},
+    "authority": {"const": "NONE"},
+    "evidence_class": {"const": "DEVELOPMENT_ONLY"},
+    "formal_acceptance": {"const": false}
+  }
+}

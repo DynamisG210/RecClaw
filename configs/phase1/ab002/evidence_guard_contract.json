@@ -1,0 +1,336 @@
+{
+  "record_type": "ORIGINAL_RECCLAW_EVIDENCE_GUARD_DEVELOPMENT_AB_CONTRACT",
+  "schema_version": "recclaw.exploration.original_recclaw_guard_ab_contract.v1",
+  "contract_id": "ORIGINAL-RECCLAW-EVIDENCE-GUARD-AB-002",
+  "status": "LOCAL_COMPLETE",
+  "gate_status": "NOT_STARTED",
+  "control_identity": {
+    "name": "action-space self-reflection RecClaw v4m final",
+    "git_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
+    "equivalent_finalization_commit": "1f501e5085838bdef44690b92a822023971ef33d",
+    "git_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
+    "historical_run_name": "reflection_pilot_20260529_v4m_openai_anti_plateau_continue_from_v4k140_clean",
+    "historical_run_role": "REFERENCE_ONLY_NOT_CONTEMPORANEOUS_CONTROL",
+    "failed_research_loop_role": "EXCLUDED_FROM_CONTROL_AND_PRIMARY_REHEARSAL"
+  },
+  "claim": {
+    "claim_id": "ORIGINAL-RECCLAW-CANDIDATE-VS-LIGHTGCN-V1",
+    "protocol_id": "ORIGINAL-RECCLAW-ML1M-RANDOM-FULL-V1",
+    "claim_kind": "LOCAL_IMPROVEMENT",
+    "target_model": "OriginalRecClawCandidate",
+    "comparator": "LightGCN",
+    "metric": "ndcg",
+    "required_seed_count": 3,
+    "scope": {
+      "dataset": "ml-1m",
+      "profile_family": "OFFLINE_TOPN",
+      "development_ab": true,
+      "candidate_families": [
+        "BPR",
+        "LightGCN"
+      ],
+      "excludes": [
+        "formal_claim_acceptance",
+        "general_recommender_system_superiority",
+        "permission_release",
+        "ADMMSLIM_second_environment"
+      ]
+    }
+  },
+  "protocol": {
+    "protocol_id": "ORIGINAL-RECCLAW-ML1M-RANDOM-FULL-V1",
+    "profile_family": "OFFLINE_TOPN",
+    "dataset": "ml-1m",
+    "dataset_snapshot": "sha256:783d2bce46ebb614de8ef0a365a34aa69c16dc63a50bce6f17c90f4aefe8a841",
+    "split": {
+      "strategy": "random_user_holdout",
+      "recbole_token": "RS",
+      "ratio": [
+        0.8,
+        0.1,
+        0.1
+      ],
+      "group_by": "user",
+      "order": "random",
+      "recbole_order_token": "RO",
+      "chronology": "not_used"
+    },
+    "training_sampling": {
+      "mode": "uniform_negative",
+      "distribution": "uniform",
+      "sample_num": 1,
+      "dynamic": false
+    },
+    "evaluation_candidate_universe": {
+      "mode": "full_sort",
+      "item_vocabulary": "fixed_ml_1m_snapshot_item_ids",
+      "padding_item": "exclude",
+      "history_items": "exclude"
+    },
+    "candidate_policy": {
+      "seen_items": "exclude",
+      "repeat_items": "exclude_if_seen"
+    },
+    "metric": {
+      "name": "ndcg",
+      "cutoff": 10,
+      "aggregation": "mean_by_user"
+    },
+    "training_procedure": {
+      "train_batch_size": 2048,
+      "optimizer": "adam",
+      "learning_rate": 0.001,
+      "max_epochs": 100,
+      "evaluation_step": 1,
+      "early_stopping_patience": 10,
+      "reproducibility": true
+    }
+  },
+  "protocol_implementation": {
+    "reported_metrics": [
+      "ndcg@10",
+      "recall@10",
+      "mrr@10",
+      "hit@10",
+      "precision@10"
+    ],
+    "framework": "RecBole",
+    "framework_version": "1.2.1",
+    "evaluator_mode": {
+      "valid": "full",
+      "test": "full"
+    },
+    "repeatable": false,
+    "evaluation_batch_size": 65536,
+    "worker_count": 8,
+    "performance_only_differences_from_legacy_baseline_log": [
+      "evaluation_batch_size",
+      "worker_count"
+    ]
+  },
+  "live_postcheck_binding": {
+    "exact_identity_requires": [
+      "regular .log file",
+      "path stem equals reported run_id",
+      "RecBole command header with bound dataset and model",
+      "logged candidate_id equals the executed registry candidate_id",
+      "logged training seed equals the planned seed",
+      "complete critical RecBole split, sampling, evaluator, metric, and training configuration"
+    ],
+    "expected_model_projection": "the expected RecBole command model is the attribute component of the executed candidate registry entrypoint; a missing projection or different --model value is PARTIAL identity, never an inferred match",
+    "material_log_change_policy": "derive an observed protocol branch from parsed live configuration; never copy the planned protocol over a material mismatch",
+    "missing_or_unparseable_policy": "PARTIAL provenance and quarantine from primary research memory",
+    "dataset_snapshot_binding": "the live log binds dataset and data_path; exact dataset bytes remain bound by the frozen execution preflight and environment capture",
+    "raw_observation_retention": "preserve the original result and TrialRecord snapshot in the Guard feedback audit log even when primary memory rejects it"
+  },
+  "current_evidence": {
+    "snapshot_id": "ORIGINAL-RECCLAW-EVIDENCE-EMPTY-V1",
+    "claim_id": "ORIGINAL-RECCLAW-CANDIDATE-VS-LIGHTGCN-V1",
+    "protocol_id": "ORIGINAL-RECCLAW-ML1M-RANDOM-FULL-V1",
+    "observation_ids": []
+  },
+  "baseline": {
+    "model": "LightGCN",
+    "config_identity": "legacy-fixed-lightgcn-embedding64-layers2-seed2026",
+    "reference_metric": "ndcg@10",
+    "reference_metric_value": 0.2671,
+    "reference_seed": "2026",
+    "source_log_sha256": "e1ef2f7f15e3596386e61b259ac771f89f1fe7eb4014fdc97ef3089335520fba",
+    "tuned_lightgcn_mean_reference": 0.274367,
+    "tuned_lightgcn_reference_role": "SEARCH_QUALITY_THRESHOLD_NOT_CLAIM_COMPARATOR",
+    "historical_v4m_best_single_reference": 0.2908,
+    "historical_v4m_best_multiseed_mean_reference": 0.289067,
+    "historical_references_are_causal_controls": false
+  },
+  "comparison_policy": {
+    "direction": "higher_is_better",
+    "min_improvement_delta": 0.00001,
+    "primary_claim_comparator": "fixed_lightgcn_0.2671",
+    "frontier_interpretation": "separate_from_claim_comparator"
+  },
+  "metric_projection": {
+    "ndcg": "ndcg@10",
+    "recall": "recall@10",
+    "mrr": "mrr@10",
+    "hit": "hit@10",
+    "precision": "precision@10"
+  },
+  "seed_policy": {
+    "default_training_seed": "2026",
+    "validation_seeds": [
+      "2026",
+      "2027",
+      "2028"
+    ],
+    "search_seed_role": "agent scheduling and local selection RNG",
+    "training_seed_role": "RecBole model training and split RNG",
+    "search_and_training_seeds_are_distinct": true
+  },
+  "search_budget": {
+    "design_basis": "matched development A/B budget; 20 rounds follows the historical algorithm_first exploration window and the user-approved 10-20 round range, not a recovered historical protocol fact",
+    "search_repetitions_per_group": 3,
+    "search_seeds": [
+      42,
+      43,
+      44
+    ],
+    "scheduling_round_budget_per_repetition": 20,
+    "maximum_ordinary_candidate_executions_per_repetition": 20,
+    "planner_seed_validation_runs_count_toward_round_budget": true,
+    "start_round": 1,
+    "end_round": 20,
+    "training_seed_per_ordinary_candidate": 2026,
+    "validation_seed_schedule": [
+      2026,
+      2027,
+      2028
+    ],
+    "gpu_per_repetition": 1,
+    "pairing_policy": "run control and treatment for the same search seed concurrently when two clean GPU slots are available; rotate GPU assignment across pairs",
+    "full_ab_started": false
+  },
+  "original_loop_configuration": {
+    "loop_mode": "auto",
+    "proposal_source": "llm",
+    "proposal_count": 6,
+    "proposal_every": 3,
+    "search_intensity": "algorithm_first",
+    "algorithm_budget_per_window": 3,
+    "max_pending_implemented": 6,
+    "max_implement_per_round": 2,
+    "algorithm_first_explore_rounds": 20,
+    "seed_validation_min_metric": 0.274,
+    "planner_triggered_multiseed_validation": true,
+    "plateau_window_metric_rows": 30,
+    "plateau_min_global_improvement": 0.0005,
+    "plateau_family_overuse_window": 20,
+    "max_same_family_repair_streak": 8,
+    "plateau_weak_family_ceiling": 0.28,
+    "checkpoint_policy": "cleanup_all"
+  },
+  "common_experiment_harness": {
+    "base_script": "scripts/run_reflection_pilot.py",
+    "base_script_sha256": "1a741f2f573d373f0043bbc60028d180cc645f3a067f9ea394e5f394db8bc90b",
+    "materialization": "the common search-seed harness is committed directly and copied identically to both runtime arms",
+    "applied_to_groups": [
+      "control",
+      "treatment"
+    ],
+    "only_behavioral_effect": "expose the existing agent --seed option as required --search-seed and record it in the pilot plan",
+    "producer_selector_runner_changes": false
+  },
+  "llm_configuration": {
+    "provider": "laboratory_openai_compatible",
+    "model": "gpt-5.4",
+    "temperature": 0.2,
+    "timeout_seconds": 300,
+    "retries": 3,
+    "api_key_env": "OPENAI_API_KEY",
+    "base_url_env": "OPENAI_BASE_URL",
+    "secret_values_recorded": false,
+    "deterministic_request_seed_supported_by_original_loop": false,
+    "matching_policy": "both arms use the same paired broker, upstream provider, model, temperature, timeout, and contemporaneous pair schedule; identical paired requests replay one exact response while divergent requests remain separate and auditable"
+  },
+  "common_paired_llm_broker": {
+    "implementation": "recclaw_phase1.paired_llm_broker",
+    "runtime_store": "external SQLite ledger under the AB-002 runtime root",
+    "client_auth": "ephemeral bearer token supplied by environment and never persisted",
+    "upstream_auth": "laboratory API key read only by the broker process from an execution-time environment variable",
+    "control_treatment_pairing_key": "pair_id plus per-arm request sequence",
+    "identical_request_behavior": "single upstream request followed by exact-byte replay to the paired arm",
+    "divergent_request_behavior": "separate upstream requests with an explicit DIVERGENT_REQUEST audit classification",
+    "provider_request_seed_available": false
+  },
+  "initial_state": {
+    "policy": "same fresh empty S0 for every control and treatment repetition",
+    "manifest": "configs/phase1/ab002/s0_manifest.json",
+    "historical_search_outputs": [],
+    "historical_search_output_count": 0,
+    "runtime_initialization": "the per-arm output root must be absent before launch; no --seed-from argument is permitted"
+  },
+  "groups": {
+    "control": {
+      "name": "Original RecClaw",
+      "guard_enabled": false,
+      "producer": "unchanged",
+      "selector": "unchanged",
+      "runner": "unchanged",
+      "original_reflection": "unchanged"
+    },
+    "treatment": {
+      "name": "Original RecClaw plus frozen development Evidence Guard",
+      "guard_enabled": true,
+      "producer": "unchanged",
+      "selector": "unchanged_before_guard_feedback",
+      "runner": "unchanged",
+      "original_reflection": "preserved as an audit fact; only Guard-admitted raw trials may update primary search memory or history-best",
+      "allowed_differences": [
+        "precheck_revision_or_protocol_branch_feedback",
+        "postcheck_evidence_disposition_and_claim_ceiling",
+        "structured_guard_feedback_visible_to_the_next_iteration",
+        "inadmissible_original_trial_quarantine_from_primary_memory_and_history_frontier",
+        "runtime_blocker_preservation_in_diagnostic_memory"
+      ]
+    }
+  },
+  "failure_policy": {
+    "adapter_error": "PRESERVE_ORIGINAL_DECISION_AND_RECORD_DIAGNOSTIC",
+    "guard_malformed_output": "PRESERVE_ORIGINAL_DECISION_AND_RECORD_DIAGNOSTIC",
+    "guard_nonzero_exit": "PRESERVE_ORIGINAL_DECISION_AND_RECORD_DIAGNOSTIC",
+    "guard_timeout": "PRESERVE_ORIGINAL_DECISION_AND_RECORD_DIAGNOSTIC",
+    "feedback_persistence_error": "PRESERVE_ORIGINAL_DECISION_PRIMARY_MEMORY_AND_HISTORY_FRONTIER_BEHAVIOR",
+    "guard_may_authorize_execution": false,
+    "guard_may_write_accepted_evidence": false,
+    "guard_may_write_claim_state": false
+  },
+  "primary_outcomes": [
+    "final_best_admissible_ndcg_at_10",
+    "admissible_running_best_curve",
+    "area_under_admissible_running_best_curve",
+    "candidate_budget_to_historical_best_threshold",
+    "wallclock_to_historical_best_threshold",
+    "valid_or_informative_signal_rate",
+    "candidate_to_valid_result_conversion",
+    "between_search_repetition_stability"
+  ],
+  "mechanism_outcomes": [
+    "revision_rate",
+    "revision_success_rate",
+    "invalid_feedback_entering_primary_search_memory",
+    "protocol_mismatch_count",
+    "blocker_classification_quality",
+    "valid_action_false_block_rate",
+    "guard_latency_ms"
+  ],
+  "execution_environment": {
+    "preferred_host": "gpu5",
+    "verified_gpu_class": "NVIDIA RTX 4090",
+    "verified_free_gpu_slots_at_inspection": [
+      0,
+      1
+    ],
+    "inspected_legacy_python": "3.8.10",
+    "required_python": ">=3.11,<3.14",
+    "python_executable": "EXECUTION_TIME_AB002_ENVIRONMENT_REQUIRED",
+    "recbole": "1.2.1",
+    "recbole_root": "/home/tingrangan/projects/RecBole",
+    "torch": "2.4.1+cu121",
+    "recbole_runtime_files_sha256": {
+      "run_recbole.py": "d0af23a38b248cf971df9be15e521a71f47d37d96c9779c48b5e10890a76a5bc",
+      "recbole/config/configurator.py": "fa9bc256b8bed0c364ab5a9939465f905695d194cdf1c195beb195b47f392618",
+      "recbole/data/dataset/dataset.py": "0e8c17f6e33d3a8dc775121d7523af18264f385357f5c3fd571e70f0b560a6dd",
+      "recbole/evaluator/evaluator.py": "d2364abd625d65c59037168eb92156cdb96a520f1e03b658a6ae6650e1732ca3",
+      "recbole/trainer/trainer.py": "a4d17d0f748eb78e26ae3e790adf44ae7513b099c5ab8070049b32c71ea0b9fb",
+      "recbole/quick_start/quick_start.py": "72088c35784d802a046a7beac00909dcf31eaa3664102ef12c29ac0afb229060",
+      "recbole/model/general_recommender/lightgcn.py": "4c79858b25bde0fa17872d29549201c76b912e6a1c31cc5f61bb793813e3251c"
+    },
+    "environment_status": "INSPECTED_NOT_RESERVED",
+    "planned_nfs_experiment_root": "/NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002",
+    "legacy_python_environment_eligible": false,
+    "environment_capture_required_at_execution": true,
+    "storage_warning": "root filesystem was 99 percent used at inspection; source trees and outputs must use the NFS experiment root with bounded cleanup_all behavior and a preflight free-space check"
+  },
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

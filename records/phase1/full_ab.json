@@ -1,0 +1,12 @@
+{
+  "record_type": "RECCLAW_PHASE1_MILESTONE_RECORD",
+  "schema_version": "recclaw.phase1.milestone_record.v1",
+  "milestone_id": "PHASE1-AB002-FULL-AB",
+  "status": "NOT_STARTED",
+  "gate_status": "NOT_STARTED",
+  "start_authorized": false,
+  "prerequisites": ["Canary locally complete", "no unresolved direct experiment-affecting defect", "user start authorization"],
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

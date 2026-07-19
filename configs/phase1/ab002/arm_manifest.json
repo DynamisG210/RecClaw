@@ -1,0 +1,39 @@
+{
+  "record_type": "RECCLAW_PHASE1_AB002_ARM_MANIFEST",
+  "schema_version": "recclaw.phase1.ab002.arm_manifest.v1",
+  "experiment_id": "ORIGINAL-RECCLAW-EVIDENCE-GUARD-AB-002",
+  "status": "LOCAL_COMPLETE",
+  "run_status": "NOT_STARTED",
+  "start_authorized": false,
+  "base_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
+  "base_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
+  "search_seeds": [42, 43, 44],
+  "rounds": {"start": 1, "end": 20},
+  "training_seed": 2026,
+  "validation_seeds": [2026, 2027, 2028],
+  "s0_manifest": "configs/phase1/ab002/s0_manifest.json",
+  "runtime_root_policy": "absolute external path outside the source checkout; must not exist before materialization",
+  "control": {
+    "guard_enabled": false,
+    "source_policy": "copy only the Original RecClaw runtime allowlist; omit src/recclaw_core, Guard contracts, overlays, and Guard environment variables"
+  },
+  "treatment": {
+    "guard_enabled": true,
+    "source_policy": "copy the same Original RecClaw runtime allowlist, apply phase1/overlays/treatment_agent.patch, and add only the hash-bound frozen Guard integration"
+  },
+  "paired_llm_broker": {
+    "required": true,
+    "base_url_shape": "http://BROKER_HOST:BROKER_PORT/v1/pairs/PAIR_ID/ARM",
+    "identical_request_policy": "same pair sequence and canonical request digest replays one exact provider response",
+    "divergent_request_policy": "call upstream separately and record the divergence rather than pretending prompts were matched",
+    "secrets_recorded": false
+  },
+  "output_roots": {
+    "control": "${RUNTIME_ROOT}/runs/control/search_seed_${SEARCH_SEED}/outputs",
+    "treatment": "${RUNTIME_ROOT}/runs/treatment/search_seed_${SEARCH_SEED}/outputs",
+    "broker": "${RUNTIME_ROOT}/broker"
+  },
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

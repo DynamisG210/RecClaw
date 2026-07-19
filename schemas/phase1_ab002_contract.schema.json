@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.dev/schemas/phase1/ab002_contract.v1.json",
+  "type": "object",
+  "required": ["record_type", "schema_version", "contract_id", "status", "gate_status", "control_identity", "claim", "protocol", "current_evidence", "search_budget", "initial_state", "groups", "authority", "evidence_class", "formal_acceptance"],
+  "properties": {
+    "record_type": {"const": "ORIGINAL_RECCLAW_EVIDENCE_GUARD_DEVELOPMENT_AB_CONTRACT"},
+    "contract_id": {"const": "ORIGINAL-RECCLAW-EVIDENCE-GUARD-AB-002"},
+    "status": {"const": "LOCAL_COMPLETE"},
+    "gate_status": {"const": "NOT_STARTED"},
+    "control_identity": {
+      "type": "object",
+      "required": ["git_commit", "git_tree", "failed_research_loop_role"]
+    },
+    "claim": {"type": "object"},
+    "protocol": {"type": "object"},
+    "current_evidence": {"type": "object"},
+    "search_budget": {
+      "type": "object",
+      "required": ["search_seeds", "start_round", "end_round", "full_ab_started"],
+      "properties": {
+        "search_seeds": {"const": [42, 43, 44]},
+        "start_round": {"const": 1},
+        "end_round": {"const": 20},
+        "full_ab_started": {"const": false}
+      }
+    },
+    "initial_state": {
+      "type": "object",
+      "required": ["historical_search_outputs", "historical_search_output_count", "runtime_initialization"],
+      "properties": {
+        "historical_search_outputs": {"const": []},
+        "historical_search_output_count": {"const": 0},
+        "runtime_initialization": {"type": "string", "pattern": "no --seed-from"}
+      }
+    },
+    "groups": {"type": "object", "required": ["control", "treatment"]},
+    "authority": {"const": "NONE"},
+    "evidence_class": {"const": "DEVELOPMENT_ONLY"},
+    "formal_acceptance": {"const": false}
+  }
+}

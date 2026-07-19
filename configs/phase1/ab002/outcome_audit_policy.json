@@ -1,0 +1,16 @@
+{
+  "record_type": "RECCLAW_PHASE1_AB002_NEUTRAL_OUTCOME_POLICY",
+  "schema_version": "recclaw.phase1.ab002.neutral_outcome_policy.v1",
+  "policy_id": "AB002-NEUTRAL-OUTCOME-POLICY-V1",
+  "status": "LOCAL_COMPLETE",
+  "minimum_complete_pairs": 3,
+  "positive_final_best_delta": 0.001,
+  "primary_noninferiority_margin": 0.001,
+  "maximum_valid_action_false_block_rate": 0.05,
+  "maximum_guard_latency_fraction": 0.15,
+  "neutral_requires_mechanism_change": true,
+  "possible_outcomes": ["POSITIVE", "NEUTRAL_USEFUL", "NEGATIVE", "INCONCLUSIVE"],
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

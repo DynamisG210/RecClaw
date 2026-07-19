@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recclaw-phase1"
+version = "0.2.0.dev0"
+description = "Minimal RecClaw Phase-1 Evidence Guard A/B delivery"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = ["PyYAML==6.0.2", "jsonschema==4.26.0"]
+
+[project.scripts]
+recclaw-ab002-broker = "recclaw_phase1.paired_llm_broker:main"
+recclaw-ab002-launch-control = "recclaw_phase1.ab002_launcher:control_main"
+recclaw-ab002-launch-treatment = "recclaw_phase1.ab002_launcher:treatment_main"
+recclaw-ab002-analyze = "recclaw_phase1.ab002_analysis:main"
+recclaw-ab002-audit-outcome = "recclaw_phase1.neutral_outcome_auditor:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["recclaw_core*", "recclaw_phase1*"]
+namespaces = false

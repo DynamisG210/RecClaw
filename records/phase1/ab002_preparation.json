@@ -1,0 +1,19 @@
+{
+  "record_type": "RECCLAW_PHASE1_MILESTONE_RECORD",
+  "schema_version": "recclaw.phase1.milestone_record.v1",
+  "milestone_id": "PHASE1-AB002-PREPARATION",
+  "status": "LOCAL_COMPLETE",
+  "gate_status": "NOT_STARTED",
+  "base_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
+  "base_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
+  "branch": "phase1/evidence-guard-ab002",
+  "canary_started": false,
+  "full_ab_started": false,
+  "llm_api_used": false,
+  "training_started": false,
+  "runtime_environment_status": "NOT_STARTED",
+  "runtime_environment_blocker": "gpu5 inspected legacy Python 3.8.10 cannot parse the frozen Python >=3.11 Guard integration; materialize and verify an AB-002 environment before Canary",
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}

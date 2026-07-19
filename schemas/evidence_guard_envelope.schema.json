@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.dev/schemas/phase1/evidence_guard_envelope.v1.json",
+  "title": "Development Evidence Guard envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["claim", "protocol", "current_evidence", "action_proposal", "observation"],
+  "properties": {
+    "claim": {"$ref": "#/$defs/claim"},
+    "protocol": {"$ref": "#/$defs/protocol"},
+    "current_evidence": {"$ref": "#/$defs/currentEvidence"},
+    "action_proposal": {"$ref": "#/$defs/actionProposal"},
+    "observation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/observation"}]}
+  },
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "jsonObject": {"type": "object", "minProperties": 1},
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "protocol_id", "claim_kind", "target_model", "comparator", "metric", "required_seed_count", "scope"],
+      "properties": {
+        "claim_id": {"$ref": "#/$defs/nonEmptyString"},
+        "protocol_id": {"$ref": "#/$defs/nonEmptyString"},
+        "claim_kind": {"$ref": "#/$defs/nonEmptyString"},
+        "target_model": {"$ref": "#/$defs/nonEmptyString"},
+        "comparator": {"$ref": "#/$defs/nonEmptyString"},
+        "metric": {"$ref": "#/$defs/nonEmptyString"},
+        "required_seed_count": {"type": "integer", "minimum": 1},
+        "scope": {"$ref": "#/$defs/jsonObject"}
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_id", "profile_family", "dataset", "dataset_snapshot", "split", "training_sampling", "evaluation_candidate_universe", "candidate_policy", "metric", "training_procedure"],
+      "properties": {
+        "protocol_id": {"$ref": "#/$defs/nonEmptyString"},
+        "profile_family": {"enum": ["OFFLINE_TOPN", "SEQUENTIAL_NEXT_ITEM"]},
+        "dataset": {"$ref": "#/$defs/nonEmptyString"},
+        "dataset_snapshot": {"$ref": "#/$defs/nonEmptyString"},
+        "split": {"$ref": "#/$defs/jsonObject"},
+        "training_sampling": {"$ref": "#/$defs/jsonObject"},
+        "evaluation_candidate_universe": {"$ref": "#/$defs/jsonObject"},
+        "candidate_policy": {"$ref": "#/$defs/jsonObject"},
+        "metric": {"$ref": "#/$defs/jsonObject"},
+        "training_procedure": {"$ref": "#/$defs/jsonObject"}
+      }
+    },
+    "currentEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshot_id", "claim_id", "protocol_id", "observation_ids"],
+      "properties": {
+        "snapshot_id": {"$ref": "#/$defs/nonEmptyString"},
+        "claim_id": {"$ref": "#/$defs/nonEmptyString"},
+        "protocol_id": {"$ref": "#/$defs/nonEmptyString"},
+        "observation_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmptyString"}}
+      }
+    },
+    "actionProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proposal_id", "action_family", "target_claim_id", "protocol_id", "planned_protocol", "target_model", "comparator", "seed_count", "seed_ids", "purpose"],
+      "properties": {
+        "proposal_id": {"$ref": "#/$defs/nonEmptyString"},
+        "action_family": {"enum": ["RUN_OFFLINE_TOPN", "RUN_SEQUENTIAL_NEXT_ITEM"]},
+        "target_claim_id": {"$ref": "#/$defs/nonEmptyString"},
+        "protocol_id": {"$ref": "#/$defs/nonEmptyString"},
+        "planned_protocol": {"$ref": "#/$defs/protocol"},
+        "target_model": {"$ref": "#/$defs/nonEmptyString"},
+        "comparator": {"$ref": "#/$defs/nonEmptyString"},
+        "seed_count": {"type": "integer", "minimum": 1},
+        "seed_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmptyString"}},
+        "purpose": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation_id", "proposal_id", "claim_id", "protocol_id", "observed_protocol", "target_model", "comparator", "seed_count", "seed_runs", "observation_kind", "run_status", "artifact_identity_status", "evidence_class", "metrics", "notes"],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/nonEmptyString"},
+        "proposal_id": {"$ref": "#/$defs/nonEmptyString"},
+        "claim_id": {"$ref": "#/$defs/nonEmptyString"},
+        "protocol_id": {"$ref": "#/$defs/nonEmptyString"},
+        "observed_protocol": {"$ref": "#/$defs/protocol"},
+        "target_model": {"$ref": "#/$defs/nonEmptyString"},
+        "comparator": {"$ref": "#/$defs/nonEmptyString"},
+        "seed_count": {"type": "integer", "minimum": 1},
+        "seed_runs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+        "observation_kind": {"$ref": "#/$defs/nonEmptyString"},
+        "run_status": {"$ref": "#/$defs/nonEmptyString"},
+        "artifact_identity_status": {"enum": ["EXACT", "PARTIAL", "MISSING"]},
+        "evidence_class": {"const": "DEVELOPMENT_ONLY"},
+        "metrics": {"type": "object"},
+        "notes": {"type": "object"}
+      }
+    }
+  }
+}

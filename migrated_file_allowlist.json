@@ -1,0 +1,163 @@
+{
+  "authority": "NONE",
+  "base_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
+  "base_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
+  "common_base_modifications": [
+    "scripts/run_reflection_pilot.py adds an explicit search-seed input shared by both arms"
+  ],
+  "control_guard_source_count": 0,
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "migrated_functional_file_count": 29,
+  "migrated_functional_files": [
+    {
+      "path": "configs/phase1/ab002/arm_manifest.json",
+      "sha256": "cbf9ef4def5a7d39353599b653660b0329ce49dc49d3188d5aade8aced646356",
+      "size_bytes": 1856
+    },
+    {
+      "path": "configs/phase1/ab002/evidence_guard_contract.json",
+      "sha256": "253590f85e8990e37f5992dab451e26113d005cbe8ca896d7cd026cd3c64ec32",
+      "size_bytes": 13966
+    },
+    {
+      "path": "configs/phase1/ab002/outcome_audit_policy.json",
+      "sha256": "47f012a2448a5078d2fdd9a6b495bdb2a893e55292741f0fa0ec6181336e79a2",
+      "size_bytes": 640
+    },
+    {
+      "path": "configs/phase1/ab002/s0_manifest.json",
+      "sha256": "56c3e0646f42ecc51aac0e4549ee6c116b67e4e45de220805c07e4f78bfd9be9",
+      "size_bytes": 632
+    },
+    {
+      "path": "phase1/overlays/treatment_agent.patch",
+      "sha256": "2bfeeb6f4fd7893784899278ae2c4beee5e539da57d0532670edb5102f3e24c4",
+      "size_bytes": 7129
+    },
+    {
+      "path": "schemas/evidence_guard_envelope.schema.json",
+      "sha256": "58c4e1bf71e1f6e8516d6325cea67eee1c232edd265b01eb4366b0ab9faf255f",
+      "size_bytes": 5132
+    },
+    {
+      "path": "schemas/evidence_guard_result.schema.json",
+      "sha256": "1892cbb278cdf4b46bf4894fdeb27c1fdca896dae5b9db1eb326f8780db90640",
+      "size_bytes": 1208
+    },
+    {
+      "path": "schemas/phase1_ab002_contract.schema.json",
+      "sha256": "aa4171be8e72ad5f40af73b03028fd8e712ff2a361cf6e1f945fc84cc76b8a63",
+      "size_bytes": 1835
+    },
+    {
+      "path": "schemas/phase1_milestone_record.schema.json",
+      "sha256": "a91f740a1b8cc70a1e053198db40f6be8e0287594fbd80b47f83f3a80d85e8af",
+      "size_bytes": 875
+    },
+    {
+      "path": "scripts/run_reflection_pilot.py",
+      "sha256": "1a741f2f573d373f0043bbc60028d180cc645f3a067f9ea394e5f394db8bc90b",
+      "size_bytes": 19986
+    },
+    {
+      "path": "src/recclaw_core/__init__.py",
+      "sha256": "ef861a60d2af26d298c91a1b54dc3860e34d5f7b17e3fbd096bc6e28805fb07b",
+      "size_bytes": 288
+    },
+    {
+      "path": "src/recclaw_core/exploration/__init__.py",
+      "sha256": "e7f8d2c9cdba82c7af5239208e94df70c9016a6e75c33d255546e9dd18f60438",
+      "size_bytes": 735
+    },
+    {
+      "path": "src/recclaw_core/exploration/evidence_guard.py",
+      "sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+      "size_bytes": 27503
+    },
+    {
+      "path": "src/recclaw_core/exploration/original_recclaw_adapter.py",
+      "sha256": "acd25fb34be71bde445a91614f115cd4ada0aad58c66754ae3a2a6dca1d5aa35",
+      "size_bytes": 30404
+    },
+    {
+      "path": "src/recclaw_core/exploration/original_recclaw_guard_hook.py",
+      "sha256": "a63a4fc1067313a8cf7799d9a1b75593221c8e4acd34d553abf8deaa32165340",
+      "size_bytes": 44737
+    },
+    {
+      "path": "src/recclaw_phase1/__init__.py",
+      "sha256": "4e8d05a7032cf854917d6d5fdcc7fb93caeb7e73ad23ca4e2660be033cd517c3",
+      "size_bytes": 146
+    },
+    {
+      "path": "src/recclaw_phase1/ab002_analysis.py",
+      "sha256": "c85d7b4940f5900797f6a349a848855a54f1c7c964145c873d9a41e90bb0c64d",
+      "size_bytes": 11698
+    },
+    {
+      "path": "src/recclaw_phase1/ab002_launcher.py",
+      "sha256": "8d54571fa0dfc66b4237cce61af598aa364514d2983738690b09cbee6ece9064",
+      "size_bytes": 15172
+    },
+    {
+      "path": "src/recclaw_phase1/neutral_outcome_auditor.py",
+      "sha256": "51ffb9e164c0a2e5d65fd6ebd6d8ccd2e0b07be297b35897de8b39c13b60382c",
+      "size_bytes": 4758
+    },
+    {
+      "path": "src/recclaw_phase1/paired_llm_broker.py",
+      "sha256": "6ff664dfcc615a3ec10cf6ebcbc91fa5b012437f1272c3f26be20ff3e3fc1938",
+      "size_bytes": 17220
+    },
+    {
+      "path": "tests/exploration/__init__.py",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "size_bytes": 1
+    },
+    {
+      "path": "tests/exploration/test_evidence_guard.py",
+      "sha256": "d18f92c760f83084f6870171ce6a352180ba3cac7b63af6ec698daf6ee055d56",
+      "size_bytes": 11259
+    },
+    {
+      "path": "tests/exploration/test_original_recclaw_adapter.py",
+      "sha256": "1abc6d5460ac3a0779a350a42252797371dbb2f420a1add35d0eebe8657599c6",
+      "size_bytes": 33932
+    },
+    {
+      "path": "tests/exploration/test_original_recclaw_treatment_overlay.py",
+      "sha256": "2463b9e6493cfa86e735d4637e7bcd4984e509d0552ca9c71229e960156fe8e9",
+      "size_bytes": 7125
+    },
+    {
+      "path": "tests/phase1/__init__.py",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "size_bytes": 1
+    },
+    {
+      "path": "tests/phase1/test_ab002_analysis.py",
+      "sha256": "d752029e2370444d436e1583ec23310b1070fc2cd2ce0c5875facf5782c7bb13",
+      "size_bytes": 4592
+    },
+    {
+      "path": "tests/phase1/test_ab002_launcher.py",
+      "sha256": "7c04ae7ae18fe73dc4ae1bf51da6e27dea02ce894e3dda76c787e91a099ec155",
+      "size_bytes": 3824
+    },
+    {
+      "path": "tests/phase1/test_paired_llm_broker.py",
+      "sha256": "f7c1c79a7f576f191764390da3f03869adc3e093eb00dbaeccf7cf1bfd4a417a",
+      "size_bytes": 5078
+    },
+    {
+      "path": "tests/phase1/test_phase1_schemas.py",
+      "sha256": "051a5facd0d23dc8e0f0f47d7974e592012343d3897f640fd18b1dbc7cd73e51",
+      "size_bytes": 2557
+    }
+  ],
+  "policy": "Only paths listed here were migrated or authored beyond retained base code.",
+  "record_type": "RECCLAW_PHASE1_MIGRATED_FILE_ALLOWLIST",
+  "schema_version": "recclaw.phase1.migrated_file_allowlist.v1",
+  "treatment_guard_binding": "src/recclaw_phase1/ab002_launcher.py:FROZEN_GUARD_FILES"
+}

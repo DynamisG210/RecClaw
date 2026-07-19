@@ -23,6 +23,37 @@ import validate_candidate_proposal as validate  # noqa: E402
 
 
 class AgentLoopTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._runtime_tmp = tempfile.TemporaryDirectory()
+        cls._original_agent_config = agent.AgentConfig
+        runtime_root = Path(cls._runtime_tmp.name)
+
+        def isolated_agent_config(*args: object, **kwargs: object) -> agent.AgentConfig:
+            runtime_paths = {
+                "memory_path": runtime_root / "agent_memory.jsonl",
+                "state_summary_path": runtime_root / "agent_state_summary.json",
+                "results_csv": runtime_root / "results.csv",
+                "baseline_dir": runtime_root / "baseline",
+                "candidate_tree_path": runtime_root / "candidate_search_tree.json",
+                "candidate_tree_md_path": runtime_root / "candidate_search_tree.md",
+                "candidate_tree_mmd_path": runtime_root / "candidate_search_tree.mmd",
+                "experience_summary_path": runtime_root / "experience_summary.md",
+                "experience_summary_json_path": runtime_root / "experience_summary.json",
+                "reflection_memory_path": runtime_root / "reflection_memory.jsonl",
+                "proposal_path": runtime_root / "candidate_proposals.jsonl",
+            }
+            for key, value in runtime_paths.items():
+                kwargs.setdefault(key, value)
+            return cls._original_agent_config(*args, **kwargs)
+
+        agent.AgentConfig = isolated_agent_config  # type: ignore[assignment,misc]
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        agent.AgentConfig = cls._original_agent_config
+        cls._runtime_tmp.cleanup()
+
     def test_loop_mode_policies_cover_requested_modes(self) -> None:
         self.assertEqual(set(agent.LOOP_MODE_POLICIES), {"tuning", "mixed", "explore", "auto"})
         self.assertEqual(agent.LOOP_MODE_POLICIES["tuning"]["proposal_mode"], "conservative")

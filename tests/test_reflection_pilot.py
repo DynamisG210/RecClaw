@@ -58,6 +58,8 @@ class ReflectionPilotTests(unittest.TestCase):
                 exit_code = pilot.main(
                     [
                         "--dry-run",
+                        "--search-seed",
+                        "42",
                         "--pilot-root",
                         tmp,
                         "--stamp",
@@ -100,6 +102,8 @@ class ReflectionPilotTests(unittest.TestCase):
                 exit_code = pilot.main(
                     [
                         "--dry-run",
+                        "--search-seed",
+                        "42",
                         "--pilot-root",
                         tmp,
                         "--stamp",
@@ -130,6 +134,8 @@ class ReflectionPilotTests(unittest.TestCase):
                 exit_code = pilot.main(
                     [
                         "--dry-run",
+                        "--search-seed",
+                        "42",
                         "--pilot-root",
                         tmp,
                         "--stamp",
@@ -150,6 +156,8 @@ class ReflectionPilotTests(unittest.TestCase):
                 exit_code = pilot.main(
                     [
                         "--dry-run",
+                        "--search-seed",
+                        "42",
                         "--pilot-root",
                         tmp,
                         "--stamp",
@@ -174,6 +182,8 @@ class ReflectionPilotTests(unittest.TestCase):
                 exit_code = pilot.main(
                     [
                         "--dry-run",
+                        "--search-seed",
+                        "42",
                         "--pilot-root",
                         tmp,
                         "--stamp",

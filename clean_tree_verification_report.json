@@ -1,0 +1,82 @@
+{
+  "record_type": "RECCLAW_PHASE1_CLEAN_TREE_VERIFICATION_REPORT",
+  "schema_version": "recclaw.phase1.clean_tree_verification_report.v1",
+  "status": "LOCAL_COMPLETE",
+  "base_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
+  "base_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
+  "branch": "phase1/evidence-guard-ab002",
+  "checks": {
+    "archive_secret_scan": {
+      "scanned_file_count": 3067,
+      "finding_count": 0,
+      "result": "PASS"
+    },
+    "archive_extracted_sha256_verification": {
+      "verified_file_count": 3066,
+      "result": "PASS"
+    },
+    "dirty_provenance_workspace_status_matches_archive_inventory": "PASS",
+    "full_relevant_unittest_suite": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -t . -p 'test_*.py' -v",
+      "passed": 164,
+      "skipped_missing_optional_torch_recbole": 4,
+      "failed": 0,
+      "total": 168,
+      "result": "PASS"
+    },
+    "delivery_secret_scan": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase1/scan_secrets.py --root . --include-untracked",
+      "expected_scanned_file_count": 116,
+      "finding_count": 0,
+      "result": "PASS"
+    },
+    "control_guard_files_or_imports": {
+      "observed_count": 0,
+      "result": "PASS"
+    },
+    "treatment_frozen_guard_hash_replay": "PASS",
+    "fresh_s0_historical_search_output_count": {
+      "observed_count": 0,
+      "result": "PASS"
+    },
+    "experiment_outputs_external": "PASS",
+    "dual_arm_dry_run_source_byte_invariance": "PASS",
+    "dual_arm_dry_run_created_runtime_roots": false,
+    "materialized_control_agent_help": "PASS",
+    "materialized_treatment_agent_help": "PASS",
+    "source_sha256sums": "PASS",
+    "precommit_staged_diff_check": {
+      "result": "KNOWN_EXACT_BYTE_EXCEPTIONS_ONLY",
+      "exceptions": [
+        {
+          "path": "phase1/overlays/treatment_agent.patch",
+          "diagnostic": "line 63 trailing whitespace",
+          "sha256": "2bfeeb6f4fd7893784899278ae2c4beee5e539da57d0532670edb5102f3e24c4"
+        },
+        {
+          "path": "src/recclaw_core/__init__.py",
+          "diagnostic": "new blank line at EOF",
+          "sha256": "ef861a60d2af26d298c91a1b54dc3860e34d5f7b17e3fbd096bc6e28805fb07b"
+        }
+      ],
+      "rationale": "Both files are frozen Treatment inputs with exact hash bindings; changing either byte would invalidate the frozen integration. No other whitespace diagnostic was observed."
+    }
+  },
+  "runtime_environment": {
+    "status": "NOT_STARTED",
+    "blocker": "The inspected gpu5 legacy Python 3.8.10 cannot parse the frozen Python >=3.11 integration; a new AB-002 environment must be materialized and verified before Canary."
+  },
+  "canary_started": false,
+  "full_ab_started": false,
+  "training_started": false,
+  "llm_api_used": false,
+  "does_not_establish": [
+    "formal acceptance",
+    "permission release",
+    "scientific claim support",
+    "Canary readiness in an execution environment"
+  ],
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false
+}
