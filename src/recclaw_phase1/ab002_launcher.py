@@ -32,7 +32,7 @@ FROZEN_GUARD_FILES = {
     "src/recclaw_core/exploration/__init__.py": "e7f8d2c9cdba82c7af5239208e94df70c9016a6e75c33d255546e9dd18f60438",
     "src/recclaw_core/exploration/evidence_guard.py": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
     "src/recclaw_core/exploration/original_recclaw_adapter.py": "acd25fb34be71bde445a91614f115cd4ada0aad58c66754ae3a2a6dca1d5aa35",
-    "src/recclaw_core/exploration/original_recclaw_guard_hook.py": "a63a4fc1067313a8cf7799d9a1b75593221c8e4acd34d553abf8deaa32165340",
+    "src/recclaw_core/exploration/original_recclaw_guard_hook.py": "bac58b5f4379c6d63a9c8ebe1cd6467588c0a81b868b5ff3759ee37b2cedf75e",
 }
 FROZEN_TREATMENT_OVERLAY_SHA256 = (
     "48a0a65e8e940679a3880a058b2978508bc050eb1b022a4053f8f54fdb49dfc0"

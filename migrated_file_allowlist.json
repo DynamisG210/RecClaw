@@ -8,7 +8,7 @@
   "control_guard_source_count": 0,
   "evidence_class": "DEVELOPMENT_ONLY",
   "formal_acceptance": false,
-  "migrated_functional_file_count": 114,
+  "migrated_functional_file_count": 115,
   "migrated_functional_files": [
     {
       "path": ".gitattributes",
@@ -27,7 +27,7 @@
     },
     {
       "path": "configs/phase1/ab002/experiment_contract.json",
-      "sha256": "27352f0d3e5db60b314caaa0e73cac5957d870d84f3b21b2e6eb6f30c237b70f",
+      "sha256": "45932d54d4303f3963dd0df1a66b58b69dc4a20a34265cf3f7f5a678c11bbefb",
       "size_bytes": 16409
     },
     {
@@ -407,8 +407,8 @@
     },
     {
       "path": "src/recclaw_core/exploration/original_recclaw_guard_hook.py",
-      "sha256": "a63a4fc1067313a8cf7799d9a1b75593221c8e4acd34d553abf8deaa32165340",
-      "size_bytes": 44737
+      "sha256": "bac58b5f4379c6d63a9c8ebe1cd6467588c0a81b868b5ff3759ee37b2cedf75e",
+      "size_bytes": 44884
     },
     {
       "path": "src/recclaw_phase1/__init__.py",
@@ -427,8 +427,8 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_audit.py",
-      "sha256": "b0db821bba1d06d5898cbecd9e65e5cc0eaea6403d9019c274f2bb36ae23f96d",
-      "size_bytes": 10080
+      "sha256": "3d892dbb54d75e467c172215b0da1eccac36c06a2cf4ba7e7e6af7f2b2c1ca18",
+      "size_bytes": 12867
     },
     {
       "path": "src/recclaw_phase1/ab002_canary_orchestrator.py",
@@ -452,7 +452,7 @@
     },
     {
       "path": "src/recclaw_phase1/ab002_launcher.py",
-      "sha256": "cae4072a4a97c84a7d36f792b902679fd305cc26edf44d595c11ab60edfd08e1",
+      "sha256": "ed3e16eae2eccca92b778e2f1ec94bda51f9b1656fb169f910688de4c7b1f0fc",
       "size_bytes": 22896
     },
     {
@@ -497,8 +497,8 @@
     },
     {
       "path": "tests/exploration/test_original_recclaw_adapter.py",
-      "sha256": "b279118c6343ce78cfa623cfd86fac9cdde6cb91a490c6b23ff75d9b6262bce0",
-      "size_bytes": 33932
+      "sha256": "58e0c5c9222ce20d7353e6cd6ef744022d57ec0a38ee2f683c0248ee789e6058",
+      "size_bytes": 34875
     },
     {
       "path": "tests/exploration/test_original_recclaw_treatment_overlay.py",
@@ -519,6 +519,11 @@
       "path": "tests/phase1/test_ab002_blind_packager.py",
       "sha256": "08e04ff03c5b5a38b088b7a8ab34a474416c903d91135f5d372da3c4aaf3b280",
       "size_bytes": 2177
+    },
+    {
+      "path": "tests/phase1/test_ab002_canary_audit.py",
+      "sha256": "1db1ef22d8fb9eabaebe1fe875f135d8dc3cee6bd048e5f7b99e3385d0877fe5",
+      "size_bytes": 3887
     },
     {
       "path": "tests/phase1/test_ab002_canary_orchestrator.py",

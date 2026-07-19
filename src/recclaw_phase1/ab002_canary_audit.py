@@ -38,13 +38,55 @@ def _jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _arm_artifacts(root: Path, arm: str) -> dict[str, Any]:
+def _all_ordinary_execution_deferred_by_guard(
+    feedback: list[dict[str, Any]],
+) -> bool:
+    """Recognize the exact active-Guard path that legitimately yields no results."""
+
+    expected_feedback = {
+        "REVISE_BEFORE_RUN": (
+            "PROPOSAL_REVISION_FEEDBACK",
+            "REQUEST_PROPOSAL_REVISION",
+        ),
+        "ROUTE_TO_NEW_PROTOCOL_BRANCH": (
+            "PROTOCOL_BRANCH_FEEDBACK",
+            "ROUTE_TO_SEPARATE_PROTOCOL_BRANCH",
+        ),
+    }
+    if not feedback:
+        return False
+    for row in feedback:
+        recommendation = row.get("precheck_recommendation")
+        expected = expected_feedback.get(str(recommendation))
+        if not (
+            expected
+            and row.get("event") == "evidence_guard_development_feedback"
+            and row.get("phase") == "PRECHECK"
+            and row.get("hook_mode") == "active"
+            and row.get("original_decision") == "PENDING_ORIGINAL_EXECUTION"
+            and row.get("memory_channel") == expected[0]
+            and row.get("next_iteration_effect") == expected[1]
+            and row.get("expose_to_next_iteration") is True
+            and row.get("may_authorize_execution") is False
+            and row.get("may_update_primary_search_memory") is False
+            and row.get("formal_acceptance") is False
+            and row.get("diagnostic_blocker_signal") is not True
+        ):
+            return False
+    return True
+
+
+def _arm_artifacts(
+    root: Path,
+    arm: str,
+    *,
+    guard_feedback: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     repetition = root / "runs" / arm / "search_seed_9001"
     pilot = repetition / "outputs" / "pilot"
     required = {
         "memory": pilot / "agent_memory.jsonl",
         "proposals": pilot / "candidate_proposals.jsonl",
-        "results": pilot / "results.csv",
         "tree": pilot / "candidate_search_tree.json",
         "summary": pilot / "experience_summary.json",
         "budget": repetition / "candidate_execution_budget.jsonl",
@@ -55,25 +97,48 @@ def _arm_artifacts(root: Path, arm: str) -> dict[str, Any]:
     memory = _jsonl(required["memory"])
     proposals = _jsonl(required["proposals"])
     budget = _jsonl(required["budget"])
-    with required["results"].open(encoding="utf-8", newline="") as handle:
-        results = list(csv.DictReader(handle))
+    results_path = pilot / "results.csv"
+    if results_path.is_file():
+        with results_path.open(encoding="utf-8", newline="") as handle:
+            results = list(csv.DictReader(handle))
+    else:
+        results = []
     implementation_events = [row for row in memory if row.get("event") == "implementation_result"]
     purposes = sorted({str(row.get("purpose") or "") for row in budget})
     if not proposals or not implementation_events:
         raise ValueError(f"{arm} Canary did not exercise proposal and implementation")
-    if "smoke" not in purposes or "ordinary" not in purposes:
-        raise ValueError(f"{arm} Canary did not exercise smoke and ordinary training")
-    if not results:
-        raise ValueError(f"{arm} Canary produced no candidate result rows")
+    if "smoke" not in purposes:
+        raise ValueError(f"{arm} Canary did not exercise smoke training")
+    guard_deferred_all = (
+        arm == "treatment"
+        and "ordinary" not in purposes
+        and not results
+        and _all_ordinary_execution_deferred_by_guard(guard_feedback or [])
+    )
+    if not guard_deferred_all:
+        if "ordinary" not in purposes:
+            raise ValueError(f"{arm} Canary did not exercise ordinary training")
+        if not results_path.is_file():
+            raise ValueError(f"{arm} Canary artifacts missing: ['results']")
+        if not results:
+            raise ValueError(f"{arm} Canary produced no candidate result rows")
     if len(budget) > 6:
         raise ValueError(f"{arm} Canary exceeded candidate execution budget")
+    artifact_paths = {name: str(path) for name, path in required.items()}
+    artifact_sha256 = {name: sha256_file(path) for name, path in required.items()}
+    if results_path.is_file():
+        artifact_paths["results"] = str(results_path)
+        artifact_sha256["results"] = sha256_file(results_path)
     return {
-        "artifact_paths": {name: str(path) for name, path in required.items()},
-        "artifact_sha256": {name: sha256_file(path) for name, path in required.items()},
+        "artifact_paths": artifact_paths,
+        "artifact_sha256": artifact_sha256,
         "proposal_count": len(proposals),
         "implementation_event_count": len(implementation_events),
         "candidate_execution_count": len(budget),
         "execution_purposes": purposes,
+        "ordinary_execution_mode": (
+            "GUARD_DEFERRED_ALL" if guard_deferred_all else "EXECUTED"
+        ),
         "result_row_count": len(results),
         "successful_result_count": sum(
             str(row.get("status") or "").lower() == "success" for row in results
@@ -155,7 +220,6 @@ def audit_canary(
     if control_manifest.get("control_guard_material_count") != 0:
         raise ValueError("Control loaded Guard material")
 
-    arms = {arm: _arm_artifacts(root, arm) for arm in ("control", "treatment")}
     feedback_path = (
         root
         / "runs"
@@ -169,8 +233,22 @@ def audit_canary(
         raise ValueError("Treatment Guard feedback was not persisted")
     feedback = _jsonl(feedback_path)
     phases = {str(row.get("phase") or "") for row in feedback}
-    if "PRECHECK" not in phases or not phases.intersection({"POSTCHECK", "SEED_VALIDATION_POSTCHECK"}):
-        raise ValueError("Treatment did not persist both Guard pre-check and post-check events")
+    arms = {
+        "control": _arm_artifacts(root, "control"),
+        "treatment": _arm_artifacts(
+            root, "treatment", guard_feedback=feedback
+        ),
+    }
+    if "PRECHECK" not in phases:
+        raise ValueError("Treatment did not persist Guard pre-check events")
+    treatment_deferred_all = (
+        arms["treatment"]["ordinary_execution_mode"] == "GUARD_DEFERRED_ALL"
+    )
+    if treatment_deferred_all:
+        if phases != {"PRECHECK"}:
+            raise ValueError("Guard-deferred Treatment contains unexpected post-check phases")
+    elif not phases.intersection({"POSTCHECK", "SEED_VALIDATION_POSTCHECK"}):
+        raise ValueError("Executed Treatment did not persist Guard post-check events")
 
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
     recbole_root = Path(contract["execution_environment"]["recbole_root"])

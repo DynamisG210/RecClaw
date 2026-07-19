@@ -209,7 +209,7 @@
     "run_status": "NOT_STARTED",
     "gate_status": "NOT_STARTED",
     "preflight_implementation_sha256": "df6aef418c755444ad1fa42e28437cce59e5331ef0f553eadeda1cad72fe333a",
-    "audit_implementation_sha256": "b0db821bba1d06d5898cbecd9e65e5cc0eaea6403d9019c274f2bb36ae23f96d",
+    "audit_implementation_sha256": "3d892dbb54d75e467c172215b0da1eccac36c06a2cf4ba7e7e6af7f2b2c1ca18",
     "orchestrator_implementation_sha256": "10d6c5b115858a2dfd413067f66c36f3298b5607f269bd1a0785a253bd0a4a7a",
     "controlled_probes_implementation_sha256": "5bb060d3eff74f040d47a1ebd5435a43d9da3af54f9559ef971e3f5ae5987111"
   },

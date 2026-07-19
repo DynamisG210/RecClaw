@@ -758,7 +758,12 @@ class OriginalRecClawGuardHook:
         """Keep runtime blockers useful without presenting them as research evidence."""
 
         payload = _as_mapping(event)
-        original_status = _as_lower_text(payload.get("original_run_status"))
+        original_status_value = payload.get("original_run_status")
+        original_status = (
+            _as_lower_text(original_status_value)
+            if original_status_value is not None
+            else ""
+        )
         if (
             payload.get("postcheck_outcome_classification") == "RUNTIME_BLOCKER"
             or original_status not in {"", "success"}

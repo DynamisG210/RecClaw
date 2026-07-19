@@ -7,10 +7,10 @@
   "base_commit": "0b44db72f2e44bfbf8139b43c9624e1e89f52b35",
   "base_tree": "3f9049509e5e09ae59a0d6aba79a5c2094dd3c2c",
   "branch": "phase1/evidence-guard-ab002",
-  "canary_started": false,
+  "canary_started": true,
   "full_ab_started": false,
-  "llm_api_used": false,
-  "training_started": false,
+  "llm_api_used": true,
+  "training_started": true,
   "runtime_environment_status": "LOCAL_COMPLETE",
   "runtime_environment_root": "/NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002",
   "runtime_environment_blocker": null,
@@ -21,8 +21,8 @@
       "the shared ML environment exposed the Evidence Guard package to Control"
     ],
     "local_remediation_status": "LOCAL_COMPLETE",
-    "local_targeted_tests": 46,
-    "local_full_tests": 198,
+    "local_targeted_tests": 47,
+    "local_full_tests": 203,
     "local_full_tests_skipped": 4,
     "remote_full_tests": 171,
     "remote_full_tests_role": "SUPERSEDED_PRIOR_RC_EVIDENCE_PENDING_CURRENT_RELEASE_REMOTE_RERUN",
@@ -67,6 +67,18 @@
       "llm_api_used": false,
       "training_started": false,
       "primary_runs_root_created": false
+    },
+    {
+      "release_tag": "phase1-ab002-pre-canary-r7",
+      "runtime_root": "/NAS2020/Workspaces/DMGroup/tingrangan/RecClaw_evidence_guard_ab_002/runtime_653ee02_canary_9001_v2",
+      "stage": "CANARY_AUDIT",
+      "status": "STOPPED",
+      "failure_class": "DIRECT_INTEGRATION_INTERFACE_DEFECT",
+      "failure_detail": "missing precheck original_run_status was relabelled as a crash diagnostic, while the Canary auditor rejected the resulting exact all-deferred Treatment path solely because results.csv was absent",
+      "pair_execution_status": "LOCAL_COMPLETE",
+      "llm_api_used": true,
+      "training_started": true,
+      "full_ab_started": false
     }
   ],
   "ab002_release_candidate": {

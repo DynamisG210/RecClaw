@@ -703,6 +703,24 @@ class OriginalRecClawAdapterTests(unittest.TestCase):
         self.assertFalse(payload["may_update_primary_search_memory"])
         self.assertTrue(payload["may_update_diagnostic_memory"])
 
+    def test_precheck_feedback_without_run_status_is_not_rewritten_as_crash(self) -> None:
+        payload = OriginalRecClawGuardHook.prepare_feedback_for_original_memory(
+            {
+                "candidate_id": "cand_needs_revision",
+                "phase": "PRECHECK",
+                "precheck_recommendation": "REVISE_BEFORE_RUN",
+                "memory_channel": "PROPOSAL_REVISION_FEEDBACK",
+                "next_iteration_effect": "REQUEST_PROPOSAL_REVISION",
+                "expose_to_next_iteration": True,
+                "may_update_primary_search_memory": False,
+                "may_update_diagnostic_memory": True,
+            }
+        )
+        self.assertNotIn("decision", payload)
+        self.assertNotIn("diagnostic_blocker_signal", payload)
+        self.assertEqual("PROPOSAL_REVISION_FEEDBACK", payload["memory_channel"])
+        self.assertEqual("REQUEST_PROPOSAL_REVISION", payload["next_iteration_effect"])
+
     def test_active_live_hook_defers_explicit_material_protocol_change(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             hook = OriginalRecClawGuardHook(
