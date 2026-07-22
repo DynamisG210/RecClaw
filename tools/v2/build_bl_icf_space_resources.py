@@ -504,7 +504,10 @@ def _binding_schema() -> dict[str, Any]:
                 "evidence_class": {"const": "DEVELOPMENT_ONLY"},
                 "formal_acceptance": {"const": False},
                 "run_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
-                "candidate_id": {"type": "string", "pattern": "^bl1_[0-9a-f]{20}$"},
+                "candidate_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                },
                 "search_space_id": {"type": "string", "minLength": 1},
                 "search_space_digest": digest,
                 "mechanism_program_digest": digest,
@@ -527,7 +530,10 @@ def _binding_schema() -> dict[str, Any]:
                         "granted_capabilities": {
                             "type": "array",
                             "uniqueItems": True,
-                            "items": {"enum": CAPABILITIES},
+                            "items": {
+                                "type": "string",
+                                "pattern": "^[A-Z][A-Z0-9_]{0,127}$",
+                            },
                         },
                         "write_roots": {
                             "type": "array",
@@ -856,7 +862,9 @@ def _family_contract() -> dict[str, Any]:
     }
 
 
-def _port_contract(slot: str) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+def _port_contract(
+    slot: str, primitive_id: str
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     port = lambda name, types, minimum=0: {"port": name, "accepted_types": types, "minimum": minimum}
     if slot == "RELATION_VIEW":
         return [port("source", ["bl_icf/train_interactions", "bl_icf/relation", "bl_icf/train_statistics"], 1)], [{"port": "relation", "type": "bl_icf/relation"}]
@@ -879,7 +887,21 @@ def _port_contract(slot: str) -> tuple[list[dict[str, Any]], list[dict[str, str]
     if slot == "NEGATIVE_SAMPLER":
         return [port("interactions", ["bl_icf/train_interactions"], 1)], [{"port": "negative_samples", "type": "bl_icf/negative_samples"}]
     if slot == "SELF_SUPERVISION":
-        return [port("signal", ["bl_icf/relation", "bl_icf/embedding", "bl_icf/representation"], 1)], [{"port": "auxiliary_objective", "type": "bl_icf/auxiliary_objective"}]
+        if primitive_id.startswith("ssl.view."):
+            return [
+                port(
+                    "signal",
+                    ["bl_icf/relation", "bl_icf/embedding", "bl_icf/representation"],
+                    1,
+                )
+            ], [{"port": "view", "type": "bl_icf/ssl_view"}]
+        return [
+            port(
+                "views",
+                ["bl_icf/embedding", "bl_icf/representation", "bl_icf/ssl_view"],
+                2,
+            )
+        ], [{"port": "auxiliary_objective", "type": "bl_icf/auxiliary_objective"}]
     if slot == "GEOMETRY_REGULARIZATION":
         return [port("representation", ["bl_icf/embedding", "bl_icf/representation"], 1)], [{"port": "regularization", "type": "bl_icf/regularization_term"}]
     if slot == "DENOISING_LONG_TAIL":
@@ -898,8 +920,10 @@ def _parameter_schema(slot: str, primitive_id: str) -> dict[str, Any]:
     required: list[str] = []
     if slot == "EMBEDDING":
         properties["dimension"] = {"type": "integer", "minimum": 4, "maximum": 4096}
-    if slot in {"PROPAGATION_AGGREGATION", "ENCODER"}:
+    if slot == "PROPAGATION_AGGREGATION":
         properties["depth"] = {"type": "integer", "minimum": 0, "maximum": 64}
+    if primitive_id == "message.linear_transform":
+        properties["activation"] = {"enum": ["NONE", "RELU", "LEAKY_RELU"]}
     if "dropout" in primitive_id:
         properties["rate"] = {"type": "number", "minimum": 0.0, "maximum": 0.95}
     if "topk" in primitive_id or "top_k" in primitive_id:
@@ -935,9 +959,9 @@ def _parameter_schema(slot: str, primitive_id: str) -> dict[str, Any]:
 def _primitive_registry() -> dict[str, Any]:
     axes: list[dict[str, Any]] = []
     for slot in SLOTS:
-        inputs, outputs = _port_contract(slot)
         entries: list[dict[str, Any]] = []
         for primitive_id in _AXIS_PRIMITIVES[slot]:
+            inputs, outputs = _port_contract(slot, primitive_id)
             capabilities = list(_SLOT_CAPABILITIES[slot])
             if primitive_id.startswith("encoder.") and any(token in primitive_id for token in ("filter", "constraint")):
                 capabilities.append("ANALYTIC_REWRITE")

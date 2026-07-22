@@ -39,6 +39,144 @@ from recclaw_core.search_spaces.bl_icf_v1 import provider as provider_module  # 
 FIXTURES = ROOT / "tests" / "fixtures" / "bl_icf_anchor_programs_v1.json"
 SPACE_ID = "BL_ICF_MECHANISM_SPACE_V1"
 
+# Hand-authored structural oracle.  This is intentionally independent of the
+# fixture builder and remains outside all runtime resources and prompt inputs.
+ANCHOR_CONTRACTS = {
+    "BPR_MF": {
+        "required_primitives": {
+            "embedding.independent_user_item",
+            "encoder.none_mf",
+            "score.dot_product",
+            "objective.bpr",
+            "training.adam",
+        },
+        "required_edges": {
+            ("embedding.independent_user_item", "encoder.none_mf"),
+            ("encoder.none_mf", "score.dot_product"),
+            ("score.dot_product", "objective.bpr"),
+            ("objective.bpr", "training.adam"),
+        },
+        "forbidden_prefixes": ("message.", "propagation."),
+    },
+    "LIGHTGCN": {
+        "required_primitives": {
+            "encoder.explicit_message_passing",
+            "message.identity",
+            "propagation.symmetric_normalization",
+            "fusion.layer_weighted_sum",
+            "score.dot_product",
+        },
+        "required_edges": {
+            ("encoder.explicit_message_passing", "message.identity"),
+            ("message.identity", "propagation.symmetric_normalization"),
+            ("propagation.symmetric_normalization", "fusion.layer_weighted_sum"),
+            ("fusion.layer_weighted_sum", "score.dot_product"),
+        },
+    },
+    "NGCF": {
+        "required_primitives": {
+            "message.linear_transform",
+            "message.elementwise_interaction",
+            "propagation.attention_aggregation",
+        },
+        "required_edges": {
+            ("message.linear_transform", "propagation.attention_aggregation"),
+            ("message.elementwise_interaction", "propagation.attention_aggregation"),
+            ("propagation.attention_aggregation", "score.dot_product"),
+        },
+        "parameters": {"message.linear_transform": {"activation": "LEAKY_RELU"}},
+    },
+    "SGL": {
+        "required_primitives": {"ssl.view.edge_dropout", "ssl.objective.info_nce"},
+        "required_edges": {
+            ("ssl.view.edge_dropout", "ssl.objective.info_nce"),
+            ("fusion.layer_weighted_sum", "ssl.objective.info_nce"),
+            ("ssl.objective.info_nce", "training.adam"),
+        },
+    },
+    "SIMGCL_XSIMGCL": {
+        "required_primitives": {
+            "ssl.view.gaussian_perturbation",
+            "ssl.objective.info_nce",
+        },
+        "required_edges": {
+            ("ssl.view.gaussian_perturbation", "ssl.objective.info_nce"),
+            ("fusion.layer_weighted_sum", "ssl.objective.info_nce"),
+            ("ssl.objective.info_nce", "training.adam"),
+        },
+    },
+    "NCL": {
+        "required_primitives": {
+            "ssl.view.structural_neighbor",
+            "ssl.view.semantic_prototype",
+            "ssl.objective.prototype_contrastive",
+        },
+        "required_edges": {
+            ("ssl.view.structural_neighbor", "ssl.objective.prototype_contrastive"),
+            ("ssl.view.semantic_prototype", "ssl.objective.prototype_contrastive"),
+            ("ssl.objective.prototype_contrastive", "training.adam"),
+        },
+    },
+    "LIGHTGCL": {
+        "required_primitives": {"ssl.view.svd_global", "ssl.objective.info_nce"},
+        "required_edges": {
+            ("ssl.view.svd_global", "ssl.objective.info_nce"),
+            ("fusion.layer_weighted_sum", "ssl.objective.info_nce"),
+            ("ssl.objective.info_nce", "training.adam"),
+        },
+    },
+    "DIRECTAU": {
+        "required_primitives": {
+            "objective.alignment_uniformity",
+            "regularizer.alignment",
+            "regularizer.uniformity",
+        },
+        "required_edges": {
+            ("objective.alignment_uniformity", "training.adam"),
+            ("regularizer.alignment", "training.adam"),
+            ("regularizer.uniformity", "training.adam"),
+        },
+    },
+    "SIMPLEX": {
+        "required_primitives": {
+            "score.cosine_similarity",
+            "sampler.uniform",
+            "objective.cosine_contrastive",
+        },
+        "required_edges": {
+            ("sampler.uniform", "objective.cosine_contrastive"),
+            ("objective.cosine_contrastive", "training.adam"),
+        },
+        "parameters": {"sampler.uniform": {"negative_count": 100}},
+    },
+    "GF_CF": {
+        "required_primitives": {
+            "relation.svd_global",
+            "encoder.closed_form_filter",
+            "efficiency.graph_filter_precomputation",
+        },
+        "required_edges": {
+            ("relation.svd_global", "encoder.closed_form_filter"),
+            ("relation.svd_global", "efficiency.graph_filter_precomputation"),
+            ("encoder.closed_form_filter", "score.dot_product"),
+        },
+        "forbidden_prefixes": ("message.", "propagation."),
+    },
+    "ULTRAGCN": {
+        "required_primitives": {
+            "encoder.fixed_point_constraint",
+            "objective.user_item_structure_constraint",
+            "objective.item_item_relation_constraint",
+            "efficiency.remove_message_passing",
+        },
+        "required_edges": {
+            ("objective.user_item_structure_constraint", "training.adam"),
+            ("objective.item_item_relation_constraint", "training.adam"),
+        },
+        "forbidden_prefixes": ("message.", "propagation."),
+    },
+}
+
 
 def _fixture_document() -> dict[str, object]:
     return json.loads(FIXTURES.read_text(encoding="utf-8"))
@@ -53,6 +191,33 @@ def _fixture(name: str) -> dict[str, object]:
 
 def _program(name: str = "BPR_MF") -> dict[str, object]:
     return copy.deepcopy(_fixture(name)["program"])
+
+
+def _component_primitive(component: dict[str, object]) -> str:
+    return str(
+        component.get("primitive_id")
+        or f"custom:{component.get('custom_component_id')}"
+    )
+
+
+def _program_structure(
+    program: dict[str, object],
+) -> tuple[set[str], set[tuple[str, str]], list[dict[str, object]]]:
+    components = program["program_payload"]["components"]
+    by_id = {str(item["component_id"]): item for item in components}
+    primitives = {_component_primitive(item) for item in components}
+    edges: set[tuple[str, str]] = set()
+    for target in components:
+        for input_item in target["inputs"]:
+            source_ref = input_item["source"]
+            if source_ref["kind"] == "COMPONENT":
+                edges.add(
+                    (
+                        _component_primitive(by_id[str(source_ref["component_id"])]),
+                        _component_primitive(target),
+                    )
+                )
+    return primitives, edges, components
 
 
 def _rename_component(program: dict[str, object], old: str, new: str) -> None:
@@ -279,6 +444,23 @@ class BL_ICFResourceTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             resources.family["frozen_protocol_fields"] += ("attacker_field",)
 
+    def test_generic_binding_schema_is_provider_neutral(self) -> None:
+        schema_path = (
+            SRC
+            / "recclaw_core"
+            / "mechanism_space"
+            / "resources"
+            / "candidate_execution_binding_v1.schema.json"
+        )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        candidate_rule = schema["properties"]["candidate_id"]
+        capability_rule = schema["properties"]["capability_envelope"]["properties"][
+            "granted_capabilities"
+        ]["items"]
+        self.assertNotIn("bl1_", candidate_rule["pattern"])
+        self.assertNotIn("enum", capability_rule)
+        self.assertEqual(capability_rule["pattern"], "^[A-Z][A-Z0-9_]{0,127}$")
+
     def test_excluded_primary_families_are_not_registered_as_primitives(self) -> None:
         resources = provider_module._load_resources()
         joined = "\n".join(resources.primitives).lower()
@@ -386,6 +568,35 @@ class BL_ICFAnchorExpressibilityTests(unittest.TestCase):
                 }
                 self.assertEqual(observed, set(fixture["expected_primitives"]))
 
+    def test_anchor_contract_matrix_checks_required_semantic_paths(self) -> None:
+        self.assertEqual(set(ANCHOR_CONTRACTS), {
+            fixture["anchor_name"] for fixture in _fixture_document()["fixtures"]
+        })
+        for anchor_name, contract in ANCHOR_CONTRACTS.items():
+            with self.subTest(anchor=anchor_name):
+                program = _program(anchor_name)
+                primitives, edges, components = _program_structure(program)
+                self.assertTrue(contract["required_primitives"].issubset(primitives))
+                self.assertTrue(contract["required_edges"].issubset(edges))
+                for prefix in contract.get("forbidden_prefixes", ()):
+                    self.assertFalse(
+                        any(item.startswith(prefix) for item in primitives),
+                        f"{anchor_name} unexpectedly contains {prefix}",
+                    )
+                for primitive_id, expected_parameters in contract.get("parameters", {}).items():
+                    matches = [
+                        item for item in components
+                        if item.get("primitive_id") == primitive_id
+                    ]
+                    self.assertTrue(matches, primitive_id)
+                    self.assertTrue(
+                        any(
+                            all(item["parameters"].get(key) == value for key, value in expected_parameters.items())
+                            for item in matches
+                        ),
+                        f"{anchor_name} parameter contract failed for {primitive_id}",
+                    )
+
     def test_ultragcn_fixture_has_no_message_passing_and_explicit_constraints(self) -> None:
         report = compile_program(_program("ULTRAGCN"))
         self.assertEqual(report.status, CompileStatus.VALID_NEEDS_IMPLEMENTATION, report.to_json())
@@ -404,43 +615,21 @@ class BL_ICFAnchorExpressibilityTests(unittest.TestCase):
         operators = {item["operator_id"] for item in report.resolved_ir["architecture_operators"]}
         self.assertIn("compile_propagation_to_constraint", operators)
 
-    def test_builtin_anchor_materialization_is_exact_and_unsupported_parameters_fall_back(self) -> None:
-        bpr = compile_program(_program("BPR_MF"))
-        self.assertEqual(bpr.status, CompileStatus.VALID_WIRED, bpr.to_json())
-        self.assertEqual(
-            bpr.resolved_ir["builtin_runtime_materialization"]["mechanism_overrides"],
-            {
-                "embedding_size": 64,
-                "learning_rate": 0.001,
-                "train_neg_sample_args": {
-                    "distribution": "uniform",
-                    "sample_num": 1,
-                    "alpha": 1.0,
-                    "dynamic": False,
-                    "candidate_num": 0,
-                },
-            },
-        )
-
-        lightgcn = compile_program(_program("LIGHTGCN"))
-        self.assertEqual(lightgcn.status, CompileStatus.VALID_WIRED, lightgcn.to_json())
-        self.assertEqual(
-            lightgcn.resolved_ir["builtin_runtime_materialization"]["mechanism_overrides"][
-                "n_layers"
-            ],
-            3,
-        )
-
-        unsupported = _program("BPR_MF")
-        objective = next(
-            item
-            for item in unsupported["program_payload"]["components"]
-            if item["primitive_id"] == "objective.bpr"
-        )
-        objective["parameters"]["weight"] = 0.5
-        report = compile_program(unsupported)
-        self.assertEqual(report.status, CompileStatus.VALID_NEEDS_IMPLEMENTATION)
-        self.assertIsNone(report.resolved_ir["builtin_runtime_materialization"])
+    def test_bl_icf_v1_does_not_claim_builtin_runtime_wiring(self) -> None:
+        for anchor_name in ("BPR_MF", "LIGHTGCN"):
+            with self.subTest(anchor=anchor_name):
+                report = compile_program(_program(anchor_name))
+                self.assertEqual(
+                    report.status,
+                    CompileStatus.VALID_NEEDS_IMPLEMENTATION,
+                    report.to_json(),
+                )
+                self.assertEqual(
+                    report.resolved_ir["implementation_requirement"],
+                    "LOCAL_IMPLEMENTATION_REQUIRED",
+                )
+                self.assertIsNone(report.resolved_ir["builtin_runtime_adapter"])
+                self.assertIsNone(report.resolved_ir["builtin_runtime_materialization"])
 
     def test_custom_model_escape_hatch_does_not_require_anchor_inheritance(self) -> None:
         program = _custom_program()
@@ -452,6 +641,13 @@ class BL_ICFAnchorExpressibilityTests(unittest.TestCase):
             report.resolved_ir["candidate_root"],
             f"recclaw_ext/generated/{report.candidate_id}/",
         )
+        self.assertEqual(len(report.resolved_ir["custom_component_definitions"]), 1)
+        definition = report.resolved_ir["custom_component_definitions"][0]
+        self.assertEqual(definition["custom_component_id"], "custom_encoder")
+        self.assertEqual(
+            set(definition["allowed_read_roles"]),
+            {"USER_ID", "ITEM_ID", "TRAIN_INTERACTIONS"},
+        )
 
     def test_incomplete_custom_escape_hatch_is_rejected(self) -> None:
         program = _custom_program()
@@ -459,6 +655,82 @@ class BL_ICFAnchorExpressibilityTests(unittest.TestCase):
         report = compile_program(program)
         self.assertEqual(report.status, CompileStatus.INVALID)
         self.assertTrue(any(item.code == "BL_ICF_SCHEMA_INVALID" for item in report.diagnostics))
+
+    def test_custom_contract_single_fault_negatives(self) -> None:
+        cases: list[tuple[str, dict[str, object], str]] = []
+
+        undeclared_role = _custom_program()
+        declaration = undeclared_role["program_payload"]["custom_components"][0]
+        declaration["input_ports"][0] = {
+            "port": "statistics",
+            "types": ["bl_icf/train_statistics"],
+            "minimum": 1,
+        }
+        component = undeclared_role["program_payload"]["components"][1]
+        component["inputs"] = [
+            {
+                "port": "statistics",
+                "source": {
+                    "kind": "DATA",
+                    "data_role": "TRAIN_DERIVED_STATISTICS",
+                },
+            }
+        ]
+        cases.append(("undeclared data role", undeclared_role, "CUSTOM_DATA_ROLE_NOT_DECLARED"))
+
+        duplicate_input = _custom_program()
+        duplicate_input["program_payload"]["custom_components"][0]["input_ports"].append(
+            copy.deepcopy(
+                duplicate_input["program_payload"]["custom_components"][0]["input_ports"][0]
+            )
+        )
+        cases.append(("duplicate input", duplicate_input, "DUPLICATE_CUSTOM_INPUT_PORT"))
+
+        duplicate_output = _custom_program()
+        duplicate_output["program_payload"]["custom_components"][0]["output_ports"].append(
+            copy.deepcopy(
+                duplicate_output["program_payload"]["custom_components"][0]["output_ports"][0]
+            )
+        )
+        cases.append(("duplicate output", duplicate_output, "DUPLICATE_CUSTOM_OUTPUT_PORT"))
+
+        ghost_ablation = _custom_program()
+        ghost_ablation["program_payload"]["ablation_plan"][0]["remove_component_ids"] = [
+            "ghost_component"
+        ]
+        cases.append(("ghost ablation", ghost_ablation, "UNKNOWN_ABLATION_COMPONENT"))
+
+        missing_entrypoint_role = _custom_program()
+        missing_entrypoint_role["program_payload"]["custom_components"][0][
+            "minimal_implementation"
+        ]["entrypoint_role"] = "TRAINER"
+        cases.append(
+            (
+                "missing entrypoint role",
+                missing_entrypoint_role,
+                "CUSTOM_ENTRYPOINT_ROLE_NOT_DECLARED",
+            )
+        )
+
+        for name, program, expected_code in cases:
+            with self.subTest(case=name):
+                report = compile_program(program)
+                self.assertEqual(report.status, CompileStatus.INVALID, report.to_json())
+                self.assertTrue(
+                    any(item.code == expected_code for item in report.diagnostics),
+                    report.to_json(),
+                )
+
+    def test_custom_implementation_roles_derive_capabilities(self) -> None:
+        program = _custom_program()
+        implementation = program["program_payload"]["custom_components"][0][
+            "minimal_implementation"
+        ]
+        implementation["entrypoint_role"] = "RERANKER"
+        implementation["file_roles"] = ["RERANKER", "TEST"]
+        report = compile_program(program)
+        self.assertEqual(report.status, CompileStatus.VALID_NEEDS_IMPLEMENTATION, report.to_json())
+        self.assertIn("POSTHOC_RERANK", report.required_capabilities)
 
 
 class BL_ICFIdentityAndBoundaryTests(unittest.TestCase):
@@ -488,6 +760,68 @@ class BL_ICFIdentityAndBoundaryTests(unittest.TestCase):
         second = compile_program(changed)
         self.assertTrue(first.is_valid and second.is_valid)
         self.assertNotEqual(first.mechanism_semantics_digest, second.mechanism_semantics_digest)
+
+    def test_custom_narrative_is_invariant_but_semantic_contract_is_material(self) -> None:
+        original = _custom_program()
+        narrative = copy.deepcopy(original)
+        custom = narrative["program_payload"]["custom_components"][0]
+        custom["family_boundary_justification"] = (
+            "Still ID-only and train-only, with a more detailed review explanation."
+        )
+        custom["minimal_implementation"]["steps"] = [
+            "Implement the same declared residual map",
+            "Add additional non-semantic diagnostics",
+        ]
+        custom["matched_control_rationale"] = (
+            "Use the unchanged encoder.none_mf control with extra narrative detail."
+        )
+        custom["failure_modes"] = ["A longer explanation of the same collapse risk."]
+        custom["estimated_cost"] = "HIGH"
+
+        material = copy.deepcopy(original)
+        material["program_payload"]["custom_components"][0][
+            "mathematical_definition"
+        ] += " Apply a trainable gate before emitting the representation."
+
+        allowed_roles = copy.deepcopy(original)
+        allowed_roles["program_payload"]["custom_components"][0][
+            "allowed_read_roles"
+        ].append("TRAIN_DERIVED_STATISTICS")
+
+        first = compile_program(original)
+        narrative_report = compile_program(narrative)
+        material_report = compile_program(material)
+        roles_report = compile_program(allowed_roles)
+        self.assertTrue(
+            all(
+                report.status == CompileStatus.VALID_NEEDS_IMPLEMENTATION
+                for report in (first, narrative_report, material_report, roles_report)
+            )
+        )
+        self.assertEqual(
+            first.mechanism_semantics_digest,
+            narrative_report.mechanism_semantics_digest,
+        )
+        self.assertNotEqual(first.mechanism_program_digest, narrative_report.mechanism_program_digest)
+        self.assertNotEqual(first.mechanism_semantics_digest, material_report.mechanism_semantics_digest)
+        self.assertNotEqual(first.mechanism_semantics_digest, roles_report.mechanism_semantics_digest)
+
+    def test_compile_report_ir_is_deeply_immutable_and_serialization_is_detached(self) -> None:
+        report = compile_program(_program())
+        self.assertEqual(report.status, CompileStatus.VALID_NEEDS_IMPLEMENTATION)
+        with self.assertRaises(TypeError):
+            report.resolved_ir["components"][0]["parameters"]["dimension"] = 128
+
+        serialized = report.to_dict()
+        serialized["resolved_ir"]["components"][0]["parameters"]["dimension"] = 128
+        self.assertEqual(
+            report.resolved_ir["components"][0]["parameters"]["dimension"],
+            64,
+        )
+        self.assertNotEqual(
+            serialized["resolved_ir"]["components"][0]["parameters"]["dimension"],
+            report.to_dict()["resolved_ir"]["components"][0]["parameters"]["dimension"],
+        )
 
     def test_training_sampler_change_is_mechanism_not_protocol_branch(self) -> None:
         program = _program()
@@ -573,6 +907,14 @@ class BL_ICFIdentityAndBoundaryTests(unittest.TestCase):
             accepted.status,
             CompileStatus.VALID_NEEDS_IMPLEMENTATION,
             accepted.to_json(),
+        )
+
+        wrong_candidate = copy.deepcopy(binding)
+        wrong_candidate["candidate_id"] = "synthetic_provider_candidate_001"
+        rejected = validate_development_binding(program, wrong_candidate)
+        self.assertEqual(rejected.status, CompileStatus.INVALID)
+        self.assertTrue(
+            any(item.code == "BINDING_IDENTITY_MISMATCH" for item in rejected.diagnostics)
         )
 
         narrowed = copy.deepcopy(binding)

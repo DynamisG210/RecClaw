@@ -80,6 +80,19 @@ _CUSTOM_SLOT_CAPABILITIES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     }
 )
 
+_CUSTOM_FILE_ROLE_CAPABILITIES: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "MODEL": ("CUSTOM_MODEL_IMPLEMENTATION",),
+        "RELATION_BUILDER": ("RELATION_MUTATION",),
+        "LOSS": ("LOSS_MUTATION",),
+        "SAMPLER": ("SAMPLER_MUTATION",),
+        "TRAINER": ("TRAINING_ALGORITHM_MUTATION",),
+        "RERANKER": ("POSTHOC_RERANK",),
+        "CONFIG": ("CONFIG_MUTATION",),
+        "TEST": (),
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class _BLResources:
@@ -332,9 +345,20 @@ def _component_semantic_hashes(
         if "primitive_id" in component:
             implementation = {"primitive_id": component["primitive_id"]}
         else:
-            custom = dict(custom_specs[component["custom_component_id"]])
-            custom.pop("custom_component_id", None)
-            implementation = {"custom_component": custom}
+            custom = custom_specs[component["custom_component_id"]]
+            implementation = {
+                "custom_component": {
+                    key: custom[key]
+                    for key in (
+                        "slot_id",
+                        "mathematical_definition",
+                        "algorithm_definition",
+                        "input_ports",
+                        "output_ports",
+                        "allowed_read_roles",
+                    )
+                }
+            }
         semantic_value = {
             "implementation": implementation,
             "inputs": inputs,
@@ -491,7 +515,9 @@ class BL_ICFProvider:
         component_specs: dict[str, Mapping[str, Any]] = {}
         component_outputs: dict[str, dict[str, str]] = {}
         required_capabilities: set[str] = set()
-        needs_implementation = False
+        # BL-ICF v1 intentionally does not claim an exact runtime adapter.
+        # Even package-known primitives require a candidate-local materialization
+        # until the adapter, framework defaults, and runner identity are closed.
         used_custom_ids: set[str] = set()
         slot_components: dict[str, list[str]] = defaultdict(list)
 
@@ -531,8 +557,6 @@ class BL_ICFProvider:
                         )
                     )
                 required_capabilities.update(spec["capabilities"])
-                if spec["implementation_status"] != "BUILTIN_RUNTIME":
-                    needs_implementation = True
             else:
                 custom_id = str(component["custom_component_id"])
                 custom = custom_specs.get(custom_id)
@@ -574,10 +598,56 @@ class BL_ICFProvider:
                         "additionalProperties": False,
                         "properties": {},
                     },
-                    "capabilities": ["CUSTOM_MODEL_IMPLEMENTATION", *_CUSTOM_SLOT_CAPABILITIES[slot_id]],
+                    "capabilities": sorted(
+                        {
+                            "CUSTOM_MODEL_IMPLEMENTATION",
+                            *_CUSTOM_SLOT_CAPABILITIES[slot_id],
+                            *(
+                                capability
+                                for role in custom["minimal_implementation"]["file_roles"]
+                                for capability in _CUSTOM_FILE_ROLE_CAPABILITIES[role]
+                            ),
+                        }
+                    ),
                     "implementation_status": "CUSTOM_IMPLEMENTATION_REQUIRED",
                     "tags": [],
+                    "allowed_read_roles": list(custom["allowed_read_roles"]),
+                    "is_custom": True,
                 }
+                input_names = [str(item["port"]) for item in custom["input_ports"]]
+                if len(set(input_names)) != len(input_names):
+                    diagnostics.append(
+                        CompileDiagnostic(
+                            "DUPLICATE_CUSTOM_INPUT_PORT",
+                            "custom component input port names must be unique",
+                            path=f"/program_payload/custom_components/{custom_id}/input_ports",
+                            actual=input_names,
+                        )
+                    )
+                output_names = [str(item["port"]) for item in custom["output_ports"]]
+                if len(set(output_names)) != len(output_names):
+                    diagnostics.append(
+                        CompileDiagnostic(
+                            "DUPLICATE_CUSTOM_OUTPUT_PORT",
+                            "custom component output port names must be unique",
+                            path=f"/program_payload/custom_components/{custom_id}/output_ports",
+                            actual=output_names,
+                        )
+                    )
+                minimal_implementation = custom["minimal_implementation"]
+                if minimal_implementation["entrypoint_role"] not in minimal_implementation["file_roles"]:
+                    diagnostics.append(
+                        CompileDiagnostic(
+                            "CUSTOM_ENTRYPOINT_ROLE_NOT_DECLARED",
+                            "custom component entrypoint_role must be present in file_roles",
+                            path=(
+                                f"/program_payload/custom_components/{custom_id}"
+                                "/minimal_implementation"
+                            ),
+                            expected=minimal_implementation["entrypoint_role"],
+                            actual=minimal_implementation["file_roles"],
+                        )
+                    )
                 if component["parameters"]:
                     diagnostics.append(
                         CompileDiagnostic(
@@ -589,7 +659,6 @@ class BL_ICFProvider:
                         )
                     )
                 required_capabilities.update(spec["capabilities"])
-                needs_implementation = True
             component_specs[component_id] = spec
             component_outputs[component_id] = {
                 str(item["port"]): str(item["type"]) for item in spec["output_ports"]
@@ -628,6 +697,20 @@ class BL_ICFProvider:
                     )
                     continue
                 source = input_item["source"]
+                if (
+                    source["kind"] == "DATA"
+                    and spec.get("is_custom")
+                    and source["data_role"] not in spec["allowed_read_roles"]
+                ):
+                    diagnostics.append(
+                        CompileDiagnostic(
+                            "CUSTOM_DATA_ROLE_NOT_DECLARED",
+                            "custom component directly reads a data role outside its declaration",
+                            path=f"/program_payload/components/{component_id}/inputs/{port_name}",
+                            expected=spec["allowed_read_roles"],
+                            actual=source["data_role"],
+                        )
+                    )
                 source_type, source_error = _source_type(
                     source, component_outputs=component_outputs, contract=contract
                 )
@@ -702,6 +785,23 @@ class BL_ICFProvider:
                     )
                 )
 
+        for ablation_index, ablation in enumerate(payload["ablation_plan"]):
+            unknown_components = sorted(
+                set(ablation["remove_component_ids"]) - set(components)
+            )
+            if unknown_components:
+                diagnostics.append(
+                    CompileDiagnostic(
+                        "UNKNOWN_ABLATION_COMPONENT",
+                        "ablation plan must reference final mechanism components",
+                        path=(
+                            f"/program_payload/ablation_plan/{ablation_index}"
+                            "/remove_component_ids"
+                        ),
+                        actual=unknown_components,
+                    )
+                )
+
         score_ids = slot_components.get("SCORE_HEAD", [])
         if score_ids:
             outputs = component_outputs.get(score_ids[0], {})
@@ -723,12 +823,6 @@ class BL_ICFProvider:
         required_capabilities.update(operator_caps)
         diagnostics.extend(operator_diagnostics)
         diagnostics.extend(self._validate_encoder_regime(payload, components, slot_components))
-        builtin_runtime_materialization = self._builtin_runtime_materialization(
-            payload, components
-        )
-        if builtin_runtime_materialization is None:
-            needs_implementation = True
-
         protocol_impact = payload["protocol_impact"]
         protocol_branch = protocol_impact["status"] == "BRANCH_REQUIRED"
         if protocol_impact["status"] == "UNCHANGED" and protocol_impact["requested_changes"]:
@@ -815,17 +909,14 @@ class BL_ICFProvider:
                 "mechanism_semantics_digest": semantics_digest,
                 "component_order": order,
                 "components": [snapshot_json(components[item]) for item in order],
+                "custom_component_definitions": [
+                    snapshot_json(custom_specs[item]) for item in sorted(custom_specs)
+                ],
                 "architecture_operators": snapshot_json(payload["architecture_operators"]),
                 "required_capabilities": sorted(required_capabilities),
-                "implementation_requirement": (
-                    "LOCAL_IMPLEMENTATION_REQUIRED" if needs_implementation else "BUILTIN_RUNTIME"
-                ),
-                "builtin_runtime_adapter": (
-                    builtin_runtime_materialization["adapter_id"]
-                    if builtin_runtime_materialization
-                    else None
-                ),
-                "builtin_runtime_materialization": builtin_runtime_materialization,
+                "implementation_requirement": "LOCAL_IMPLEMENTATION_REQUIRED",
+                "builtin_runtime_adapter": None,
+                "builtin_runtime_materialization": None,
                 "candidate_root": f"recclaw_ext/generated/{candidate_id}/",
                 "protocol_impact": snapshot_json(protocol_impact),
                 "claim_ceiling": payload["claim_ceiling"],
@@ -861,7 +952,7 @@ class BL_ICFProvider:
                 resolved_ir=resolved_ir,
             )
         return CompileReportV1(
-            CompileStatus.VALID_NEEDS_IMPLEMENTATION if needs_implementation else CompileStatus.VALID_WIRED,
+            CompileStatus.VALID_NEEDS_IMPLEMENTATION,
             space_identity=identity,
             candidate_id=candidate_id,
             mechanism_semantics_digest=semantics_digest,
@@ -869,91 +960,6 @@ class BL_ICFProvider:
             required_capabilities=tuple(sorted(required_capabilities)),
             resolved_ir=resolved_ir,
         )
-
-    @staticmethod
-    def _builtin_runtime_materialization(
-        payload: Mapping[str, Any], components: Mapping[str, Mapping[str, Any]]
-    ) -> dict[str, Any] | None:
-        if payload["custom_components"] or payload["architecture_operators"]:
-            return None
-        components_by_primitive = {
-            str(component.get("primitive_id") or ""): component
-            for component in components.values()
-        }
-        primitive_ids = set(components_by_primitive)
-        bpr_signature = {
-            "embedding.independent_user_item",
-            "encoder.none_mf",
-            "score.dot_product",
-            "sampler.uniform",
-            "objective.bpr",
-            "training.adam",
-        }
-        lightgcn_signature = {
-            "relation.user_item_bipartite",
-            "embedding.independent_user_item",
-            "encoder.explicit_message_passing",
-            "message.identity",
-            "propagation.symmetric_normalization",
-            "fusion.layer_weighted_sum",
-            "score.dot_product",
-            "sampler.uniform",
-            "objective.bpr",
-            "training.adam",
-        }
-        if primitive_ids != bpr_signature and primitive_ids != lightgcn_signature:
-            return None
-
-        sampler = components_by_primitive["sampler.uniform"]["parameters"]
-        supported_sampler = {
-            "false_negative_policy": "ALLOW_UNKNOWN",
-            "hardness": "NONE",
-            "purpose": ["RANKING_SIGNAL"],
-            "refresh_frequency": "BATCH",
-            "replacement": True,
-        }
-        if any(sampler.get(key) != value for key, value in supported_sampler.items()):
-            return None
-        objective = components_by_primitive["objective.bpr"]["parameters"]
-        if objective.get("weight", 1.0) != 1.0:
-            return None
-
-        embedding = components_by_primitive["embedding.independent_user_item"][
-            "parameters"
-        ]
-        training = components_by_primitive["training.adam"]["parameters"]
-        overrides: dict[str, Any] = {
-            "embedding_size": int(embedding.get("dimension", 64)),
-            "learning_rate": float(training.get("learning_rate", 0.001)),
-            "train_neg_sample_args": {
-                "distribution": "uniform",
-                "sample_num": int(sampler["negative_count"]),
-                "alpha": 1.0,
-                "dynamic": False,
-                "candidate_num": 0,
-            },
-        }
-        if primitive_ids == bpr_signature:
-            adapter_id = "recclaw.builtin-runner.bpr.v1"
-            base_model = "BPR"
-            mechanism_config = "configs/bpr.yaml"
-        else:
-            adapter_id = "recclaw.builtin-runner.lightgcn.v1"
-            base_model = "LightGCN"
-            mechanism_config = "configs/lightgcn.yaml"
-            propagation = components_by_primitive[
-                "propagation.symmetric_normalization"
-            ]["parameters"]
-            overrides["n_layers"] = int(propagation.get("depth", 2))
-        return {
-            "adapter_id": adapter_id,
-            "adapter_version": "1.0.0",
-            "base_model": base_model,
-            "mechanism_config": mechanism_config,
-            "mechanism_overrides": overrides,
-            "protocol_config_source": "EXECUTION_BINDING",
-            "runner_contract": "recbole.run_recbole.config-chain.v1",
-        }
 
     @staticmethod
     def _validate_change_budget(

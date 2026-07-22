@@ -85,6 +85,7 @@ def message(
     *,
     representation: str,
     relation_id: str,
+    **params: Any,
 ) -> dict[str, Any]:
     return component(
         component_id,
@@ -94,6 +95,7 @@ def message(
             ("representation", source(representation, "representation" if representation != "embedding" else "embedding")),
             ("relation", source(relation_id, "relation")),
         ],
+        params,
     )
 
 
@@ -103,10 +105,12 @@ def propagation(
     *,
     signal_id: str,
     signal_port: str = "message",
+    additional_signals: tuple[tuple[str, str], ...] = (),
     relation_id: str | None = None,
     **params: Any,
 ) -> dict[str, Any]:
     inputs = [("signal", source(signal_id, signal_port))]
+    inputs.extend(("signal", source(item, port)) for item, port in additional_signals)
     if relation_id:
         inputs.append(("relation", source(relation_id, "relation")))
     return component(component_id, "PROPAGATION_AGGREGATION", primitive_id, inputs, params)
@@ -169,13 +173,28 @@ def objective(
     return component(component_id, "PRIMARY_OBJECTIVE", primitive_id, inputs, params)
 
 
-def ssl(component_id: str, primitive_id: str, signal_id: str, signal_port: str) -> dict[str, Any]:
+def ssl_view(
+    component_id: str, primitive_id: str, signal_id: str, signal_port: str
+) -> dict[str, Any]:
     return component(
         component_id,
         "SELF_SUPERVISION",
         primitive_id,
         [("signal", source(signal_id, signal_port))],
-        {"weight": 0.1, **({"temperature": 0.2} if "objective" in primitive_id else {})},
+    )
+
+
+def ssl_objective(
+    component_id: str,
+    primitive_id: str,
+    views: list[tuple[str, str]],
+) -> dict[str, Any]:
+    return component(
+        component_id,
+        "SELF_SUPERVISION",
+        primitive_id,
+        [("views", source(item, port)) for item, port in views],
+        {"weight": 0.1, "temperature": 0.2},
     )
 
 
@@ -310,9 +329,22 @@ def fixtures() -> list[dict[str, Any]]:
         relation("ui_graph", "relation.user_item_bipartite"),
         embedding(),
         encoder("encoder.explicit_message_passing", relations=("ui_graph",)),
-        message("linear_message", "message.linear_transform", representation="encoder", relation_id="ui_graph"),
+        message(
+            "linear_message",
+            "message.linear_transform",
+            representation="encoder",
+            relation_id="ui_graph",
+            activation="LEAKY_RELU",
+        ),
         message("interaction_message", "message.elementwise_interaction", representation="encoder", relation_id="ui_graph"),
-        propagation("propagation", "propagation.attention_aggregation", signal_id="linear_message", relation_id="ui_graph", depth=3),
+        propagation(
+            "propagation",
+            "propagation.attention_aggregation",
+            signal_id="linear_message",
+            additional_signals=(("interaction_message", "message"),),
+            relation_id="ui_graph",
+            depth=3,
+        ),
         score("score", "score.dot_product", "propagation"),
         sampler(),
         objective("objective", "objective.bpr"),
@@ -320,26 +352,58 @@ def fixtures() -> list[dict[str, Any]]:
     ]
 
     sgl = lightgcn_core()
-    sgl.insert(7, ssl("edge_view", "ssl.view.edge_dropout", "ui_graph", "relation"))
-    sgl.insert(8, ssl("ssl_objective", "ssl.objective.info_nce", "fusion", "representation"))
+    sgl.insert(7, ssl_view("edge_view", "ssl.view.edge_dropout", "ui_graph", "relation"))
+    sgl.insert(
+        8,
+        ssl_objective(
+            "ssl_objective",
+            "ssl.objective.info_nce",
+            [("fusion", "representation"), ("edge_view", "view")],
+        ),
+    )
     sgl[-1] = training([("objective", "objective"), ("ssl_objective", "auxiliary_objective")])
 
     simgcl = lightgcn_core()
-    simgcl.insert(7, ssl("noise_view", "ssl.view.gaussian_perturbation", "fusion", "representation"))
-    simgcl.insert(8, ssl("ssl_objective", "ssl.objective.info_nce", "fusion", "representation"))
+    simgcl.insert(7, ssl_view("noise_view", "ssl.view.gaussian_perturbation", "fusion", "representation"))
+    simgcl.insert(
+        8,
+        ssl_objective(
+            "ssl_objective",
+            "ssl.objective.info_nce",
+            [("fusion", "representation"), ("noise_view", "view")],
+        ),
+    )
     simgcl[-1] = training([("objective", "objective"), ("ssl_objective", "auxiliary_objective")])
 
     ncl = lightgcn_core()
     ncl.insert(1, relation("prototype_relation", "relation.prototype_cluster"))
-    ncl.insert(8, ssl("structural_view", "ssl.view.structural_neighbor", "ui_graph", "relation"))
-    ncl.insert(9, ssl("semantic_view", "ssl.view.semantic_prototype", "prototype_relation", "relation"))
-    ncl.insert(10, ssl("prototype_objective", "ssl.objective.prototype_contrastive", "fusion", "representation"))
+    ncl.insert(8, ssl_view("structural_view", "ssl.view.structural_neighbor", "ui_graph", "relation"))
+    ncl.insert(9, ssl_view("semantic_view", "ssl.view.semantic_prototype", "prototype_relation", "relation"))
+    ncl.insert(
+        10,
+        ssl_objective(
+            "prototype_objective",
+            "ssl.objective.prototype_contrastive",
+            [
+                ("fusion", "representation"),
+                ("structural_view", "view"),
+                ("semantic_view", "view"),
+            ],
+        ),
+    )
     ncl[-1] = training([("objective", "objective"), ("prototype_objective", "auxiliary_objective")])
 
     lightgcl = lightgcn_core()
     lightgcl.insert(1, relation("svd_view", "relation.svd_global"))
-    lightgcl.insert(8, ssl("global_view", "ssl.view.svd_global", "svd_view", "relation"))
-    lightgcl.insert(9, ssl("local_global_objective", "ssl.objective.info_nce", "fusion", "representation"))
+    lightgcl.insert(8, ssl_view("global_view", "ssl.view.svd_global", "svd_view", "relation"))
+    lightgcl.insert(
+        9,
+        ssl_objective(
+            "local_global_objective",
+            "ssl.objective.info_nce",
+            [("fusion", "representation"), ("global_view", "view")],
+        ),
+    )
     lightgcl[-1] = training([("objective", "objective"), ("local_global_objective", "auxiliary_objective")])
 
     directau = [
@@ -407,8 +471,8 @@ def fixtures() -> list[dict[str, Any]]:
     ]
 
     recipes = [
-        ("BPR_MF", bpr, "COMPOSITION", [("PRIMARY_OBJECTIVE", "CORE")], "A no-propagation latent-factor program with dot scoring and pairwise BPR objective.", "objective", [], [], "VALID_WIRED"),
-        ("LIGHTGCN", lightgcn_core(), "COMPOSITION", [("PROPAGATION_AGGREGATION", "CORE")], "Linear symmetric graph propagation with layer fusion reproduces the LightGCN mechanism signature.", "propagation", [], [], "VALID_WIRED"),
+        ("BPR_MF", bpr, "COMPOSITION", [("PRIMARY_OBJECTIVE", "CORE")], "A no-propagation latent-factor program with dot scoring and pairwise BPR objective.", "objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("LIGHTGCN", lightgcn_core(), "COMPOSITION", [("PROPAGATION_AGGREGATION", "CORE")], "Linear symmetric graph propagation with layer fusion reproduces the LightGCN mechanism signature.", "propagation", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("NGCF", ngcf, "ARCHITECTURE_REWRITE", [("MESSAGE", "CORE"), ("PROPAGATION_AGGREGATION", "SUPPORT")], "Transformed and interaction messages express explicit nonlinear graph collaborative filtering.", "interaction_message", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("SGL", sgl, "COMPOSITION", [("SELF_SUPERVISION", "CORE"), ("RELATION_VIEW", "SUPPORT")], "Graph augmentation and a contrastive auxiliary objective express self-supervised graph CF.", "ssl_objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("SIMGCL_XSIMGCL", simgcl, "COMPOSITION", [("SELF_SUPERVISION", "CORE")], "Embedding perturbation plus contrastive learning expresses the noise-based graph SSL mechanism.", "noise_view", [], [], "VALID_NEEDS_IMPLEMENTATION"),

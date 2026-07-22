@@ -2,6 +2,9 @@
 
 Status: development-only implementation contract
 
+Distribution: source-tree only (`PYTHONPATH=src`); no wheel or console-script
+contract is claimed by this package.
+
 Authority: `NONE`
 
 Evidence class: `DEVELOPMENT_ONLY`
@@ -58,14 +61,18 @@ It emits separate identities for distinct purposes:
 
 Compile status is fail-closed:
 
-- `VALID_WIRED`: only an exact package-recognized built-in BPR or LightGCN
-  runtime signature;
-- `VALID_NEEDS_IMPLEMENTATION`: a valid mechanism that still requires a
-  candidate-local implementation;
+- `VALID_NEEDS_IMPLEMENTATION`: every valid BL-ICF v1 mechanism, including the
+  BPR-MF and LightGCN expressibility anchors, requires a candidate-local
+  implementation;
 - `PROTOCOL_BRANCH_REQUIRED`: a scientifically meaningful proposal that changes
   a frozen protocol field and cannot enter the current comparison;
 - `CAPABILITY_DENIED`, `INVALID`, `UNSUPPORTED`, or `INTERNAL_ERROR`: not
   runnable in the selected space.
+
+`VALID_WIRED` remains a generic kernel status for a future provider with an
+exactly bound runtime adapter. BL-ICF v1 does not emit it because the adapter,
+framework defaults, mechanism configuration, and runner identity are not yet a
+closed runtime contract.
 
 A development execution binding must repeat every identity, grant exactly the
 compiler-derived capability set, bind that envelope by content digest, and use
@@ -92,6 +99,10 @@ relations and an explicit propagation-to-constraint rewrite.
 
 Fixtures and anchor names are outside the runtime prompt projection. The
 Proposal LLM receives primitive and grammar contracts, not answer recipes.
+Their tests use a separately authored structural contract matrix to require
+critical dependency edges and parameters; a fixture cannot pass merely by
+listing expected primitive names. SSL views must feed their auxiliary objective,
+and both NGCF message branches must feed propagation.
 
 ## Extension to additional recommender spaces
 
@@ -118,7 +129,7 @@ and profile identities end to end.
 
 ## Development checks
 
-From the repository root, with the search-space dependencies installed:
+From a source checkout, with the search-space dependencies installed:
 
 ```text
 python tools/v2/build_bl_icf_space_resources.py --check

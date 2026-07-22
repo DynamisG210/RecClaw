@@ -28,7 +28,7 @@
       "type": "object"
     },
     "candidate_id": {
-      "pattern": "^bl1_[0-9a-f]{20}$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
       "type": "string"
     },
     "capability_envelope": {
@@ -44,19 +44,8 @@
         },
         "granted_capabilities": {
           "items": {
-            "enum": [
-              "CONFIG_MUTATION",
-              "LOSS_MUTATION",
-              "SAMPLER_MUTATION",
-              "RELATION_MUTATION",
-              "GRAPH_OPERATOR_MUTATION",
-              "AUXILIARY_OBJECTIVE_MUTATION",
-              "TRAINING_ALGORITHM_MUTATION",
-              "CUSTOM_MODEL_IMPLEMENTATION",
-              "ANALYTIC_REWRITE",
-              "POSTHOC_RERANK",
-              "EFFICIENCY_REWRITE"
-            ]
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$",
+            "type": "string"
           },
           "type": "array",
           "uniqueItems": true

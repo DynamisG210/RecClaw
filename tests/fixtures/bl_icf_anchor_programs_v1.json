@@ -11,7 +11,7 @@
         "score.dot_product",
         "training.adam"
       ],
-      "expected_status": "VALID_WIRED",
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
       "program": {
         "family_id": "BL_ICF_V1",
         "family_version": "1.0.0",
@@ -212,7 +212,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -230,7 +230,7 @@
         "score.dot_product",
         "training.adam"
       ],
-      "expected_status": "VALID_WIRED",
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
       "program": {
         "family_id": "BL_ICF_V1",
         "family_version": "1.0.0",
@@ -528,7 +528,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -662,7 +662,9 @@
                   }
                 }
               ],
-              "parameters": {},
+              "parameters": {
+                "activation": "LEAKY_RELU"
+              },
               "primitive_id": "message.linear_transform",
               "slot_id": "MESSAGE"
             },
@@ -697,6 +699,14 @@
                   "port": "signal",
                   "source": {
                     "component_id": "linear_message",
+                    "kind": "COMPONENT",
+                    "output_port": "message"
+                  }
+                },
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "interaction_message",
                     "kind": "COMPONENT",
                     "output_port": "message"
                   }
@@ -848,7 +858,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -1066,9 +1076,7 @@
                   }
                 }
               ],
-              "parameters": {
-                "weight": 0.1
-              },
+              "parameters": {},
               "primitive_id": "ssl.view.edge_dropout",
               "slot_id": "SELF_SUPERVISION"
             },
@@ -1076,11 +1084,19 @@
               "component_id": "ssl_objective",
               "inputs": [
                 {
-                  "port": "signal",
+                  "port": "views",
                   "source": {
                     "component_id": "fusion",
                     "kind": "COMPONENT",
                     "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "views",
+                  "source": {
+                    "component_id": "edge_view",
+                    "kind": "COMPONENT",
+                    "output_port": "view"
                   }
                 }
               ],
@@ -1215,7 +1231,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -1429,9 +1445,7 @@
                   }
                 }
               ],
-              "parameters": {
-                "weight": 0.1
-              },
+              "parameters": {},
               "primitive_id": "ssl.view.gaussian_perturbation",
               "slot_id": "SELF_SUPERVISION"
             },
@@ -1439,11 +1453,19 @@
               "component_id": "ssl_objective",
               "inputs": [
                 {
-                  "port": "signal",
+                  "port": "views",
                   "source": {
                     "component_id": "fusion",
                     "kind": "COMPONENT",
                     "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "views",
+                  "source": {
+                    "component_id": "noise_view",
+                    "kind": "COMPONENT",
+                    "output_port": "view"
                   }
                 }
               ],
@@ -1578,7 +1600,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -1813,9 +1835,7 @@
                   }
                 }
               ],
-              "parameters": {
-                "weight": 0.1
-              },
+              "parameters": {},
               "primitive_id": "ssl.view.structural_neighbor",
               "slot_id": "SELF_SUPERVISION"
             },
@@ -1831,9 +1851,7 @@
                   }
                 }
               ],
-              "parameters": {
-                "weight": 0.1
-              },
+              "parameters": {},
               "primitive_id": "ssl.view.semantic_prototype",
               "slot_id": "SELF_SUPERVISION"
             },
@@ -1841,11 +1859,27 @@
               "component_id": "prototype_objective",
               "inputs": [
                 {
-                  "port": "signal",
+                  "port": "views",
                   "source": {
                     "component_id": "fusion",
                     "kind": "COMPONENT",
                     "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "views",
+                  "source": {
+                    "component_id": "structural_view",
+                    "kind": "COMPONENT",
+                    "output_port": "view"
+                  }
+                },
+                {
+                  "port": "views",
+                  "source": {
+                    "component_id": "semantic_view",
+                    "kind": "COMPONENT",
+                    "output_port": "view"
                   }
                 }
               ],
@@ -1980,7 +2014,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -2214,9 +2248,7 @@
                   }
                 }
               ],
-              "parameters": {
-                "weight": 0.1
-              },
+              "parameters": {},
               "primitive_id": "ssl.view.svd_global",
               "slot_id": "SELF_SUPERVISION"
             },
@@ -2224,11 +2256,19 @@
               "component_id": "local_global_objective",
               "inputs": [
                 {
-                  "port": "signal",
+                  "port": "views",
                   "source": {
                     "component_id": "fusion",
                     "kind": "COMPONENT",
                     "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "views",
+                  "source": {
+                    "component_id": "global_view",
+                    "kind": "COMPONENT",
+                    "output_port": "view"
                   }
                 }
               ],
@@ -2363,7 +2403,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -2639,7 +2679,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -2861,7 +2901,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -3081,7 +3121,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     },
@@ -3492,7 +3532,7 @@
           "schema_version": "recclaw.bl-icf.mechanism-program.v1"
         },
         "record_type": "MECHANISM_PROGRAM_ENVELOPE",
-        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
         "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
       }
     }

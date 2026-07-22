@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
 
+from .canonical import deep_freeze, deep_thaw, snapshot_json
+
 
 class CompileStatus(str, Enum):
     VALID_WIRED = "VALID_WIRED"
@@ -26,11 +28,21 @@ class CompileDiagnostic:
     expected: Any = None
     actual: Any = None
 
+    def __post_init__(self) -> None:
+        for field_name in ("expected", "actual"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    deep_freeze(snapshot_json(deep_thaw(value))),
+                )
+
     def to_dict(self) -> dict[str, Any]:
         return {
-            "actual": self.actual,
+            "actual": deep_thaw(self.actual),
             "code": self.code,
-            "expected": self.expected,
+            "expected": deep_thaw(self.expected),
             "message": self.message,
             "path": self.path,
         }
@@ -68,6 +80,20 @@ class CompileReportV1:
     required_capabilities: Sequence[str] = field(default_factory=tuple)
     resolved_ir: Mapping[str, Any] | None = None
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
+        object.__setattr__(
+            self,
+            "required_capabilities",
+            tuple(sorted(set(self.required_capabilities))),
+        )
+        if self.resolved_ir is not None:
+            object.__setattr__(
+                self,
+                "resolved_ir",
+                deep_freeze(snapshot_json(deep_thaw(self.resolved_ir))),
+            )
+
     @property
     def is_valid(self) -> bool:
         return self.status in {
@@ -91,7 +117,7 @@ class CompileReportV1:
             "operation": self.operation,
             "report_version": "recclaw.mechanism-space.compile-report.v1",
             "required_capabilities": sorted(set(self.required_capabilities)),
-            "resolved_ir": dict(self.resolved_ir) if self.resolved_ir is not None else None,
+            "resolved_ir": deep_thaw(self.resolved_ir) if self.resolved_ir is not None else None,
             "space_identity": self.space_identity.to_dict() if self.space_identity else None,
             "status": self.status.value,
         }

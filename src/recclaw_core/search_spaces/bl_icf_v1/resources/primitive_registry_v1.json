@@ -975,13 +975,7 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {
-              "depth": {
-                "maximum": 64,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
+            "properties": {},
             "required": [],
             "type": "object"
           },
@@ -1023,13 +1017,7 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {
-              "depth": {
-                "maximum": 64,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
+            "properties": {},
             "required": [],
             "type": "object"
           },
@@ -1072,13 +1060,7 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {
-              "depth": {
-                "maximum": 64,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
+            "properties": {},
             "required": [],
             "type": "object"
           },
@@ -1119,13 +1101,7 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {
-              "depth": {
-                "maximum": 64,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
+            "properties": {},
             "required": [],
             "type": "object"
           },
@@ -1168,13 +1144,7 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {
-              "depth": {
-                "maximum": 64,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
+            "properties": {},
             "required": [],
             "type": "object"
           },
@@ -1218,13 +1188,7 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {
-              "depth": {
-                "maximum": 64,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
+            "properties": {},
             "required": [],
             "type": "object"
           },
@@ -1264,13 +1228,7 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {
-              "depth": {
-                "maximum": 64,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
+            "properties": {},
             "required": [],
             "type": "object"
           },
@@ -1356,7 +1314,15 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "activation": {
+                "enum": [
+                  "NONE",
+                  "RELU",
+                  "LEAKY_RELU"
+                ]
+              }
+            },
             "required": [],
             "type": "object"
           },
@@ -6347,8 +6313,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6393,8 +6359,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6439,8 +6405,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6480,8 +6446,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6526,8 +6492,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6567,8 +6533,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6608,8 +6574,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6649,8 +6615,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6690,8 +6656,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6731,8 +6697,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6772,8 +6738,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6813,8 +6779,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6854,8 +6820,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6895,8 +6861,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6936,8 +6902,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -6977,8 +6943,8 @@
           ],
           "output_ports": [
             {
-              "port": "auxiliary_objective",
-              "type": "bl_icf/auxiliary_objective"
+              "port": "view",
+              "type": "bl_icf/ssl_view"
             }
           ],
           "parameter_schema": {
@@ -7008,12 +6974,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7053,12 +7019,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7098,12 +7064,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7143,12 +7109,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7188,12 +7154,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7229,12 +7195,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7274,12 +7240,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7315,12 +7281,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7356,12 +7322,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
@@ -7397,12 +7363,12 @@
           "input_ports": [
             {
               "accepted_types": [
-                "bl_icf/relation",
                 "bl_icf/embedding",
-                "bl_icf/representation"
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
               ],
-              "minimum": 1,
-              "port": "signal"
+              "minimum": 2,
+              "port": "views"
             }
           ],
           "output_ports": [
