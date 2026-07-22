@@ -1,0 +1,3503 @@
+{
+  "fixture_version": "1.0.0",
+  "fixtures": [
+    {
+      "anchor_name": "BPR_MF",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.none_mf",
+        "objective.bpr",
+        "sampler.uniform",
+        "score.dot_product",
+        "training.adam"
+      ],
+      "expected_status": "VALID_WIRED",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "objective"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.none_mf",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.bpr",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "COMPOSITION",
+          "core_hypothesis": "A no-propagation latent-factor program with dot scoring and pairwise BPR objective.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "LIGHTGCN",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.explicit_message_passing",
+        "fusion.layer_weighted_sum",
+        "message.identity",
+        "objective.bpr",
+        "propagation.symmetric_normalization",
+        "relation.user_item_bipartite",
+        "sampler.uniform",
+        "score.dot_product",
+        "training.adam"
+      ],
+      "expected_status": "VALID_WIRED",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "propagation"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.explicit_message_passing",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "message",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "message.identity",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "component_id": "propagation",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "message",
+                    "kind": "COMPONENT",
+                    "output_port": "message"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "depth": 3
+              },
+              "primitive_id": "propagation.symmetric_normalization",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            },
+            {
+              "component_id": "fusion",
+              "inputs": [
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "propagation",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "fusion.layer_weighted_sum",
+              "slot_id": "FUSION_ROUTING"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.bpr",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "COMPOSITION",
+          "core_hypothesis": "Linear symmetric graph propagation with layer fusion reproduces the LightGCN mechanism signature.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "NGCF",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.explicit_message_passing",
+        "message.elementwise_interaction",
+        "message.linear_transform",
+        "objective.bpr",
+        "propagation.attention_aggregation",
+        "relation.user_item_bipartite",
+        "sampler.uniform",
+        "score.dot_product",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "interaction_message"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.explicit_message_passing",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "linear_message",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "message.linear_transform",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "component_id": "interaction_message",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "message.elementwise_interaction",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "component_id": "propagation",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "linear_message",
+                    "kind": "COMPONENT",
+                    "output_port": "message"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "depth": 3
+              },
+              "primitive_id": "propagation.attention_aggregation",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "propagation",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.bpr",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "ARCHITECTURE_REWRITE",
+          "core_hypothesis": "Transformed and interaction messages express explicit nonlinear graph collaborative filtering.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "SGL",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.explicit_message_passing",
+        "fusion.layer_weighted_sum",
+        "message.identity",
+        "objective.bpr",
+        "propagation.symmetric_normalization",
+        "relation.user_item_bipartite",
+        "sampler.uniform",
+        "score.dot_product",
+        "ssl.objective.info_nce",
+        "ssl.view.edge_dropout",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "ssl_objective"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "RELATION_VIEW"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.explicit_message_passing",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "message",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "message.identity",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "component_id": "propagation",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "message",
+                    "kind": "COMPONENT",
+                    "output_port": "message"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "depth": 3
+              },
+              "primitive_id": "propagation.symmetric_normalization",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            },
+            {
+              "component_id": "fusion",
+              "inputs": [
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "propagation",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "fusion.layer_weighted_sum",
+              "slot_id": "FUSION_ROUTING"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "edge_view",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.view.edge_dropout",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "ssl_objective",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {
+                "temperature": 0.2,
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.objective.info_nce",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.bpr",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "ssl_objective",
+                    "kind": "COMPONENT",
+                    "output_port": "auxiliary_objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "COMPOSITION",
+          "core_hypothesis": "Graph augmentation and a contrastive auxiliary objective express self-supervised graph CF.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "SIMGCL_XSIMGCL",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.explicit_message_passing",
+        "fusion.layer_weighted_sum",
+        "message.identity",
+        "objective.bpr",
+        "propagation.symmetric_normalization",
+        "relation.user_item_bipartite",
+        "sampler.uniform",
+        "score.dot_product",
+        "ssl.objective.info_nce",
+        "ssl.view.gaussian_perturbation",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "noise_view"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "SELF_SUPERVISION"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.explicit_message_passing",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "message",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "message.identity",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "component_id": "propagation",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "message",
+                    "kind": "COMPONENT",
+                    "output_port": "message"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "depth": 3
+              },
+              "primitive_id": "propagation.symmetric_normalization",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            },
+            {
+              "component_id": "fusion",
+              "inputs": [
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "propagation",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "fusion.layer_weighted_sum",
+              "slot_id": "FUSION_ROUTING"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "noise_view",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.view.gaussian_perturbation",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "ssl_objective",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {
+                "temperature": 0.2,
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.objective.info_nce",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.bpr",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "ssl_objective",
+                    "kind": "COMPONENT",
+                    "output_port": "auxiliary_objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "COMPOSITION",
+          "core_hypothesis": "Embedding perturbation plus contrastive learning expresses the noise-based graph SSL mechanism.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "NCL",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.explicit_message_passing",
+        "fusion.layer_weighted_sum",
+        "message.identity",
+        "objective.bpr",
+        "propagation.symmetric_normalization",
+        "relation.prototype_cluster",
+        "relation.user_item_bipartite",
+        "sampler.uniform",
+        "score.dot_product",
+        "ssl.objective.prototype_contrastive",
+        "ssl.view.semantic_prototype",
+        "ssl.view.structural_neighbor",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "prototype_objective"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "RELATION_VIEW"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "prototype_relation",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.prototype_cluster",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.explicit_message_passing",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "message",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "message.identity",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "component_id": "propagation",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "message",
+                    "kind": "COMPONENT",
+                    "output_port": "message"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "depth": 3
+              },
+              "primitive_id": "propagation.symmetric_normalization",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            },
+            {
+              "component_id": "fusion",
+              "inputs": [
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "propagation",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "fusion.layer_weighted_sum",
+              "slot_id": "FUSION_ROUTING"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "structural_view",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.view.structural_neighbor",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "semantic_view",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "prototype_relation",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.view.semantic_prototype",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "prototype_objective",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {
+                "temperature": 0.2,
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.objective.prototype_contrastive",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.bpr",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "prototype_objective",
+                    "kind": "COMPONENT",
+                    "output_port": "auxiliary_objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "ARCHITECTURE_REWRITE",
+          "core_hypothesis": "Structural and prototype-semantic neighbors support a prototype contrastive objective.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "LIGHTGCL",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.explicit_message_passing",
+        "fusion.layer_weighted_sum",
+        "message.identity",
+        "objective.bpr",
+        "propagation.symmetric_normalization",
+        "relation.svd_global",
+        "relation.user_item_bipartite",
+        "sampler.uniform",
+        "score.dot_product",
+        "ssl.objective.info_nce",
+        "ssl.view.svd_global",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "svd_view"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "SELF_SUPERVISION"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "svd_view",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.svd_global",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.explicit_message_passing",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "message",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "message.identity",
+              "slot_id": "MESSAGE"
+            },
+            {
+              "component_id": "propagation",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "message",
+                    "kind": "COMPONENT",
+                    "output_port": "message"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "depth": 3
+              },
+              "primitive_id": "propagation.symmetric_normalization",
+              "slot_id": "PROPAGATION_AGGREGATION"
+            },
+            {
+              "component_id": "fusion",
+              "inputs": [
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                },
+                {
+                  "port": "branch",
+                  "source": {
+                    "component_id": "propagation",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "fusion.layer_weighted_sum",
+              "slot_id": "FUSION_ROUTING"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "global_view",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "svd_view",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.view.svd_global",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "local_global_objective",
+              "inputs": [
+                {
+                  "port": "signal",
+                  "source": {
+                    "component_id": "fusion",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {
+                "temperature": 0.2,
+                "weight": 0.1
+              },
+              "primitive_id": "ssl.objective.info_nce",
+              "slot_id": "SELF_SUPERVISION"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.bpr",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "local_global_objective",
+                    "kind": "COMPONENT",
+                    "output_port": "auxiliary_objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "ARCHITECTURE_REWRITE",
+          "core_hypothesis": "A train-derived SVD global relation enables local-global contrastive learning.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "DIRECTAU",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.none_mf",
+        "objective.alignment_uniformity",
+        "regularizer.alignment",
+        "regularizer.uniformity",
+        "sampler.uniform",
+        "score.dot_product",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "objective"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "GEOMETRY_REGULARIZATION"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.none_mf",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {
+                "temperature": 0.2,
+                "weight": 1.0
+              },
+              "primitive_id": "objective.alignment_uniformity",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "alignment",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {
+                "weight": 0.1
+              },
+              "primitive_id": "regularizer.alignment",
+              "slot_id": "GEOMETRY_REGULARIZATION"
+            },
+            {
+              "component_id": "uniformity",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {
+                "weight": 0.1
+              },
+              "primitive_id": "regularizer.uniformity",
+              "slot_id": "GEOMETRY_REGULARIZATION"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "alignment",
+                    "kind": "COMPONENT",
+                    "output_port": "regularization"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "uniformity",
+                    "kind": "COMPONENT",
+                    "output_port": "regularization"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "ARCHITECTURE_REWRITE",
+          "core_hypothesis": "Direct alignment and uniformity optimization expresses a geometry-first CF objective.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "SIMPLEX",
+      "expected_primitives": [
+        "embedding.independent_user_item",
+        "encoder.none_mf",
+        "objective.cosine_contrastive",
+        "sampler.uniform",
+        "score.cosine_similarity",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "objective"
+              ]
+            }
+          ],
+          "architecture_operators": [],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "NEGATIVE_SAMPLER"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.none_mf",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.cosine_similarity",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 100,
+                "purpose": [
+                  "RANKING_SIGNAL"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.uniform",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "objective",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {
+                "temperature": 0.2,
+                "weight": 1.0
+              },
+              "primitive_id": "objective.cosine_contrastive",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "objective",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "COMPOSITION",
+          "core_hypothesis": "Cosine contrastive training with a large negative ratio expresses sampling-centric CF.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": false,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "GF_CF",
+      "expected_primitives": [
+        "efficiency.graph_filter_precomputation",
+        "embedding.independent_user_item",
+        "encoder.closed_form_filter",
+        "relation.svd_global",
+        "relation.user_item_bipartite",
+        "score.dot_product"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "precompute"
+              ]
+            }
+          ],
+          "architecture_operators": [
+            {
+              "operator_id": "derive_closed_form",
+              "parameters": {},
+              "rationale": "Derive the scoring representation through a precomputed graph filter.",
+              "replacements": [
+                "precompute"
+              ],
+              "targets": [
+                "encoder"
+              ]
+            }
+          ],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "ENCODER"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "EFFICIENCY_APPROXIMATION"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "spectral_view",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.svd_global",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "spectral_view",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.closed_form_filter",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "precompute",
+              "inputs": [
+                {
+                  "port": "target",
+                  "source": {
+                    "component_id": "spectral_view",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "efficiency.graph_filter_precomputation",
+              "slot_id": "EFFICIENCY_APPROXIMATION"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            }
+          ],
+          "construction_mode": "ARCHITECTURE_REWRITE",
+          "core_hypothesis": "A train-derived spectral relation and precomputed closed-form filter express graph-filter CF.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": true,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    },
+    {
+      "anchor_name": "ULTRAGCN",
+      "expected_primitives": [
+        "efficiency.remove_message_passing",
+        "efficiency.topk_relation_selection",
+        "embedding.independent_user_item",
+        "encoder.fixed_point_constraint",
+        "objective.item_item_relation_constraint",
+        "objective.pointwise_bce",
+        "objective.user_item_structure_constraint",
+        "relation.item_item_cooccurrence_topk",
+        "relation.user_item_bipartite",
+        "sampler.sampled_unobserved",
+        "score.dot_product",
+        "training.adam"
+      ],
+      "expected_status": "VALID_NEEDS_IMPLEMENTATION",
+      "program": {
+        "family_id": "BL_ICF_V1",
+        "family_version": "1.0.0",
+        "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+        "profile_ref": {
+          "profile_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "profile_id": "recclaw.dev-profile.offline-topn.ml1m.fixture.v1",
+          "profile_kind": "OFFLINE_TOPN"
+        },
+        "program_payload": {
+          "ablation_plan": [
+            {
+              "ablation_id": "remove_core_mechanism",
+              "expected_observation": "The expected anchor signature is no longer present after removing the core mechanism.",
+              "remove_component_ids": [
+                "encoder"
+              ]
+            }
+          ],
+          "architecture_operators": [
+            {
+              "operator_id": "remove_component",
+              "parameters": {},
+              "rationale": "Remove iterative message passing from the final mechanism graph.",
+              "replacements": [],
+              "targets": [
+                "slot:PROPAGATION_AGGREGATION"
+              ]
+            },
+            {
+              "operator_id": "compile_propagation_to_constraint",
+              "parameters": {},
+              "rationale": "Compile the intended structural effect into train-derived relation constraints.",
+              "replacements": [
+                "encoder",
+                "ui_constraint",
+                "ii_constraint"
+              ],
+              "targets": [
+                "slot:PROPAGATION_AGGREGATION"
+              ]
+            }
+          ],
+          "changed_slots": [
+            {
+              "change_role": "CORE",
+              "slot_id": "ENCODER"
+            },
+            {
+              "change_role": "SUPPORT",
+              "slot_id": "RELATION_DECOMPOSITION"
+            }
+          ],
+          "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+          "components": [
+            {
+              "component_id": "ui_graph",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "relation.user_item_bipartite",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "ii_topk",
+              "inputs": [
+                {
+                  "port": "source",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "top_k": 10
+              },
+              "primitive_id": "relation.item_item_cooccurrence_topk",
+              "slot_id": "RELATION_VIEW"
+            },
+            {
+              "component_id": "embedding",
+              "inputs": [
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "USER_ID",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "identity",
+                  "source": {
+                    "data_role": "ITEM_ID",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "dimension": 64
+              },
+              "primitive_id": "embedding.independent_user_item",
+              "slot_id": "EMBEDDING"
+            },
+            {
+              "component_id": "encoder",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "embedding",
+                    "kind": "COMPONENT",
+                    "output_port": "embedding"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ui_graph",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                },
+                {
+                  "port": "relation",
+                  "source": {
+                    "component_id": "ii_topk",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "encoder.fixed_point_constraint",
+              "slot_id": "ENCODER"
+            },
+            {
+              "component_id": "score",
+              "inputs": [
+                {
+                  "port": "representation",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "score.dot_product",
+              "slot_id": "SCORE_HEAD"
+            },
+            {
+              "component_id": "sampler",
+              "inputs": [
+                {
+                  "port": "interactions",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                }
+              ],
+              "parameters": {
+                "false_negative_policy": "ALLOW_UNKNOWN",
+                "hardness": "NONE",
+                "negative_count": 1,
+                "purpose": [
+                  "RANKING_SIGNAL",
+                  "PREVENT_CONSTRAINT_COLLAPSE"
+                ],
+                "refresh_frequency": "BATCH",
+                "replacement": true
+              },
+              "primitive_id": "sampler.sampled_unobserved",
+              "slot_id": "NEGATIVE_SAMPLER"
+            },
+            {
+              "component_id": "pointwise",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.pointwise_bce",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "ui_constraint",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.user_item_structure_constraint",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "ii_constraint",
+              "inputs": [
+                {
+                  "port": "score",
+                  "source": {
+                    "component_id": "score",
+                    "kind": "COMPONENT",
+                    "output_port": "score"
+                  }
+                },
+                {
+                  "port": "supervision",
+                  "source": {
+                    "data_role": "TRAIN_INTERACTIONS",
+                    "kind": "DATA"
+                  }
+                },
+                {
+                  "port": "negative_samples",
+                  "source": {
+                    "component_id": "sampler",
+                    "kind": "COMPONENT",
+                    "output_port": "negative_samples"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "objective.item_item_relation_constraint",
+              "slot_id": "PRIMARY_OBJECTIVE"
+            },
+            {
+              "component_id": "remove_propagation",
+              "inputs": [
+                {
+                  "port": "target",
+                  "source": {
+                    "component_id": "encoder",
+                    "kind": "COMPONENT",
+                    "output_port": "representation"
+                  }
+                }
+              ],
+              "parameters": {},
+              "primitive_id": "efficiency.remove_message_passing",
+              "slot_id": "EFFICIENCY_APPROXIMATION"
+            },
+            {
+              "component_id": "precompute_relations",
+              "inputs": [
+                {
+                  "port": "target",
+                  "source": {
+                    "component_id": "ii_topk",
+                    "kind": "COMPONENT",
+                    "output_port": "relation"
+                  }
+                }
+              ],
+              "parameters": {
+                "top_k": 10
+              },
+              "primitive_id": "efficiency.topk_relation_selection",
+              "slot_id": "EFFICIENCY_APPROXIMATION"
+            },
+            {
+              "component_id": "training",
+              "inputs": [
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "pointwise",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "ui_constraint",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                },
+                {
+                  "port": "objective",
+                  "source": {
+                    "component_id": "ii_constraint",
+                    "kind": "COMPONENT",
+                    "output_port": "objective"
+                  }
+                }
+              ],
+              "parameters": {
+                "learning_rate": 0.001
+              },
+              "primitive_id": "training.adam",
+              "slot_id": "TRAINING_PROCEDURE"
+            }
+          ],
+          "construction_mode": "ARCHITECTURE_REWRITE",
+          "core_hypothesis": "Fixed-point user-item and item-item constraints replace explicit propagation while preserving collaborative structure.",
+          "custom_components": [],
+          "estimated_cost": {
+            "precompute_required": true,
+            "relative_memory": "LOW",
+            "relative_training_compute": "LOW"
+          },
+          "expected_effects": {
+            "coverage": "fixture only",
+            "efficiency": "fixture only",
+            "relevance": "fixture only",
+            "robustness": "fixture only"
+          },
+          "failure_modes": [
+            "The grammar may accept the document while failing to preserve the intended mechanism signature."
+          ],
+          "family_contract_id": "BL_ICF_V1",
+          "implementation_plan": [
+            "Compile the fixture into resolved mechanism IR and compare its structural signature."
+          ],
+          "input_semantics": {
+            "external_features": false,
+            "item_id": true,
+            "train_interactions": true,
+            "user_id": true
+          },
+          "matched_control": {
+            "control_ref": "TEST_ONLY_ANCHOR_CONTROL",
+            "rationale": "The fixture checks semantic expression against an independently declared anchor signature."
+          },
+          "mechanism_explanation": "A test-only executable mechanism graph used to verify search-space expressibility without exposing an answer recipe to proposal generation.",
+          "parent_refs": [],
+          "protocol_impact": {
+            "requested_changes": [],
+            "status": "UNCHANGED"
+          },
+          "removed_slots": [
+            "PROPAGATION_AGGREGATION"
+          ],
+          "research_question": "Can this mechanism program reproduce the intended collaborative-filtering anchor semantics?",
+          "schema_version": "recclaw.bl-icf.mechanism-program.v1"
+        },
+        "record_type": "MECHANISM_PROGRAM_ENVELOPE",
+        "search_space_digest": "923702b93f0687173b5008e8c4ae974e00364c30eb136df93a648993704f543f",
+        "search_space_id": "BL_ICF_MECHANISM_SPACE_V1"
+      }
+    }
+  ],
+  "proposal_prompt_exposure": "FORBIDDEN",
+  "record_type": "BL_ICF_ANCHOR_EXPRESSIBILITY_FIXTURES",
+  "test_only": true
+}

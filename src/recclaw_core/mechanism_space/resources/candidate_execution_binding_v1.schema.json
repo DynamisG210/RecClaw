@@ -1,0 +1,171 @@
+{
+  "$id": "https://recclaw.dev/schema/candidate-execution-binding-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authority": {
+      "const": "NONE"
+    },
+    "binding_version": {
+      "const": "recclaw.candidate-execution-binding.v1"
+    },
+    "budget_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "candidate_id": {
+      "pattern": "^bl1_[0-9a-f]{20}$",
+      "type": "string"
+    },
+    "capability_envelope": {
+      "additionalProperties": false,
+      "properties": {
+        "envelope_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "envelope_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "granted_capabilities": {
+          "items": {
+            "enum": [
+              "CONFIG_MUTATION",
+              "LOSS_MUTATION",
+              "SAMPLER_MUTATION",
+              "RELATION_MUTATION",
+              "GRAPH_OPERATOR_MUTATION",
+              "AUXILIARY_OBJECTIVE_MUTATION",
+              "TRAINING_ALGORITHM_MUTATION",
+              "CUSTOM_MODEL_IMPLEMENTATION",
+              "ANALYTIC_REWRITE",
+              "POSTHOC_RERANK",
+              "EFFICIENCY_REWRITE"
+            ]
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "write_roots": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "envelope_id",
+        "envelope_digest",
+        "granted_capabilities",
+        "write_roots"
+      ],
+      "type": "object"
+    },
+    "evidence_class": {
+      "const": "DEVELOPMENT_ONLY"
+    },
+    "formal_acceptance": {
+      "const": false
+    },
+    "implementation_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "mechanism_program_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "mechanism_semantics_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "profile_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "profile_kind": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "profile_digest",
+        "profile_kind"
+      ],
+      "type": "object"
+    },
+    "record_type": {
+      "const": "CANDIDATE_EXECUTION_BINDING"
+    },
+    "run_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "type": "string"
+    },
+    "search_space_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "search_space_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "record_type",
+    "binding_version",
+    "authority",
+    "evidence_class",
+    "formal_acceptance",
+    "run_id",
+    "candidate_id",
+    "search_space_id",
+    "search_space_digest",
+    "mechanism_program_digest",
+    "mechanism_semantics_digest",
+    "profile_ref",
+    "budget_ref",
+    "implementation_ref",
+    "capability_envelope"
+  ],
+  "type": "object"
+}

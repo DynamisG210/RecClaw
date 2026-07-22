@@ -1,0 +1,56 @@
+{
+  "bridge_policy": "DENY_UNLESS_REGISTERED_BRIDGE",
+  "family_id": "BL_ICF_V1",
+  "family_version": "1.0.0",
+  "kernel_schema_version": "recclaw.mechanism-space.kernel.v1",
+  "prompt_projection_version": "recclaw.bl-icf.prompt-projection.v1",
+  "provider_id": "recclaw.search-space-provider.bl-icf.v1",
+  "record_type": "SEARCH_SPACE_MANIFEST",
+  "resource_refs": [
+    {
+      "name": "mechanism_program_envelope_v1.schema.json",
+      "package": "recclaw_core.mechanism_space.resources",
+      "role": "MECHANISM_PROGRAM_ENVELOPE_SCHEMA"
+    },
+    {
+      "name": "candidate_execution_binding_v1.schema.json",
+      "package": "recclaw_core.mechanism_space.resources",
+      "role": "CANDIDATE_EXECUTION_BINDING_SCHEMA"
+    },
+    {
+      "name": "family_contract_v1.json",
+      "package": "recclaw_core.search_spaces.bl_icf_v1.resources",
+      "role": "FAMILY_CONTRACT"
+    },
+    {
+      "name": "primitive_registry_v1.json",
+      "package": "recclaw_core.search_spaces.bl_icf_v1.resources",
+      "role": "PRIMITIVE_REGISTRY"
+    },
+    {
+      "name": "mechanism_grammar_v1.json",
+      "package": "recclaw_core.search_spaces.bl_icf_v1.resources",
+      "role": "MECHANISM_GRAMMAR"
+    },
+    {
+      "name": "capability_policy_v1.json",
+      "package": "recclaw_core.search_spaces.bl_icf_v1.resources",
+      "role": "CAPABILITY_POLICY"
+    },
+    {
+      "name": "mechanism_program_v1.schema.json",
+      "package": "recclaw_core.search_spaces.bl_icf_v1.resources",
+      "role": "FAMILY_PROGRAM_SCHEMA"
+    }
+  ],
+  "runner_adapter_id": "recclaw.bl-icf.runner-adapter.v1",
+  "runtime_dependencies": {
+    "jsonschema": "4.26.0",
+    "rfc8785": "0.1.4"
+  },
+  "search_space_id": "BL_ICF_MECHANISM_SPACE_V1",
+  "search_space_version": "1.0.0",
+  "supported_profile_kinds": [
+    "OFFLINE_TOPN"
+  ]
+}

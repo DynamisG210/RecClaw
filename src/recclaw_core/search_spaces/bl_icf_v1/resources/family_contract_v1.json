@@ -1,0 +1,135 @@
+{
+  "allowed_data_roles": [
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "ITEM_ID",
+      "type_ref": "core/item_id"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "TRAIN_DERIVED_PROTOTYPES",
+      "type_ref": "bl_icf/prototype_relation"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "TRAIN_DERIVED_SPECTRAL_VIEW",
+      "type_ref": "bl_icf/spectral_relation"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "TRAIN_DERIVED_STATISTICS",
+      "type_ref": "bl_icf/train_statistics"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "TRAIN_INTERACTIONS",
+      "type_ref": "bl_icf/train_interactions"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "TRAIN_ITEM_ITEM_GRAPH",
+      "type_ref": "bl_icf/item_item_relation"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "TRAIN_USER_ITEM_GRAPH",
+      "type_ref": "bl_icf/user_item_relation"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "TRAIN_USER_USER_GRAPH",
+      "type_ref": "bl_icf/user_user_relation"
+    },
+    {
+      "derivation_scope": "TRAIN_ONLY",
+      "role_id": "USER_ID",
+      "type_ref": "core/user_id"
+    }
+  ],
+  "claim_ceiling": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM",
+  "excluded_primary_families": [
+    "ADMMSLIM",
+    "SLIM",
+    "EASE",
+    "SEQUENTIAL_RECOMMENDATION",
+    "SESSION_RECOMMENDATION",
+    "MULTIMODAL_RECOMMENDATION",
+    "KNOWLEDGE_GRAPH_RECOMMENDATION",
+    "COLD_START_PROTOCOL",
+    "ONLINE_BANDIT_OPE",
+    "LLM_AS_RECOMMENDER"
+  ],
+  "family_id": "BL_ICF_V1",
+  "family_version": "1.0.0",
+  "forbidden_data_roles": [
+    "SEQUENCE_ORDER",
+    "ITEM_METADATA",
+    "TEXT",
+    "IMAGE",
+    "KNOWLEDGE_GRAPH",
+    "VALIDATION_LABELS_AS_MODEL_INPUT",
+    "TEST_STATISTICS",
+    "EXTERNAL_USER_DATA",
+    "NETWORK"
+  ],
+  "frozen_protocol_fields": [
+    "dataset",
+    "dataset_snapshot",
+    "split",
+    "preprocessing",
+    "evaluation_mode",
+    "candidate_universe",
+    "seen_repeat_policy",
+    "metric_semantics",
+    "comparator_semantics",
+    "seed_policy"
+  ],
+  "mechanism_mutable_fields": [
+    "training_negative_sampling",
+    "ranking_objective",
+    "optimizer",
+    "training_schedule",
+    "representation",
+    "relation_construction",
+    "posthoc_ordering"
+  ],
+  "output_contract": {
+    "candidate_universe_effect": "PRESERVE",
+    "type_ref": "core/user_item_relevance_score"
+  },
+  "record_type": "MECHANISM_FAMILY_CONTRACT",
+  "scientific_object": "static_offline_implicit_feedback_id_only_collaborative_topn_ranking",
+  "sparse_linear_boundary": {
+    "allowed": "train_derived_item_item_auxiliary_relation_or_closed_form_graph_filter",
+    "forbidden": "learned_free_sparse_item_item_reconstruction_as_primary_scorer"
+  },
+  "supported_profile_kinds": [
+    "OFFLINE_TOPN"
+  ],
+  "type_compatibility": [
+    {
+      "accepted_as": "bl_icf/representation",
+      "provided": "bl_icf/embedding"
+    },
+    {
+      "accepted_as": "bl_icf/relation",
+      "provided": "bl_icf/user_item_relation"
+    },
+    {
+      "accepted_as": "bl_icf/relation",
+      "provided": "bl_icf/item_item_relation"
+    },
+    {
+      "accepted_as": "bl_icf/relation",
+      "provided": "bl_icf/user_user_relation"
+    },
+    {
+      "accepted_as": "bl_icf/relation",
+      "provided": "bl_icf/spectral_relation"
+    },
+    {
+      "accepted_as": "bl_icf/relation",
+      "provided": "bl_icf/prototype_relation"
+    }
+  ]
+}

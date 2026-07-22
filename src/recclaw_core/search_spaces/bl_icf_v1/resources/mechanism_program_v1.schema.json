@@ -1,0 +1,738 @@
+{
+  "$id": "https://recclaw.dev/schema/bl-icf-mechanism-program-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ablation_plan": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "ablation_id": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "expected_observation": {
+            "minLength": 8,
+            "type": "string"
+          },
+          "remove_component_ids": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "ablation_id",
+          "remove_component_ids",
+          "expected_observation"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "architecture_operators": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "operator_id": {
+            "enum": [
+              "add_component",
+              "remove_component",
+              "replace_component",
+              "split_component",
+              "fuse_components",
+              "share_parameters",
+              "decouple_relations",
+              "route_by_user_or_item",
+              "gate_component",
+              "reweight_relation",
+              "normalize_signal",
+              "precompute_operator",
+              "sparsify_relation",
+              "approximate_fixed_point",
+              "compile_propagation_to_constraint",
+              "derive_closed_form",
+              "distill_teacher",
+              "prune_path",
+              "freeze_path",
+              "alternate_optimization",
+              "synthesize_custom_model"
+            ]
+          },
+          "parameters": {
+            "type": "object"
+          },
+          "rationale": {
+            "minLength": 8,
+            "type": "string"
+          },
+          "replacements": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "targets": {
+            "items": {
+              "pattern": "^(slot:[A-Z][A-Z0-9_]{0,63}|[a-z][a-z0-9_]{0,63})$",
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "operator_id",
+          "targets",
+          "replacements",
+          "parameters",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "changed_slots": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "change_role": {
+            "enum": [
+              "CORE",
+              "SUPPORT"
+            ]
+          },
+          "slot_id": {
+            "enum": [
+              "RELATION_VIEW",
+              "EMBEDDING",
+              "ENCODER",
+              "MESSAGE",
+              "PROPAGATION_AGGREGATION",
+              "RELATION_DECOMPOSITION",
+              "FUSION_ROUTING",
+              "SCORE_HEAD",
+              "PRIMARY_OBJECTIVE",
+              "NEGATIVE_SAMPLER",
+              "SELF_SUPERVISION",
+              "GEOMETRY_REGULARIZATION",
+              "DENOISING_LONG_TAIL",
+              "TRAINING_PROCEDURE",
+              "EFFICIENCY_APPROXIMATION",
+              "POSTHOC_RERANK"
+            ]
+          }
+        },
+        "required": [
+          "slot_id",
+          "change_role"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "claim_ceiling": {
+      "const": "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM"
+    },
+    "components": {
+      "items": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "not": {
+              "required": [
+                "custom_component_id"
+              ]
+            },
+            "required": [
+              "primitive_id"
+            ]
+          },
+          {
+            "not": {
+              "required": [
+                "primitive_id"
+              ]
+            },
+            "required": [
+              "custom_component_id"
+            ]
+          }
+        ],
+        "properties": {
+          "component_id": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "custom_component_id": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "port": {
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                  "type": "string"
+                },
+                "source": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "data_role": {
+                          "enum": [
+                            "ITEM_ID",
+                            "TRAIN_DERIVED_PROTOTYPES",
+                            "TRAIN_DERIVED_SPECTRAL_VIEW",
+                            "TRAIN_DERIVED_STATISTICS",
+                            "TRAIN_INTERACTIONS",
+                            "TRAIN_ITEM_ITEM_GRAPH",
+                            "TRAIN_USER_ITEM_GRAPH",
+                            "TRAIN_USER_USER_GRAPH",
+                            "USER_ID"
+                          ]
+                        },
+                        "kind": {
+                          "const": "DATA"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "data_role"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "component_id": {
+                          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "COMPONENT"
+                        },
+                        "output_port": {
+                          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "component_id",
+                        "output_port"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "port",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "parameters": {
+            "type": "object"
+          },
+          "primitive_id": {
+            "pattern": "^[a-z][a-z0-9_.-]{2,127}$",
+            "type": "string"
+          },
+          "slot_id": {
+            "enum": [
+              "RELATION_VIEW",
+              "EMBEDDING",
+              "ENCODER",
+              "MESSAGE",
+              "PROPAGATION_AGGREGATION",
+              "RELATION_DECOMPOSITION",
+              "FUSION_ROUTING",
+              "SCORE_HEAD",
+              "PRIMARY_OBJECTIVE",
+              "NEGATIVE_SAMPLER",
+              "SELF_SUPERVISION",
+              "GEOMETRY_REGULARIZATION",
+              "DENOISING_LONG_TAIL",
+              "TRAINING_PROCEDURE",
+              "EFFICIENCY_APPROXIMATION",
+              "POSTHOC_RERANK"
+            ]
+          }
+        },
+        "required": [
+          "component_id",
+          "slot_id",
+          "inputs",
+          "parameters"
+        ],
+        "type": "object"
+      },
+      "maxItems": 96,
+      "minItems": 4,
+      "type": "array"
+    },
+    "construction_mode": {
+      "enum": [
+        "COMPOSITION",
+        "ARCHITECTURE_REWRITE",
+        "CUSTOM_MODEL"
+      ]
+    },
+    "core_hypothesis": {
+      "maxLength": 4000,
+      "minLength": 12,
+      "type": "string"
+    },
+    "custom_components": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "ablation": {
+            "minLength": 12,
+            "type": "string"
+          },
+          "algorithm_definition": {
+            "minLength": 20,
+            "type": "string"
+          },
+          "allowed_read_roles": {
+            "items": {
+              "enum": [
+                "ITEM_ID",
+                "TRAIN_DERIVED_PROTOTYPES",
+                "TRAIN_DERIVED_SPECTRAL_VIEW",
+                "TRAIN_DERIVED_STATISTICS",
+                "TRAIN_INTERACTIONS",
+                "TRAIN_ITEM_ITEM_GRAPH",
+                "TRAIN_USER_ITEM_GRAPH",
+                "TRAIN_USER_USER_GRAPH",
+                "USER_ID"
+              ]
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "custom_component_id": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "estimated_cost": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "VERY_HIGH"
+            ]
+          },
+          "failure_modes": {
+            "items": {
+              "minLength": 8,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "family_boundary_justification": {
+            "minLength": 20,
+            "type": "string"
+          },
+          "input_ports": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "minimum": {
+                  "maximum": 8,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "port": {
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                  "type": "string"
+                },
+                "types": {
+                  "items": {
+                    "pattern": "^(core|bl_icf)/[a-z0-9_]+$",
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "port",
+                "types",
+                "minimum"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "matched_control_rationale": {
+            "minLength": 12,
+            "type": "string"
+          },
+          "mathematical_definition": {
+            "minLength": 20,
+            "type": "string"
+          },
+          "minimal_implementation": {
+            "additionalProperties": false,
+            "properties": {
+              "entrypoint_role": {
+                "enum": [
+                  "MODEL",
+                  "RELATION_BUILDER",
+                  "SAMPLER",
+                  "TRAINER",
+                  "RERANKER"
+                ]
+              },
+              "file_roles": {
+                "items": {
+                  "enum": [
+                    "MODEL",
+                    "RELATION_BUILDER",
+                    "LOSS",
+                    "SAMPLER",
+                    "TRAINER",
+                    "RERANKER",
+                    "CONFIG",
+                    "TEST"
+                  ]
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "steps": {
+                "items": {
+                  "minLength": 5,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "entrypoint_role",
+              "file_roles",
+              "steps"
+            ],
+            "type": "object"
+          },
+          "output_ports": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "port": {
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                  "type": "string"
+                },
+                "type": {
+                  "pattern": "^(core|bl_icf)/[a-z0-9_]+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "port",
+                "type"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "slot_id": {
+            "enum": [
+              "RELATION_VIEW",
+              "EMBEDDING",
+              "ENCODER",
+              "MESSAGE",
+              "PROPAGATION_AGGREGATION",
+              "RELATION_DECOMPOSITION",
+              "FUSION_ROUTING",
+              "SCORE_HEAD",
+              "PRIMARY_OBJECTIVE",
+              "NEGATIVE_SAMPLER",
+              "SELF_SUPERVISION",
+              "GEOMETRY_REGULARIZATION",
+              "DENOISING_LONG_TAIL",
+              "TRAINING_PROCEDURE",
+              "EFFICIENCY_APPROXIMATION",
+              "POSTHOC_RERANK"
+            ]
+          }
+        },
+        "required": [
+          "custom_component_id",
+          "slot_id",
+          "mathematical_definition",
+          "algorithm_definition",
+          "input_ports",
+          "output_ports",
+          "allowed_read_roles",
+          "family_boundary_justification",
+          "minimal_implementation",
+          "matched_control_rationale",
+          "ablation",
+          "failure_modes",
+          "estimated_cost"
+        ],
+        "type": "object"
+      },
+      "maxItems": 24,
+      "type": "array"
+    },
+    "estimated_cost": {
+      "additionalProperties": false,
+      "properties": {
+        "precompute_required": {
+          "type": "boolean"
+        },
+        "relative_memory": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "VERY_HIGH"
+          ]
+        },
+        "relative_training_compute": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "VERY_HIGH"
+          ]
+        }
+      },
+      "required": [
+        "relative_training_compute",
+        "relative_memory",
+        "precompute_required"
+      ],
+      "type": "object"
+    },
+    "expected_effects": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "minLength": 3,
+          "type": "string"
+        },
+        "efficiency": {
+          "minLength": 3,
+          "type": "string"
+        },
+        "relevance": {
+          "minLength": 3,
+          "type": "string"
+        },
+        "robustness": {
+          "minLength": 3,
+          "type": "string"
+        }
+      },
+      "required": [
+        "relevance",
+        "efficiency",
+        "robustness",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "failure_modes": {
+      "items": {
+        "minLength": 8,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "family_contract_id": {
+      "const": "BL_ICF_V1"
+    },
+    "implementation_plan": {
+      "items": {
+        "minLength": 5,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "input_semantics": {
+      "additionalProperties": false,
+      "properties": {
+        "external_features": {
+          "const": false
+        },
+        "item_id": {
+          "const": true
+        },
+        "train_interactions": {
+          "const": true
+        },
+        "user_id": {
+          "const": true
+        }
+      },
+      "required": [
+        "user_id",
+        "item_id",
+        "train_interactions",
+        "external_features"
+      ],
+      "type": "object"
+    },
+    "matched_control": {
+      "additionalProperties": false,
+      "properties": {
+        "control_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 12,
+          "type": "string"
+        }
+      },
+      "required": [
+        "control_ref",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "mechanism_explanation": {
+      "minLength": 20,
+      "type": "string"
+    },
+    "parent_refs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "program_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "program_digest"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "protocol_impact": {
+      "additionalProperties": false,
+      "properties": {
+        "requested_changes": {
+          "items": {
+            "enum": [
+              "dataset",
+              "dataset_snapshot",
+              "split",
+              "preprocessing",
+              "evaluation_mode",
+              "candidate_universe",
+              "seen_repeat_policy",
+              "metric_semantics",
+              "comparator_semantics",
+              "seed_policy"
+            ]
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "UNCHANGED",
+            "BRANCH_REQUIRED"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "requested_changes"
+      ],
+      "type": "object"
+    },
+    "removed_slots": {
+      "items": {
+        "enum": [
+          "RELATION_VIEW",
+          "EMBEDDING",
+          "ENCODER",
+          "MESSAGE",
+          "PROPAGATION_AGGREGATION",
+          "RELATION_DECOMPOSITION",
+          "FUSION_ROUTING",
+          "SCORE_HEAD",
+          "PRIMARY_OBJECTIVE",
+          "NEGATIVE_SAMPLER",
+          "SELF_SUPERVISION",
+          "GEOMETRY_REGULARIZATION",
+          "DENOISING_LONG_TAIL",
+          "TRAINING_PROCEDURE",
+          "EFFICIENCY_APPROXIMATION",
+          "POSTHOC_RERANK"
+        ]
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "research_question": {
+      "maxLength": 2000,
+      "minLength": 12,
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "recclaw.bl-icf.mechanism-program.v1"
+    }
+  },
+  "required": [
+    "schema_version",
+    "family_contract_id",
+    "construction_mode",
+    "parent_refs",
+    "research_question",
+    "core_hypothesis",
+    "input_semantics",
+    "components",
+    "architecture_operators",
+    "changed_slots",
+    "removed_slots",
+    "custom_components",
+    "mechanism_explanation",
+    "expected_effects",
+    "matched_control",
+    "ablation_plan",
+    "failure_modes",
+    "implementation_plan",
+    "estimated_cost",
+    "claim_ceiling",
+    "protocol_impact"
+  ],
+  "type": "object"
+}
