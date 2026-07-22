@@ -1,0 +1,27 @@
+{
+  "kernel_source_sha256": {
+    "recclaw_core/mechanism_space/canonical.py": "099cf9392ae57f981b47dbfb530c67786bc6a69501b0505870818a919ca1cb4e",
+    "recclaw_core/mechanism_space/contracts.py": "fe0358346f46d69011c846ead0369ae81ba3de87a1f8f19b216f5f315d3558c2",
+    "recclaw_core/mechanism_space/kernel.py": "7c4258fd9767fe10ef35f4b8624375ab0c5f6cf9ec39d38f14934b9e59862de3"
+  },
+  "provider_id": "recclaw.search-space-provider.bl-icf.v1",
+  "provider_source_sha256": "c327bcafa5d464a38c6675902998fc7707f720335186b311f797c892d7d3eee6",
+  "record_type": "SEARCH_SPACE_RESOURCE_CLOSURE",
+  "resource_sha256": {
+    "recclaw_core/mechanism_space/resources/candidate_execution_binding_v1.schema.json": "e2ce7bcb63eb712fec34a36b80fe9d2148bd2121ef5b7799f8f8353ff8364265",
+    "recclaw_core/mechanism_space/resources/mechanism_program_envelope_v1.schema.json": "c36ac5883a550d7488f532541082494688f5492b3549c1eb808e6e42bdd431e0",
+    "recclaw_core/search_spaces/bl_icf_v1/resources/capability_policy_v1.json": "6c0272509a0a5b02c045f56091fef72b359bc8e7648084ae17ab74990517ce53",
+    "recclaw_core/search_spaces/bl_icf_v1/resources/family_contract_v1.json": "cf9b8d9d1850d9d6500df6dfd8a74dee310d8193365292f28a948f11c73a162e",
+    "recclaw_core/search_spaces/bl_icf_v1/resources/mechanism_grammar_v1.json": "8f339fa51718ff4eb43bd8616060ac1c4ec71d8dcdd3b1495fcacce15428f07b",
+    "recclaw_core/search_spaces/bl_icf_v1/resources/mechanism_program_v1.schema.json": "640f8a5c83d247fc12ea10ee00015ad6d94922aaecce9cddc7cd50e59a90b0e1",
+    "recclaw_core/search_spaces/bl_icf_v1/resources/primitive_registry_v1.json": "1980179c53e92df830f614a78ace7b66601ac49de498fb9b674685251642141d",
+    "recclaw_core/search_spaces/bl_icf_v1/resources/search_space_manifest_v1.json": "cda1659b181ec656922da8bbbd82c6c35e129b0288f46dfd04785edf76beeaf8"
+  },
+  "runtime_dependencies": {
+    "jsonschema": "4.26.0",
+    "rfc8785": "0.1.4"
+  },
+  "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
+  "search_space_id": "BL_ICF_MECHANISM_SPACE_V1",
+  "search_space_version": "1.0.0"
+}
