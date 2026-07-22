@@ -37,6 +37,7 @@ SEED_ARTIFACT_NAMES = (
     "experience_summary.md",
     "experience_summary.json",
     "reflection_memory.jsonl",
+    "research_routes.jsonl",
 )
 
 
@@ -56,6 +57,7 @@ class PilotPaths:
     experience_summary_md: Path
     experience_summary_json: Path
     reflection_memory: Path
+    research_routes: Path
 
 
 def has_llm_key(env: dict[str, str] | None = None) -> bool:
@@ -121,7 +123,7 @@ def reject_lablog_path(path: str | Path) -> None:
 def resolve_baseline_dir(explicit: str | None, env: dict[str, str] | None = None) -> Path:
     env = env or os.environ
     raw = explicit or env.get("RECCLAW_BASELINE_DIR") or str(DEFAULT_BASELINE_DIR)
-    return Path(raw).expanduser().resolve()
+    return Path(raw).expanduser()
 
 
 def validate_agent_baseline_dir(path: Path) -> None:
@@ -153,6 +155,7 @@ def build_paths(root: Path, stamp: str) -> PilotPaths:
         experience_summary_md=run_dir / "experience_summary.md",
         experience_summary_json=run_dir / "experience_summary.json",
         reflection_memory=run_dir / "reflection_memory.jsonl",
+        research_routes=run_dir / "research_routes.jsonl",
     )
 
 
@@ -204,13 +207,21 @@ def build_commands(
     llm_base_url: str,
     llm_timeout: int,
     llm_retries: int,
+    llm_temperature: float,
+    llm_max_tokens: int,
     refresh_every: int,
     baseline_dir: Path,
     search_intensity: str,
     algorithm_budget_per_window: int,
     anchor_families: list[str],
     allow_llm_fallback: bool,
+    extra_overrides: list[str],
+    proposal_count: int | None,
+    proposal_every: int,
 ) -> dict[str, list[str]]:
+    effective_proposal_count = proposal_count
+    if effective_proposal_count is None:
+        effective_proposal_count = 6 if search_intensity == "algorithm_first" else 5
     lint_cmd = [
         sys.executable,
         str(PROJECT_ROOT / "scripts" / "analysis" / "lint_recclaw_space.py"),
@@ -263,9 +274,9 @@ def build_commands(
         "--llm-api-key-env",
         llm_api_key_env,
         "--proposal-count",
-        "6" if search_intensity == "algorithm_first" else "5",
+        str(effective_proposal_count),
         "--proposal-every",
-        "3",
+        str(proposal_every),
         "--search-intensity",
         search_intensity,
         "--algorithm-budget-per-window",
@@ -305,6 +316,8 @@ def build_commands(
         str(paths.experience_summary_json),
         "--reflection-memory-path",
         str(paths.reflection_memory),
+        "--research-route-path",
+        str(paths.research_routes),
         "--checkpoint-dir",
         str(paths.checkpoint_dir),
         "--checkpoint-policy",
@@ -328,7 +341,7 @@ def build_commands(
         "--plateau-weak-family-ceiling",
         "0.280",
     ]
-    for override in (*SAFE_OVERRIDES, f"gpu_id={gpu_id}"):
+    for override in (*SAFE_OVERRIDES, f"gpu_id={gpu_id}", *extra_overrides):
         agent_cmd.extend(["--set", override])
     if llm_model:
         agent_cmd.extend(["--llm-model", llm_model])
@@ -336,6 +349,8 @@ def build_commands(
         agent_cmd.extend(["--llm-base-url", llm_base_url])
     agent_cmd.extend(["--llm-timeout", str(llm_timeout)])
     agent_cmd.extend(["--llm-retries", str(llm_retries)])
+    agent_cmd.extend(["--llm-temperature", str(llm_temperature)])
+    agent_cmd.extend(["--llm-max-tokens", str(llm_max_tokens)])
     if allow_llm_fallback:
         agent_cmd.append("--allow-llm-fallback")
     return {
@@ -381,6 +396,11 @@ def plan_payload(
     search_intensity: str,
     algorithm_budget_per_window: int,
     anchor_families: list[str],
+    extra_overrides: list[str],
+    proposal_count: int | None,
+    proposal_every: int,
+    llm_temperature: float,
+    llm_max_tokens: int,
     seeded_artifacts: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
@@ -391,12 +411,17 @@ def plan_payload(
         "llm_provider": llm_provider,
         "llm_api_key_env": llm_api_key_env,
         "gpu_id": gpu_id,
-        "baseline_dir": str(baseline_dir),
+        "baseline_dir": str(baseline_dir).replace("\\", "/"),
         "search_intensity": search_intensity,
         "algorithm_budget_per_window": algorithm_budget_per_window,
         "anchor_families": list(anchor_families),
+        "proposal_count": proposal_count,
+        "proposal_every": proposal_every,
+        "llm_temperature": llm_temperature,
+        "llm_max_tokens": llm_max_tokens,
         "seeded_artifacts": list(seeded_artifacts or []),
         "safe_overrides": list(SAFE_OVERRIDES),
+        "extra_overrides": list(extra_overrides),
         "commands": {name: shlex.join(cmd) for name, cmd in commands.items()},
         "env": {
             "RECCLAW_RESULT_DIR": str(paths.candidate_result_dir),
@@ -404,6 +429,7 @@ def plan_payload(
             "RECCLAW_OVERRIDE_DIR": str(paths.override_dir),
             "RECCLAW_CHECKPOINT_DIR": str(paths.checkpoint_dir),
             "RECCLAW_SMOKE_RESULTS_CSV": str(paths.run_dir / "results.smoke.csv"),
+            "RECCLAW_RESEARCH_ROUTES": str(paths.research_routes),
         },
     }
 
@@ -441,6 +467,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llm-base-url", default="", help="Optional OpenAI-compatible API base URL")
     parser.add_argument("--llm-timeout", type=int, default=300, help="LLM API timeout in seconds")
     parser.add_argument("--llm-retries", type=int, default=3, help="Transient LLM API retry count")
+    parser.add_argument("--llm-temperature", type=float, default=0.2, help="LLM sampling temperature")
+    parser.add_argument("--llm-max-tokens", type=int, default=4096, help="Maximum LLM output tokens")
     parser.add_argument("--llm-api-key-env", default="", help="Environment variable containing the LLM API key")
     parser.add_argument(
         "--allow-llm-fallback",
@@ -463,6 +491,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Target code_required algorithmic budget per short search window",
     )
     parser.add_argument(
+        "--proposal-count",
+        type=int,
+        default=None,
+        help="Override number of proposals generated per proposal refresh. Defaults from search intensity.",
+    )
+    parser.add_argument("--proposal-every", type=int, default=3, help="Refresh proposals every N rounds")
+    parser.add_argument(
         "--anchor-families",
         default=(
             "cand_bpr_hard_negative_margin,cand_lightgcn_shallow_layers,"
@@ -471,6 +506,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated high-potential families to keep available for repair/revisit",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print commands and paths without running them")
+    parser.add_argument(
+        "--set",
+        dest="extra_overrides",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Additional RecBole config override forwarded to agent.py and candidate runs. Can be repeated.",
+    )
     args = parser.parse_args(argv)
 
     root = Path(args.pilot_root).expanduser().resolve()
@@ -503,12 +546,17 @@ def main(argv: list[str] | None = None) -> int:
         llm_base_url=str(args.llm_base_url or ""),
         llm_timeout=max(1, int(args.llm_timeout)),
         llm_retries=max(0, int(args.llm_retries)),
+        llm_temperature=float(args.llm_temperature),
+        llm_max_tokens=max(1, int(args.llm_max_tokens)),
         refresh_every=max(1, args.refresh_experience_every),
         baseline_dir=baseline_dir,
         search_intensity=str(args.search_intensity),
         algorithm_budget_per_window=max(0, int(args.algorithm_budget_per_window)),
         anchor_families=anchor_families,
         allow_llm_fallback=bool(args.allow_llm_fallback),
+        extra_overrides=list(args.extra_overrides or []),
+        proposal_count=args.proposal_count,
+        proposal_every=max(1, int(args.proposal_every)),
     )
 
     payload = plan_payload(
@@ -524,6 +572,11 @@ def main(argv: list[str] | None = None) -> int:
         str(args.search_intensity),
         max(0, int(args.algorithm_budget_per_window)),
         anchor_families,
+        list(args.extra_overrides or []),
+        args.proposal_count,
+        max(1, int(args.proposal_every)),
+        float(args.llm_temperature),
+        max(1, int(args.llm_max_tokens)),
     )
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=True, indent=2))

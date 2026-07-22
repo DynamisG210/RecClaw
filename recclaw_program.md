@@ -15,6 +15,46 @@ The core loop is:
 Observe -> Plan -> Propose Candidate -> Validate -> Implement -> Run -> Evaluate -> Reflect -> Remember
 ```
 
+## Research Ability Line
+
+The active search architecture now makes the research-ability line explicit in
+`scripts/research_line.py`.
+
+```text
+Candidate Producers
+-> Research Router
+-> Development Experiment
+-> Search Outcome
+-> Search Memory
+-> Meta-Research advisory
+-> next Producer / Router / algorithm-policy context
+```
+
+Candidate Producers are role-specific proposal sources rather than one undivided
+proposal stream:
+
+- `mechanism_discovery`: LLM-oriented algorithmic mechanisms with novelty,
+  ablation parent, and failure mode.
+- `template_expansion`: deterministic expansion from wired high-potential
+  parents.
+- `repair_or_ablation`: one-axis repairs and structured ablations around
+  promising families.
+- `parameter_sanity`: bounded parameter-only checks around runnable parents.
+- `high_risk_spec`: design-review-only research specs.
+
+The Research Router scores proposals and runnable candidates by novelty,
+expected information value, parent credibility, executable readiness, duplicate
+signatures, blocker history, implementation complexity, and protocol-risk
+signals. Router decisions are written into trial memory and
+`results/research_routes.jsonl` for later replay.
+
+Search Memory is rebuilt from `results/agent_memory.jsonl` each round. It tracks
+family outcomes, producer outcomes, duplicate parameter/execution signatures,
+blocker signatures, promising families, and frozen families. The
+Meta-Research advisory is deliberately offline/advisory in this version: it can
+suggest producer downweights, memory transformations, and router updates, but it
+does not automatically promote a new strategy version into the runtime.
+
 The current runnable method line is general recommendation on ML-1M with
 RecBole, focused on BPR and LightGCN action-space exploration. Stronger RecBole
 models may be used as external baselines, but they are not editable search bases

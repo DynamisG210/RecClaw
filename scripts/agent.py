@@ -37,6 +37,17 @@ try:
     )
     from .collect_result import load_result_source
     from .compare_runs import compare_results
+    from .research_line import (
+        annotate_proposals,
+        build_producer_directives,
+        build_search_memory,
+        load_yaml as load_research_yaml,
+        meta_research_update,
+        order_proposals_by_route,
+        producer_directives_payload,
+        route_candidate_option,
+        route_proposals,
+    )
 except ImportError:
     from action_space import (
         allowed_action_types,
@@ -45,6 +56,17 @@ except ImportError:
     )
     from collect_result import load_result_source
     from compare_runs import compare_results
+    from research_line import (
+        annotate_proposals,
+        build_producer_directives,
+        build_search_memory,
+        load_yaml as load_research_yaml,
+        meta_research_update,
+        order_proposals_by_route,
+        producer_directives_payload,
+        route_candidate_option,
+        route_proposals,
+    )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = PROJECT_ROOT / "configs" / "candidate_registry.yaml"
@@ -56,6 +78,7 @@ NOTES_DIR = PROJECT_ROOT / "notes"
 PROPOSAL_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 PROPOSAL_SCHEMA_PATH = PROJECT_ROOT / "configs" / "candidate_proposal_schema.yaml"
 ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
+SEARCH_POLICY_PATH = PROJECT_ROOT / "configs" / "search_policy.yaml"
 CANDIDATE_TREE_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.json"
 CANDIDATE_TREE_MD_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.md"
 CANDIDATE_TREE_MMD_PATH = PROJECT_ROOT / "results" / "candidate_search_tree.mmd"
@@ -339,6 +362,9 @@ class AgentConfig:
     experience_summary_path: Path = EXPERIENCE_SUMMARY_PATH
     experience_summary_json_path: Path = EXPERIENCE_SUMMARY_JSON_PATH
     reflection_memory_path: Path = REFLECTION_MEMORY_PATH
+    search_policy_path: Path = SEARCH_POLICY_PATH
+    research_route_path: Path = Path(os.environ.get("RECCLAW_RESEARCH_ROUTES", str(PROJECT_ROOT / "results" / "research_routes.jsonl")))
+    research_line_enabled: bool = True
     refresh_experience_every: int = 0
     loop_mode: str = "mixed"
     enable_candidate_proposals: bool = True
@@ -428,6 +454,9 @@ class TrialRecord:
     parameter_signature: str = ""
     execution_signature: str = ""
     proposal_source: str = ""
+    producer_id: str = ""
+    producer_role: str = ""
+    route_decision: dict[str, Any] = field(default_factory=dict)
     is_baseline_improvement: bool = False
     is_history_best: bool = False
     seed_validation: dict[str, Any] = field(default_factory=dict)
@@ -507,6 +536,8 @@ class RecClawAgent:
         self.agent_state_summary: dict[str, Any] = {}
         self.candidate_health_issues: dict[str, list[str]] = {}
         self.quarantined_candidate_ids: set[str] = set()
+        self.search_policy: dict[str, Any] = {}
+        self.search_memory: dict[str, Any] = {}
         self.current_proposal_source: str = config.proposal_source
         self.skip_current_round: bool = False
         self.skip_proposal_generation: bool = False
@@ -528,6 +559,7 @@ class RecClawAgent:
         self.registry = payload.get("candidates", [])
         if not isinstance(self.registry, list):
             raise ValueError("registry candidates must be a list")
+        self.search_policy = load_research_yaml(self.config.search_policy_path)
 
         if self.config.memory_path.exists():
             lines = self.config.memory_path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -585,8 +617,21 @@ class RecClawAgent:
         self.quarantined_candidate_ids = {
             candidate_id for candidate_id, issues in self.candidate_health_issues.items() if issues
         }
+        self.search_policy = load_research_yaml(self.config.search_policy_path)
+        self._refresh_search_memory()
+        self._refresh_search_memory()
         self.agent_state_summary = self._build_agent_state_summary()
         self._write_agent_state_summary(self.agent_state_summary)
+
+    def _refresh_search_memory(self) -> None:
+        if not self.config.research_line_enabled:
+            self.search_memory = {}
+            return
+        self.search_memory = build_search_memory(
+            self.memory,
+            metric=self.config.metric,
+            anchor_families=list(self.config.anchor_families),
+        )
 
     def _reload_registry(self) -> None:
         payload = load_yaml(self.config.registry_path)
@@ -934,6 +979,9 @@ class RecClawAgent:
                 "consumes": proposal.get("consumes") or parent.get("consumes") or [],
                 "proposal_id": proposal_id,
                 "proposal_source": self.current_proposal_source,
+                "producer_id": proposal.get("producer_id", ""),
+                "producer_role": proposal.get("producer_role", ""),
+                "research_line": proposal.get("research_line", {}),
                 "parameter_signature": parameter_signature,
                 "execution_signature": execution_signature,
             }
@@ -1263,20 +1311,20 @@ class RecClawAgent:
                 if focused_options:
                     plan_options = focused_options
 
-        scored_options = sorted(
-            (
-                (
-                    self._candidate_plan_score(candidate)
-                    + (1.0 if str(candidate.get("candidate_id") or "") in pending_ids else 0.0)
-                    + self._algorithm_first_score_adjustment(candidate),
-                    candidate,
-                    params_override,
-                )
-                for candidate, params_override in plan_options
-            ),
-            key=lambda item: item[0],
-            reverse=True,
-        )
+        scored_options = []
+        for candidate, params_override in plan_options:
+            pending_bonus = 1.0 if str(candidate.get("candidate_id") or "") in pending_ids else 0.0
+            algorithm_bonus = self._algorithm_first_score_adjustment(candidate)
+            route = route_candidate_option(
+                candidate,
+                base_score=self._candidate_plan_score(candidate),
+                search_memory=self.search_memory,
+                pending_bonus=pending_bonus,
+                algorithm_bonus=algorithm_bonus,
+            )
+            candidate["route_decision"] = route.as_dict()
+            scored_options.append((route.score, candidate, params_override))
+        scored_options.sort(key=lambda item: item[0], reverse=True)
         used_execution_signatures = self._used_execution_signatures()
         fallback_choice: tuple[dict[str, Any], dict[str, Any]] | None = None
         chosen, params = scored_options[0][1], scored_options[0][2] or {}
@@ -1308,6 +1356,26 @@ class RecClawAgent:
         need_context = not self.history_by_candidate.get(str(chosen.get("candidate_id") or ""))
         context = self._load_optional_context(chosen, force=need_context)
         return chosen, params, context
+
+    def _write_research_route(self, round_id: int, candidate: dict[str, Any], params: dict[str, Any]) -> None:
+        if not self.config.research_line_enabled:
+            return
+        try:
+            self.config.research_route_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "round_id": round_id,
+                "candidate_id": candidate.get("candidate_id", ""),
+                "parent_candidate_id": candidate.get("parent_candidate_id", ""),
+                "producer_id": candidate.get("producer_id", ""),
+                "producer_role": candidate.get("producer_role", ""),
+                "params": params,
+                "route_decision": candidate.get("route_decision", {}),
+            }
+            with self.config.research_route_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n")
+        except OSError as exc:
+            print(f"[ResearchLine] route trace write skipped: {exc}", file=sys.stderr)
 
     # ===== Act =====
     def act(self, candidate: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
@@ -1858,6 +1926,17 @@ class RecClawAgent:
         pending_implemented = sorted(self._pending_implemented_candidate_ids())
         best_metric = self._best_trial_metric()
         plateau_state = self._plateau_state()
+        search_memory_summary = {
+            "trial_count": self.search_memory.get("trial_count", 0),
+            "best_metric": self.search_memory.get("best_metric"),
+            "best_family": self.search_memory.get("best_family", ""),
+            "promising_families": self.search_memory.get("promising_families", [])[:10],
+            "frozen_families": self.search_memory.get("frozen_families", [])[:10],
+            "duplicate_signatures": self.search_memory.get("duplicate_signatures", [])[:20],
+            "blocker_counts": dict(list((self.search_memory.get("blocker_counts") or {}).items())[:10]),
+            "producer_stats": list((self.search_memory.get("producer_stats") or {}).values())[:10],
+        }
+        meta_update = meta_research_update(self.search_memory) if self.config.research_line_enabled else {}
         post_validation_followup = self._post_validation_followup_state()
         if focused_context and post_validation_followup.get("needs_structured_followup"):
             focused_context["guidance"] = post_validation_followup["guidance"]
@@ -1868,6 +1947,11 @@ class RecClawAgent:
             "best_metric_so_far": round(best_metric, 6) if best_metric is not None else None,
             "experiment_directive": self._experiment_directive_context(),
             "anti_plateau": plateau_state,
+            "research_line": {
+                "enabled": bool(self.config.research_line_enabled),
+                "search_memory": search_memory_summary,
+                "meta_research_advisory": meta_update,
+            },
             "trial_count": len(trials),
             "decision_counts": decision_counts,
             "validated_best": {
@@ -2076,6 +2160,12 @@ class RecClawAgent:
         memory = self.memory[-tail_limit:] if tail_limit > 0 else []
         results_tail = self.results_rows[-50:]
         pending_implemented = sorted(self._pending_implemented_candidate_ids())
+        producer_directives = build_producer_directives(
+            search_policy=self.search_policy,
+            search_memory=self.search_memory,
+            proposal_count=self.config.proposal_count,
+            mode=self.config.proposal_mode,
+        )
         return {
             "task": "Generate RecClaw candidate proposals for algorithm discovery.",
             "loop_mode": self.config.loop_mode,
@@ -2094,6 +2184,7 @@ class RecClawAgent:
             "experiment_directive": self._experiment_directive_context(),
             "pending_implemented_count": len(pending_implemented),
             "pending_implemented_candidates": pending_implemented[:50],
+            "candidate_producers": producer_directives_payload(producer_directives),
             "action_space": ACTION_SPACE,
             "parameter_space": self.config.parameter_space,
             "schema": schema,
@@ -2115,6 +2206,7 @@ class RecClawAgent:
                 "If experiment_directive.enabled is true, follow experiment_directive.text as the highest-priority user steering instruction unless it conflicts with these hard constraints.",
                 "For mixed mode, include both runnable tuning proposals and code_required/spec_only exploration when useful.",
                 "For algorithm_first mode, prioritize algorithmic mechanisms, mechanism compositions, and code_required local extensions; parameter-only proposals are only sanity checks or local refinement after a strong algorithm signal.",
+                "Treat candidate_producers as separate proposal agents. Fill producer_id and producer_role when possible; otherwise RecClaw will annotate them after generation.",
                 "Runnable tuning proposals must use parameter_overrides and an existing wired parent candidate.",
                 "Runnable tuning parameter_overrides must use values from parameter_space.",
                 "Every proposal must include mechanism, mechanism_composition, novelty_claim, expected_failure_mode, ablation_parent, and implementation_complexity.",
@@ -2609,6 +2701,19 @@ class RecClawAgent:
             response_schema=PROPOSAL_RESPONSE_SCHEMA,
         )
         proposals = self._parse_llm_proposals(content)
+        directives = build_producer_directives(
+            search_policy=self.search_policy,
+            search_memory=self.search_memory,
+            proposal_count=self.config.proposal_count,
+            mode=self.config.proposal_mode,
+        )
+        proposals = annotate_proposals(proposals, directives=directives, default_source="llm")
+        proposals = order_proposals_by_route(
+            proposals,
+            search_memory=self.search_memory,
+            search_policy=self.search_policy,
+            limit=max(1, self.config.proposal_count),
+        )
         self.config.proposal_path.parent.mkdir(parents=True, exist_ok=True)
         with self.config.proposal_path.open("w", encoding="utf-8") as handle:
             for proposal in proposals:
@@ -2836,6 +2941,7 @@ class RecClawAgent:
         with self.config.memory_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, ensure_ascii=True) + "\n")
         self.memory.append(event)
+        self._refresh_search_memory()
         self.agent_state_summary = self._build_agent_state_summary()
         self._write_agent_state_summary(self.agent_state_summary)
 
@@ -2995,11 +3101,22 @@ class RecClawAgent:
                 str(self.config.memory_path),
                 "--memory-limit",
                 str(max(0, self.config.memory_read_limit)),
+                "--search-policy",
+                str(self.config.search_policy_path),
             ]
         )
 
     def record_proposal_routes(self, round_id: int) -> None:
         by_id = {str(item.get("candidate_id") or ""): item for item in self.candidate_proposals}
+        route_by_id = {
+            item.candidate_id: item.as_dict()
+            for item in route_proposals(
+                self.candidate_proposals,
+                search_memory=self.search_memory,
+                search_policy=self.search_policy,
+                validation_results=self.proposal_validation_report.get("results", []),
+            )
+        }
         for row in self.proposal_validation_report.get("results", []):
             if not isinstance(row, dict):
                 continue
@@ -3033,6 +3150,9 @@ class RecClawAgent:
                     "implementation_complexity": proposal.get("implementation_complexity", ""),
                     "parameter_signature": row.get("parameter_signature", ""),
                     "proposal_source": self.current_proposal_source,
+                    "producer_id": proposal.get("producer_id", ""),
+                    "producer_role": proposal.get("producer_role", ""),
+                    "route_decision": route_by_id.get(proposal_id, {}),
                     "errors": row.get("errors", []),
                     "review_reasons": row.get("review_reasons", []),
                     "next_action": row.get("next_action", ""),
@@ -3438,12 +3558,19 @@ class RecClawAgent:
             payload["execution_signature"] = record.execution_signature
         if record.proposal_source:
             payload["proposal_source"] = record.proposal_source
+        if record.producer_id:
+            payload["producer_id"] = record.producer_id
+        if record.producer_role:
+            payload["producer_role"] = record.producer_role
+        if record.route_decision:
+            payload["route_decision"] = record.route_decision
         if record.seed_validation:
             payload["seed_validation"] = record.seed_validation
         with self.config.memory_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
         self.memory.append(payload)
         self.history_by_candidate.setdefault(record.candidate_id, []).append(payload)
+        self._refresh_search_memory()
         self.agent_state_summary = self._build_agent_state_summary()
         self._write_agent_state_summary(self.agent_state_summary)
 
@@ -3473,6 +3600,7 @@ class RecClawAgent:
                 self.refresh_candidate_proposals(round_id)
                 candidate, params, context = self.plan()
                 candidate_id = str(candidate.get("candidate_id"))
+                self._write_research_route(round_id, candidate, params)
                 self.scheduled_candidate_ids.add(candidate_id)
                 parameter_signature = str(candidate.get("parameter_signature") or "")
                 if parameter_signature:
@@ -3536,6 +3664,9 @@ class RecClawAgent:
                     parameter_signature=parameter_signature,
                     execution_signature=execution_signature,
                     proposal_source=str(candidate.get("proposal_source") or ""),
+                    producer_id=str(candidate.get("producer_id") or ""),
+                    producer_role=str(candidate.get("producer_role") or ""),
+                    route_decision=candidate.get("route_decision") if isinstance(candidate.get("route_decision"), dict) else {},
                     is_baseline_improvement=is_baseline_improvement,
                     is_history_best=is_history_best,
                     seed_validation=seed_validation,
@@ -3683,6 +3814,13 @@ def main() -> int:
         help="Output JSON path for experience summary",
     )
     parser.add_argument("--reflection-memory-path", default=str(REFLECTION_MEMORY_PATH), help="Append-only reflection memory JSONL path")
+    parser.add_argument("--search-policy-path", default=str(SEARCH_POLICY_PATH), help="Runtime research-line search policy path")
+    parser.add_argument(
+        "--research-route-path",
+        default=os.environ.get("RECCLAW_RESEARCH_ROUTES", str(PROJECT_ROOT / "results" / "research_routes.jsonl")),
+        help="Append-only JSONL trace of Research Router selections",
+    )
+    parser.add_argument("--disable-research-line", action="store_true", help="Disable explicit producer/router research line")
     parser.add_argument("--recent-schedule-penalty", type=float, default=0.15, help="Penalty if candidate was scheduled in previous round")
     parser.add_argument(
         "--enable-candidate-proposals",
@@ -3893,6 +4031,9 @@ def main() -> int:
         experience_summary_path=Path(args.experience_summary_path),
         experience_summary_json_path=Path(args.experience_summary_json_path),
         reflection_memory_path=Path(args.reflection_memory_path),
+        search_policy_path=Path(args.search_policy_path),
+        research_route_path=Path(args.research_route_path),
+        research_line_enabled=not bool(args.disable_research_line),
         refresh_experience_every=max(0, args.refresh_experience_every),
         recent_schedule_penalty=max(0.0, args.recent_schedule_penalty),
         enable_candidate_proposals=enable_candidate_proposals,

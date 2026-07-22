@@ -29,11 +29,25 @@ try:
         parameter_groups_from_action_space,
         parameter_space_from_action_space,
     )
+    from .research_line import (
+        annotate_proposals,
+        build_producer_directives,
+        build_search_memory,
+        load_yaml as load_policy_yaml,
+        order_proposals_by_route,
+    )
 except ImportError:
     from action_space import (
         load_action_space,
         parameter_groups_from_action_space,
         parameter_space_from_action_space,
+    )
+    from research_line import (
+        annotate_proposals,
+        build_producer_directives,
+        build_search_memory,
+        load_yaml as load_policy_yaml,
+        order_proposals_by_route,
     )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -43,6 +57,7 @@ EXPERIMENT_LOG_PATH = PROJECT_ROOT / "notes" / "experiment_log.md"
 MEMORY_PATH = PROJECT_ROOT / "results" / "agent_memory.jsonl"
 OUTPUT_PATH = PROJECT_ROOT / "results" / "candidate_proposals.jsonl"
 ACTION_SPACE_PATH = PROJECT_ROOT / "configs" / "action_space.yaml"
+SEARCH_POLICY_PATH = PROJECT_ROOT / "configs" / "search_policy.yaml"
 
 DEFAULT_VALIDATION_SEEDS = [2026, 2027, 2028]
 ACTION_SPACE = load_action_space(ACTION_SPACE_PATH)
@@ -906,6 +921,7 @@ def generate_proposals(
     memory_limit: int,
     mode: str,
     proposal_history_path: Path | None = None,
+    search_policy_path: Path = SEARCH_POLICY_PATH,
 ) -> list[dict[str, Any]]:
     registry = load_yaml(registry_path).get("candidates", [])
     if not isinstance(registry, list):
@@ -914,9 +930,21 @@ def generate_proposals(
     memory = load_jsonl(memory_path, memory_limit)
     proposal_history = load_jsonl(proposal_history_path, 0) if proposal_history_path else []
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    search_policy = load_policy_yaml(search_policy_path)
+    anchor_families = []
+    algorithm_first = search_policy.get("algorithm_first") if isinstance(search_policy.get("algorithm_first"), dict) else {}
+    if isinstance(algorithm_first.get("anchor_families"), list):
+        anchor_families = [str(item) for item in algorithm_first.get("anchor_families") if str(item)]
+    search_memory = build_search_memory(memory, anchor_families=anchor_families)
+    directives = build_producer_directives(
+        search_policy=search_policy,
+        search_memory=search_memory,
+        proposal_count=count,
+        mode=mode,
+    )
 
     if mode == "conservative":
-        return generate_tuning_proposals(
+        proposals = generate_tuning_proposals(
             registry=registry,
             experiment_log=experiment_log,
             memory=memory,
@@ -924,9 +952,23 @@ def generate_proposals(
             stamp=stamp,
             proposal_history=proposal_history,
         )
+        proposals = annotate_proposals(proposals, directives=directives, default_source="heuristic")
+        return order_proposals_by_route(
+            proposals,
+            search_memory=search_memory,
+            search_policy=search_policy,
+            limit=count,
+        )
 
     if mode == "explore":
-        return generate_algorithmic_proposals(registry=registry, count=count, stamp=stamp)
+        proposals = generate_algorithmic_proposals(registry=registry, count=count, stamp=stamp)
+        proposals = annotate_proposals(proposals, directives=directives, default_source="heuristic")
+        return order_proposals_by_route(
+            proposals,
+            search_memory=search_memory,
+            search_policy=search_policy,
+            limit=count,
+        )
 
     if mode == "algorithm_first":
         sanity_tuning_count = 1 if count >= 5 else 0
@@ -958,7 +1000,13 @@ def generate_proposals(
             unique.append(proposal)
             if len(unique) >= count:
                 break
-        return unique[:count]
+        unique = annotate_proposals(unique, directives=directives, default_source="heuristic")
+        return order_proposals_by_route(
+            unique,
+            search_memory=search_memory,
+            search_policy=search_policy,
+            limit=count,
+        )
 
     tuning_count = max(1, count // 2)
     algorithmic_count = max(0, count - tuning_count)
@@ -975,7 +1023,13 @@ def generate_proposals(
         more = generate_algorithmic_proposals(registry=registry, count=count - len(proposals), stamp=stamp)
         used_ids = {item["candidate_id"] for item in proposals}
         proposals.extend(item for item in more if item["candidate_id"] not in used_ids)
-    return proposals[:count]
+    proposals = annotate_proposals(proposals, directives=directives, default_source="heuristic")
+    return order_proposals_by_route(
+        proposals,
+        search_memory=search_memory,
+        search_policy=search_policy,
+        limit=count,
+    )
 
 
 def write_jsonl(path: Path, proposals: list[dict[str, Any]], append: bool) -> None:
@@ -1002,6 +1056,7 @@ def main() -> int:
     )
     parser.add_argument("--memory-limit", type=int, default=2000, help="Read only latest N memory rows; 0 means all")
     parser.add_argument("--append", action="store_true", help="Append to output instead of overwriting it")
+    parser.add_argument("--search-policy", default=str(SEARCH_POLICY_PATH), help="Path to search_policy.yaml")
     args = parser.parse_args()
 
     schema = load_yaml(Path(args.schema))
@@ -1016,6 +1071,7 @@ def main() -> int:
         memory_limit=max(0, args.memory_limit),
         mode=args.mode,
         proposal_history_path=Path(args.output),
+        search_policy_path=Path(args.search_policy),
     )
     write_jsonl(Path(args.output), proposals, args.append)
     print(

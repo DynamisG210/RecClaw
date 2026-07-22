@@ -178,6 +178,14 @@ def patch_recbole_model_lookup(local_models: dict[str, Any]) -> None:
 def patch_recbole_runtime_compat() -> None:
     import copy
     import recbole.evaluator.collector as collector_module
+    from scipy.sparse import dok_matrix
+
+    def dok_update(self: Any, values: Any) -> None:
+        iterator = values.items() if hasattr(values, "items") else values
+        for key, value in iterator:
+            self[key] = value
+
+    dok_matrix.update = dok_update  # type: ignore[method-assign]
 
     def get_data_struct(self: Any) -> Any:
         for key, value in list(self.data_struct._data_dict.items()):
@@ -291,7 +299,7 @@ def install_optional_dependency_stubs() -> None:
 
     try:
         __import__("thop")
-    except ModuleNotFoundError:
+    except Exception:
         thop_module = types.ModuleType("thop")
         profile_module = types.ModuleType("thop.profile")
         vision_module = types.ModuleType("thop.vision")
@@ -320,9 +328,10 @@ def run_recbole_in_process(
     log_path: Path,
     local_model_entrypoint: str | None,
     checkpoint_dir: Path,
-) -> int:
+    ) -> int:
     sys.path.insert(0, str(PROJECT_ROOT))
     sys.path.insert(0, str(recbole_root))
+    import torch  # noqa: F401
     import numpy as np
 
     if not hasattr(np, "float_"):
