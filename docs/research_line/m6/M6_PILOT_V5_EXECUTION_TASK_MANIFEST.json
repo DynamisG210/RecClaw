@@ -6,15 +6,15 @@
     "m6e_resume_command_sha256": "3ce6bf8199c903927d159f85aa5cbe68dc6e28466001abed33bf26d3120542e8",
     "scope": "exactly one fresh Pilot V5 after M6E PASS; resume M7/M8 only on Pilot GO and independent P0=0/P1=0"
   },
-  "content_digest": "954e3396e2adbabbcae04324ff5c86f757092cbf797682bf12afb30b92c5ca99",
+  "content_digest": "294cdf799e6c503ea21417650e1e2598e21deb320d92d47b67ffea0f7b2c4b42",
   "contract": {
-    "content_digest": "3070b44e66f28586e2f40857eb456c009c9c5da5fc8bed04ed6cc4a3de3ea515",
+    "content_digest": "b953f056305014bba05858bcafcc88cdd7483d4b187b3aa90f55cda151017f84",
     "path": "docs/research_line/m6/DEVELOPMENT_PILOT_CONTRACT_V5.json",
     "record_schema": "recclaw.development-pilot-contract.v3",
-    "sha256": "eadb160fc35f884307c133f02c5699fcc105144b942e95e18dc707d10d148326",
-    "source_base_commit": "c6431eba7f2003d3a630e40511902039431bbfd7",
-    "source_base_tree": "acda815d3c098d7ea9d25066bfa14542aa441bde",
-    "source_projection_digest": "7bb5abb9f27164f6496ccf2d42bfc99064c3b1b664e60677d4c5c71e000efe6c",
+    "sha256": "02709a3d8a1217201f32a2f66ec4599cec0f44e3ea3917fbe6bf213230863f7e",
+    "source_base_commit": "cd93c6db015450e351aa587ba46df8a854c1a954",
+    "source_base_tree": "457caab324919046195eeef54e42681f99468433",
+    "source_projection_digest": "3cc983d91b65c5a988b47949018faecb6b8304812a7f68e111da9aad663fba39",
     "status": "FROZEN_PRE_OUTCOME"
   },
   "evidence_class": "DEVELOPMENT_ONLY",
@@ -73,6 +73,11 @@
       "P2": 1,
       "sha256": "0fb306da466b45c9f453419ed8531af832edd4a5659d7707bc7ffdfd0ac9b798"
     },
+    "model_catalog_projection": {
+      "mode": "FROZEN_SELECTED_MODEL_CATALOG_PROJECTION_V1",
+      "path": "src/recclaw_core/experiments/helix_abc_v1/resources/pilot_v5_model_catalog_snapshot.json",
+      "sha256": "c00da1e1bc082c2fccb3c9eb832079ab3bbffae2976db74c467f76f2843b1c1c"
+    },
     "output_root_absent_at_freeze": true,
     "source_projection": "PASS"
   },
@@ -96,7 +101,13 @@
     "execution_record_sha256": "2e63264d006c315e272387eb67049f3c656749847ff971bc6e50b2aa16004b64",
     "verdict": "PASS"
   },
-  "record_schema": "recclaw.m6-pilot-v5-execution-task-manifest.v1",
+  "preflight_repair_lineage": {
+    "attempt_consumed": false,
+    "failure_audit_path": "docs/research_line/m6/M6_PILOT_V5_PRE_OUTCOME_AUDIT_V1_FAILURE.md",
+    "failure_audit_sha256": "f214573ab5c2074ff5c570a43200c3efde3d434d437ac4865da121dacca621fc",
+    "repair": "replace mutable global model-cache identity with package-owned selected-model catalog projection"
+  },
+  "record_schema": "recclaw.m6-pilot-v5-execution-task-manifest.v2",
   "run_command": "PYTHONPATH=src /root/projects/RecClaw_m6_training_runtime_v2/bin/python scripts/run_m6_pilot_v5.py --contract docs/research_line/m6/DEVELOPMENT_PILOT_CONTRACT_V5.json --output-root results/research_line/m6_pilot_9205_v5",
   "single_attempt_policy": {
     "authorized_attempts": 1,
