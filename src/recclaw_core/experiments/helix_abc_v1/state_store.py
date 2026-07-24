@@ -114,6 +114,22 @@ class ClaimExecutionCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class MarkExecutionStartedCommand:
+    round_id: str
+    claim_id: str
+    receipt_artifact_id: str
+    idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class MarkExecutionFinishedCommand:
+    round_id: str
+    claim_id: str
+    raw_output_artifact_id: str
+    idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
 class RegisterArtifactCommand:
     round_id: str | None
     artifact_type: str
@@ -745,6 +761,160 @@ class SingleWriterExperimentStoreV1:
                 payload=payload,
                 idempotency_key=f"{command.idempotency_key}:event:claimed",
             )
+            return self.get_execution_claim(command.round_id, cursor=cursor)
+
+    def mark_execution_started(
+        self, command: MarkExecutionStartedCommand
+    ) -> dict[str, Any]:
+        """Bind the committed claim to an append-only start-receipt artifact."""
+
+        with self._transaction() as cursor:
+            claim = cursor.execute(
+                "SELECT * FROM execution_claims WHERE round_id = ?",
+                (command.round_id,),
+            ).fetchone()
+            if claim is None or claim["claim_id"] != command.claim_id:
+                raise InvariantViolation("execution start requires the exact committed claim")
+            artifact = cursor.execute(
+                "SELECT * FROM artifact_index WHERE artifact_id = ?",
+                (command.receipt_artifact_id,),
+            ).fetchone()
+            if (
+                artifact is None
+                or artifact["round_id"] != command.round_id
+                or artifact["artifact_type"] != "EXECUTION_START_RECEIPT_V1"
+            ):
+                raise InvariantViolation("execution start requires its indexed receipt")
+            receipt_path = self._artifact_target(str(artifact["relative_path"]))
+            try:
+                receipt = json.loads(receipt_path.read_bytes())
+            except (OSError, json.JSONDecodeError) as exc:
+                raise InvariantViolation("execution start receipt is unreadable") from exc
+            expected_receipt_keys = {
+                "binding_digest",
+                "claim_id",
+                "ordinary_launch_attempt_ordinal",
+                "permit_digest",
+                "round_id",
+                "run_id",
+                "runner_abi",
+                "start_status",
+            }
+            if (
+                not isinstance(receipt, dict)
+                or set(receipt) != expected_receipt_keys
+                or receipt["binding_digest"] != claim["binding_digest"]
+                or receipt["claim_id"] != claim["claim_id"]
+                or receipt["permit_digest"] != claim["permit_digest"]
+                or receipt["round_id"] != command.round_id
+                or receipt["ordinary_launch_attempt_ordinal"] != 1
+                or receipt["start_status"] != "STARTED"
+                or receipt["runner_abi"] != "recclaw.fake-non-training-runner.v1"
+            ):
+                raise InvariantViolation("execution start receipt does not bind the claim")
+            if claim["claim_state"] in {"STARTED", "FINISHED"}:
+                debit = cursor.execute(
+                    "SELECT idempotency_key FROM resource_ledger "
+                    "WHERE round_id = ? AND dimension = 'ORDINARY_EXECUTION'",
+                    (command.round_id,),
+                ).fetchall()
+                if len(debit) != 1 or debit[0]["idempotency_key"] != command.idempotency_key:
+                    raise InvariantViolation("started execution is missing its debit")
+                return self.get_execution_claim(command.round_id, cursor=cursor)
+            if claim["claim_state"] != "CLAIMED":
+                raise InvariantViolation("execution claim cannot transition to STARTED")
+            self._append_resource(
+                cursor,
+                round_id=command.round_id,
+                debit=ResourceDebitV1("ORDINARY_EXECUTION", 1),
+                idempotency_key=command.idempotency_key,
+            )
+            cursor.execute(
+                """
+                UPDATE execution_claims
+                SET claim_state = 'STARTED', execution_debited = 1
+                WHERE round_id = ? AND claim_id = ? AND claim_state = 'CLAIMED'
+                """,
+                (command.round_id, command.claim_id),
+            )
+            if cursor.rowcount != 1:
+                raise InvariantViolation("execution start lost its claim transition")
+            return self.get_execution_claim(command.round_id, cursor=cursor)
+
+    def mark_execution_finished(
+        self, command: MarkExecutionFinishedCommand
+    ) -> dict[str, Any]:
+        """Close one started fake execution against its raw-output artifact."""
+
+        with self._transaction() as cursor:
+            claim = cursor.execute(
+                "SELECT * FROM execution_claims WHERE round_id = ?",
+                (command.round_id,),
+            ).fetchone()
+            if claim is None or claim["claim_id"] != command.claim_id:
+                raise InvariantViolation("execution finish requires the exact committed claim")
+            artifacts = cursor.execute(
+                "SELECT * FROM artifact_index "
+                "WHERE round_id = ? AND artifact_type = 'RAW_RUN_OUTPUT_V1'",
+                (command.round_id,),
+            ).fetchall()
+            artifact = artifacts[0] if len(artifacts) == 1 else None
+            if (
+                artifact is None
+                or artifact["artifact_id"] != command.raw_output_artifact_id
+                or artifact["round_id"] != command.round_id
+                or artifact["artifact_type"] != "RAW_RUN_OUTPUT_V1"
+            ):
+                raise InvariantViolation("execution finish requires its indexed raw output")
+            raw_path = self._artifact_target(str(artifact["relative_path"]))
+            try:
+                raw_output = json.loads(raw_path.read_bytes())
+            except (OSError, json.JSONDecodeError) as exc:
+                raise InvariantViolation("raw execution output is unreadable") from exc
+            expected_raw_keys = {
+                "binding_digest",
+                "candidate_id",
+                "checks",
+                "evaluation_purpose",
+                "exit_status",
+                "interface_loss",
+                "mechanism_axes_exercised",
+                "normalized_metrics",
+                "optimizer_steps",
+                "permit_digest",
+                "round_id",
+                "run_id",
+                "runner_abi",
+                "training_backend_started",
+            }
+            if (
+                not isinstance(raw_output, dict)
+                or set(raw_output) != expected_raw_keys
+                or raw_output["binding_digest"] != claim["binding_digest"]
+                or raw_output["permit_digest"] != claim["permit_digest"]
+                or raw_output["round_id"] != command.round_id
+                or raw_output["runner_abi"] != "recclaw.fake-non-training-runner.v1"
+                or raw_output["evaluation_purpose"]
+                != "NON_OUTCOME_BEARING_INTERFACE_SMOKE"
+                or raw_output["normalized_metrics"] != {}
+                or raw_output["optimizer_steps"] != 0
+                or raw_output["training_backend_started"] is not False
+            ):
+                raise InvariantViolation("raw execution output does not bind the claim")
+            if claim["claim_state"] == "FINISHED":
+                return self.get_execution_claim(command.round_id, cursor=cursor)
+            if claim["claim_state"] != "STARTED" or claim["execution_debited"] != 1:
+                raise InvariantViolation("only a started, debited execution may finish")
+            cursor.execute(
+                """
+                UPDATE execution_claims
+                SET claim_state = 'FINISHED'
+                WHERE round_id = ? AND claim_id = ? AND claim_state = 'STARTED'
+                """,
+                (command.round_id, command.claim_id),
+            )
+            if cursor.rowcount != 1:
+                raise InvariantViolation("execution finish lost its claim transition")
             return self.get_execution_claim(command.round_id, cursor=cursor)
 
     def _artifact_target(self, relative_path: str) -> Path:

@@ -31,7 +31,18 @@ class M0BoundaryTests(unittest.TestCase):
             "subprocess",
             "urllib",
         }
-        for path in sorted(PACKAGE.glob("*.py")):
+        m0_modules = {
+            "__init__.py",
+            "canonical.py",
+            "contracts.py",
+            "controllers.py",
+            "evidence.py",
+            "fusion.py",
+            "state_store.py",
+        }
+        for path in sorted(
+            item for item in PACKAGE.glob("*.py") if item.name in m0_modules
+        ):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             imports: set[str] = set()
             for node in ast.walk(tree):
@@ -81,12 +92,11 @@ class M0BoundaryTests(unittest.TestCase):
         self.assertNotIn("custody", sql.lower())
         self.assertNotIn("open_claim", sql.lower())
 
-    def test_m0_package_contains_no_future_runtime_files(self) -> None:
+    def test_m0_package_contains_no_post_m1_runtime_files(self) -> None:
         names = {path.name for path in PACKAGE.rglob("*") if path.is_file()}
         for forbidden in (
             "runner.py",
             "broker.py",
-            "materializer.py",
             "guard_adapter.py",
             "router.py",
             "meta.py",

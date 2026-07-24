@@ -1,0 +1,71 @@
+{
+  "decision_domain": [
+    "COMMON_DENY",
+    "COMMON_INCONCLUSIVE",
+    "COMMON_PASS"
+  ],
+  "forbidden_field_tokens": [
+    "admissible",
+    "claimceiling",
+    "evidenceadmission",
+    "evidenceuse",
+    "metaupdate",
+    "producerquota",
+    "producerreward",
+    "protocolbranch",
+    "routerscore"
+  ],
+  "phase_schedule": [
+    "plan_check",
+    "pre_execute",
+    "close_result"
+  ],
+  "policy_id": "CommonExecutionGuardV1",
+  "policy_version": "1.0.0",
+  "reason_codes": [
+    "BINDING_IDENTITY_MISMATCH",
+    "BL_COMPILE_FAILED",
+    "BUDGET_DENIED",
+    "CAPABILITY_UNSUPPORTED",
+    "FROZEN_PROTOCOL_CONTRACT_MISMATCH",
+    "IMPORT_FAILED",
+    "INTERNAL_ERROR",
+    "MATERIALIZATION_INVALID",
+    "PATH_OUT_OF_SCOPE",
+    "RESULT_CLOSURE_FAILED",
+    "RUNNER_IDENTITY_MISMATCH",
+    "SCHEMA_INVALID",
+    "SMOKE_FAILED",
+    "TRUST_CLASSIFICATION_DENIED"
+  ],
+  "subcheck_order": {
+    "close_result": [
+      "PERMIT",
+      "CLAIM",
+      "START_RECEIPT",
+      "RUNNER_IDENTITY",
+      "RAW_OUTPUT",
+      "FINITE_SERIALIZATION",
+      "BUDGET_CLOSURE"
+    ],
+    "plan_check": [
+      "SCHEMA",
+      "BL_COMPILE",
+      "PROTOCOL",
+      "CAPABILITY",
+      "PATH_PLAN",
+      "BUDGET",
+      "RUNNER_ABI"
+    ],
+    "pre_execute": [
+      "MATERIALIZATION",
+      "PATH_CLOSURE",
+      "IMPORT_ATTESTATION",
+      "NON_TRAINING_SMOKE_ATTESTATION",
+      "TRUST_CLASSIFICATION",
+      "BINDING_V2",
+      "BUDGET",
+      "DEVELOPMENT_EXECUTION_GATE"
+    ]
+  }
+}

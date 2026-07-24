@@ -1,0 +1,99 @@
+{
+  "catalog_digest": "76ed450476c61c2e21e7082c1c3daa61be7f6f984aa4ae6093379da07d8e7e1b",
+  "common_guard_policy_digest": "732f03181cfbeb6ce2abb2c58b0a8eb78f2fbd7d2a45966faa663c12cd09fbf0",
+  "executable_profile_digest": "2344a77980678093e7c768e4782a5cee6eafb82b2ffe770e247dab3d44a1ddf9",
+  "phase_schedule": [
+    "plan_check",
+    "pre_execute",
+    "close_result"
+  ],
+  "protocol_digest": "fafef0062edec0c54ef755fbe61251b2d892f428a2d255b5c3afd172dc36c95c",
+  "reason_registry": [
+    "BINDING_IDENTITY_MISMATCH",
+    "BL_COMPILE_FAILED",
+    "BUDGET_DENIED",
+    "CAPABILITY_UNSUPPORTED",
+    "FROZEN_PROTOCOL_CONTRACT_MISMATCH",
+    "IMPORT_FAILED",
+    "INTERNAL_ERROR",
+    "MATERIALIZATION_INVALID",
+    "PATH_OUT_OF_SCOPE",
+    "RESULT_CLOSURE_FAILED",
+    "RUNNER_IDENTITY_MISMATCH",
+    "SCHEMA_INVALID",
+    "SMOKE_FAILED",
+    "TRUST_CLASSIFICATION_DENIED"
+  ],
+  "runner_abi": "recclaw.fake-non-training-runner.v1",
+  "runtime_release_digest": "0a616ee205f494a161e7b10424181f37247347de8c5d714328dfa2f3f1ffb41d",
+  "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
+  "search_space_id": "BL_ICF_MECHANISM_SPACE_V1",
+  "source_manifest": [
+    {
+      "path": "runtime_contracts.py",
+      "sha256": "0413367679b5a1d8e79825b09e8d5991503e32b6b06d5543565680626ebb5b30",
+      "size_bytes": 12165
+    },
+    {
+      "path": "runtime_release.py",
+      "sha256": "c5f13f1cb2f4d153f24378e625a2f6d6cb99317c90bd21318221524cf10821a8",
+      "size_bytes": 10012
+    },
+    {
+      "path": "runtime_handlers.py",
+      "sha256": "ae579beffc65b6df2cb88e7fbafb131ce1655f517654505e375083ec78c6343f",
+      "size_bytes": 5869
+    },
+    {
+      "path": "materialization.py",
+      "sha256": "41cf968c3f681ca9b779ce843af71b56708d7b2023083ce1355458e99959fd64",
+      "size_bytes": 25275
+    },
+    {
+      "path": "common_execution_guard.py",
+      "sha256": "fb1231ff5cfed49aebd3d7f04ef647b1d301ac40267dd58c719705efd0130e5a",
+      "size_bytes": 18790
+    },
+    {
+      "path": "fake_runner.py",
+      "sha256": "8e85a6943bea254724430891ab533632786c36fe3f9c9dc9a44c61ef6e019602",
+      "size_bytes": 7310
+    },
+    {
+      "path": "state_store.py",
+      "sha256": "701977c8badf9600f997c595eb3140c47d01f74d4dd389935a2913074438f36a",
+      "size_bytes": 63437
+    }
+  ],
+  "source_manifest_digest": "038ebf3186ff0c67d7ebe7f5d799ea2d0f4aa6ee141f6a42d9767a05fb01a5fd",
+  "subcheck_order": {
+    "close_result": [
+      "PERMIT",
+      "CLAIM",
+      "START_RECEIPT",
+      "RUNNER_IDENTITY",
+      "RAW_OUTPUT",
+      "FINITE_SERIALIZATION",
+      "BUDGET_CLOSURE"
+    ],
+    "plan_check": [
+      "SCHEMA",
+      "BL_COMPILE",
+      "PROTOCOL",
+      "CAPABILITY",
+      "PATH_PLAN",
+      "BUDGET",
+      "RUNNER_ABI"
+    ],
+    "pre_execute": [
+      "MATERIALIZATION",
+      "PATH_CLOSURE",
+      "IMPORT_ATTESTATION",
+      "NON_TRAINING_SMOKE_ATTESTATION",
+      "TRUST_CLASSIFICATION",
+      "BINDING_V2",
+      "BUDGET",
+      "DEVELOPMENT_EXECUTION_GATE"
+    ]
+  }
+}

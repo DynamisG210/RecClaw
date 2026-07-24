@@ -1,0 +1,134 @@
+{
+  "architecture_templates": [
+    {
+      "template_id": "CONSTRAINT_RANKER_V1",
+      "trigger_primitives": [
+        "encoder.fixed_point_constraint",
+        "efficiency.remove_message_passing"
+      ]
+    },
+    {
+      "template_id": "CONTRASTIVE_GRAPH_V1",
+      "trigger_primitives": [
+        "ssl.objective.info_nce"
+      ]
+    },
+    {
+      "template_id": "GRAPH_OPERATOR_V1",
+      "trigger_primitives": [
+        "encoder.explicit_message_passing"
+      ]
+    },
+    {
+      "template_id": "LATENT_FACTOR_V1",
+      "trigger_primitives": [
+        "encoder.none_mf"
+      ]
+    }
+  ],
+  "capability_evidence": {
+    "architecture_operator_template": {
+      "positive_recipe": "ULTRAGCN",
+      "single_fault_negative": "REMOVE_compile_propagation_to_constraint",
+      "template_id": "CONSTRAINT_RANKER_V1"
+    },
+    "bpr_mf_anchor": {
+      "positive_recipe": "BPR_MF",
+      "single_fault_negative": "REMOVE_encoder.none_mf",
+      "required_primitives": [
+        "encoder.none_mf",
+        "objective.bpr",
+        "score.dot_product"
+      ]
+    },
+    "graph_propagation_aggregation": {
+      "positive_recipe": "LIGHTGCN",
+      "single_fault_negative": "REMOVE_propagation.symmetric_normalization",
+      "required_primitives": [
+        "encoder.explicit_message_passing",
+        "propagation.symmetric_normalization"
+      ]
+    },
+    "lightgcn_anchor": {
+      "positive_recipe": "LIGHTGCN",
+      "single_fault_negative": "REMOVE_message.identity",
+      "required_primitives": [
+        "fusion.layer_weighted_sum",
+        "message.identity",
+        "propagation.symmetric_normalization"
+      ]
+    },
+    "non_default_negative_sampling": {
+      "positive_recipe": "ULTRAGCN",
+      "single_fault_negative": "REPLACE_sampler.sampled_unobserved_WITH_UNSUPPORTED",
+      "required_primitives": [
+        "sampler.sampled_unobserved"
+      ]
+    },
+    "pairwise_ranking_objective": {
+      "positive_recipe": "BPR_MF",
+      "single_fault_negative": "REMOVE_objective.bpr",
+      "required_primitives": [
+        "objective.bpr"
+      ]
+    },
+    "regularization_geometry": {
+      "positive_recipe": "DIRECTAU",
+      "single_fault_negative": "REMOVE_regularizer.uniformity",
+      "required_primitives": [
+        "regularizer.alignment",
+        "regularizer.uniformity"
+      ]
+    },
+    "self_supervision_contrastive": {
+      "positive_recipe": "SGL",
+      "single_fault_negative": "REMOVE_ssl.objective.info_nce",
+      "required_primitives": [
+        "ssl.objective.info_nce",
+        "ssl.view.edge_dropout"
+      ]
+    }
+  },
+  "profile_id": "BL_ICF_EXECUTABLE_PROFILE_V1",
+  "profile_version": "1.0.0",
+  "runner_abi": "recclaw.fake-non-training-runner.v1",
+  "search_space_id": "BL_ICF_MECHANISM_SPACE_V1",
+  "supported_operators": [
+    "compile_propagation_to_constraint",
+    "remove_component"
+  ],
+  "supported_parameter_domains": {
+    "domain": "BL_ICF_PROVIDER_SCHEMA_VALID_VALUES",
+    "profile_narrowing": "NO_ADDITIONAL_PARAMETER_WIDENING"
+  },
+  "supported_primitives": [
+    "efficiency.remove_message_passing",
+    "efficiency.topk_relation_selection",
+    "embedding.independent_user_item",
+    "encoder.explicit_message_passing",
+    "encoder.fixed_point_constraint",
+    "encoder.none_mf",
+    "fusion.layer_weighted_sum",
+    "message.elementwise_interaction",
+    "message.identity",
+    "message.linear_transform",
+    "objective.alignment_uniformity",
+    "objective.bpr",
+    "objective.item_item_relation_constraint",
+    "objective.pointwise_bce",
+    "objective.user_item_structure_constraint",
+    "propagation.attention_aggregation",
+    "propagation.symmetric_normalization",
+    "regularizer.alignment",
+    "regularizer.uniformity",
+    "relation.item_item_cooccurrence_topk",
+    "relation.user_item_bipartite",
+    "sampler.sampled_unobserved",
+    "sampler.uniform",
+    "score.dot_product",
+    "ssl.objective.info_nce",
+    "ssl.view.edge_dropout",
+    "training.adam"
+  ],
+  "unsupported_policy": "FAIL_CLOSED_AT_PLAN_CHECK"
+}
