@@ -87,7 +87,15 @@ M6E_EXECUTION_RECORD_PATH = (
     / "m6e"
     / "M6E_EXECUTION_RECORD.json"
 )
-MODELS_CACHE = Path("/mnt/c/Users/gtrho/.codex/models_cache.json")
+MODELS_CACHE = (
+    ROOT
+    / "src"
+    / "recclaw_core"
+    / "experiments"
+    / "helix_abc_v1"
+    / "resources"
+    / "pilot_v5_model_catalog_snapshot.json"
+)
 
 SOURCE_FILES = tuple(
     sorted(
@@ -100,6 +108,7 @@ SOURCE_FILES = tuple(
             "src/recclaw_core/experiments/helix_abc_v1/training_filesystem.py",
             "src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v2.json",
             "src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v2_lock.json",
+            "src/recclaw_core/experiments/helix_abc_v1/resources/pilot_v5_model_catalog_snapshot.json",
             "tests/experiments/helix_abc_v1/test_m6e_environment_closure.py",
         }
     )
@@ -263,6 +272,10 @@ def build_contract() -> dict[str, Any]:
         "src/recclaw_core/experiments/helix_abc_v1/pilot_analysis.py"
     ]
     contract["broker"]["models_cache_etag"] = models_cache["etag"]
+    contract["broker"]["models_cache_mode"] = (
+        "FROZEN_SELECTED_MODEL_CATALOG_PROJECTION_V1"
+    )
+    contract["broker"]["models_cache_path"] = str(MODELS_CACHE)
     contract["broker"]["models_cache_sha256"] = file_sha256(MODELS_CACHE)
     contract["runtime"]["rfc8785"] = "0.1.4"
     contract["content_digest"] = sha256_digest(contract)

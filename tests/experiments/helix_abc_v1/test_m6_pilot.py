@@ -93,6 +93,26 @@ class PilotTrainingProfileTests(unittest.TestCase):
             "M6-PILOT-9205-V5-EMPTY",
         )
 
+    def test_v5_model_catalog_projection_is_package_owned(self):
+        path = (
+            ROOT
+            / "src"
+            / "recclaw_core"
+            / "experiments"
+            / "helix_abc_v1"
+            / "resources"
+            / "pilot_v5_model_catalog_snapshot.json"
+        )
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            catalog["record_schema"],
+            "recclaw.frozen-selected-model-catalog-projection.v1",
+        )
+        self.assertEqual(
+            [item["slug"] for item in catalog["models"]],
+            ["gpt-5.4"],
+        )
+
     def test_pilot_common_gate_uses_frozen_common_decision_value(self):
         self.assertTrue(
             pilot_common_gate_allows(

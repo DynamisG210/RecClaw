@@ -78,12 +78,20 @@ def verify_contract_v5(contract_path: Path) -> dict[str, Any]:
         Path(contract["broker"]["codex_executable"]): contract["broker"][
             "codex_executable_sha256"
         ],
+        Path(contract["broker"]["models_cache_path"]): contract["broker"][
+            "models_cache_sha256"
+        ],
     }
     for path, expected_hash in exact_files.items():
         if file_sha256(path) != expected_hash:
             raise RuntimeError(f"Pilot V5 external identity mismatch: {path}")
     if contract["status"] != "FROZEN_PRE_OUTCOME":
         raise RuntimeError("Pilot V5 contract is not frozen")
+    if (
+        contract["broker"].get("models_cache_mode")
+        != "FROZEN_SELECTED_MODEL_CATALOG_PROJECTION_V1"
+    ):
+        raise RuntimeError("Pilot V5 model catalog is not package-owned")
 
     expected_store = PilotStoreContractV3.create()
     expected_pilot = {

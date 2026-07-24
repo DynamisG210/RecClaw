@@ -1,0 +1,25 @@
+{
+  "etag": "W/\"f29c60174f2df8c7104fcc7d0bddd254\"",
+  "models": [
+    {
+      "display_name": "GPT-5.4",
+      "service_tiers": [
+        "default",
+        "fast"
+      ],
+      "slug": "gpt-5.4",
+      "supported_reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "record_schema": "recclaw.frozen-selected-model-catalog-projection.v1",
+  "source_observation": {
+    "global_cache_path": "/mnt/c/Users/gtrho/.codex/models_cache.json",
+    "global_cache_sha256": "d72261298e5a95bc9bcd47501f252a2aed27401c029a7c2984ca6929170f1ef7",
+    "selected_model": "gpt-5.4"
+  }
+}
