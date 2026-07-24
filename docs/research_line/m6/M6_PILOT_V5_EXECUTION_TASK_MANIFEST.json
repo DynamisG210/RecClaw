@@ -1,0 +1,109 @@
+{
+  "active_slice": "M6_FRESH_PILOT_V5_POST_M6E",
+  "authority": "NONE",
+  "authorization": {
+    "master_goal_sha256": "78e262aaac33606428b82a26b76bef29ee25d494255327c9d497cf69a9c40f10",
+    "m6e_resume_command_sha256": "3ce6bf8199c903927d159f85aa5cbe68dc6e28466001abed33bf26d3120542e8",
+    "scope": "exactly one fresh Pilot V5 after M6E PASS; resume M7/M8 only on Pilot GO and independent P0=0/P1=0"
+  },
+  "content_digest": "954e3396e2adbabbcae04324ff5c86f757092cbf797682bf12afb30b92c5ca99",
+  "contract": {
+    "content_digest": "3070b44e66f28586e2f40857eb456c009c9c5da5fc8bed04ed6cc4a3de3ea515",
+    "path": "docs/research_line/m6/DEVELOPMENT_PILOT_CONTRACT_V5.json",
+    "record_schema": "recclaw.development-pilot-contract.v3",
+    "sha256": "eadb160fc35f884307c133f02c5699fcc105144b942e95e18dc707d10d148326",
+    "source_base_commit": "c6431eba7f2003d3a630e40511902039431bbfd7",
+    "source_base_tree": "acda815d3c098d7ea9d25066bfa14542aa441bde",
+    "source_projection_digest": "7bb5abb9f27164f6496ccf2d42bfc99064c3b1b664e60677d4c5c71e000efe6c",
+    "status": "FROZEN_PRE_OUTCOME"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "fresh_identity": {
+    "assignment_commitment": "eb724d56680b620bf1a9e9d58f6301079607c244ae882f01d9bb9e50ca1e0a73",
+    "audit_root": "results/research_line/m6_pilot_9205_v5",
+    "audit_storage": "ROOT_LEVEL_TYPED_AUDIT_FILES_V2",
+    "broker_records_root": "results/research_line/m6_pilot_9205_v5/broker_private",
+    "experiment_id": "HELIX-ABC-DEVELOPMENT-PILOT-9205-V5",
+    "memory_root": {
+      "arm_writers": {
+        "B": "memory://HELIX-ABC-DEVELOPMENT-PILOT-9205-V5/B/DEVELOPMENT_ONLY/SEARCH_MEMORY",
+        "C": "memory://HELIX-ABC-DEVELOPMENT-PILOT-9205-V5/C/DEVELOPMENT_ONLY/SEARCH_MEMORY"
+      },
+      "initial_head": null,
+      "namespace": "DEVELOPMENT_ONLY/SEARCH_MEMORY",
+      "persistence": "PROCESS_LOCAL_NONPERSISTENT",
+      "prior_memory_imported": false
+    },
+    "result_root": "results/research_line/m6_pilot_9205_v5",
+    "runtime_root": "results/research_line/m6_pilot_9205_v5/runtime",
+    "search_seed": 9205,
+    "state_store": "results/research_line/m6_pilot_9205_v5/runtime/neutral/experiment.sqlite3",
+    "store_contract_identity_digest": "b9be2c4d31c3e7ef3e4eceb1f75db70992e2d182676d0abd8779eea52f533daf"
+  },
+  "frozen_invariants": {
+    "arm_contracts_unchanged": true,
+    "expected_physical_broker_calls": 23,
+    "expected_round_count": 9,
+    "expected_training_execution_count": 9,
+    "failure_rate_ceiling": 0.25,
+    "minimum_successful_support_per_opaque_instance": 2,
+    "no_effect_size_in_readiness": true,
+    "no_ndcg_tuning": true,
+    "no_patch_or_retry_after_start": true,
+    "rounds_per_arm": 3
+  },
+  "frozen_runtime": {
+    "execution_purpose": "DEVELOPMENT_PILOT_OFFLINE_TOPN",
+    "filesystem_capability_policy_digest": "f70210b22c78f4c10f89b602a02e908631ed2223f068dbc0ec76d6b6e78ce95c",
+    "python": "/root/projects/RecClaw_m6_training_runtime_v2/bin/python",
+    "runner_abi": "recclaw.package-owned-search-training-runner.v1",
+    "runtime_release_digest": "c7ab04e5c8425f7a43cd84a0c63f1871bb02effe1c31b6ebcfe78e704b83ba23",
+    "same_release_required_for_all_arms": true,
+    "store_audit_contract_digest": "9f2924d274e039e87d5758f9c31a3892732589e15d3fad2d170dad61aee5c713"
+  },
+  "gates_before_first_broker_call": {
+    "contract_exact_bytes": "PASS",
+    "environment_preflight": "PASS",
+    "fresh_context_pre_outcome_audit": "REQUIRED_P0_0_P1_0",
+    "m6e_conformance_packet": "PASS",
+    "m6e_independent_audit": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "sha256": "0fb306da466b45c9f453419ed8531af832edd4a5659d7707bc7ffdfd0ac9b798"
+    },
+    "output_root_absent_at_freeze": true,
+    "source_projection": "PASS"
+  },
+  "historical_exclusions": {
+    "closed_pilot_seeds": [
+      9201,
+      9202,
+      9203,
+      9204
+    ],
+    "reuse_permitted": false,
+    "v4_contract_sha256": "796b9c3d83c67afb5e58606ac4080438df2c8ccb5732a8b231fefe25b571d4cd",
+    "v4_failure_record_sha256": "3b202dee1308e584d4d04c53f652689a14cc5d4d0fba5d1a89541f4b9b76c003",
+    "v4_result_tree_digest": "162b452ec63600d8c734940bd22fbf0f590a8847823cfae7a82473aba83e485f"
+  },
+  "m6e_prerequisite": {
+    "checkpoint_commit": "57c9d520cd3788ab355acdef4f8a5ced81e8585d",
+    "checkpoint_tree": "85cfcbea43400b7406be4cbdf2fd84dd1a3252b3",
+    "conformance_packet_content_digest": "cb8376e5189bc60a9a60e776892b1bdc39004c480c47ab9c8fc07e406c3601ca",
+    "conformance_packet_sha256": "69a274938b2c73a29d1ee4ed3b893128a05d5d7ffc5d49fc5894de605647f144",
+    "execution_record_sha256": "2e63264d006c315e272387eb67049f3c656749847ff971bc6e50b2aa16004b64",
+    "verdict": "PASS"
+  },
+  "record_schema": "recclaw.m6-pilot-v5-execution-task-manifest.v1",
+  "run_command": "PYTHONPATH=src /root/projects/RecClaw_m6_training_runtime_v2/bin/python scripts/run_m6_pilot_v5.py --contract docs/research_line/m6/DEVELOPMENT_PILOT_CONTRACT_V5.json --output-root results/research_line/m6_pilot_9205_v5",
+  "single_attempt_policy": {
+    "authorized_attempts": 1,
+    "if_non_go": "SEAL_AND_HARD_STOP",
+    "in_place_patch": false,
+    "remaining_attempts_before_execution": 1,
+    "rerun": false
+  },
+  "status": "AWAITING_FRESH_CONTEXT_PRE_OUTCOME_AUDIT"
+}
