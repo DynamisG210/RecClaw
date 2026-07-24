@@ -58,6 +58,7 @@ from .training_state_store import (
 
 PILOT_SEARCH_SEED = 9203
 FRESH_PILOT_SEARCH_SEED = 9204
+FRESH_PILOT_V5_SEARCH_SEED = 9205
 PILOT_ROUNDS_PER_ARM = 3
 
 
@@ -192,6 +193,38 @@ class PilotStoreContractV2:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class PilotStoreContractV3:
+    experiment_id: str
+    arm_policies: tuple[Any, Any, Any]
+    search_seeds: tuple[int, ...]
+    scheduled_slots_per_arm_seed: int
+    ordinary_execution_seed: int
+    identity_digest: str
+
+    @classmethod
+    def create(cls) -> "PilotStoreContractV3":
+        base = default_experiment_contract()
+        payload = {
+            "arm_policies": [item.to_dict() for item in base.arm_policies],
+            "authority": "NONE",
+            "evidence_class": "DEVELOPMENT_ONLY",
+            "experiment_id": "HELIX-ABC-DEVELOPMENT-PILOT-9205-V5",
+            "formal_acceptance": False,
+            "ordinary_execution_seed": base.ordinary_execution_seed,
+            "scheduled_slots_per_arm_seed": PILOT_ROUNDS_PER_ARM,
+            "search_seeds": [FRESH_PILOT_V5_SEARCH_SEED],
+        }
+        return cls(
+            experiment_id=str(payload["experiment_id"]),
+            arm_policies=base.arm_policies,
+            search_seeds=(FRESH_PILOT_V5_SEARCH_SEED,),
+            scheduled_slots_per_arm_seed=PILOT_ROUNDS_PER_ARM,
+            ordinary_execution_seed=base.ordinary_execution_seed,
+            identity_digest=sha256_digest(payload),
+        )
+
+
 class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
     def _create_store(
         self, db_path: Path, artifact_root: Path
@@ -207,7 +240,12 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         recbole_root: Path,
         data_path: Path,
         python_executable: Path,
-        _contract: PilotStoreContractV1 | PilotStoreContractV2 | None = None,
+        _contract: (
+            PilotStoreContractV1
+            | PilotStoreContractV2
+            | PilotStoreContractV3
+            | None
+        ) = None,
         _assignment_nonce: str | None = None,
         _guard_context: GuardContext | None = None,
     ) -> None:
@@ -693,15 +731,70 @@ class FreshPilotOrchestratorV2(RealPilotOrchestratorV1):
         )
 
 
+def fresh_pilot_guard_context_v3() -> GuardContext:
+    context = pilot_guard_context()
+    claim = canonical_value(context.claim)
+    protocol = canonical_value(context.protocol)
+    current_evidence = canonical_value(context.current_evidence)
+    return GuardContext(
+        claim={
+            **claim,
+            "claim_id": "CLAIM-M6-PILOT-9205-V5",
+        },
+        protocol=protocol,
+        current_evidence={
+            **current_evidence,
+            "snapshot_id": "M6-PILOT-9205-V5-EMPTY",
+            "claim_id": "CLAIM-M6-PILOT-9205-V5",
+        },
+    )
+
+
+class FreshPilotOrchestratorV3(RealPilotOrchestratorV1):
+    """Single authorized post-M6E Pilot entrypoint with a new V5 identity."""
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        broker: RealCanaryProposalBrokerV1,
+        project_root: Path,
+        recbole_root: Path,
+        data_path: Path,
+        python_executable: Path,
+    ) -> None:
+        try:
+            require_m6e_conformance_packet(project_root)
+        except RuntimeError as error:
+            raise PreCanaryInvariantError(
+                "Pilot V5 is blocked before Broker use until M6E PASS"
+            ) from error
+        super().__init__(
+            root,
+            broker=broker,
+            project_root=project_root,
+            recbole_root=recbole_root,
+            data_path=data_path,
+            python_executable=python_executable,
+            _contract=PilotStoreContractV3.create(),
+            _assignment_nonce="M6-PILOT-9205-OPAQUE-V5",
+            _guard_context=fresh_pilot_guard_context_v3(),
+        )
+
+
 __all__ = [
     "FRESH_PILOT_SEARCH_SEED",
+    "FRESH_PILOT_V5_SEARCH_SEED",
     "FreshPilotOrchestratorV2",
+    "FreshPilotOrchestratorV3",
     "PILOT_ROUNDS_PER_ARM",
     "PILOT_SEARCH_SEED",
     "PilotStoreContractV1",
     "PilotStoreContractV2",
+    "PilotStoreContractV3",
     "RealPilotOrchestratorV1",
     "fresh_pilot_guard_context_v2",
+    "fresh_pilot_guard_context_v3",
     "pilot_budget",
     "pilot_common_gate_allows",
     "pilot_guard_context",

@@ -27,10 +27,13 @@ from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
 )
 from recclaw_core.experiments.helix_abc_v1.real_pilot import (  # noqa: E402
     FRESH_PILOT_SEARCH_SEED,
+    FRESH_PILOT_V5_SEARCH_SEED,
     PILOT_SEARCH_SEED,
     PilotStoreContractV1,
     PilotStoreContractV2,
+    PilotStoreContractV3,
     fresh_pilot_guard_context_v2,
+    fresh_pilot_guard_context_v3,
     pilot_common_gate_allows,
 )
 
@@ -73,6 +76,21 @@ class PilotTrainingProfileTests(unittest.TestCase):
         self.assertEqual(
             context.current_evidence["snapshot_id"],
             "M6-PILOT-9204-V4-EMPTY",
+        )
+
+    def test_fresh_v5_identity_is_additive_and_uses_next_seed(self):
+        sealed = PilotStoreContractV2.create()
+        fresh = PilotStoreContractV3.create()
+        self.assertEqual(sealed.search_seeds, (9204,))
+        self.assertEqual(fresh.search_seeds, (FRESH_PILOT_V5_SEARCH_SEED,))
+        self.assertEqual(FRESH_PILOT_V5_SEARCH_SEED, 9205)
+        self.assertNotEqual(sealed.experiment_id, fresh.experiment_id)
+        self.assertNotEqual(sealed.identity_digest, fresh.identity_digest)
+        context = fresh_pilot_guard_context_v3()
+        self.assertEqual(context.claim["claim_id"], "CLAIM-M6-PILOT-9205-V5")
+        self.assertEqual(
+            context.current_evidence["snapshot_id"],
+            "M6-PILOT-9205-V5-EMPTY",
         )
 
     def test_pilot_common_gate_uses_frozen_common_decision_value(self):

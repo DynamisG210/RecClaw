@@ -401,11 +401,17 @@ def pilot_environment_preflight(
     return preflight
 
 
-def execute(contract_path: Path, output_root: Path) -> int:
+def execute(
+    contract_path: Path,
+    output_root: Path,
+    *,
+    contract_verifier: Any = verify_contract,
+    orchestrator_type: Any = FreshPilotOrchestratorV2,
+) -> int:
     if output_root.exists():
         raise RuntimeError("Pilot output root already exists")
     output_root.mkdir(parents=True)
-    contract = verify_contract(contract_path)
+    contract = contract_verifier(contract_path)
     write_json(
         output_root / "FROZEN_CONTRACT_IDENTITY.json",
         {
@@ -435,7 +441,7 @@ def execute(contract_path: Path, output_root: Path) -> int:
         adaptive_memory=True,
     )
     try:
-        with FreshPilotOrchestratorV2(
+        with orchestrator_type(
             output_root / "runtime",
             broker=broker,
             project_root=ROOT,
