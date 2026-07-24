@@ -1,0 +1,27 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "milestone": "M4",
+  "risks": [
+    {
+      "classification": "P2",
+      "mitigation": "M5 must freeze and pass the exact container/mount projection before any real broker call or candidate execution.",
+      "risk": "M4 local isolation evidence uses typed capabilities and Linux UID DAC rather than the final Canary runtime mount backend.",
+      "status": "OPEN_M5_PREFLIGHT"
+    },
+    {
+      "classification": "P2",
+      "mitigation": "Keep all M4 metrics DEVELOPMENT_ONLY and prohibit policy or threshold changes from them.",
+      "risk": "Synthetic metric closure is not effect evidence.",
+      "status": "CONTROLLED"
+    },
+    {
+      "classification": "P2",
+      "mitigation": "Freeze the exact three-to-five-round DevelopmentCanaryContractV1 at M5 entry before outcomes are observable.",
+      "risk": "M4 activates one fake round per Arm; real multi-round environment recovery remains unobserved.",
+      "status": "OPEN_M5"
+    }
+  ],
+  "risk_register_schema": "recclaw.m4-risk-register.v1"
+}

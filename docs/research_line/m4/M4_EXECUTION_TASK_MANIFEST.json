@@ -1,0 +1,30 @@
+{
+  "authority": "NONE",
+  "entry_checkpoint": {
+    "commit": "c55abe247c03f6c131a0a625cf79ea7073add3fd",
+    "tree": "cd5d554cc60e0d7d0ab3543b2f82e6d7197e4bcb"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "implementation_profile": "MINIMUM_SUFFICIENT_V1",
+  "milestone": "M4",
+  "scope": [
+    "three-arm fake proposal broker with equal total resource ceilings",
+    "opaque treatment assignment and neutral projection",
+    "arm-private runtime roots and explicit capability views",
+    "single-writer orchestration over the existing SQLite WAL store",
+    "deterministic fake one-round A/B/C E2E",
+    "duplicate, contention, stop, recovery and filesystem isolation adversarial tests",
+    "sealed development-only Canary review packet"
+  ],
+  "stop_conditions": [
+    "any M0-M4 activated P0 or P1 remains",
+    "cross-arm read or mutation succeeds",
+    "state-store transition becomes ambiguous",
+    "triplet barrier or stop behavior is incorrect",
+    "neutral audit reveals treatment mapping",
+    "real LLM, ordinary training, Pilot or Main is invoked",
+    "Canary packet cannot honestly reach READY_FOR_CANARY"
+  ],
+  "task_manifest_schema": "recclaw.m4-execution-task-manifest.v1"
+}
