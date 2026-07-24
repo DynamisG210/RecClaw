@@ -1,0 +1,37 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "milestone": "M3",
+  "register_schema": "recclaw.m3-risk-register.v1",
+  "risks": [
+    {
+      "blocking_milestone": "M4",
+      "id": "M3-P2-001",
+      "mitigation": "Bind the Guard ledger to the M4 single-writer broker and run cross-process contention plus kill/restart tests.",
+      "owner": "M4",
+      "severity": "P2",
+      "status": "OPEN",
+      "summary": "M3 proves one-writer create-once semantics but not M4 process ownership."
+    },
+    {
+      "blocking_milestone": "M5",
+      "id": "M3-P2-002",
+      "mitigation": "Project the frozen real comparator delta into RawResultEnvelope and verify CompactFeedback without changing Fusion.",
+      "owner": "M5",
+      "severity": "P2",
+      "status": "OPEN_NONBLOCKING_FOR_M4",
+      "summary": "Synthetic non-training results leave comparator_delta null."
+    },
+    {
+      "blocking_milestone": "NONE",
+      "id": "M3-P2-003",
+      "mitigation": "Preserve the recorded chronology and exact source binding; enforce manifest-first ordering for every later milestone.",
+      "owner": "PROCESS",
+      "severity": "P2",
+      "status": "RECORDED_CLOSED",
+      "summary": "Exact core copy preceded the M3 task-manifest write."
+    }
+  ],
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}

@@ -1,0 +1,80 @@
+{
+  "authority": "NONE",
+  "entry_checkpoint": {
+    "commit": "484dccb611182da314b0376ae4341cd5387806ff",
+    "m2_execution_record_sha256": "0b9a8c4eddb6d5a98bcd4e69d2d43d0f0f12fc0d8d836c3b86456aafd2f5ce33",
+    "quality_gate_sha256": "9fcae3e48ee76bd17096ae604a2c9c351b55fbcb9527fdc2996806139b7cf7bd",
+    "readiness_sha256": "0c4fd12a6937839be05bdaa4e6af6b48e3b536c808ba61b2d9b90425009ccc62",
+    "tree": "5be3fe93d2f9ae6b76ec9f96aa7e7edfb9874670"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "implementation_profile": "MINIMUM_SUFFICIENT_V1",
+  "manifest_schema": "recclaw.m3-execution-task-manifest.v1",
+  "milestone": "M3",
+  "normative_inputs": [
+    {
+      "path": "RecClaw_Codex_Autonomous_M1_M8_Master_Goal.md",
+      "sha256": "78e262aaac33606428b82a26b76bef29ee25d494255327c9d497cf69a9c40f10"
+    },
+    {
+      "path": "docs/research_line/THREE_ARM_IMPLEMENTATION_ROADMAP.md",
+      "sha256": "09686724a5f9e878849c2f886a14fa78a82fcb8902175f53f8e4a40a1f6c5146"
+    },
+    {
+      "path": "docs/research_line/AMENDMENT_01_BOUNDED_MULTI_AGENT.md",
+      "sha256": "f838bb88ec7955bc64b185657c389c629437c66d1757b41ef6750dbc1134c480"
+    },
+    {
+      "path": "docs/research_line/m2/M2_INDEPENDENT_AUDIT.md",
+      "sha256": "ded2c05be9fbe97eb7ccea8fa382f55d2c89257f45e56992bae67007d0d106c6"
+    },
+    {
+      "path": "docs/research_line/m2/M2_HUMAN_REVIEW_HANDOFF.md",
+      "sha256": "d6591bf33b38b36ae3e9e8d5528771b1b8ccc5d8af85a0a4aaee8e6e97427655"
+    }
+  ],
+  "selected_guard_core": {
+    "source_commit": "0c868c2db3ccd810a88b4bce197d678113b5b9ed",
+    "source_path": "src/recclaw_core/exploration/evidence_guard.py",
+    "source_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+    "target_path": "src/recclaw_evidence_guard/core_v1.py",
+    "transfer_policy": "EXACT_BYTES"
+  },
+  "scope": {
+    "included": [
+      "exact versioned development Guard evaluator",
+      "EvidenceGuardPortV1 through helix/guard_adapter.py only",
+      "C-private single-writer audit ledger",
+      "PRE and POST create-once calls",
+      "shared pre/post adjudication contracts",
+      "exact eight-field CompactFeedbackV1",
+      "common deterministic Fusion mapping",
+      "A/B Null and C Guard same-slate synthetic composition",
+      "arm-blind ReferenceDispositionV1 fixture"
+    ],
+    "stop_after": "M3",
+    "work_package": "WP5"
+  },
+  "side_effect_policy": {
+    "canary": false,
+    "common_execution_guard_change": false,
+    "guard_core_semantic_change": false,
+    "main_campaign": false,
+    "m2_research_source_change": false,
+    "ordinary_training": false,
+    "pilot": false,
+    "push": false,
+    "real_llm_call": false
+  },
+  "stop_conditions": [
+    "selected Guard core semantics require modification",
+    "Research or common runtime source bytes must change",
+    "Guard ranks candidates or controls Router, Producer or Meta",
+    "Guard writes Search Memory or accepted evidence",
+    "A/B instantiate Guard state",
+    "full audit event enters Controller or prompt visibility",
+    "same-slate traversal triggers proposal refresh or extra budget"
+  ],
+  "task_id": "HELIX-ABC-001-M3"
+}

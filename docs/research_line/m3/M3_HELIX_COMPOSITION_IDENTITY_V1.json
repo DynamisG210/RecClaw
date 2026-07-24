@@ -1,0 +1,56 @@
+{
+  "arm_bindings": {
+    "A": "NullEvidencePortV1",
+    "B": "NullEvidencePortV1",
+    "C": "EvidenceGuardPortV1"
+  },
+  "artifact_schema": "recclaw.m3-helix-composition-identity.v1",
+  "authority": "NONE",
+  "common_release_projection_digest": "97c4247af6f0a2fb2fbccd64663e2a6ed25cc1bc98aab2f5630e6d41d6f67347",
+  "content_digest": "d148263064b0037a8ecb02ec78fbe2ec7e3464cf37ca80e81a41b05b22372132",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "fusion_policy_digest": "4a720a7a1a87fc4b5b5ad395ea6cfda98747f4b839ed539e944f1c3e65562c19",
+  "guard_core_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+  "only_guard_import_adjacency": "src/recclaw_core/helix/guard_adapter.py",
+  "research_source_digest": "94623eebd72c58b2a7b498cb175d1e8b06c82b4e12e0933b3267767e5d07045e",
+  "source_files": [
+    {
+      "path": "src/recclaw_evidence_guard/core_v1.py",
+      "sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af"
+    },
+    {
+      "path": "src/recclaw_evidence_guard/__init__.py",
+      "sha256": "8ab2452609b1a132363fd41537a81e00a7ea37bbefcc4cce2eb6a2d9e8934e8b"
+    },
+    {
+      "path": "src/recclaw_core/helix/__init__.py",
+      "sha256": "2707ca80c220679589037d7ac61e4c3a902527b31a977023fb9dc0fe168f27d2"
+    },
+    {
+      "path": "src/recclaw_core/helix/contracts.py",
+      "sha256": "372e3f58ae63c80e58bfc615f03337bd1b4ce5808781094893196134a73a611f"
+    },
+    {
+      "path": "src/recclaw_core/helix/ledger.py",
+      "sha256": "33487c2cf2868f3dbf5edf0347a64f1befdb047dabd97f285da797fd55c909ea"
+    },
+    {
+      "path": "src/recclaw_core/helix/guard_adapter.py",
+      "sha256": "b1bf08d297f0be8b6019b2a70d38ccb3fc8b1909c4553cae0048951517caf505"
+    },
+    {
+      "path": "src/recclaw_core/helix/fusion.py",
+      "sha256": "a053fd0f5f22f07f223b2268f39996e5d043ea89755b38a8dd79c25e801476f3"
+    },
+    {
+      "path": "src/recclaw_core/helix/ports.py",
+      "sha256": "d99aa5b3e51a4efa9353df644c4c7773ff981a6dfa6dfd96c3544bb6fe415143"
+    },
+    {
+      "path": "src/recclaw_core/helix/composition.py",
+      "sha256": "8d17ed5bd58035b1545659de7fedb576340896b9e84ad735a6b631a8a047e8b7"
+    }
+  ],
+  "verdict": "PASS"
+}
