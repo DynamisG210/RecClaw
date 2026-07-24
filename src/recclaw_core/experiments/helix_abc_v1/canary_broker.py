@@ -319,8 +319,10 @@ class CodexCliCanaryBrokerV1:
         )
 
 
-def original_canary_prompt(*, round_index: int, search_seed: int) -> str:
-    return f"""You are the Original RecClaw proposal policy in a development-only recommender-system Canary.
+def original_canary_prompt(
+    *, round_index: int, search_seed: int, phase_name: str = "Canary"
+) -> str:
+    return f"""You are the Original RecClaw proposal policy in a development-only recommender-system {phase_name}.
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Protocol: ML-1M, frozen full-sort NDCG@10, unchanged protocol, one eventual execution.
 Search seed: {search_seed}. Round: {round_index}.
@@ -339,20 +341,32 @@ _ROLE_INSTRUCTIONS = {
 
 
 def research_canary_prompt(
-    *, role: str, round_index: int, search_seed: int
+    *,
+    role: str,
+    round_index: int,
+    search_seed: int,
+    phase_name: str = "Canary",
+    memory_summary: Mapping[str, Any] | None = None,
 ) -> str:
     try:
         instruction = _ROLE_INSTRUCTIONS[role]
     except KeyError as error:
         raise CanaryBrokerError("unknown Research Producer role") from error
     required_intent = "FALSIFICATION" if role == "falsification_designer" else "DISCOVERY"
-    return f"""You are the {role} independent Producer in a development-only recommender-system Canary.
+    memory_line = (
+        "Prior compact Search Memory feedback: "
+        + json.dumps(memory_summary, ensure_ascii=True, sort_keys=True)
+        if memory_summary
+        else "Prior compact Search Memory feedback: NONE."
+    )
+    return f"""You are the {role} independent Producer in a development-only recommender-system {phase_name}.
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Your role is to {instruction}. Protocol: ML-1M, frozen full-sort NDCG@10, unchanged.
 Search seed: {search_seed}. Round: {round_index}. Return exactly one proposal and set
 proposal_intent to {required_intent}. Use only the closed backbone/objective/sampler/axis
 values. Optimize search utility: runnable probability, useful signal, frontier potential,
-information gain, cost and blocker risk. Stay within search utility only."""
+information gain, cost and blocker risk. Stay within search utility only.
+{memory_line}"""
 
 
 __all__ = [

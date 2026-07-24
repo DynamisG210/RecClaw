@@ -651,6 +651,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         broker: Any | None = None,
         contract: Any | None = None,
         resource_ceilings: ResourceCeilingsV1 | None = None,
+        guard_context: GuardContext | None = None,
     ) -> None:
         self.contract = contract or default_experiment_contract()
         self.assignment = PrivateTreatmentAssignmentV1.create(
@@ -666,6 +667,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         )
         self.broker = broker or ThreeArmFakeBrokerV1.create()
         self.resource_ceilings = resource_ceilings or m4_budget()
+        self.guard_context = guard_context or _guard_context()
         self.fusion = DeterministicHelixFusionV1()
         self.ports: dict[ArmCode, Any] = {
             ArmCode.A: NullEvidencePortV1(),
@@ -679,7 +681,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             c_evidence,
         )
         self.ports[ArmCode.C] = EvidenceGuardPortV1(
-            context=_guard_context(),
+            context=self.guard_context,
             ledger=self.guard_ledger,
             opaque_arm_instance_id=c_id,
         )
@@ -752,14 +754,70 @@ class ThreeArmPreCanaryOrchestratorV1:
             normalized_metrics={"ndcg": 0.20},
         )
 
+    def _planned_guard_protocol(self) -> Mapping[str, Any]:
+        return _guard_protocol()
+
     def _after_research_close(
         self,
         *,
         arm: ArmCode,
         round_index: int,
         controller: ResearchLineControllerV1,
+        feedback_projection: Mapping[str, Any],
     ) -> None:
-        del arm, round_index, controller
+        del arm, round_index, controller, feedback_projection
+
+    def _execute_selected(
+        self,
+        *,
+        permit: Any,
+        binding: Any,
+        gate: Any,
+        pre_execution: Any,
+        materialization_artifacts: tuple[dict[str, Any], ...],
+    ) -> tuple[Any, Any]:
+        receipt, raw_output, run_artifacts = PackageOwnedLauncherV1(
+            self.store
+        ).launch(
+            permit=permit,
+            binding=binding,
+            gate=gate,
+            pre_execution=pre_execution,
+        )
+        _closure, common_result = CommonExecutionGuardV1().close_result(
+            permit=permit,
+            binding=binding,
+            claim=self.store.get_execution_claim(binding.round_id),
+            receipt=receipt,
+            raw_output=raw_output,
+            artifact_closure=list(materialization_artifacts + run_artifacts),
+        )
+        if common_result is None:
+            raise PreCanaryInvariantError("M4 common result closure failed")
+        return raw_output, common_result
+
+    def _execution_resource_projection(
+        self, raw_output: Any
+    ) -> tuple[int, int, int]:
+        del raw_output
+        return 0, 0, 0
+
+    def _research_belief(
+        self,
+        *,
+        selected: CandidateEnvelope,
+        feedback: Mapping[str, Any],
+    ) -> DevelopmentalMechanismBeliefV1:
+        return DevelopmentalMechanismBeliefV1(
+            hypothesis_id=f"m4-{selected.candidate_id}",
+            mechanism_axis="precanary",
+            competing_hypotheses=("fake_null",),
+            predicted_outcome_signature="synthetic closure",
+            evidence_for=(str(feedback["raw_search_feedback_digest"]),),
+            evidence_against=(),
+            unresolved_confounds=("synthetic_fixture",),
+            next_discriminative_test="real canary",
+        )
 
     def run_fake_triplet(
         self,
@@ -866,7 +924,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 mechanism_program_digest=str(plan.mechanism_program_digest),
                 common_plan_digest=plan.digest,
                 action_family="RUN_OFFLINE_TOPN",
-                planned_protocol=_guard_protocol(),
+                planned_protocol=self._planned_guard_protocol(),
                 target_model="CandidateModel",
                 comparator="LightGCN",
                 seed_ids=("2026",),
@@ -934,24 +992,13 @@ class ThreeArmPreCanaryOrchestratorV1:
                 idempotency_key=f"m4:claim:{opened['round_id']}",
             )
         )
-        receipt, raw_output, run_artifacts = PackageOwnedLauncherV1(
-            self.store
-        ).launch(
+        raw_output, common_result = self._execute_selected(
             permit=permit,
             binding=binding,
             gate=gate,
             pre_execution=pre,
+            materialization_artifacts=materialization_artifacts,
         )
-        closure, common_result = common_guard.close_result(
-            permit=permit,
-            binding=binding,
-            claim=self.store.get_execution_claim(opened["round_id"]),
-            receipt=receipt,
-            raw_output=raw_output,
-            artifact_closure=list(materialization_artifacts + run_artifacts),
-        )
-        if common_result is None:
-            raise PreCanaryInvariantError("M4 common result closure failed")
         register_raw_result_envelope(self.store, common_result)
         helix_raw = self._build_helix_raw(
             selected=selected,
@@ -988,6 +1035,10 @@ class ThreeArmPreCanaryOrchestratorV1:
             "common_result_digest": common_result.digest,
             "fusion_instruction": fusion_instruction,
             "raw_search_feedback_digest": raw_search_feedback_digest,
+            "search_outcome": {
+                "normalized_metrics": helix_raw.to_dict()["normalized_metrics"],
+                "run_status": helix_raw.run_status,
+            },
         }
         if arm is ArmCode.A:
             transition = OriginalControllerV1().close_round(
@@ -998,15 +1049,9 @@ class ThreeArmPreCanaryOrchestratorV1:
             plan = session.research_plan
             if plan is None:
                 raise PreCanaryInvariantError("Research Arm is missing its plan")
-            belief = DevelopmentalMechanismBeliefV1(
-                hypothesis_id=f"m4-{selected.candidate_id}",
-                mechanism_axis="precanary",
-                competing_hypotheses=("fake_null",),
-                predicted_outcome_signature="synthetic closure",
-                evidence_for=(feedback["raw_search_feedback_digest"],),
-                evidence_against=(),
-                unresolved_confounds=("synthetic_fixture",),
-                next_discriminative_test="real canary",
+            belief = self._research_belief(
+                selected=selected,
+                feedback=feedback,
             )
             transition = self.broker.research_controllers[arm].close_round(
                 plan=plan,
@@ -1014,11 +1059,25 @@ class ThreeArmPreCanaryOrchestratorV1:
                 beliefs=(belief,),
             )
             after_digest = str(transition["round_transition_digest"])
+            record_feedback = getattr(
+                self.broker, "record_search_feedback", None
+            )
+            if record_feedback is not None:
+                record_feedback(arm, controller_feedback)
             self._after_research_close(
                 arm=arm,
                 round_index=round_index,
                 controller=self.broker.research_controllers[arm],
+                feedback_projection=controller_feedback,
             )
+        gpu_device_time_ms, gpu_cost_microunits, execution_wall_time_ms = (
+            self._execution_resource_projection(raw_output)
+        )
+        execution_debits = (
+            ResourceDebitV1("GPU_DEVICE_TIME_MS", gpu_device_time_ms),
+            ResourceDebitV1("GPU_COST_MICROUNITS", gpu_cost_microunits),
+            ResourceDebitV1("WALL_TIME_MS", execution_wall_time_ms),
+        )
         closed = self.store.close_round(
             CloseRoundCommand(
                 round_id=opened["round_id"],
@@ -1039,7 +1098,8 @@ class ThreeArmPreCanaryOrchestratorV1:
                     ResourceDebitV1(
                         "COMMON_VALIDATION", len(session.validation_programs)
                     ),
-                ),
+                )
+                + execution_debits,
                 idempotency_key=f"m4:close:{opened['round_id']}",
             )
         )
@@ -1054,8 +1114,8 @@ class ThreeArmPreCanaryOrchestratorV1:
             output_tokens=session.output_tokens,
             billed_tokens=session.billed_tokens,
             ordinary_execution_count=1,
-            gpu_device_time_ms=0,
-            gpu_cost_microunits=0,
+            gpu_device_time_ms=gpu_device_time_ms,
+            gpu_cost_microunits=gpu_cost_microunits,
             feedback_digest=str(closed["feedback_digest"]),
             evidence_port_status=post.status.value,
             training_backend_started=bool(raw_output.training_backend_started),

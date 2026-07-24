@@ -156,7 +156,11 @@ class RealCanaryProposalBrokerV1:
     upstream: CodexCliCanaryBrokerV1
     template_path: Path
     research_controllers: dict[ArmCode, ResearchLineControllerV1]
-    _research_calls: dict[tuple[int, int], tuple[CanaryBrokerCallV1, ...]]
+    _research_calls: dict[tuple[int, int, str], tuple[CanaryBrokerCallV1, ...]]
+    _search_feedback: dict[ArmCode, Mapping[str, Any]]
+    call_prefix: str = ""
+    phase_name: str = "Canary"
+    adaptive_memory: bool = False
 
     @classmethod
     def create(
@@ -164,6 +168,9 @@ class RealCanaryProposalBrokerV1:
         *,
         upstream: CodexCliCanaryBrokerV1,
         template_path: Path,
+        call_prefix: str = "",
+        phase_name: str = "Canary",
+        adaptive_memory: bool = False,
     ) -> "RealCanaryProposalBrokerV1":
         def controller() -> ResearchLineControllerV1:
             return ResearchLineControllerV1(
@@ -183,6 +190,10 @@ class RealCanaryProposalBrokerV1:
             template_path=template_path.resolve(),
             research_controllers={ArmCode.B: controller(), ArmCode.C: controller()},
             _research_calls={},
+            _search_feedback={},
+            call_prefix=call_prefix,
+            phase_name=phase_name,
+            adaptive_memory=adaptive_memory,
         )
 
     @property
@@ -195,25 +206,45 @@ class RealCanaryProposalBrokerV1:
         return next(iter(identities))
 
     def _research_upstream_calls(
-        self, *, round_index: int, search_seed: int
+        self, *, arm: ArmCode, round_index: int, search_seed: int
     ) -> tuple[CanaryBrokerCallV1, ...]:
-        key = (search_seed, round_index)
+        memory_summary = (
+            dict(self._search_feedback.get(arm, {}))
+            if self.adaptive_memory
+            else {}
+        )
+        memory_digest = (
+            sha256_digest(memory_summary) if self.adaptive_memory else "shared"
+        )
+        key = (search_seed, round_index, memory_digest)
         if key not in self._research_calls:
+            memory_component = (
+                f"-m{memory_digest[:12]}" if self.adaptive_memory else ""
+            )
             self._research_calls[key] = tuple(
                 self.upstream.call(
                     logical_call_id=(
-                        f"research-{search_seed}-{round_index}-{role}"
+                        f"{self.call_prefix}research-"
+                        f"{search_seed}-{round_index}{memory_component}-{role}"
                     ),
                     prompt=research_canary_prompt(
                         role=role,
                         round_index=round_index,
                         search_seed=search_seed,
+                        phase_name=self.phase_name,
+                        memory_summary=memory_summary,
                     ),
                     expected_proposal_count=1,
                 )
                 for role in DISCOVERY_PRODUCERS
             )
         return self._research_calls[key]
+
+    def record_search_feedback(
+        self, arm: ArmCode, feedback_projection: Mapping[str, Any]
+    ) -> None:
+        if arm in {ArmCode.B, ArmCode.C}:
+            self._search_feedback[arm] = canonical_value(feedback_projection)
 
     def generate(
         self,
@@ -228,9 +259,13 @@ class RealCanaryProposalBrokerV1:
         templates = _load_templates(self.template_path)
         if arm is ArmCode.A:
             call = self.upstream.call(
-                logical_call_id=f"original-{search_seed}-{round_index}",
+                logical_call_id=(
+                    f"{self.call_prefix}original-{search_seed}-{round_index}"
+                ),
                 prompt=original_canary_prompt(
-                    round_index=round_index, search_seed=search_seed
+                    round_index=round_index,
+                    search_seed=search_seed,
+                    phase_name=self.phase_name,
                 ),
                 expected_proposal_count=4,
             )
@@ -278,7 +313,7 @@ class RealCanaryProposalBrokerV1:
                 research_plan=None,
             )
         calls = self._research_upstream_calls(
-            round_index=round_index, search_seed=search_seed
+            arm=arm, round_index=round_index, search_seed=search_seed
         )
         typed_drafts = []
         for role, call in zip(DISCOVERY_PRODUCERS, calls, strict=True):
@@ -308,15 +343,28 @@ class RealCanaryProposalBrokerV1:
                 "prior_round_digest": sha256_digest(
                     {
                         "controller_policy": controller.policy.digest,
+                        "search_memory": (
+                            controller.memory_writer.head.digest
+                            if controller.memory_writer.head
+                            else None
+                        ),
                         "role": role,
                         "round": round_index - 1,
                     }
-                )
+                ),
+                "search_memory_digest": (
+                    controller.memory_writer.head.digest
+                    if controller.memory_writer.head
+                    else None
+                ),
             }
             for role in DISCOVERY_PRODUCERS
         }
         session = controller.broker.dispatch(
-            session_id=f"m5-research-{search_seed}-{round_index}",
+            session_id=(
+                f"{self.call_prefix or 'm5-'}research-"
+                f"{search_seed}-{round_index}"
+            ),
             mode=controller.producer_mode,
             drafts=typed_drafts,
             context={"round_index": round_index, "search_seed": search_seed},
@@ -441,7 +489,9 @@ class RealCanaryOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         arm: ArmCode,
         round_index: int,
         controller: ResearchLineControllerV1,
+        feedback_projection: Mapping[str, Any],
     ) -> None:
+        del feedback_projection
         controller.apply_meta_update(
             updater=VersionedMetaPolicyUpdaterV1(),
             completed_round_index=round_index,
@@ -531,6 +581,11 @@ def environment_preflight(contract: Mapping[str, Any]) -> dict[str, Any]:
     if actual_dataset != contract["dataset"]["files"]:
         raise PreCanaryInvariantError("dataset exact bytes do not match Canary contract")
     python = str(contract["runtime"]["python"])
+    recbole_root = str(
+        contract["runtime"].get("recbole_root", "/root/projects/RecBole")
+    )
+    probe_environment = dict(__import__("os").environ)
+    probe_environment["PYTHONPATH"] = recbole_root
     probe = subprocess.run(
         [
             python,
@@ -546,11 +601,22 @@ def environment_preflight(contract: Mapping[str, Any]) -> dict[str, Any]:
         check=True,
         capture_output=True,
         text=True,
-        cwd="/root/projects/RecBole",
+        cwd=recbole_root,
+        env=probe_environment,
     )
     runtime = json.loads(probe.stdout)
     if runtime != contract["runtime"]["versions"]:
         raise PreCanaryInvariantError("runtime versions differ from Canary contract")
+    imported_root = subprocess.run(
+        [python, "-c", "import recbole; print(recbole.__file__)"],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=recbole_root,
+        env=probe_environment,
+    ).stdout.strip()
+    if not Path(imported_root).resolve().is_relative_to(Path(recbole_root).resolve()):
+        raise PreCanaryInvariantError("RecBole import escaped the frozen runtime root")
     codex = subprocess.run(
         [contract["broker"]["codex_executable"], "--version"],
         check=True,
@@ -604,6 +670,7 @@ def environment_preflight(contract: Mapping[str, Any]) -> dict[str, Any]:
         "mount_namespace": "PASS",
         "numeric_uid_isolation": isolation,
         "runtime_versions": runtime,
+        "recbole_import_root": recbole_root,
         "verdict": "PASS",
     }
 
