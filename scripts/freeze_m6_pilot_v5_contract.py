@@ -50,6 +50,8 @@ CONTRACT_PATH = (
     / "m6"
     / "DEVELOPMENT_PILOT_CONTRACT_V5.json"
 )
+M6E_CHECKPOINT_COMMIT = "57c9d520cd3788ab355acdef4f8a5ced81e8585d"
+M6E_CHECKPOINT_TREE = "85cfcbea43400b7406be4cbdf2fd84dd1a3252b3"
 V4_CONTRACT_PATH = (
     ROOT
     / "docs"
@@ -205,10 +207,8 @@ def build_contract() -> dict[str, Any]:
             "historical_development_costs": historical,
             "lineage_predecessors": {
                 "m6e_audit_sha256": file_sha256(M6E_AUDIT_PATH),
-                "m6e_checkpoint_commit": git_value("rev-parse", "HEAD"),
-                "m6e_checkpoint_tree": git_value(
-                    "rev-parse", "HEAD^{tree}"
-                ),
+                "m6e_checkpoint_commit": M6E_CHECKPOINT_COMMIT,
+                "m6e_checkpoint_tree": M6E_CHECKPOINT_TREE,
                 "m6e_execution_record_sha256": file_sha256(
                     M6E_EXECUTION_RECORD_PATH
                 ),
