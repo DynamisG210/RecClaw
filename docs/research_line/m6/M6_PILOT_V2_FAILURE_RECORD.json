@@ -1,0 +1,47 @@
+{
+  "attempted_execution": {
+    "broker_calls_expected": 23,
+    "broker_calls_reused": 0,
+    "broker_calls_successful": 4,
+    "broker_calls_total": 4,
+    "broker_retries": 0,
+    "broker_total_tokens": 54625,
+    "ordinary_execution_debit": 0,
+    "search_seed": 9202,
+    "training_backend_starts": 0
+  },
+  "authority": "NONE",
+  "contract_content_digest": "41212930dca6b10161abac935eb470be33c07191e9def3237e2f1055a061c8f8",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "failure": {
+    "class": "COMMON_GATE_ENUM_ADAPTER",
+    "error_type": "PreCanaryInvariantError",
+    "exact_cause": "The Pilot-only launcher compared the development gate decision to the display shorthand ALLOW instead of GateStatus.ALLOW.value (ALLOW_DEVELOPMENT_FAKE_RUN).",
+    "outcome_observed": false,
+    "reason": "Pilot training requires common ALLOW/PASS decisions",
+    "same_hypothesis_as_v1": true
+  },
+  "formal_acceptance": false,
+  "independent_review": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 1,
+    "finding": "A bounded Pilot adapter acceptance failure; frozen CommonExecutionGuard, GateStatus, Research core, Guard core, budgets, and experiment semantics remain unchanged."
+  },
+  "lineage": {
+    "broker_response_reuse_permitted": false,
+    "current_version_closed": true,
+    "next_search_seed": 9203,
+    "next_version": "V3",
+    "search_seed_reuse_permitted": false
+  },
+  "repair_control": {
+    "bounded_repair_round": 2,
+    "permitted_scope": "Replace both Pilot-only shorthand comparisons with the already frozen GateStatus.ALLOW.value and CommonDecision.PASS.value constants; add exact regression coverage.",
+    "source_of_authorization": "Master Goal section 9 permits a second repair round for an explicit acceptance failure; Roadmap M6 requires a new Pilot version for any repair.",
+    "stop_if_v3_not_go": true
+  },
+  "record_schema": "recclaw.m6-pilot-failure-record.v1",
+  "result_root": "results/research_line/m6_pilot_9202_v2",
+  "verdict": "NOT_READY"
+}
