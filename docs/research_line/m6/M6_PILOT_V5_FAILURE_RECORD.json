@@ -1,0 +1,126 @@
+{
+  "attempted_execution": {
+    "authorized_attempts": 1,
+    "broker_calls_expected": 23,
+    "broker_process_invocations": 1,
+    "broker_rows_failed": 1,
+    "broker_rows_successful": 0,
+    "broker_rows_total": 1,
+    "broker_retries": 0,
+    "gpu_cost_microunits": 0,
+    "gpu_device_time_ms": 0,
+    "ordinary_execution_debit": 0,
+    "provider_request_confirmation": "UNKNOWN_PROCESS_FAILED_BEFORE_RESPONSE",
+    "provider_tokens": null,
+    "proposal_generation_session_debit": 1,
+    "rounds_closed": 0,
+    "rounds_opened": 1,
+    "search_seed": 9205,
+    "training_backend_starts": 0
+  },
+  "authority": "NONE",
+  "content_digest": "3ce5a60d5fbe28cefcae84d4b11c10d65ca306472987bc4281ff990e48f60b85",
+  "contract": {
+    "content_digest": "b953f056305014bba05858bcafcc88cdd7483d4b187b3aa90f55cda151017f84",
+    "pre_outcome_commit": "8d56f04362eaa269833b28a7cc73fde4097daa5b",
+    "pre_outcome_tree": "71f5668e3a754cc791e3746ed64ab8754b80e31a",
+    "record_schema": "recclaw.development-pilot-contract.v3",
+    "sha256": "02709a3d8a1217201f32a2f66ec4599cec0f44e3ea3917fbe6bf213230863f7e",
+    "source_projection_digest": "3cc983d91b65c5a988b47949018faecb6b8304812a7f68e111da9aad663fba39"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "failure": {
+    "broker_row": {
+      "error_type": "PROCESS_FAILURE",
+      "input_tokens": null,
+      "logical_call_id": "pilot-original-9205-1",
+      "output_tokens": null,
+      "request_digest": "40a11f4d8c7f6a3a44441a402f15d316f27e8b30e117abc17a85d8ef81878ebd",
+      "response_digest": null,
+      "returned_model": null,
+      "status": "FAILED",
+      "total_tokens": null
+    },
+    "failure_stage": "FIRST_BROKER_PROCESS",
+    "known_cause_boundary": "Codex broker subprocess exited with process status 1",
+    "pilot_failure_path": "results/research_line/m6_pilot_9205_v5/PILOT_FAILURE.json",
+    "pilot_failure_sha256": "a86abc51e77de70948f0b3c26cb1b2e190882bb185ead5af4b23d4d58674350e",
+    "root_cause": "UNKNOWN_STDERR_NOT_PERSISTED",
+    "verdict": "NOT_READY"
+  },
+  "formal_acceptance": false,
+  "four_axis_state": {
+    "executed_candidate_count": 0,
+    "frontier_available": false,
+    "gpu_cost_microunits": 0,
+    "opened_search_round_count": 1,
+    "token_count": null
+  },
+  "independent_review": {
+    "P0": 0,
+    "P1": 1,
+    "P2": 2,
+    "audit_path": "docs/research_line/m6/M6_PILOT_V5_INDEPENDENT_AUDIT.md",
+    "audit_sha256": "0396ee1446ce6737d047541a6fdfedb860a5f7eb526e387a48b9344bdd4af3c9",
+    "verdict": "FAIL"
+  },
+  "mechanical_state": {
+    "artifact_index_rows": 0,
+    "execution_claims": 0,
+    "foreign_key_violations": 0,
+    "guard_calls": 0,
+    "opened_rounds": 1,
+    "planned_slots": 8,
+    "proposal_responses": 0,
+    "scheduled_slots": 9,
+    "sqlite_integrity": "ok",
+    "training_results": 0,
+    "triplet_barrier_closed_bitmaps": [
+      0,
+      0,
+      0
+    ]
+  },
+  "package": {
+    "final_file_count": 12,
+    "final_result_tree_digest": "affa504ec72ff85461beb4cc2f6a15f55e7211da39209f1aac03f26bef7e7b59",
+    "final_total_bytes": 251040,
+    "initial_post_exit_file_count": 8,
+    "initial_post_exit_result_tree_digest": "4997f503d04bf25c4fa626a63c2ec1327721aa2c748223eb73b41b88f6ad2b75",
+    "initial_post_exit_total_bytes": 185504,
+    "result_root": "results/research_line/m6_pilot_9205_v5",
+    "tree_projection": "SHA256_RFC8785_SORTED_PATH_SHA256_SIZE_V1"
+  },
+  "preflight": {
+    "environment_preflight_sha256": "8f0a0496ced7eff97da832ef2b22e0afdc55424bceeb857ec9c2ef2f5831be3f",
+    "m6e_gate": "PASS",
+    "model": "gpt-5.4",
+    "runtime_release_digest": "c7ab04e5c8425f7a43cd84a0c63f1871bb02effe1c31b6ebcfe78e704b83ba23",
+    "verdict": "PASS"
+  },
+  "procedural_findings": [
+    {
+      "classification": "P2",
+      "finding": "Post-termination aggregate inspection unnecessarily displayed arm-code to opaque-instance associations; no proposal, result, metric or effect existed."
+    },
+    {
+      "classification": "P2",
+      "finding": "URI mode=ro SQLite inspection created persistent state/guard WAL-SHM sidecars; core database and typed artifact hashes were unchanged."
+    }
+  ],
+  "record_schema": "recclaw.m6-pilot-failure-record.v3",
+  "sealed_state": {
+    "M7_authorized": false,
+    "M7_started": false,
+    "M8_authorized": false,
+    "M8_started": false,
+    "attempts_consumed": 1,
+    "effect_comparison_performed": false,
+    "new_pilot_authorized": false,
+    "pilot_version_closed": true,
+    "remaining_attempts": 0,
+    "seed_reuse_permitted": false,
+    "treatment_effect_observed": false
+  },
+  "verdict": "NOT_READY_AUTONOMOUS_HARD_STOP"
+}
