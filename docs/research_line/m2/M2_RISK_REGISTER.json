@@ -1,0 +1,37 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "milestone": "M2",
+  "register_schema": "recclaw.m2-risk-register.v1",
+  "risks": [
+    {
+      "blocking_milestone": "M5",
+      "id": "M2-P2-001",
+      "mitigation": "Canary must exercise the selected four-call broker with the frozen base model and record actual physical calls, latency and token costs.",
+      "owner": "M5",
+      "severity": "P2",
+      "status": "OPEN_NONBLOCKING_FOR_M3_M4",
+      "summary": "The M2 agentization quality result is deterministic fixture evidence, not measured real-LLM behavior."
+    },
+    {
+      "blocking_milestone": "M4",
+      "id": "M2-P2-002",
+      "mitigation": "Integrate Search Memory commits into the durable single-writer orchestration and test crash/restart and cross-process writer contention.",
+      "owner": "M4",
+      "severity": "P2",
+      "status": "OPEN_NONBLOCKING_FOR_M3",
+      "summary": "M2 Search Memory is an immutable typed in-process chain rather than a durable orchestration writer."
+    },
+    {
+      "blocking_milestone": "M4",
+      "id": "M1-P2-001",
+      "mitigation": "Run path, symlink, hardlink, mount and cross-arm confinement negatives before Canary.",
+      "owner": "M4",
+      "severity": "P2",
+      "status": "CARRIED_FORWARD",
+      "summary": "The fake package-owned handler closure is not the future real-training OS confinement proof."
+    }
+  ],
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}

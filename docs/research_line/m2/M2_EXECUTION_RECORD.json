@@ -1,0 +1,137 @@
+{
+  "activated_components": [
+    "FixtureProducerBrokerV1",
+    "BATCHED_ROLE_PORTFOLIO_V1",
+    "NEUTRAL_MULTISAMPLE_CONTROL_V1",
+    "BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1",
+    "ControlAblationBuilderV1",
+    "RepairEngineerV1",
+    "StrongStaticRouterV1",
+    "VersionedMetaPolicyUpdaterV1",
+    "SearchMemoryWriterV1",
+    "DevelopmentalMechanismBeliefV1",
+    "ResearchLineControllerV1",
+    "AgentizationQualityGateV1",
+    "ResearchCapabilityQualityGateV1",
+    "ResearchLineStandaloneReadinessV1"
+  ],
+  "authority": "NONE",
+  "entry_checkpoint": {
+    "commit": "b66d4f0c0e1efd99418eff4e716c7a17a0a7e276",
+    "tree": "55793cb0f1142cda8f5f1772490b5a28eb07acdc"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "gate_results": {
+    "agentization": "PASS_INDEPENDENT_MULTI_AGENT",
+    "meta": "PASS_VERSIONED_META",
+    "progression": "PASS",
+    "quality_gate_content_digest": "9485496e20aaa3ce2fc11b3739b5b4af81ad97c6782c6864a425635c5d4de450",
+    "readiness": "PASS",
+    "readiness_content_digest": "c4e7b80e43bf7004b0ef43844a559dbe1e10d6e9026f60dc3d64c805ec9d28a5",
+    "selected_mode": "BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1"
+  },
+  "implementation_files": [
+    {
+      "path": "docs/research_line/m2/M2_EXECUTION_TASK_MANIFEST.json",
+      "sha256": "360501f7ee4902a08a243b33bf7559e96bce900c39639c63ec2285fe4904744a"
+    },
+    {
+      "path": "docs/research_line/m2/RESEARCH_CAPABILITY_QUALITY_GATE_V1.json",
+      "sha256": "9fcae3e48ee76bd17096ae604a2c9c351b55fbcb9527fdc2996806139b7cf7bd"
+    },
+    {
+      "path": "docs/research_line/m2/RESEARCH_LINE_STANDALONE_READINESS_V1.json",
+      "sha256": "0c4fd12a6937839be05bdaa4e6af6b48e3b536c808ba61b2d9b90425009ccc62"
+    },
+    {
+      "path": "src/recclaw_core/experiments/helix_abc_v1/research_capability.py",
+      "sha256": "02c90ad55ad739648775398d6276e4963ccc9c469e954effdb32d9d11f5d13f5"
+    },
+    {
+      "path": "src/recclaw_core/experiments/helix_abc_v1/research_contracts.py",
+      "sha256": "6c19a5a1696e2774120965fb6b43339adfc4c2821781aa44ea77298fcab3e90d"
+    },
+    {
+      "path": "src/recclaw_core/experiments/helix_abc_v1/research_controller.py",
+      "sha256": "4ec87a56e6cb96648e604cc4e579d8ba1a85065183267ac1aaaa1e6a483e99ae"
+    },
+    {
+      "path": "src/recclaw_core/experiments/helix_abc_v1/research_quality_gate.py",
+      "sha256": "ce958905aa9c3cbc32ce14ad89cd443e994216766c755678a23321f512d7b9cc"
+    },
+    {
+      "path": "tests/experiments/helix_abc_v1/test_m2_research_capability.py",
+      "sha256": "7f8d80c81e74ac614e4b298caee281f38449665c20989705a3e5e61520cd7f3d"
+    }
+  ],
+  "implementation_profile": "MINIMUM_SUFFICIENT_V1",
+  "independent_adversarial_audit": {
+    "p0_count": 0,
+    "p1_count": 0,
+    "p2_count": 2,
+    "path": "docs/research_line/m2/M2_INDEPENDENT_AUDIT.md",
+    "verdict": "PASS_WITH_NONBLOCKING_P2"
+  },
+  "milestone": "M2",
+  "record_schema": "recclaw.m2-execution-record.v1",
+  "repair_rounds": [
+    {
+      "round": 1,
+      "resolution": "Separated opaque shared BL Program fields from Research-owned authority audit; then closed physical-call, controlled-contract, immutable-candidate, complete-route and identity false-allows."
+    },
+    {
+      "round": 2,
+      "resolution": "Closed the P1 Meta advisory false-positive by applying versioned token allocation, axis targeting, memory policy and Router priors to the next round and testing the activated effect."
+    }
+  ],
+  "repository_state": {
+    "branch": "feat/research-line-abc",
+    "upstream": "origin/feat/research_line",
+    "working_tree_changeset_digest": "6ccf25288589e83c0a3ff42e3761f0166f58dc2c2f741f5878f1036ae0372d8b",
+    "working_tree_changeset_digest_scope": "canonical implementation_files array excluding this record, audit, risk register, and handoff"
+  },
+  "side_effect_attestation": {
+    "canary": false,
+    "common_execution_guard_change": false,
+    "evidence_guard_import": false,
+    "main_campaign": false,
+    "ordinary_training": false,
+    "pilot": false,
+    "push": false,
+    "real_llm_call": false
+  },
+  "test_results": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /tmp/recclaw_m0_audit_venv/bin/python -m unittest tests.experiments.helix_abc_v1.test_m2_research_capability -q",
+      "passed": 18,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /tmp/recclaw_m0_audit_venv/bin/python -m unittest tests.experiments.helix_abc_v1.test_m1_runtime -q",
+      "passed": 25,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /tmp/recclaw_m0_audit_venv/bin/python -m unittest discover -s tests/experiments/helix_abc_v1 -p 'test_m0_*.py' -q",
+      "passed": 26,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /tmp/recclaw_m0_audit_venv/bin/python -m unittest discover -s tests -p 'test_bl_icf_mechanism_space.py' -q",
+      "passed": 27,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_research_line.py' -q",
+      "passed": 4,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_candidate_proposal.py' -q",
+      "passed": 17,
+      "result": "PASS"
+    }
+  ],
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}
