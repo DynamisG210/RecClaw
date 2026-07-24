@@ -39,6 +39,9 @@ from recclaw_core.experiments.helix_abc_v1.runtime_contracts import (
 from recclaw_core.experiments.helix_abc_v1.training_execution_guard import (
     CommonTrainingExecutionGuardV1,
 )
+from recclaw_core.experiments.helix_abc_v1.training_filesystem import (
+    build_training_filesystem_capability,
+)
 from recclaw_core.experiments.helix_abc_v1.training_materialization import (
     build_training_binding_v3,
 )
@@ -49,7 +52,7 @@ from recclaw_core.experiments.helix_abc_v1.training_runtime_contracts import (
     TrainingClosureDecisionV1,
     TrainingCompatibilityStatusV1,
     TrainingExecutionPurposeV1,
-    TrainingRawRunOutputV1,
+    TrainingRawRunOutputV2,
     TrainingResourceAccountingV1,
     TrainingRuntimeCompatibilityFixtureV1,
 )
@@ -80,7 +83,8 @@ from recclaw_core.experiments.helix_abc_v1.training_state_store import (
 )
 
 
-PYTHON = Path("/root/miniconda3/envs/recbole/bin/python")
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PYTHON = Path("/root/projects/RecClaw_m6_training_runtime_v2/bin/python")
 RECBOLE = Path("/root/projects/RecBole_m6_runtime")
 DATA = Path("/root/projects/RecBole/dataset")
 
@@ -111,6 +115,14 @@ def runtime_binding_for(
     run_root = result_root or (
         arm_root / "pilot_runs" / str(base_binding.run_id)
     )
+    capability = build_training_filesystem_capability(
+        instance_private_root=arm_root,
+        result_root=run_root,
+        checkpoint_root=run_root / "checkpoints",
+        project_root=PROJECT_ROOT,
+        recbole_root=RECBOLE,
+        dataset_root=DATA / "ml-1m",
+    )
     return build_training_runtime_binding(
         accepted_evidence_eligibility="NOT_ELIGIBLE_FOR_ACCEPTED_EVIDENCE",
         arm_common_projection_digest=common_release_projection_digest(),
@@ -136,6 +148,7 @@ def runtime_binding_for(
         search_memory_eligibility="NOT_ELIGIBLE_FOR_MAIN_SEARCH_MEMORY",
         seed_policy_digest="9" * 64,
         training_config_budget_digest="a" * 64,
+        filesystem_capability_digest=capability.capability_digest,
     )
 
 
@@ -302,7 +315,7 @@ def close_chain(
             "start_status": "STARTED",
         }
     )
-    raw_output = TrainingRawRunOutputV1(
+    raw_output = TrainingRawRunOutputV2(
         {
             "binding_digest": binding.digest,
             "budget_digest": binding.budget_digest,
@@ -310,6 +323,10 @@ def close_chain(
             "epochs_requested": 1,
             "environment_lock_digest": runtime_binding.environment_lock_digest,
             "execution_purpose": binding.execution_purpose,
+            "filesystem_capability_digest": (
+                runtime_binding.filesystem_capability_digest
+            ),
+            "filesystem_confinement_status": "PASS",
             "experiment_id": runtime_binding.experiment_id,
             "exit_status": exit_status,
             "gpu_cost_microunits": gpu_cost,
@@ -330,6 +347,7 @@ def close_chain(
             "runtime_binding_digest": runtime_binding.digest,
             "runtime_release_digest": binding.runtime_release_digest,
             "seed": 2026,
+            "side_effect_audit_digest": "c" * 64,
             "training_backend_started": True,
             "termination_class": termination_class,
             "training_config_budget_digest": (
@@ -374,7 +392,7 @@ def close_chain(
     for artifact_type, record in (
         ("EXECUTION_START_CONFIRMATION_V1", confirmation),
         ("EXECUTION_START_RECEIPT_V2", receipt),
-        ("TRAINING_RAW_RUN_OUTPUT_V1", raw_output),
+        ("TRAINING_RAW_RUN_OUTPUT_V2", raw_output),
         ("TRAINING_RESOURCE_ACCOUNTING_V1", accounting),
     ):
         artifacts.append(
@@ -924,7 +942,7 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
             self.assertIsNone(envelope)
 
             chain = list(close_chain(root / "fake-raw"))
-            chain[7] = TrainingRawRunOutputV1(
+            chain[7] = TrainingRawRunOutputV2(
                 {**chain[7].to_dict(), "runner_abi": "recclaw.fake-non-training-runner.v1"}
             )
             fake_raw, envelope = close(tuple(chain))

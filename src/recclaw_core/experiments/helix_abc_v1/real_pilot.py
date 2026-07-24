@@ -15,6 +15,7 @@ from recclaw_core.helix.contracts import (
 
 from .canonical import canonical_value, sha256_digest
 from .contracts import ArmCode, ResourceCeilingsV1, default_experiment_contract
+from .m6e_conformance import require_m6e_conformance_packet
 from .pilot_training import (
     PilotTrainingLauncherV1,
     pilot_training_profile,
@@ -34,12 +35,14 @@ from .research_controller import ResearchLineControllerV1
 from .real_canary import RealCanaryProposalBrokerV1
 from .runtime_contracts import CommonDecision, GateStatus
 from .runtime_release import common_release_projection_digest
+from .store_audit import experiment_store_audit_port
+from .training_filesystem import build_training_filesystem_capability
 from .training_execution_guard import CommonTrainingExecutionGuardV1
 from .training_materialization import build_training_binding_v3
 from .training_runtime_contracts import (
     TrainingCompatibilityStatusV1,
     TrainingExecutionPurposeV1,
-    TrainingRuntimeBindingV1,
+    TrainingRuntimeBindingV2,
     TrainingRuntimeCompatibilityFixtureV1,
 )
 from .training_runtime_release import (
@@ -209,6 +212,9 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         _guard_context: GuardContext | None = None,
     ) -> None:
         contract = _contract or PilotStoreContractV1.create()
+        self._training_project_root = project_root.resolve()
+        self._training_recbole_root = recbole_root.resolve()
+        self._training_data_path = data_path.resolve()
         super().__init__(
             root,
             assignment_nonce=(
@@ -219,6 +225,12 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             resource_ceilings=pilot_budget(),
             guard_context=_guard_context or pilot_guard_context(),
         )
+        self.store_audit_port = experiment_store_audit_port(self.store)
+        self.store_audit_preflight = self.store_audit_port.audit_store()
+        if not self.store_audit_preflight.passed:
+            raise PreCanaryInvariantError(
+                "Pilot store audit capability failed before broker use"
+            )
         purpose = TrainingExecutionPurposeV1.PILOT.value
         protocol_digest = sha256_digest(pilot_protocol())
         seed_policy_digest = sha256_digest(
@@ -310,6 +322,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             project_root=project_root,
             recbole_root=recbole_root,
             data_path=data_path,
+            experiment_writable_root=root,
             python_executable=python_executable,
         )
         self.initial_research_identity = broker.bc_controller_identity_digest
@@ -331,7 +344,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             raise PreCanaryInvariantError(
                 "Pilot training requires common ALLOW/PASS decisions"
             )
-        if not isinstance(runtime_context, TrainingRuntimeBindingV1):
+        if not isinstance(runtime_context, TrainingRuntimeBindingV2):
             raise PreCanaryInvariantError("Pilot training runtime binding is missing")
         return self.training_launcher.launch(
             permit=permit,
@@ -347,11 +360,24 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         base_permit: Any,
         base_binding: Any,
         eligible: Any,
-    ) -> tuple[Any, Any, TrainingRuntimeBindingV1]:
+    ) -> tuple[Any, Any, TrainingRuntimeBindingV2]:
         del eligible
         purpose = TrainingExecutionPurposeV1.PILOT.value
         budget = self.resource_ceilings
         arm_root = Path(str(base_binding.arm_private_root))
+        run_root = arm_root / "pilot_runs" / str(base_binding.run_id)
+        checkpoint_root = run_root / "checkpoints"
+        filesystem_capability = build_training_filesystem_capability(
+            instance_private_root=arm_root,
+            result_root=run_root,
+            checkpoint_root=checkpoint_root,
+            project_root=self._training_project_root,
+            recbole_root=self._training_recbole_root,
+            dataset_root=(
+                self._training_data_path
+                / str(pilot_training_profile()["dataset"])
+            ),
+        )
         runtime_binding = build_training_runtime_binding(
             accepted_evidence_eligibility=(
                 "NOT_ELIGIBLE_FOR_ACCEPTED_EVIDENCE"
@@ -359,12 +385,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             arm_common_projection_digest=common_release_projection_digest(),
             budget_digest=str(base_binding.budget_digest),
             candidate_id=str(base_binding.candidate_id),
-            checkpoint_root=str(
-                arm_root
-                / "pilot_runs"
-                / str(base_binding.run_id)
-                / "checkpoints"
-            ),
+            checkpoint_root=str(checkpoint_root),
             evaluation_purpose=purpose,
             execution_purpose=purpose,
             experiment_id=self.contract.experiment_id,
@@ -383,9 +404,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             partition_purpose="PILOT_EXCLUDED_FROM_MAIN",
             protocol_digest=sha256_digest(pilot_protocol()),
             protocol_profile_ref="PROTO-ML1M-FULL-001",
-            result_root=str(
-                arm_root / "pilot_runs" / str(base_binding.run_id)
-            ),
+            result_root=str(run_root),
             round_id=str(base_binding.round_id),
             run_id=str(base_binding.run_id),
             search_memory_eligibility=(
@@ -404,6 +423,9 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
                     "budget": budget.to_dict(),
                     "training_profile_digest": pilot_training_profile_digest(),
                 }
+            ),
+            filesystem_capability_digest=(
+                filesystem_capability.capability_digest
             ),
         )
         binding = build_training_binding_v3(
@@ -431,7 +453,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         binding: Any,
         runtime_context: Any | None,
     ) -> None:
-        if not isinstance(runtime_context, TrainingRuntimeBindingV1):
+        if not isinstance(runtime_context, TrainingRuntimeBindingV2):
             raise PreCanaryInvariantError("Pilot claim is missing runtime binding")
         self.store.claim_training_execution(
             ClaimTrainingExecutionCommandV1(
@@ -616,7 +638,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
                 for arm in (ArmCode.B, ArmCode.C)
             },
             "round_count": round_count,
-            "state_store_integrity": self.store.integrity_check(),
+            "state_store_integrity": self.store_audit_port.audit_store().to_dict(),
         }
 
 
@@ -652,6 +674,12 @@ class FreshPilotOrchestratorV2(RealPilotOrchestratorV1):
         data_path: Path,
         python_executable: Path,
     ) -> None:
+        try:
+            require_m6e_conformance_packet(project_root)
+        except RuntimeError as error:
+            raise PreCanaryInvariantError(
+                "fresh Pilot is blocked before Broker use until M6E PASS"
+            ) from error
         super().__init__(
             root,
             broker=broker,

@@ -21,9 +21,9 @@ from .training_runtime_contracts import (
     ExecutionStartReceiptV2,
     RawResultEnvelopeV2,
     TrainingClosureDecisionV1,
-    TrainingRawRunOutputV1,
+    TrainingRawRunOutputV2,
     TrainingResourceAccountingV1,
-    TrainingRuntimeBindingV1,
+    TrainingRuntimeBindingV2,
     TrainingRuntimePlanDecisionV1,
 )
 from .training_runtime_release import (
@@ -47,7 +47,7 @@ class CommonTrainingExecutionGuardV1:
         self,
         *,
         base_plan: CommonPlanDecisionV1,
-        runtime_binding: TrainingRuntimeBindingV1,
+        runtime_binding: TrainingRuntimeBindingV2,
     ) -> TrainingRuntimePlanDecisionV1:
         failures: list[str] = []
         try:
@@ -88,7 +88,7 @@ class CommonTrainingExecutionGuardV1:
         base_permit: CommonExecutionPermitV1,
         base_binding: CandidateExecutionBindingV2,
         binding: CandidateExecutionBindingV3,
-        runtime_binding: TrainingRuntimeBindingV1,
+        runtime_binding: TrainingRuntimeBindingV2,
         training_plan: TrainingRuntimePlanDecisionV1,
     ) -> CommonExecutionPermitV2:
         valid_binding, reasons = verify_training_binding_v3(
@@ -140,11 +140,11 @@ class CommonTrainingExecutionGuardV1:
         *,
         permit: CommonExecutionPermitV2,
         binding: CandidateExecutionBindingV3,
-        runtime_binding: TrainingRuntimeBindingV1,
+        runtime_binding: TrainingRuntimeBindingV2,
         claim: Mapping[str, Any],
         confirmation: ExecutionStartConfirmationV1,
         receipt: ExecutionStartReceiptV2,
-        raw_output: TrainingRawRunOutputV1,
+        raw_output: TrainingRawRunOutputV2,
         resource_accounting: TrainingResourceAccountingV1,
         artifact_closure: list[Mapping[str, Any]],
         seed: int,
@@ -219,6 +219,9 @@ class CommonTrainingExecutionGuardV1:
             and raw_output.seed == seed
             and raw_output.training_config_budget_digest
             == runtime_binding.training_config_budget_digest
+            and raw_output.filesystem_capability_digest
+            == runtime_binding.filesystem_capability_digest
+            and raw_output.filesystem_confinement_status == "PASS"
             and raw_output.gpu_device_time_ms >= 0
             and raw_output.gpu_cost_microunits >= 0
             and raw_output.wall_time_ms >= 0
@@ -277,7 +280,7 @@ class CommonTrainingExecutionGuardV1:
         expected_artifacts = {
             "EXECUTION_START_CONFIRMATION_V1": confirmation,
             "EXECUTION_START_RECEIPT_V2": receipt,
-            "TRAINING_RAW_RUN_OUTPUT_V1": raw_output,
+            "TRAINING_RAW_RUN_OUTPUT_V2": raw_output,
             "TRAINING_RESOURCE_ACCOUNTING_V1": resource_accounting,
         }
         artifact_ok = True

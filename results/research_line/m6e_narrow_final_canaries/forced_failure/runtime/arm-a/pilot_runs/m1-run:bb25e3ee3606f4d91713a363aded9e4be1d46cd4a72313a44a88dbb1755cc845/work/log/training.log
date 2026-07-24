@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/root/projects/RecClaw_research_line_abc/scripts/pilot_train_worker.py", line 266, in main
+    raise RuntimeError("M6E_CONTROLLED_FORCED_RUNTIME_FAILURE")
+RuntimeError: M6E_CONTROLLED_FORCED_RUNTIME_FAILURE

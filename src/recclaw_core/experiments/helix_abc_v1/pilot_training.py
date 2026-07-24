@@ -12,6 +12,13 @@ from typing import Any, Mapping, Sequence
 
 from .canonical import canonical_json_bytes, sha256_digest
 from .state_store import RegisterArtifactCommand
+from .training_filesystem import (
+    build_training_filesystem_capability,
+    filesystem_confinement_audit,
+    materialize_training_filesystem_capability,
+    protected_side_effect_manifest,
+    side_effect_audit,
+)
 from .training_execution_guard import CommonTrainingExecutionGuardV1
 from .training_runtime_contracts import (
     CandidateExecutionBindingV3,
@@ -19,9 +26,10 @@ from .training_runtime_contracts import (
     ExecutionStartConfirmationV1,
     ExecutionStartReceiptV2,
     RawResultEnvelopeV2,
-    TrainingRawRunOutputV1,
+    TrainingExecutionPurposeV1,
+    TrainingRawRunOutputV2,
     TrainingResourceAccountingV1,
-    TrainingRuntimeBindingV1,
+    TrainingRuntimeBindingV2,
 )
 from .training_runtime_release import resolve_bound_training_release
 from .training_state_store import (
@@ -115,22 +123,25 @@ class PilotTrainingLauncherV1:
         project_root: Path,
         recbole_root: Path,
         data_path: Path,
+        experiment_writable_root: Path,
         python_executable: Path,
     ) -> None:
         self._store = store
         self._project_root = project_root.resolve()
         self._recbole_root = recbole_root.resolve()
         self._data_path = data_path.resolve()
-        self._python = python_executable.resolve()
+        self._experiment_writable_root = experiment_writable_root.resolve()
+        self._python = python_executable.absolute()
 
     def launch(
         self,
         *,
         permit: CommonExecutionPermitV2,
         binding: CandidateExecutionBindingV3,
-        runtime_binding: TrainingRuntimeBindingV1,
+        runtime_binding: TrainingRuntimeBindingV2,
         materialization_artifacts: tuple[dict[str, Any], ...],
-    ) -> tuple[TrainingRawRunOutputV1, RawResultEnvelopeV2]:
+        force_failure: bool = False,
+    ) -> tuple[TrainingRawRunOutputV2, RawResultEnvelopeV2]:
         profile = pilot_training_profile()
         claim = self._store.get_execution_claim(str(binding.round_id))
         release = resolve_bound_training_release(
@@ -153,6 +164,12 @@ class PilotTrainingLauncherV1:
             or runtime_binding.release_digest != release.digest
         ):
             raise ValueError("training launcher requires the exact committed release")
+        if (
+            force_failure
+            and binding.execution_purpose
+            != TrainingExecutionPurposeV1.FIXED_CANARY.value
+        ):
+            raise ValueError("forced failure is limited to fixed conformance canaries")
 
         root = Path(str(binding.arm_private_root))
         config_path = (
@@ -185,12 +202,44 @@ class PilotTrainingLauncherV1:
             != checkpoint_dir.resolve().as_posix()
         ):
             raise ValueError("training launcher roots differ from purpose binding")
-        run_root.mkdir(parents=True, exist_ok=False)
-        log_path = run_root / "training.log"
+        if run_root.exists():
+            raise ValueError("training run root must be fresh")
+        capability = build_training_filesystem_capability(
+            instance_private_root=root,
+            result_root=run_root,
+            checkpoint_root=checkpoint_dir,
+            project_root=self._project_root,
+            recbole_root=self._recbole_root,
+            dataset_root=self._data_path / str(profile["dataset"]),
+        )
+        if (
+            runtime_binding.filesystem_capability_digest
+            != capability.capability_digest
+        ):
+            raise ValueError("training filesystem capability does not bind the run")
+        materialize_training_filesystem_capability(capability)
+        log_path = Path(capability.log_root) / "training.log"
         worker_path = run_root / "worker_result.json"
         confirmation_path = run_root / "start_confirmation.json"
         gate_path = run_root / "start_gate.json"
+        capability_path = run_root / "filesystem_capability.v2.json"
+        capability_path.write_bytes(
+            canonical_json_bytes(capability.to_dict()) + b"\n"
+        )
+        protected_roots = {
+            "dataset": self._data_path / str(profile["dataset"]),
+            "project": self._project_root,
+            "recbole": self._recbole_root,
+        }
+        before_side_effects = protected_side_effect_manifest(
+            protected_roots,
+            excluded_roots=(self._experiment_writable_root,),
+        )
         command = [
+            "/usr/bin/unshare",
+            "--mount",
+            "--propagation",
+            "private",
             str(self._python),
             str(self._project_root / "scripts" / "pilot_train_worker.py"),
             "--binding-digest",
@@ -207,6 +256,8 @@ class PilotTrainingLauncherV1:
             str(profile["max_epochs"]),
             "--execution-purpose",
             str(binding.execution_purpose),
+            "--filesystem-capability-path",
+            str(capability_path),
             "--log-path",
             str(log_path),
             "--model",
@@ -236,9 +287,27 @@ class PilotTrainingLauncherV1:
             "--start-gate-path",
             str(gate_path),
         ]
+        if force_failure:
+            command.append("--force-failure")
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key
+            in {
+                "CUDA_VISIBLE_DEVICES",
+                "LANG",
+                "LC_ALL",
+                "LD_LIBRARY_PATH",
+                "PATH",
+                "TZ",
+            }
+        }
+        environment.update(capability.environment)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
         process = subprocess.Popen(
             command,
-            cwd=self._project_root,
+            cwd=capability.run_working_directory,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -247,7 +316,12 @@ class PilotTrainingLauncherV1:
         confirmation_deadline = time.monotonic() + 30.0
         while not confirmation_path.is_file():
             if process.poll() is not None:
-                raise RuntimeError("training wrapper exited before START_CONFIRMED")
+                stdout, stderr = process.communicate()
+                raise RuntimeError(
+                    "training wrapper exited before START_CONFIRMED: "
+                    f"exit_code={process.returncode}; "
+                    f"stderr={stderr.strip()!r}; stdout={stdout.strip()!r}"
+                )
             if time.monotonic() >= confirmation_deadline:
                 process.kill()
                 process.wait()
@@ -339,6 +413,13 @@ class PilotTrainingLauncherV1:
             return_code = 124
             launcher_stderr = str(error)
         wall_time_ms = max(1, (time.monotonic_ns() - started) // 1_000_000)
+        after_side_effects = protected_side_effect_manifest(
+            protected_roots,
+            excluded_roots=(self._experiment_writable_root,),
+        )
+        shared_side_effect_audit = side_effect_audit(
+            before_side_effects, after_side_effects
+        )
         rate = int(
             profile["gpu_meter"]["normalized_rate_microunits_per_device_hour"]
         )
@@ -353,6 +434,10 @@ class PilotTrainingLauncherV1:
                 "model": model,
             }
             worker_path.write_bytes(canonical_json_bytes(worker) + b"\n")
+        confinement_audit = filesystem_confinement_audit(
+            shared_side_effect_audit,
+            dict(worker.get("filesystem_mount_audit", {})),
+        )
         metrics = {
             str(key).lower(): float(value)
             for key, value in dict(worker.get("test_result", {})).items()
@@ -365,7 +450,12 @@ class PilotTrainingLauncherV1:
             timed_out=timed_out,
             worker_status=worker.get("exit_status"),
         )
-        raw_output = TrainingRawRunOutputV1(
+        if confinement_audit["status"] != "PASS":
+            exit_status = "RUNTIME_FAILURE"
+            termination_class = "CRASH_OR_RUNTIME_FAILURE"
+            return_code = 125
+            metrics = {}
+        raw_output = TrainingRawRunOutputV2(
             {
                 "binding_digest": binding.digest,
                 "budget_digest": binding.budget_digest,
@@ -375,6 +465,8 @@ class PilotTrainingLauncherV1:
                     runtime_binding.environment_lock_digest
                 ),
                 "execution_purpose": binding.execution_purpose,
+                "filesystem_capability_digest": capability.capability_digest,
+                "filesystem_confinement_status": confinement_audit["status"],
                 "experiment_id": runtime_binding.experiment_id,
                 "exit_status": exit_status,
                 "gpu_cost_microunits": gpu_cost,
@@ -393,6 +485,7 @@ class PilotTrainingLauncherV1:
                 "runtime_binding_digest": runtime_binding.digest,
                 "runtime_release_digest": binding.runtime_release_digest,
                 "seed": int(profile["ordinary_execution_seed"]),
+                "side_effect_audit_digest": confinement_audit["audit_digest"],
                 "training_backend_started": True,
                 "termination_class": termination_class,
                 "training_config_budget_digest": (
@@ -404,6 +497,28 @@ class PilotTrainingLauncherV1:
         )
         log_bytes = log_path.read_bytes() if log_path.exists() else b""
         worker_bytes = worker_path.read_bytes()
+        capability_artifact = _register(
+            self._store,
+            round_id=str(binding.round_id),
+            artifact_type="TRAINING_FILESYSTEM_CAPABILITY_V2",
+            relative_path=(
+                f"artifacts/{binding.run_id}/training_filesystem_capability.v2.json"
+            ),
+            producer="PilotTrainingLauncherV1",
+            idempotency_key=f"m6e-filesystem:{claim['claim_id']}",
+            payload=canonical_json_bytes(capability.to_dict()),
+        )
+        side_effect_artifact = _register(
+            self._store,
+            round_id=str(binding.round_id),
+            artifact_type="TRAINING_SIDE_EFFECT_AUDIT_V1",
+            relative_path=(
+                f"artifacts/{binding.run_id}/training_side_effect_audit.v1.json"
+            ),
+            producer="PilotTrainingLauncherV1",
+            idempotency_key=f"m6e-side-effects:{claim['claim_id']}",
+            payload=canonical_json_bytes(confinement_audit),
+        )
         log_artifact = _register(
             self._store,
             round_id=str(binding.round_id),
@@ -425,9 +540,9 @@ class PilotTrainingLauncherV1:
         raw_artifact = _register(
             self._store,
             round_id=str(binding.round_id),
-            artifact_type="TRAINING_RAW_RUN_OUTPUT_V1",
+            artifact_type="TRAINING_RAW_RUN_OUTPUT_V2",
             relative_path=(
-                f"artifacts/{binding.run_id}/training_raw_run_output.v1.json"
+                f"artifacts/{binding.run_id}/training_raw_run_output.v2.json"
             ),
             producer="PilotTrainingRunnerV1",
             idempotency_key=f"m6r-raw:{claim['claim_id']}",
@@ -480,6 +595,8 @@ class PilotTrainingLauncherV1:
             + (
                 confirmation_artifact,
                 receipt_artifact,
+                capability_artifact,
+                side_effect_artifact,
                 log_artifact,
                 worker_artifact,
                 raw_artifact,

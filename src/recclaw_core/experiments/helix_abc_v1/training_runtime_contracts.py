@@ -11,6 +11,7 @@ from .runtime_contracts import AUTHORITY_FIELDS, ClosedRuntimeRecord
 class RuntimeProfileIdV1(str, Enum):
     FAKE_NON_TRAINING = "FAKE_NON_TRAINING_RELEASE_V1"
     PACKAGE_TRAINING = "PACKAGE_OWNED_TRAINING_RELEASE_V1"
+    PACKAGE_TRAINING_V2 = "PACKAGE_OWNED_TRAINING_RELEASE_V2"
 
 
 class TrainingExecutionPurposeV1(str, Enum):
@@ -78,6 +79,17 @@ class TrainingRuntimeReleaseV1(ClosedRuntimeRecord):
     )
 
 
+class TrainingRuntimeReleaseV2(ClosedRuntimeRecord):
+    record_type = "TrainingRuntimeReleaseV2"
+    required_fields = TrainingRuntimeReleaseV1.required_fields | frozenset(
+        {
+            "filesystem_capability_policy_digest",
+            "store_audit_contract_digest",
+            "training_profile_digest",
+        }
+    )
+
+
 class TrainingRuntimeBindingV1(ClosedRuntimeRecord):
     record_type = "TrainingRuntimeBindingV1"
     required_fields = frozenset(
@@ -120,6 +132,13 @@ class TrainingRuntimeBindingV1(ClosedRuntimeRecord):
             "training_config_digest",
             "write_contract_digest",
         }
+    )
+
+
+class TrainingRuntimeBindingV2(ClosedRuntimeRecord):
+    record_type = "TrainingRuntimeBindingV2"
+    required_fields = TrainingRuntimeBindingV1.required_fields | frozenset(
+        {"filesystem_capability_digest"}
     )
 
 
@@ -314,6 +333,17 @@ class TrainingRawRunOutputV1(ClosedRuntimeRecord):
     )
 
 
+class TrainingRawRunOutputV2(ClosedRuntimeRecord):
+    record_type = "TrainingRawRunOutputV2"
+    required_fields = TrainingRawRunOutputV1.required_fields | frozenset(
+        {
+            "filesystem_capability_digest",
+            "filesystem_confinement_status",
+            "side_effect_audit_digest",
+        }
+    )
+
+
 class TrainingResourceAccountingV1(ClosedRuntimeRecord):
     record_type = "TrainingResourceAccountingV1"
     required_fields = frozenset(
@@ -396,10 +426,13 @@ __all__ = [
     "TrainingCompatibilityStatusV1",
     "TrainingExecutionPurposeV1",
     "TrainingRawRunOutputV1",
+    "TrainingRawRunOutputV2",
     "TrainingResourceAccountingV1",
     "TrainingRuntimeBindingV1",
+    "TrainingRuntimeBindingV2",
     "TrainingRuntimeCompatibilityFixtureV1",
     "TrainingRuntimeCompatibilityPreflightV1",
     "TrainingRuntimePlanDecisionV1",
     "TrainingRuntimeReleaseV1",
+    "TrainingRuntimeReleaseV2",
 ]

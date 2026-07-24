@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import json
 import os
+import subprocess
 import sys
 import time
 import traceback
@@ -52,6 +53,85 @@ def _await_start_gate(
     raise TimeoutError("training start gate was not accepted")
 
 
+def _mount_bind(source: Path, target: Path) -> None:
+    subprocess.run(
+        ["/usr/bin/mount", "--bind", str(source), str(target)],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _activate_filesystem_capability(
+    capability: object,
+) -> dict[str, object]:
+    from recclaw_core.experiments.helix_abc_v1.training_filesystem import (
+        filesystem_mount_audit,
+        make_mount_tree_read_only,
+        make_mount_writable,
+    )
+
+    working = Path(capability.run_working_directory)
+    if Path.cwd().resolve() != working.resolve():
+        raise RuntimeError("training worker cwd is not instance-private")
+    result_root = Path(capability.result_root)
+    subprocess.run(
+        ["/usr/bin/mount", "--make-rprivate", "/"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    subprocess.run(
+        ["/usr/bin/mount", "--bind", str(result_root), str(result_root)],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    runtime_access_mounts = tuple(
+        Path(path).resolve()
+        for path in (
+            *capability.device_access_mounts,
+            *capability.runtime_control_mounts,
+        )
+    )
+    for path in runtime_access_mounts:
+        _mount_bind(path, path)
+    make_mount_tree_read_only(Path("/"))
+    make_mount_writable(result_root)
+    for path in runtime_access_mounts:
+        make_mount_writable(path)
+    os.chdir(working)
+    temporary = Path(capability.temp_root)
+    writable_mounts = (
+        result_root,
+        Path("/tmp"),
+        Path("/var/tmp"),
+        Path("/dev/shm"),
+        *runtime_access_mounts,
+    )
+    _mount_bind(temporary, writable_mounts[1])
+    _mount_bind(temporary / "var_tmp", writable_mounts[2])
+    _mount_bind(temporary / "dev_shm", writable_mounts[3])
+    for path in writable_mounts[1:4]:
+        make_mount_writable(path)
+    expected_environment = capability.environment
+    if any(os.environ.get(key) != value for key, value in expected_environment.items()):
+        raise RuntimeError("training writable environment projection mismatch")
+    audit = filesystem_mount_audit(writable_mounts)
+    if audit["status"] != "PASS":
+        raise RuntimeError(
+            "training mount confinement audit failed: "
+            f"{audit['unexpected_writable_mount_targets']}"
+        )
+    return audit
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--binding-digest", required=True)
@@ -61,6 +141,8 @@ def main() -> int:
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--epochs", required=True, type=int)
     parser.add_argument("--execution-purpose", required=True)
+    parser.add_argument("--filesystem-capability-path", required=True)
+    parser.add_argument("--force-failure", action="store_true")
     parser.add_argument("--log-path", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--output-path", required=True)
@@ -79,6 +161,20 @@ def main() -> int:
 
     project_root = Path(args.project_root).resolve()
     recbole_root = Path(args.recbole_root).resolve()
+    sys.path.insert(0, str(project_root / "src"))
+    sys.path.insert(0, str(project_root))
+    from recclaw_core.experiments.helix_abc_v1.training_filesystem import (
+        TrainingFilesystemCapabilityV2,
+    )
+
+    capability_payload = json.loads(
+        Path(args.filesystem_capability_path).read_text(encoding="utf-8")
+    )
+    expected_capability_digest = capability_payload.pop("capability_digest")
+    capability = TrainingFilesystemCapabilityV2.create(capability_payload)
+    if capability.capability_digest != expected_capability_digest:
+        raise RuntimeError("training filesystem capability digest mismatch")
+    mount_audit = _activate_filesystem_capability(capability)
     start_identity = {
         "binding_digest": args.binding_digest,
         "claim_id": args.claim_id,
@@ -105,7 +201,6 @@ def main() -> int:
         timeout_seconds=30.0,
     )
 
-    sys.path.insert(0, str(project_root))
     sys.path.insert(0, str(project_root / "scripts"))
     sys.path.insert(0, str(recbole_root))
 
@@ -136,10 +231,26 @@ def main() -> int:
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     payload: dict[str, object]
     exit_code = 0
-    cwd_before = Path.cwd()
     argv_before = sys.argv[:]
+    device_evidence: dict[str, object] = {}
     try:
-        os.chdir(project_root)
+        import torch
+
+        device_evidence = {
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device_count": torch.cuda.device_count(),
+            "cuda_device_name": (
+                torch.cuda.get_device_name(0)
+                if torch.cuda.is_available()
+                else None
+            ),
+            "torch_cuda_version": torch.version.cuda,
+        }
+        if (
+            device_evidence["cuda_available"] is not True
+            or int(device_evidence["cuda_device_count"]) < 1
+        ):
+            raise RuntimeError("M6E_CUDA_DEVICE_CAPABILITY_UNAVAILABLE")
         sys.argv = [
             "pilot_train_worker.py",
             f"--model={args.model}",
@@ -151,6 +262,8 @@ def main() -> int:
         ]
         with log_path.open("w", encoding="utf-8", errors="replace") as handle:
             with contextlib.redirect_stdout(handle), contextlib.redirect_stderr(handle):
+                if args.force_failure:
+                    raise RuntimeError("M6E_CONTROLLED_FORCED_RUNTIME_FAILURE")
                 result = run(
                     args.model,
                     args.dataset,
@@ -173,8 +286,10 @@ def main() -> int:
             "best_valid_result": result.get("best_valid_result", {}),
             "best_valid_score": result.get("best_valid_score"),
             "exit_status": "SUCCESS",
+            "filesystem_mount_audit": mount_audit,
             "model": args.model,
             "test_result": result.get("test_result", {}),
+            "training_device_evidence": device_evidence,
         }
     except Exception as error:  # noqa: BLE001 - failure is a Pilot outcome.
         exit_code = 1
@@ -182,13 +297,14 @@ def main() -> int:
             "error_message": str(error),
             "error_type": type(error).__name__,
             "exit_status": "RUNTIME_FAILURE",
+            "filesystem_mount_audit": mount_audit,
             "model": args.model,
             "traceback": traceback.format_exc(),
+            "training_device_evidence": device_evidence,
         }
         with log_path.open("a", encoding="utf-8", errors="replace") as handle:
             handle.write(payload["traceback"])
     finally:
-        os.chdir(cwd_before)
         sys.argv = argv_before
     output_path.write_text(
         json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n",

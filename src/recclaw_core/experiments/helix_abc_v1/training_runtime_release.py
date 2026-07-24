@@ -10,6 +10,11 @@ from typing import Any, Mapping
 
 from .canonical import bytes_sha256, sha256_digest
 from .runtime_release import runtime_release_contract, runtime_release_digest
+from .store_audit import store_audit_contract_digest
+from .training_filesystem import (
+    build_training_filesystem_capability,
+    filesystem_capability_policy_digest,
+)
 from .training_runtime_contracts import (
     CandidateExecutionBindingV3,
     CommonExecutionPermitV2,
@@ -20,18 +25,20 @@ from .training_runtime_contracts import (
     RuntimeProfileIdV1,
     TrainingCompatibilityStatusV1,
     TrainingExecutionPurposeV1,
-    TrainingRawRunOutputV1,
+    TrainingRawRunOutputV2,
     TrainingResourceAccountingV1,
-    TrainingRuntimeBindingV1,
+    TrainingRuntimeBindingV2,
     TrainingRuntimeCompatibilityFixtureV1,
     TrainingRuntimeCompatibilityPreflightV1,
     TrainingRuntimePlanDecisionV1,
     TrainingRuntimeReleaseV1,
+    TrainingRuntimeReleaseV2,
 )
 
 
 RESOURCE_PACKAGE = "recclaw_core.experiments.helix_abc_v1.resources"
-TRAINING_RELEASE_RESOURCE = "training_runtime_release_v1.json"
+HISTORICAL_TRAINING_RELEASE_V1_RESOURCE = "training_runtime_release_v1.json"
+TRAINING_RELEASE_RESOURCE = "training_runtime_release_v2.json"
 TRAINING_RUNNER_ABI = "recclaw.package-owned-search-training-runner.v1"
 TRAINING_LAUNCHER_ABI = "recclaw.package-owned-training-launcher.v1"
 TRAINING_LAUNCH_PROTOCOL_ID = "CLAIM_PREPARE_CONFIRM_START_V1"
@@ -51,6 +58,8 @@ _COMPONENT_NAMES = (
     "close_result",
     "metric_policy",
     "resource_policy",
+    "filesystem_capability",
+    "store_audit",
 )
 
 
@@ -75,7 +84,9 @@ def _schema_digest(record_type: type[Any]) -> str:
     )
 
 
-def _source_manifest_map(release: TrainingRuntimeReleaseV1) -> dict[str, str]:
+def _source_manifest_map(
+    release: TrainingRuntimeReleaseV1 | TrainingRuntimeReleaseV2,
+) -> dict[str, str]:
     return {str(row["path"]): str(row["sha256"]) for row in release.source_manifest}
 
 
@@ -87,7 +98,7 @@ def _handler_registry_projection() -> dict[str, Any]:
         ],
         "fake_release_resource": "runtime_release_v1.json",
         "training_release_resource": TRAINING_RELEASE_RESOURCE,
-        "training_release_id": "TRAINING_RUNTIME_RELEASE_RECOVERY_V1",
+        "training_release_id": "TRAINING_RUNTIME_RELEASE_V2",
     }
 
 
@@ -106,7 +117,7 @@ def _live_torch_cuda_environment(python_executable: Path) -> dict[str, Any]:
     )
     payload = json.loads(
         subprocess.check_output(
-            [str(python_executable.resolve()), "-c", script],
+            [str(python_executable.absolute()), "-c", script],
             text=True,
             timeout=20,
         )
@@ -129,8 +140,14 @@ def _live_torch_cuda_environment(python_executable: Path) -> dict[str, Any]:
     return payload
 
 
-def training_runtime_release() -> TrainingRuntimeReleaseV1:
-    return TrainingRuntimeReleaseV1(_resource_json(TRAINING_RELEASE_RESOURCE))
+def historical_training_runtime_release_v1() -> TrainingRuntimeReleaseV1:
+    return TrainingRuntimeReleaseV1(
+        _resource_json(HISTORICAL_TRAINING_RELEASE_V1_RESOURCE)
+    )
+
+
+def training_runtime_release() -> TrainingRuntimeReleaseV2:
+    return TrainingRuntimeReleaseV2(_resource_json(TRAINING_RELEASE_RESOURCE))
 
 
 def training_runtime_release_digest() -> str:
@@ -161,7 +178,7 @@ def resolve_bound_training_release(
     runner_abi: str,
     runtime_release_digest: str,
     execution_purpose: str,
-) -> TrainingRuntimeReleaseV1:
+) -> TrainingRuntimeReleaseV2:
     """Resolve claim-bound identity without trusting later receipt bytes."""
 
     resolved = resolve_runtime_release(runner_abi)
@@ -206,7 +223,7 @@ def validate_training_runtime_release(
     failures: list[str] = []
 
     if (
-        release.profile_id != RuntimeProfileIdV1.PACKAGE_TRAINING.value
+        release.profile_id != RuntimeProfileIdV1.PACKAGE_TRAINING_V2.value
         or release.runner_abi != TRAINING_RUNNER_ABI
         or release.launcher_abi != TRAINING_LAUNCHER_ABI
         or release.launch_protocol_id != TRAINING_LAUNCH_PROTOCOL_ID
@@ -231,7 +248,7 @@ def validate_training_runtime_release(
         if not path.is_file() or bytes_sha256(path.read_bytes()) != expected:
             failures.append(f"TRAINING_DATASET_MISMATCH:{name}")
 
-    python_path = python_executable.resolve()
+    python_path = python_executable.absolute()
     if (
         not python_path.is_file()
         or bytes_sha256(python_path.read_bytes())
@@ -239,15 +256,14 @@ def validate_training_runtime_release(
     ):
         failures.append("TRAINING_PYTHON_IDENTITY_MISMATCH")
     else:
-        conda = python_path.parents[3] / "bin" / "conda"
         try:
-            explicit = subprocess.check_output(
+            environment_lock = subprocess.check_output(
                 [
-                    str(conda),
-                    "list",
-                    "--prefix",
-                    str(python_path.parents[1]),
-                    "--explicit",
+                    str(python_path),
+                    "-m",
+                    "pip",
+                    "freeze",
+                    "--all",
                 ],
                 timeout=20,
             )
@@ -255,8 +271,8 @@ def validate_training_runtime_release(
             failures.append("TRAINING_ENVIRONMENT_LOCK_UNAVAILABLE")
         else:
             if (
-                bytes_sha256(explicit)
-                != release.backend_identity["conda_explicit_digest"]
+                bytes_sha256(environment_lock)
+                != release.backend_identity["pip_freeze_digest"]
             ):
                 failures.append("TRAINING_ENVIRONMENT_LOCK_MISMATCH")
         try:
@@ -350,7 +366,8 @@ def build_training_runtime_binding(
     search_memory_eligibility: str,
     seed_policy_digest: str,
     training_config_budget_digest: str,
-) -> TrainingRuntimeBindingV1:
+    filesystem_capability_digest: str,
+) -> TrainingRuntimeBindingV2:
     release = training_runtime_release()
     if execution_purpose not in set(release.supported_execution_purposes):
         raise ValueError(
@@ -375,7 +392,7 @@ def build_training_runtime_binding(
         or not resolved_checkpoint.is_relative_to(resolved_result)
     ):
         raise ValueError("training result/checkpoint roots escape instance-private root")
-    return TrainingRuntimeBindingV1(
+    return TrainingRuntimeBindingV2(
         {
             "accepted_evidence_eligibility": accepted_evidence_eligibility,
             "arm_common_projection_digest": arm_common_projection_digest,
@@ -391,6 +408,7 @@ def build_training_runtime_binding(
             "execution_purpose": execution_purpose,
             "experiment_id": experiment_id,
             "frontier_eligibility": frontier_eligibility,
+            "filesystem_capability_digest": filesystem_capability_digest,
             "gpu_cost_ceiling_microunits": gpu_cost_ceiling_microunits,
             "gpu_device_time_ceiling_ms": gpu_device_time_ceiling_ms,
             "implementation_digest": implementation_digest,
@@ -460,6 +478,16 @@ def training_runtime_compatibility_preflight(
             failures.append(failure)
 
     try:
+        capability = build_training_filesystem_capability(
+            instance_private_root=Path(fixture.instance_private_root),
+            result_root=Path(fixture.result_root),
+            checkpoint_root=Path(fixture.checkpoint_root),
+            project_root=_project_root(),
+            recbole_root=recbole_root,
+            dataset_root=(
+                data_path.resolve() / str(release.read_contract["dataset_dir"])
+            ),
+        )
         binding = build_training_runtime_binding(
             accepted_evidence_eligibility=fixture.accepted_evidence_eligibility,
             arm_common_projection_digest=fixture.arm_common_projection_digest,
@@ -485,8 +513,10 @@ def training_runtime_compatibility_preflight(
             search_memory_eligibility=fixture.search_memory_eligibility,
             seed_policy_digest=fixture.seed_policy_digest,
             training_config_budget_digest=fixture.training_config_budget_digest,
+            filesystem_capability_digest=capability.capability_digest,
         )
     except ValueError:
+        capability = None
         binding = None
         failures.append("TRAINING_PURPOSE_BINDING_MISMATCH")
 
@@ -550,6 +580,14 @@ def training_runtime_compatibility_preflight(
                     "training_execution_guard.py"
                 ),
             }
+        )
+        and release.filesystem_capability_policy_digest
+        == filesystem_capability_policy_digest()
+        and release.store_audit_contract_digest
+        == store_audit_contract_digest()
+        and release.training_profile_digest
+        == sha256_digest(
+            _resource_json("pilot_training_profile_v1.json")
         ),
         "TRAINING_DECLARED_RELEASE_IDENTITY_MISMATCH",
     )
@@ -621,7 +659,7 @@ def training_runtime_compatibility_preflight(
     )
     expected_schemas = {
         "receipt_schema_digest": _schema_digest(ExecutionStartReceiptV2),
-        "raw_output_schema_digest": _schema_digest(TrainingRawRunOutputV1),
+        "raw_output_schema_digest": _schema_digest(TrainingRawRunOutputV2),
         "raw_result_schema_digest": _schema_digest(RawResultEnvelopeV2),
         "close_result_schema_digest": _schema_digest(CommonResultClosureV2),
         "resource_accounting_schema_digest": _schema_digest(
@@ -631,7 +669,7 @@ def training_runtime_compatibility_preflight(
             ExecutionStartConfirmationV1
         ),
         "runtime_binding_schema_digest": _schema_digest(
-            TrainingRuntimeBindingV1
+            TrainingRuntimeBindingV2
         ),
         "training_plan_schema_digest": _schema_digest(
             TrainingRuntimePlanDecisionV1
@@ -699,6 +737,7 @@ __all__ = [
     "TRAINING_LAUNCH_PROTOCOL_ID",
     "TRAINING_RUNNER_ABI",
     "build_training_runtime_binding",
+    "historical_training_runtime_release_v1",
     "resolve_bound_training_release",
     "resolve_runtime_release",
     "training_runtime_compatibility_preflight",

@@ -17,7 +17,7 @@ from .state_store import (
 from .training_runtime_contracts import (
     ExecutionStartConfirmationV1,
     ExecutionStartReceiptV2,
-    TrainingRawRunOutputV1,
+    TrainingRawRunOutputV2,
 )
 from .training_runtime_release import resolve_bound_training_release
 
@@ -435,13 +435,13 @@ class TrainingSingleWriterExperimentStoreV1(SingleWriterExperimentStoreV1):
                 or claim["claim_id"] != command.claim_id
                 or raw_row is None
                 or raw_row["round_id"] != command.round_id
-                or raw_row["artifact_type"] != "TRAINING_RAW_RUN_OUTPUT_V1"
+                or raw_row["artifact_type"] != "TRAINING_RAW_RUN_OUTPUT_V2"
             ):
                 raise InvariantViolation(
                     "training finish requires its exact claim and raw output"
                 )
             try:
-                raw_output = TrainingRawRunOutputV1(
+                raw_output = TrainingRawRunOutputV2(
                     json.loads(
                         self._artifact_target(
                             str(raw_row["relative_path"])

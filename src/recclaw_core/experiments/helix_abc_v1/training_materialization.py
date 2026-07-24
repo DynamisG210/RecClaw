@@ -9,7 +9,7 @@ from .runtime_contracts import CandidateExecutionBindingV2
 from .training_runtime_contracts import (
     CandidateExecutionBindingV3,
     TrainingExecutionPurposeV1,
-    TrainingRuntimeBindingV1,
+    TrainingRuntimeBindingV2,
 )
 from .training_runtime_release import TRAINING_RUNNER_ABI
 
@@ -17,7 +17,7 @@ from .training_runtime_release import TRAINING_RUNNER_ABI
 def build_training_binding_v3(
     *,
     base_binding: CandidateExecutionBindingV2,
-    runtime_binding: TrainingRuntimeBindingV1,
+    runtime_binding: TrainingRuntimeBindingV2,
 ) -> CandidateExecutionBindingV3:
     if runtime_binding.execution_purpose not in {
         item.value for item in TrainingExecutionPurposeV1
@@ -71,7 +71,7 @@ def verify_training_binding_v3(
     binding: CandidateExecutionBindingV3,
     *,
     base_binding: CandidateExecutionBindingV2,
-    runtime_binding: TrainingRuntimeBindingV1,
+    runtime_binding: TrainingRuntimeBindingV2,
 ) -> tuple[bool, tuple[str, ...]]:
     reasons: list[str] = []
     try:
