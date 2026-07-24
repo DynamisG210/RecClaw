@@ -1,0 +1,80 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "milestone": "M6E",
+  "record_schema": "recclaw.m6e-execution-record.v1",
+  "verdict": "PASS_WITH_NONBLOCKING_P2",
+  "P0": 0,
+  "P1": 0,
+  "P2": 1,
+  "source_freeze": {
+    "commit": "9af04d52490b0ab54b4743b47123449ab624f821",
+    "tree": "5314cf216a7e68abeccdb33925b24068e930a4e2",
+    "source_projection_digest": "6a131217a64406bfd5cc021d91b2148637696d36a53bd3985fb55d1058a2aec3"
+  },
+  "runtime": {
+    "release_digest": "c7ab04e5c8425f7a43cd84a0c63f1871bb02effe1c31b6ebcfe78e704b83ba23",
+    "selected_scipy": "1.12.0",
+    "compatibility_matrix_digest": "7c845093442ffcfc63e5828ee71bd9baed3878d77451b6b74b151186492619ba",
+    "filesystem_capability_policy_digest": "f70210b22c78f4c10f89b602a02e908631ed2223f068dbc0ec76d6b6e78ce95c",
+    "store_audit_contract_digest": "9f2924d274e039e87d5758f9c31a3892732589e15d3fad2d170dad61aee5c713"
+  },
+  "evidence": {
+    "conformance_packet_digest": "cb8376e5189bc60a9a60e776892b1bdc39004c480c47ab9c8fc07e406c3601ca",
+    "independent_audit_sha256": "0fb306da466b45c9f453419ed8531af832edd4a5659d7707bc7ffdfd0ac9b798",
+    "final_canary_projection_digest": "2d7311e37dbc128b0894853c9ca2423bb8d45c9a8ebee832278d065fdcec520c",
+    "authoritative_execution_root": "results/research_line/m6e_narrow_final_canaries",
+    "published_projection": "results/research_line/m6e_final_canaries/M6E_FINAL_CANARY_PROJECTION.json",
+    "full_audit_report_digest": "5f308c0831090ccfcb9cf579cd59e1f49ebb198130df12874cf472687cc4c0fa",
+    "fixed_canaries": [
+      {
+        "family": "BPR",
+        "search_seed": 9440,
+        "terminal_result": "SUCCESS",
+        "verdict": "PASS"
+      },
+      {
+        "family": "LightGCN",
+        "search_seed": 9442,
+        "terminal_result": "SUCCESS",
+        "verdict": "PASS"
+      },
+      {
+        "family": "NGCF",
+        "search_seed": 9443,
+        "terminal_result": "SUCCESS",
+        "verdict": "PASS"
+      },
+      {
+        "family": "SGL",
+        "search_seed": 9444,
+        "terminal_result": "SUCCESS",
+        "verdict": "PASS"
+      },
+      {
+        "family": "BPR",
+        "search_seed": 9441,
+        "terminal_result": "RUNTIME_FAILURE",
+        "verdict": "PASS_EXPECTED_FAILURE"
+      }
+    ]
+  },
+  "verification": {
+    "targeted_m6e_m6r": "38/38 PASS",
+    "helix_abc_v1": "140/140 PASS",
+    "guard_and_bl_icf": "40/40 PASS",
+    "repository_discovery": "147/147 PASS",
+    "release_validation_failures": [],
+    "sealed_v1_v2_v3_v4": "PASS",
+    "shared_historical_log": "PASS",
+    "sensitive_scope_diff": []
+  },
+  "fresh_pilot": {
+    "status": "NOT_STARTED",
+    "broker_calls": 0,
+    "required_next_seed_rule": "SMALLEST_UNUSED_INTEGER_GREATER_THAN_9204",
+    "required_next_action": "FREEZE_NEW_PILOT_VERSION_IDENTITY_STATE_ROOTS_AND_SOURCE_PROJECTION_THEN_RUN_M6E_PREFLIGHT"
+  },
+  "content_digest": "b8de22f6350631e76b5aaef9c4eaad970d78753fd08d822951eb5b5eb467a88a"
+}
