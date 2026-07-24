@@ -26,6 +26,11 @@ from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
     RealCanaryProposalBrokerV1,
 )
 from recclaw_core.experiments.helix_abc_v1.real_pilot import (  # noqa: E402
+    FRESH_PILOT_SEARCH_SEED,
+    PILOT_SEARCH_SEED,
+    PilotStoreContractV1,
+    PilotStoreContractV2,
+    fresh_pilot_guard_context_v2,
     pilot_common_gate_allows,
 )
 
@@ -55,6 +60,21 @@ class FakeUpstream:
 
 
 class PilotTrainingProfileTests(unittest.TestCase):
+    def test_fresh_v4_identity_is_additive_and_does_not_reuse_v3(self):
+        historical = PilotStoreContractV1.create()
+        fresh = PilotStoreContractV2.create()
+        self.assertEqual(historical.search_seeds, (PILOT_SEARCH_SEED,))
+        self.assertEqual(fresh.search_seeds, (FRESH_PILOT_SEARCH_SEED,))
+        self.assertEqual(FRESH_PILOT_SEARCH_SEED, 9204)
+        self.assertNotEqual(historical.experiment_id, fresh.experiment_id)
+        self.assertNotEqual(historical.identity_digest, fresh.identity_digest)
+        context = fresh_pilot_guard_context_v2()
+        self.assertEqual(context.claim["claim_id"], "CLAIM-M6-PILOT-9204-V4")
+        self.assertEqual(
+            context.current_evidence["snapshot_id"],
+            "M6-PILOT-9204-V4-EMPTY",
+        )
+
     def test_pilot_common_gate_uses_frozen_common_decision_value(self):
         self.assertTrue(
             pilot_common_gate_allows(

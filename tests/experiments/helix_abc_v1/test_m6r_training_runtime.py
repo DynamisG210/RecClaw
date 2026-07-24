@@ -60,6 +60,7 @@ from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (
     PreCanaryInvariantError,
 )
 from recclaw_core.experiments.helix_abc_v1.real_pilot import (
+    FreshPilotOrchestratorV2,
     RealPilotOrchestratorV1,
 )
 from recclaw_core.experiments.helix_abc_v1.training_runtime_release import (
@@ -496,6 +497,20 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
             broker = BrokerTrap()
             with self.assertRaises(PreCanaryInvariantError):
                 RealPilotOrchestratorV1(
+                    Path(raw),
+                    broker=broker,  # type: ignore[arg-type]
+                    project_root=Path(__file__).resolve().parents[3],
+                    recbole_root=RECBOLE,
+                    data_path=DATA,
+                    python_executable=Path(raw) / "missing-python",
+                )
+            self.assertEqual(broker.calls, 0)
+
+    def test_fresh_pilot_rejects_before_any_broker_call(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            broker = BrokerTrap()
+            with self.assertRaises(PreCanaryInvariantError):
+                FreshPilotOrchestratorV2(
                     Path(raw),
                     broker=broker,  # type: ignore[arg-type]
                     project_root=Path(__file__).resolve().parents[3],

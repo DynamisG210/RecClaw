@@ -29,13 +29,29 @@ from recclaw_core.experiments.helix_abc_v1.pilot_analysis import (  # noqa: E402
     four_axis_frontiers,
     pilot_readiness,
 )
+from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (  # noqa: E402
+    PrivateTreatmentAssignmentV1,
+)
 from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
     RealCanaryProposalBrokerV1,
     environment_preflight,
 )
 from recclaw_core.experiments.helix_abc_v1.real_pilot import (  # noqa: E402
+    FRESH_PILOT_SEARCH_SEED,
     PILOT_ROUNDS_PER_ARM,
-    RealPilotOrchestratorV1,
+    FreshPilotOrchestratorV2,
+    PilotStoreContractV2,
+    pilot_budget,
+)
+from recclaw_core.experiments.helix_abc_v1.runtime_release import (  # noqa: E402
+    common_release_projection_digest,
+)
+from recclaw_core.experiments.helix_abc_v1.training_runtime_contracts import (  # noqa: E402
+    TrainingExecutionPurposeV1,
+)
+from recclaw_core.experiments.helix_abc_v1.training_runtime_release import (  # noqa: E402
+    TRAINING_RUNNER_ABI,
+    training_runtime_release_digest,
 )
 
 
@@ -81,6 +97,68 @@ def verify_contract(contract_path: Path) -> dict[str, Any]:
             raise RuntimeError(f"Pilot external identity mismatch: {path}")
     if contract["status"] != "FROZEN_PRE_OUTCOME":
         raise RuntimeError("Pilot contract is not frozen")
+    expected_store = PilotStoreContractV2.create()
+    expected_pilot = {
+        "experiment_id": expected_store.experiment_id,
+        "ordinary_execution_seed": expected_store.ordinary_execution_seed,
+        "rounds_per_arm": expected_store.scheduled_slots_per_arm_seed,
+        "search_seeds": list(expected_store.search_seeds),
+        "store_contract_identity_digest": expected_store.identity_digest,
+    }
+    if contract["record_schema"] != "recclaw.development-pilot-contract.v2":
+        raise RuntimeError("fresh Pilot contract schema is not V2")
+    if contract["pilot"] != expected_pilot:
+        raise RuntimeError("fresh Pilot contract does not bind the V4 store")
+    assignment = PrivateTreatmentAssignmentV1.create(
+        expected_store.experiment_id,
+        nonce="M6-PILOT-9204-OPAQUE-V4",
+    )
+    if contract["assignment"] != {
+        "commitment": assignment.commitment,
+        "opaque": True,
+    }:
+        raise RuntimeError("fresh Pilot treatment assignment mismatch")
+    if contract["pilot"]["search_seeds"] != [FRESH_PILOT_SEARCH_SEED]:
+        raise RuntimeError("fresh Pilot seed is not the smallest unused seed")
+    if any(
+        seed in {9201, 9202, 9203}
+        for seed in contract["pilot"]["search_seeds"]
+    ):
+        raise RuntimeError("sealed Pilot seed reuse is forbidden")
+    if (
+        contract["training"]["runner_abi"] != TRAINING_RUNNER_ABI
+        or contract["training"]["runtime_release_digest"]
+        != training_runtime_release_digest()
+        or contract["training"]["execution_purpose"]
+        != TrainingExecutionPurposeV1.PILOT.value
+    ):
+        raise RuntimeError("fresh Pilot training release identity mismatch")
+    if contract["budget_per_arm_round"] != pilot_budget().to_dict():
+        raise RuntimeError("fresh Pilot budget differs from the frozen Pilot")
+    if (
+        contract["bl_icf"]["common_release_projection_digest"]
+        != common_release_projection_digest()
+    ):
+        raise RuntimeError("fresh Pilot common BL/runtime projection mismatch")
+    expected_arms = {
+        "A": {
+            "controller": "OriginalControllerV1",
+            "evidence_port": "NullEvidencePortV1",
+            "physical_llm_call_ceiling_per_round": 1,
+        },
+        "B": {
+            "controller": "ResearchLineControllerV1",
+            "evidence_port": "NullEvidencePortV1",
+            "physical_llm_call_ceiling_per_round": 4,
+        },
+        "C": {
+            "controller": "ResearchLineControllerV1",
+            "evidence_port": "EvidenceGuardPortV1",
+            "physical_llm_call_ceiling_per_round": 4,
+        },
+    }
+    if contract["arm_composition"] != expected_arms:
+        raise RuntimeError("fresh Pilot A/B/C treatment definition mismatch")
     return contract
 
 
@@ -160,6 +238,67 @@ def resource_audit(
         "closed": not violations and len(budget_digests) == 1,
         "rows_digest": sha256_digest([list(row) for row in rows]),
         "violations": violations,
+    }
+
+
+def runtime_identity_audit(db_path: Path) -> dict[str, Any]:
+    connection = sqlite3.connect(db_path)
+    try:
+        rows = connection.execute(
+            """
+            SELECT r.arm_code, c.runtime_release_digest, c.runner_abi,
+                   c.execution_purpose, c.metric_contract_digest,
+                   c.resource_contract_digest, c.claim_state,
+                   c.execution_debited, COUNT(*)
+            FROM execution_claims c
+            JOIN rounds r USING(round_id)
+            GROUP BY r.arm_code, c.runtime_release_digest, c.runner_abi,
+                     c.execution_purpose, c.metric_contract_digest,
+                     c.resource_contract_digest, c.claim_state,
+                     c.execution_debited
+            ORDER BY r.arm_code
+            """
+        ).fetchall()
+        runtime_binding_count = int(
+            connection.execute(
+                "SELECT COUNT(DISTINCT runtime_binding_digest) "
+                "FROM execution_claims"
+            ).fetchone()[0]
+        )
+    finally:
+        connection.close()
+    common_identities = {
+        (
+            str(row[1]),
+            str(row[2]),
+            str(row[3]),
+            str(row[4]),
+            str(row[5]),
+        )
+        for row in rows
+    }
+    counts_by_arm = {
+        str(row[0]): int(row[8])
+        for row in rows
+        if str(row[6]) == "FINISHED" and int(row[7]) == 1
+    }
+    return {
+        "A_B_C_common_runtime_identity_equal": (
+            len(common_identities) == 1
+            and common_identities
+            == {
+                (
+                    training_runtime_release_digest(),
+                    TRAINING_RUNNER_ABI,
+                    TrainingExecutionPurposeV1.PILOT.value,
+                    next(iter(common_identities))[3],
+                    next(iter(common_identities))[4],
+                )
+            }
+        ),
+        "closed_execution_count_by_arm": counts_by_arm,
+        "rows": [list(row) for row in rows],
+        "runtime_binding_count": runtime_binding_count,
     }
 
 
@@ -296,7 +435,7 @@ def execute(contract_path: Path, output_root: Path) -> int:
         adaptive_memory=True,
     )
     try:
-        with RealPilotOrchestratorV1(
+        with FreshPilotOrchestratorV2(
             output_root / "runtime",
             broker=broker,
             project_root=ROOT,
@@ -333,6 +472,7 @@ def execute(contract_path: Path, output_root: Path) -> int:
             )
             state_db = orchestrator.store.db_path
             resource = resource_audit(state_db, contract)
+            runtime_identity = runtime_identity_audit(state_db)
             rows = collect_rows(
                 state_db,
                 output_root / "runtime" / "neutral" / "artifacts",
@@ -362,6 +502,9 @@ def execute(contract_path: Path, output_root: Path) -> int:
             "guard_call_count": int(audit["guard_call_count"]),
             "identity_mismatch_count": 0,
             "initial_research_identity": audit["initial_research_identity"],
+            "runtime_identity_equal": bool(
+                runtime_identity["A_B_C_common_runtime_identity_equal"]
+            ),
             "no_source_mutation": before == after,
             "round_count": int(audit["round_count"]),
             "state_store_integrity": (
@@ -378,6 +521,10 @@ def execute(contract_path: Path, output_root: Path) -> int:
             and gates["execution_count"] == expected_rounds
             and gates["feedback_count"] == expected_rounds
             and gates["guard_call_count"] == 2 * PILOT_ROUNDS_PER_ARM
+            and gates["runtime_identity_equal"]
+            and runtime_identity["closed_execution_count_by_arm"]
+            == {"A": 3, "B": 3, "C": 3}
+            and runtime_identity["runtime_binding_count"] == expected_rounds
             and gates["no_source_mutation"]
             and gates["round_count"] == expected_rounds
             and gates["state_store_integrity"]
@@ -389,6 +536,10 @@ def execute(contract_path: Path, output_root: Path) -> int:
             four_axis_frontiers(rows),
         )
         write_json(output_root / "PILOT_READINESS.json", readiness)
+        write_json(
+            output_root / "RUNTIME_IDENTITY_AUDIT.json",
+            runtime_identity,
+        )
         result = {
             "authority": "NONE",
             "contract_content_digest": contract["content_digest"],
@@ -396,10 +547,11 @@ def execute(contract_path: Path, output_root: Path) -> int:
             "formal_acceptance": False,
             "gates": gates,
             "resource_audit": resource,
+            "runtime_identity_audit": runtime_identity,
             "source_snapshot_digest": sha256_digest(after),
             "verdict": "GO" if passed else readiness["verdict"],
         }
-        write_json(output_root / "PILOT_EXECUTION_RESULT_V1.json", result)
+        write_json(output_root / "PILOT_EXECUTION_RESULT_V2.json", result)
         return 0 if passed else 2
     except Exception as error:
         try:
@@ -429,7 +581,7 @@ def main() -> int:
         / "docs"
         / "research_line"
         / "m6"
-        / "DEVELOPMENT_PILOT_CONTRACT_V1.json",
+        / "DEVELOPMENT_PILOT_CONTRACT_V4.json",
     )
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()

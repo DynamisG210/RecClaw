@@ -13,7 +13,7 @@ from recclaw_core.helix.contracts import (
     RawResultEnvelope,
 )
 
-from .canonical import sha256_digest
+from .canonical import canonical_value, sha256_digest
 from .contracts import ArmCode, ResourceCeilingsV1, default_experiment_contract
 from .pilot_training import (
     PilotTrainingLauncherV1,
@@ -54,6 +54,7 @@ from .training_state_store import (
 
 
 PILOT_SEARCH_SEED = 9203
+FRESH_PILOT_SEARCH_SEED = 9204
 PILOT_ROUNDS_PER_ARM = 3
 
 
@@ -156,6 +157,38 @@ class PilotStoreContractV1:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class PilotStoreContractV2:
+    experiment_id: str
+    arm_policies: tuple[Any, Any, Any]
+    search_seeds: tuple[int, ...]
+    scheduled_slots_per_arm_seed: int
+    ordinary_execution_seed: int
+    identity_digest: str
+
+    @classmethod
+    def create(cls) -> "PilotStoreContractV2":
+        base = default_experiment_contract()
+        payload = {
+            "arm_policies": [item.to_dict() for item in base.arm_policies],
+            "authority": "NONE",
+            "evidence_class": "DEVELOPMENT_ONLY",
+            "experiment_id": "HELIX-ABC-DEVELOPMENT-PILOT-9204-V4",
+            "formal_acceptance": False,
+            "ordinary_execution_seed": base.ordinary_execution_seed,
+            "scheduled_slots_per_arm_seed": PILOT_ROUNDS_PER_ARM,
+            "search_seeds": [FRESH_PILOT_SEARCH_SEED],
+        }
+        return cls(
+            experiment_id=str(payload["experiment_id"]),
+            arm_policies=base.arm_policies,
+            search_seeds=(FRESH_PILOT_SEARCH_SEED,),
+            scheduled_slots_per_arm_seed=PILOT_ROUNDS_PER_ARM,
+            ordinary_execution_seed=base.ordinary_execution_seed,
+            identity_digest=sha256_digest(payload),
+        )
+
+
 class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
     def _create_store(
         self, db_path: Path, artifact_root: Path
@@ -171,14 +204,20 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         recbole_root: Path,
         data_path: Path,
         python_executable: Path,
+        _contract: PilotStoreContractV1 | PilotStoreContractV2 | None = None,
+        _assignment_nonce: str | None = None,
+        _guard_context: GuardContext | None = None,
     ) -> None:
+        contract = _contract or PilotStoreContractV1.create()
         super().__init__(
             root,
-            assignment_nonce="M6-PILOT-9203-OPAQUE-V3",
+            assignment_nonce=(
+                _assignment_nonce or "M6-PILOT-9203-OPAQUE-V3"
+            ),
             broker=broker,
-            contract=PilotStoreContractV1.create(),
+            contract=contract,
             resource_ceilings=pilot_budget(),
-            guard_context=pilot_guard_context(),
+            guard_context=_guard_context or pilot_guard_context(),
         )
         purpose = TrainingExecutionPurposeV1.PILOT.value
         protocol_digest = sha256_digest(pilot_protocol())
@@ -529,9 +568,10 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
                 raise PreCanaryInvariantError("Pilot triplet fails a frozen ceiling")
 
     def run_pilot(self) -> tuple[tuple[ArmRoundResultV1, ...], ...]:
+        search_seed = int(self.contract.search_seeds[0])
         return tuple(
             self.run_fake_triplet(
-                search_seed=PILOT_SEARCH_SEED,
+                search_seed=search_seed,
                 round_index=round_index,
                 drafts=(),
             )
@@ -580,11 +620,60 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         }
 
 
+def fresh_pilot_guard_context_v2() -> GuardContext:
+    context = pilot_guard_context()
+    claim = canonical_value(context.claim)
+    protocol = canonical_value(context.protocol)
+    current_evidence = canonical_value(context.current_evidence)
+    return GuardContext(
+        claim={
+            **claim,
+            "claim_id": "CLAIM-M6-PILOT-9204-V4",
+        },
+        protocol=protocol,
+        current_evidence={
+            **current_evidence,
+            "snapshot_id": "M6-PILOT-9204-V4-EMPTY",
+            "claim_id": "CLAIM-M6-PILOT-9204-V4",
+        },
+    )
+
+
+class FreshPilotOrchestratorV2(RealPilotOrchestratorV1):
+    """Fresh post-M6R Pilot entrypoint; never reuses the sealed V1/V2/V3 state."""
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        broker: RealCanaryProposalBrokerV1,
+        project_root: Path,
+        recbole_root: Path,
+        data_path: Path,
+        python_executable: Path,
+    ) -> None:
+        super().__init__(
+            root,
+            broker=broker,
+            project_root=project_root,
+            recbole_root=recbole_root,
+            data_path=data_path,
+            python_executable=python_executable,
+            _contract=PilotStoreContractV2.create(),
+            _assignment_nonce="M6-PILOT-9204-OPAQUE-V4",
+            _guard_context=fresh_pilot_guard_context_v2(),
+        )
+
+
 __all__ = [
+    "FRESH_PILOT_SEARCH_SEED",
+    "FreshPilotOrchestratorV2",
     "PILOT_ROUNDS_PER_ARM",
     "PILOT_SEARCH_SEED",
     "PilotStoreContractV1",
+    "PilotStoreContractV2",
     "RealPilotOrchestratorV1",
+    "fresh_pilot_guard_context_v2",
     "pilot_budget",
     "pilot_common_gate_allows",
     "pilot_guard_context",
