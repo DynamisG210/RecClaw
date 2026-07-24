@@ -31,10 +31,10 @@ from .research_capability import (
 from .research_contracts import DevelopmentalMechanismBeliefV1
 from .research_controller import ResearchLineControllerV1
 from .real_canary import RealCanaryProposalBrokerV1
-from .runtime_contracts import CommonDecision
+from .runtime_contracts import CommonDecision, GateStatus
 
 
-PILOT_SEARCH_SEED = 9202
+PILOT_SEARCH_SEED = 9203
 PILOT_ROUNDS_PER_ARM = 3
 
 
@@ -100,7 +100,7 @@ def pilot_guard_context() -> GuardContext:
 
 def pilot_common_gate_allows(gate_decision: str, pre_execution_decision: str) -> bool:
     return (
-        gate_decision == "ALLOW"
+        gate_decision == GateStatus.ALLOW.value
         and pre_execution_decision == CommonDecision.PASS.value
     )
 
@@ -121,7 +121,7 @@ class PilotStoreContractV1:
             "arm_policies": [item.to_dict() for item in base.arm_policies],
             "authority": "NONE",
             "evidence_class": "DEVELOPMENT_ONLY",
-            "experiment_id": "HELIX-ABC-DEVELOPMENT-PILOT-9202-V2",
+            "experiment_id": "HELIX-ABC-DEVELOPMENT-PILOT-9203-V3",
             "formal_acceptance": False,
             "ordinary_execution_seed": base.ordinary_execution_seed,
             "scheduled_slots_per_arm_seed": PILOT_ROUNDS_PER_ARM,
@@ -150,7 +150,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
     ) -> None:
         super().__init__(
             root,
-            assignment_nonce="M6-PILOT-9202-OPAQUE-V2",
+            assignment_nonce="M6-PILOT-9203-OPAQUE-V3",
             broker=broker,
             contract=PilotStoreContractV1.create(),
             resource_ceilings=pilot_budget(),

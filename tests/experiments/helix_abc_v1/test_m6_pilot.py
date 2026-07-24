@@ -56,8 +56,16 @@ class FakeUpstream:
 
 class PilotTrainingProfileTests(unittest.TestCase):
     def test_pilot_common_gate_uses_frozen_common_decision_value(self):
-        self.assertTrue(pilot_common_gate_allows("ALLOW", "COMMON_PASS"))
-        self.assertFalse(pilot_common_gate_allows("ALLOW", "PASS"))
+        self.assertTrue(
+            pilot_common_gate_allows(
+                "ALLOW_DEVELOPMENT_FAKE_RUN",
+                "COMMON_PASS",
+            )
+        )
+        self.assertFalse(pilot_common_gate_allows("ALLOW", "COMMON_PASS"))
+        self.assertFalse(
+            pilot_common_gate_allows("ALLOW_DEVELOPMENT_FAKE_RUN", "PASS")
+        )
 
     def test_supported_model_mapping_and_geometry_rejection(self):
         self.assertEqual(
