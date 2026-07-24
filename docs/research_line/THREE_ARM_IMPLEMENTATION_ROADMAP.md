@@ -5474,6 +5474,19 @@ materialization、单写者恢复和records；不评价最终效果，不复用�
 
 Exit：只到`READY_FOR_PILOT_REVIEW`。
 
+### M6R — Training Runtime Release Recovery
+
+M6 Pilot V1/V2/V3硬停后，先执行独立恢复里程碑M6R。M1
+`recclaw.fake-non-training-runner.v1`及其release identity保持不变；新增一个
+content-bound、package-owned的通用training runtime release，并以additive
+Binding/Permit/Claim/Store合同把同一release identity贯通launcher attempt、
+START_CONFIRMED、receipt、raw result、CommonExecutionGuard close_result与resource
+accounting。M6R不调用Proposal broker，不读取或修复任何封存Pilot outcome。
+
+Exit：受影响M1/M4与M6R targeted/E2E/adversarial/identity/budget/isolation测试通过；
+独立固定候选、无LLM training canary在独立lineage/root完整闭合；独立审计
+`P0=0/P1=0`。在这些条件全部满足前不得创建新Pilot。
+
 ### M6 — Pilot + Main Freeze
 
 先运行独立Pilot估计失败率/成本/support，冻结analysis、missingness、四轴、unclipped

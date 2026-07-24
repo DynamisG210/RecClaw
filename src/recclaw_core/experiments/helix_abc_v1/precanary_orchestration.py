@@ -658,7 +658,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             self.contract.experiment_id, nonce=assignment_nonce
         )
         self.layout = RuntimeLayoutV1.materialize(root, self.assignment)
-        self.store = SingleWriterExperimentStoreV1(
+        self.store = self._create_store(
             self.layout.neutral_root / "experiment.sqlite3",
             self.layout.neutral_root / "artifacts",
         )
@@ -686,6 +686,11 @@ class ThreeArmPreCanaryOrchestratorV1:
             opaque_arm_instance_id=c_id,
         )
         self._completed: dict[tuple[int, int], tuple[ArmRoundResultV1, ...]] = {}
+
+    def _create_store(
+        self, db_path: Path, artifact_root: Path
+    ) -> SingleWriterExperimentStoreV1:
+        return SingleWriterExperimentStoreV1(db_path, artifact_root)
 
     def close(self) -> None:
         self.guard_ledger.close()
@@ -772,10 +777,12 @@ class ThreeArmPreCanaryOrchestratorV1:
         *,
         permit: Any,
         binding: Any,
+        runtime_context: Any | None,
         gate: Any,
         pre_execution: Any,
         materialization_artifacts: tuple[dict[str, Any], ...],
     ) -> tuple[Any, Any]:
+        del runtime_context
         receipt, raw_output, run_artifacts = PackageOwnedLauncherV1(
             self.store
         ).launch(
@@ -795,6 +802,34 @@ class ThreeArmPreCanaryOrchestratorV1:
         if common_result is None:
             raise PreCanaryInvariantError("M4 common result closure failed")
         return raw_output, common_result
+
+    def _prepare_runtime_execution(
+        self,
+        *,
+        base_plan: Any,
+        base_permit: Any,
+        base_binding: Any,
+        eligible: Any,
+    ) -> tuple[Any, Any, Any | None]:
+        del base_plan, eligible
+        return base_permit, base_binding, None
+
+    def _claim_runtime_execution(
+        self,
+        *,
+        permit: Any,
+        binding: Any,
+        runtime_context: Any | None,
+    ) -> None:
+        del runtime_context
+        self.store.claim_execution(
+            ClaimExecutionCommand(
+                round_id=binding.round_id,
+                permit_digest=permit.digest,
+                binding_digest=binding.digest,
+                idempotency_key=f"m4:claim:{binding.round_id}",
+            )
+        )
 
     def _execution_resource_projection(
         self, raw_output: Any
@@ -938,7 +973,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         if selection.selected_candidate is None:
             raise PreCanaryInvariantError("M4 fixture unexpectedly exhausted the slate")
         selected = selection.selected_candidate
-        program, _plan, action = next(
+        program, selected_plan, action = next(
             item
             for item in eligible
             if str(item[2].candidate_id) == selected.candidate_id
@@ -948,7 +983,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             action, program=program, arm_runtime_root=runtime_root
         )
         trust = classify_execution_trust(report, arm_runtime_root=runtime_root)
-        binding = build_binding_v2(
+        base_binding = build_binding_v2(
             eligible=action,
             report=report,
             trust=trust,
@@ -959,12 +994,12 @@ class ThreeArmPreCanaryOrchestratorV1:
         )
         materialization_artifacts = _register_materialization_artifacts_m4(
             self.store,
-            binding=binding,
+            binding=base_binding,
             report=report,
             opaque_instance_id=opaque_id,
         )
         gate = development_execution_gate(
-            binding=binding,
+            binding=base_binding,
             eligible=action,
             report=report,
             trust=trust,
@@ -976,7 +1011,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             eligible=action,
             report=report,
             trust=trust,
-            binding=binding,
+            binding=base_binding,
             gate=gate,
         )
         if permit is None:
@@ -984,17 +1019,21 @@ class ThreeArmPreCanaryOrchestratorV1:
                 "M4 common PRE unexpectedly denied: "
                 f"{tuple(pre.reason_codes)} gate={gate.decision} trust={trust.to_dict()}"
             )
-        self.store.claim_execution(
-            ClaimExecutionCommand(
-                round_id=opened["round_id"],
-                permit_digest=permit.digest,
-                binding_digest=binding.digest,
-                idempotency_key=f"m4:claim:{opened['round_id']}",
-            )
+        permit, binding, runtime_context = self._prepare_runtime_execution(
+            base_plan=selected_plan,
+            base_permit=permit,
+            base_binding=base_binding,
+            eligible=action,
+        )
+        self._claim_runtime_execution(
+            permit=permit,
+            binding=binding,
+            runtime_context=runtime_context,
         )
         raw_output, common_result = self._execute_selected(
             permit=permit,
             binding=binding,
+            runtime_context=runtime_context,
             gate=gate,
             pre_execution=pre,
             materialization_artifacts=materialization_artifacts,

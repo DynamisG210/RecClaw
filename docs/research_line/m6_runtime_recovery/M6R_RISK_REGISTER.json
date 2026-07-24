@@ -1,0 +1,57 @@
+{
+  "authority": "NONE",
+  "development_boundary": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "risks": [
+    {
+      "id": "M6R-R1",
+      "mitigation": "fake source manifest and release digests are regression-locked and unchanged",
+      "residual": "LOW",
+      "risk": "M6R changes accidentally mutate the M1 fake release",
+      "status": "CLOSED"
+    },
+    {
+      "id": "M6R-R2",
+      "mitigation": "claim is store source of truth and receipt substitution is an adversarial test",
+      "residual": "LOW",
+      "risk": "receipt-supplied runtime identity overrides the committed claim",
+      "status": "CLOSED"
+    },
+    {
+      "id": "M6R-R3",
+      "mitigation": "PREPARED and START_CONFIRMED precede receipt acceptance and training gate",
+      "residual": "LOW",
+      "risk": "training begins before a durable attempt and accepted receipt",
+      "status": "CLOSED"
+    },
+    {
+      "id": "M6R-R4",
+      "mitigation": "Main purpose is rejected by the current release until a separate Main config freeze",
+      "residual": "LOW",
+      "risk": "Pilot three-epoch config is silently reused as Main config",
+      "status": "CLOSED"
+    },
+    {
+      "id": "M6R-R5",
+      "mitigation": "fresh Pilot remains prohibited in this milestone",
+      "residual": "NONE_IN_M6R",
+      "risk": "M6R canary is interpreted as Pilot readiness or an effect result",
+      "status": "BOUNDARY_ENFORCED"
+    },
+    {
+      "id": "M6R-R6",
+      "mitigation": "superseded developmental canaries were moved outside the workspace; V7 is the only retained current-release canary",
+      "residual": "LOW",
+      "risk": "a canary bound to an earlier release digest is mistaken for the final result",
+      "status": "CLOSED"
+    },
+    {
+      "id": "M6R-R7",
+      "mitigation": "M6R does not invoke RealPilotOrchestratorV1; the post-M6R Pilot must introduce a fresh contract version, unused seed greater than 9203, new root and new broker state before execution",
+      "residual": "BLOCKED_BY_FRESH_PILOT_FREEZE",
+      "risk": "the integration class retaining the historical V3 seed is mistakenly invoked as the fresh Pilot",
+      "status": "BOUNDARY_ENFORCED"
+    }
+  ],
+  "verdict": "P0_0_P1_0_P2_1_INDEPENDENT_AUDIT_PASS"
+}

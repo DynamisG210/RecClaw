@@ -8,26 +8,103 @@ import contextlib
 import json
 import os
 import sys
+import time
 import traceback
 from pathlib import Path
 
 
+def _write_durable_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = (
+        json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+        + "\n"
+    ).encode("utf-8")
+    temporary = path.with_name(f".{path.name}.tmp")
+    descriptor = os.open(
+        temporary,
+        os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+        0o600,
+    )
+    try:
+        os.write(descriptor, data)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.replace(temporary, path)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def _await_start_gate(
+    path: Path, expected: dict[str, object], *, timeout_seconds: float
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if path.is_file():
+            observed = json.loads(path.read_text(encoding="utf-8"))
+            if observed != {**expected, "gate_status": "TRAINING_AUTHORIZED"}:
+                raise RuntimeError("training start gate identity mismatch")
+            return
+        time.sleep(0.05)
+    raise TimeoutError("training start gate was not accepted")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--binding-digest", required=True)
+    parser.add_argument("--claim-id", required=True)
     parser.add_argument("--checkpoint-dir", required=True)
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--epochs", required=True, type=int)
+    parser.add_argument("--execution-purpose", required=True)
     parser.add_argument("--log-path", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--output-path", required=True)
+    parser.add_argument("--permit-digest", required=True)
     parser.add_argument("--project-root", required=True)
     parser.add_argument("--recbole-root", required=True)
+    parser.add_argument("--round-id", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--runner-abi", required=True)
+    parser.add_argument("--runtime-binding-digest", required=True)
+    parser.add_argument("--runtime-release-digest", required=True)
     parser.add_argument("--seed", required=True, type=int)
+    parser.add_argument("--start-confirmation-path", required=True)
+    parser.add_argument("--start-gate-path", required=True)
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
     recbole_root = Path(args.recbole_root).resolve()
+    start_identity = {
+        "binding_digest": args.binding_digest,
+        "claim_id": args.claim_id,
+        "execution_purpose": args.execution_purpose,
+        "ordinary_launch_attempt_ordinal": 1,
+        "permit_digest": args.permit_digest,
+        "round_id": args.round_id,
+        "run_id": args.run_id,
+        "runner_abi": args.runner_abi,
+        "runtime_binding_digest": args.runtime_binding_digest,
+        "runtime_release_digest": args.runtime_release_digest,
+    }
+    _write_durable_json(
+        Path(args.start_confirmation_path),
+        {
+            **start_identity,
+            "pid": os.getpid(),
+            "start_status": "START_CONFIRMED",
+        },
+    )
+    _await_start_gate(
+        Path(args.start_gate_path),
+        start_identity,
+        timeout_seconds=30.0,
+    )
+
     sys.path.insert(0, str(project_root))
     sys.path.insert(0, str(project_root / "scripts"))
     sys.path.insert(0, str(recbole_root))
