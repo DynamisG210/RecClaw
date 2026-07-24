@@ -1,0 +1,71 @@
+{
+  "authority": "NONE",
+  "entry_checkpoint": {
+    "commit": "7329dab0fb08e3575746a18f4938b114d096d24a",
+    "tree": "31f96b2d9f84b08516351bb1efd4a6355acfd561"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "gate_results": {
+    "b_c_controller_identity_equal": true,
+    "broker_call_count": 15,
+    "broker_failure_count": 0,
+    "budget_accounting_closed": true,
+    "canary_verdict": "READY_FOR_PILOT_REVIEW",
+    "cross_arm_mutation_count": 0,
+    "execution_count": 9,
+    "feedback_count": 9,
+    "guard_call_count": 6,
+    "identity_mismatch_count": 0,
+    "paired_b_c_actual_debits_equal": true,
+    "round_count": 9,
+    "training_backend_start_count": 0
+  },
+  "implementation_profile": "MINIMUM_SUFFICIENT_V1",
+  "independent_adversarial_audit": {
+    "external_acceptance": false,
+    "p0_count": 0,
+    "p1_count": 0,
+    "p2_count": 3,
+    "path": "docs/research_line/m5/M5_INDEPENDENT_AUDIT.md",
+    "verdict": "PASS_WITH_NONBLOCKING_P2"
+  },
+  "milestone": "M5",
+  "record_schema": "recclaw.m5-execution-record.v1",
+  "result_identity": {
+    "broker_ledger_sha256": "bf203a1ee2bf0a2ee83a4f6b973cef37fdbe85f4011cbf13a20bf734193bf230",
+    "canary_result_sha256": "83f74f1a3ba6d3b13e144acf6dd662dbc361967346de258891a15c5a7f66fd1b",
+    "contract_content_digest": "bb9a15128a0d23d24566b5beddee162fe98a8c1b2c7859423cb41d5cedf22e4e",
+    "guard_ledger_sha256": "94301aa466452dfdacd459e7ce9c8782832428a360c3e064552162fd53db68e4",
+    "neutral_ledger_sha256": "7610ea93a6bf86788ea23a0aa6c66d3d6af9bed6c3020d842299b05e70469d4f",
+    "result_tree_file_count": 115,
+    "result_tree_logical_bytes": 707797,
+    "result_tree_manifest_digest": "353917d045c95701219d2b44ad5e1a2e0fe454cd4d0232e4935e251dcb8e3b97"
+  },
+  "side_effect_attestation": {
+    "main_campaign": false,
+    "ordinary_training": false,
+    "pilot": false,
+    "push": false,
+    "real_llm_calls": 15,
+    "training_backend_start": false
+  },
+  "test_results": [
+    {
+      "command": "M4/M5 focused unittest modules",
+      "passed": 14,
+      "result": "PASS"
+    },
+    {
+      "command": "M0-M5, Evidence Guard and BL-ICF dependency-appropriate activated unittest modules",
+      "passed": 136,
+      "result": "PASS"
+    },
+    {
+      "command": "Legacy candidate, reflection, Research Line, lint and agent-loop unittest modules",
+      "passed": 120,
+      "result": "PASS"
+    }
+  ],
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}

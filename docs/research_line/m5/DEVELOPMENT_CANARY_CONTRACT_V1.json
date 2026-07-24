@@ -1,0 +1,136 @@
+{
+  "arm_composition": {
+    "A": {
+      "controller": "OriginalControllerV1",
+      "evidence_port": "NullEvidencePortV1",
+      "logical_llm_calls_per_round": 1
+    },
+    "B": {
+      "controller": "ResearchLineControllerV1",
+      "evidence_port": "NullEvidencePortV1",
+      "logical_llm_calls_per_round": 4
+    },
+    "C": {
+      "controller": "ResearchLineControllerV1",
+      "evidence_port": "EvidenceGuardPortV1",
+      "logical_llm_calls_per_round": 4
+    }
+  },
+  "assignment": {
+    "commitment": "58a1cbae5f7a5c674c0462fac92aa5d9cf573af7db45976fe4aca2732bd5fc80",
+    "opaque": true
+  },
+  "authority": "NONE",
+  "bl_icf": {
+    "common_release_projection_digest": "97c4247af6f0a2fb2fbccd64663e2a6ed25cc1bc98aab2f5630e6d41d6f67347",
+    "template_fixture_path": "/root/projects/RecClaw_research_line_abc/tests/fixtures/bl_icf_anchor_programs_v1.json",
+    "template_fixture_sha256": "299a261ad1e45582b7769e3f2870fdc8a12471a7729e5bdd44517538e2482dd1"
+  },
+  "broker": {
+    "b_c_pairing": "ONE_UPSTREAM_CALL_PER_ROLE_REPLAYED_TO_B_AND_C",
+    "codex_cli_version": "codex-cli 0.144.1",
+    "codex_executable": "/mnt/c/Users/gtrho/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
+    "codex_executable_sha256": "cbacbb9726262ef558b4af0438a1b2a5bba9076132401d947b5b4d2bf92ab0e4",
+    "login_mode": "CHATGPT",
+    "max_total_tokens_per_call": 20000,
+    "model": "gpt-5.4",
+    "models_cache_etag": "W/\"28f8708945f9f68f16b9ce4aad1641f2\"",
+    "models_cache_path": "/mnt/c/Users/gtrho/.codex/models_cache.json",
+    "reasoning_effort": "low",
+    "response_schema_path": "/root/projects/RecClaw_research_line_abc/src/recclaw_core/experiments/helix_abc_v1/resources/canary_proposal_response_v1.schema.json",
+    "response_schema_sha256": "b4ba37c9370360607652232daf444990eb4d8206bd1f50cbe9794ea3b43b56e4",
+    "retries": 0,
+    "sandbox": "read-only",
+    "service_tier": "default",
+    "upstream_calls_per_round": 5
+  },
+  "budget_per_arm_round": {
+    "common_validation_count": 4,
+    "gpu_cost_microunits": 0,
+    "gpu_device_time_ms": 0,
+    "ordinary_executions": 1,
+    "proposal_attempt_debit": 4,
+    "retry_debit": 0,
+    "total_billed_token_debit": 80000,
+    "total_input_tokens": 60000,
+    "total_output_tokens": 20000,
+    "total_proposal_count": 4,
+    "wall_time_ms": 1200000
+  },
+  "canary": {
+    "experiment_id": "HELIX-ABC-DEVELOPMENT-CANARY-9011-V1",
+    "ordinary_execution_seed": 2026,
+    "rounds_per_arm": 3,
+    "search_seed": 9011,
+    "search_seed_excluded_from_main": true,
+    "store_contract_identity_digest": "99ac18428f62ba2a52a5cf719798edf8a30acc011dc616d9c97d692aa86ec8d5"
+  },
+  "content_digest": "bb9a15128a0d23d24566b5beddee162fe98a8c1b2c7859423cb41d5cedf22e4e",
+  "dataset": {
+    "files": {
+      "ml-1m.inter": "e943abb91013a54c385828fdf5ab4ce49e957ca3a772adb30cde2a7d5539b389",
+      "ml-1m.item": "6eff097333db47adf003039eb90cb6ab13978fa9577d915d2366e4d073844dc3",
+      "ml-1m.user": "bbc7b4f8d3204d00e0465cf1451b8e8bae2c9e94378292223603c229cf2df09f"
+    },
+    "identity": "ML-1M",
+    "root": "/root/projects/RecBole/dataset/ml-1m"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "guard_and_fusion": {
+    "fusion_policy_digest": "4a720a7a1a87fc4b5b5ad395ea6cfda98747f4b839ed539e944f1c3e65562c19",
+    "guard_core_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af"
+  },
+  "isolation": {
+    "candidate_execution": "PACKAGE_OWNED_NON_TRAINING_INTERFACE_SMOKE_V1",
+    "filesystem": "ARM_SCOPED_CAPABILITY_PLUS_NUMERIC_UID_DAC_V1",
+    "mount_namespace_preflight_required": true,
+    "search_has_stability_or_held_out_mount": false
+  },
+  "lineage_policy": {
+    "may_tune_policy_or_thresholds_from_canary_outcomes": false,
+    "reuse_in_main": false,
+    "reuse_in_pilot": false
+  },
+  "record_schema": "recclaw.development-canary-contract.v1",
+  "research": {
+    "meta_mode": "VERSIONED_POLICY_UPDATE",
+    "producer_mode": "BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1",
+    "research_source_digest": "94623eebd72c58b2a7b498cb175d1e8b06c82b4e12e0933b3267767e5d07045e"
+  },
+  "runtime": {
+    "conda_explicit_digest": "92652a0c073d76da7807368fcaa331789ac5eafba0e4dfa78a9d6ee285d0e5a0",
+    "gpu": {
+      "driver": "610.74",
+      "memory_mib": 8188,
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU"
+    },
+    "python": "/root/miniconda3/envs/recbole/bin/python",
+    "recbole_git_commit": "7b02be5ec80a88310f2d04a27a82adfcbb5dc211",
+    "recbole_git_status_digest": "fa79a33ad57dc58f5d1e9e26e9797f001acdcd001edf80a1caea9c8f3caf9976",
+    "recbole_modified_tracked_files": {
+      "recbole/model/general_recommender/lightgcn.py": "4c79858b25bde0fa17872d29549201c76b912e6a1c31cc5f61bb793813e3251c",
+      "recbole/trainer/hyper_tuning.py": "5ac01f159c0e5ee886ca36c9644110464b87215030109ee895737dec5e65d935",
+      "recbole/trainer/trainer.py": "a4d17d0f748eb78e26ae3e790adf44ae7513b099c5ab8070049b32c71ea0b9fb"
+    },
+    "versions": {
+      "cuda": true,
+      "numpy": "1.26.4",
+      "python": "3.10.20",
+      "recbole": "1.2.1",
+      "scipy": "1.15.3",
+      "torch": "2.10.0+cu128"
+    }
+  },
+  "source": {
+    "base_checkpoint_commit": "7329dab0fb08e3575746a18f4938b114d096d24a",
+    "files": {
+      "scripts/run_m5_canary.py": "f568a7a3e2489324224887953a1e94b6135f64aec4ef2638de903d16460c3075",
+      "src/recclaw_core/experiments/helix_abc_v1/canary_broker.py": "257cf40625f6d369692730dcf5dbcee2575b37846a61936a0893f8fb8cfaad8c",
+      "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py": "4a633ee36d937353b48f9725f9c51c90663438a70aca4e9a39bb4c871d331c20",
+      "src/recclaw_core/experiments/helix_abc_v1/real_canary.py": "65ebe3f66b6eb2d20d120bc896e43bde8d7c56a3c1a824cdbf1cf78d975c56cd"
+    },
+    "test_sha256": "c83734b23ad66f6f448538614cafe8d090da54358ad2a47fd0be5864a5a642f1"
+  },
+  "status": "FROZEN_PRE_OUTCOME"
+}

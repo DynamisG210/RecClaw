@@ -1,0 +1,27 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "milestone": "M5",
+  "p0": [],
+  "p1": [],
+  "p2": [
+    {
+      "id": "M5-P2-001",
+      "mitigation": "Exercise bounded real candidate training, GPU metering and frozen recommendation endpoints in M6 Pilot.",
+      "risk": "M5 closes interface-smoke execution but does not establish real training feasibility."
+    },
+    {
+      "id": "M5-P2-002",
+      "mitigation": "Create an isolated exact runtime/package identity before the first Pilot outcome and bind Main to the independently checked package.",
+      "risk": "The exact-byte-bound external RecBole checkout is dirty and is not an acceptable implicit Main trust root."
+    },
+    {
+      "id": "M5-P2-003",
+      "mitigation": "Use M6 Pilot to estimate campaign runtime and cost under the unchanged physical-call plan.",
+      "risk": "The 15 real broker calls consumed 1,894,932 ms aggregate latency."
+    }
+  ],
+  "record_schema": "recclaw.m5-risk-register.v1",
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}

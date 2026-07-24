@@ -648,8 +648,11 @@ class ThreeArmPreCanaryOrchestratorV1:
         root: Path,
         *,
         assignment_nonce: str = "M4-PRECANARY-NONCE",
+        broker: Any | None = None,
+        contract: Any | None = None,
+        resource_ceilings: ResourceCeilingsV1 | None = None,
     ) -> None:
-        self.contract = default_experiment_contract()
+        self.contract = contract or default_experiment_contract()
         self.assignment = PrivateTreatmentAssignmentV1.create(
             self.contract.experiment_id, nonce=assignment_nonce
         )
@@ -661,7 +664,8 @@ class ThreeArmPreCanaryOrchestratorV1:
         self.store.initialize_experiment(
             self.contract, arm_instance_ids=self.assignment.mapping
         )
-        self.broker = ThreeArmFakeBrokerV1.create()
+        self.broker = broker or ThreeArmFakeBrokerV1.create()
+        self.resource_ceilings = resource_ceilings or m4_budget()
         self.fusion = DeterministicHelixFusionV1()
         self.ports: dict[ArmCode, Any] = {
             ArmCode.A: NullEvidencePortV1(),
@@ -699,6 +703,64 @@ class ThreeArmPreCanaryOrchestratorV1:
             }
         )
 
+    def _controller_state_before(
+        self, *, opaque_instance_id: str, search_seed: int
+    ) -> str:
+        connection = sqlite3.connect(self.store.db_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT controller_state_digest
+                FROM arm_state
+                WHERE experiment_id=? AND arm_instance_id=? AND search_seed=?
+                """,
+                (self.contract.experiment_id, opaque_instance_id, search_seed),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            raise PreCanaryInvariantError("committed controller state is missing")
+        return str(row[0])
+
+    def _build_helix_raw(
+        self,
+        *,
+        selected: CandidateEnvelope,
+        opaque_instance_id: str,
+        common_result: Any,
+    ) -> RawResultEnvelope:
+        return RawResultEnvelope(
+            candidate_id=selected.candidate_id,
+            opaque_arm_instance_id=opaque_instance_id,
+            raw_result_digest=str(common_result.raw_output_digest),
+            common_result_closure_digest=str(
+                common_result.common_result_closure_digest
+            ),
+            observed_protocol=_guard_protocol(),
+            target_model="CandidateModel",
+            comparator="LightGCN",
+            seed_runs=(
+                {
+                    "seed_id": "2026",
+                    "run_id": str(common_result.run_id),
+                    "artifact_sha256": str(common_result.raw_output_digest),
+                },
+            ),
+            observation_kind="METRIC_EVALUATION",
+            run_status="SUCCESS",
+            artifact_identity_status="EXACT",
+            normalized_metrics={"ndcg": 0.20},
+        )
+
+    def _after_research_close(
+        self,
+        *,
+        arm: ArmCode,
+        round_index: int,
+        controller: ResearchLineControllerV1,
+    ) -> None:
+        del arm, round_index, controller
+
     def run_fake_triplet(
         self,
         *,
@@ -709,7 +771,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         key = (search_seed, round_index)
         if key in self._completed:
             return self._completed[key]
-        ceilings = m4_budget()
+        ceilings = self.resource_ceilings
         results: list[ArmRoundResultV1] = []
         order = sorted(
             ArmCode,
@@ -752,7 +814,10 @@ class ThreeArmPreCanaryOrchestratorV1:
                 search_seed=search_seed,
                 round_index=round_index,
                 budget_snapshot=ceilings,
-                controller_state_before_digest=self._genesis(),
+                controller_state_before_digest=self._controller_state_before(
+                    opaque_instance_id=opaque_id,
+                    search_seed=search_seed,
+                ),
                 idempotency_key=f"m4:open:{search_seed}:{round_index}:{opaque_id}",
             )
         )
@@ -888,35 +953,18 @@ class ThreeArmPreCanaryOrchestratorV1:
         if common_result is None:
             raise PreCanaryInvariantError("M4 common result closure failed")
         register_raw_result_envelope(self.store, common_result)
-        helix_raw = RawResultEnvelope(
-            candidate_id=selected.candidate_id,
-            opaque_arm_instance_id=opaque_id,
-            raw_result_digest=str(common_result.raw_output_digest),
-            common_result_closure_digest=str(
-                common_result.common_result_closure_digest
-            ),
-            observed_protocol=_guard_protocol(),
-            target_model="CandidateModel",
-            comparator="LightGCN",
-            seed_runs=(
-                {
-                    "seed_id": "2026",
-                    "run_id": str(common_result.run_id),
-                    "artifact_sha256": str(common_result.raw_output_digest),
-                },
-            ),
-            observation_kind="METRIC_EVALUATION",
-            run_status="SUCCESS",
-            artifact_identity_status="EXACT",
-            normalized_metrics={"ndcg": 0.20},
+        helix_raw = self._build_helix_raw(
+            selected=selected,
+            opaque_instance_id=opaque_id,
+            common_result=common_result,
         )
         post = self.ports[arm].post_run(helix_raw)
         fused = self.fusion.fuse(post)
         raw_search_feedback_digest = sha256_digest(
             {
                 "candidate_id": selected.candidate_id,
-                "normalized_metrics": {"ndcg": 0.20},
-                "run_status": "SUCCESS",
+                "normalized_metrics": helix_raw.to_dict()["normalized_metrics"],
+                "run_status": helix_raw.run_status,
             }
         )
         fusion_instruction = (
@@ -966,6 +1014,11 @@ class ThreeArmPreCanaryOrchestratorV1:
                 beliefs=(belief,),
             )
             after_digest = str(transition["round_transition_digest"])
+            self._after_research_close(
+                arm=arm,
+                round_index=round_index,
+                controller=self.broker.research_controllers[arm],
+            )
         closed = self.store.close_round(
             CloseRoundCommand(
                 round_id=opened["round_id"],
@@ -1015,11 +1068,12 @@ class ThreeArmPreCanaryOrchestratorV1:
         opaque_results = tuple(
             {
                 "budget_closed": (
-                    item.input_tokens <= m4_budget().total_input_tokens
-                    and item.output_tokens <= m4_budget().total_output_tokens
+                    item.input_tokens <= self.resource_ceilings.total_input_tokens
+                    and item.output_tokens <= self.resource_ceilings.total_output_tokens
                     and item.billed_tokens
-                    <= m4_budget().total_billed_token_debit
-                    and item.proposal_count <= m4_budget().total_proposal_count
+                    <= self.resource_ceilings.total_billed_token_debit
+                    and item.proposal_count
+                    <= self.resource_ceilings.total_proposal_count
                     and item.ordinary_execution_count <= 1
                 ),
                 "feedback_present": bool(item.feedback_digest),
@@ -1062,10 +1116,12 @@ class ThreeArmPreCanaryOrchestratorV1:
                 item.terminal_class != "COMPLETED"
                 or item.ordinary_execution_count != 1
                 or item.training_backend_started
-                or item.input_tokens > m4_budget().total_input_tokens
-                or item.output_tokens > m4_budget().total_output_tokens
-                or item.billed_tokens > m4_budget().total_billed_token_debit
-                or item.proposal_count > m4_budget().total_proposal_count
+                or item.input_tokens > self.resource_ceilings.total_input_tokens
+                or item.output_tokens > self.resource_ceilings.total_output_tokens
+                or item.billed_tokens
+                > self.resource_ceilings.total_billed_token_debit
+                or item.proposal_count
+                > self.resource_ceilings.total_proposal_count
             ):
                 raise PreCanaryInvariantError("triplet result fails the M4 run gate")
 
