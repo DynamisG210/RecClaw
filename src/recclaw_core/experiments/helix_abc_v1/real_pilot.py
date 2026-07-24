@@ -31,9 +31,10 @@ from .research_capability import (
 from .research_contracts import DevelopmentalMechanismBeliefV1
 from .research_controller import ResearchLineControllerV1
 from .real_canary import RealCanaryProposalBrokerV1
+from .runtime_contracts import CommonDecision
 
 
-PILOT_SEARCH_SEED = 9201
+PILOT_SEARCH_SEED = 9202
 PILOT_ROUNDS_PER_ARM = 3
 
 
@@ -97,6 +98,13 @@ def pilot_guard_context() -> GuardContext:
     )
 
 
+def pilot_common_gate_allows(gate_decision: str, pre_execution_decision: str) -> bool:
+    return (
+        gate_decision == "ALLOW"
+        and pre_execution_decision == CommonDecision.PASS.value
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PilotStoreContractV1:
     experiment_id: str
@@ -113,7 +121,7 @@ class PilotStoreContractV1:
             "arm_policies": [item.to_dict() for item in base.arm_policies],
             "authority": "NONE",
             "evidence_class": "DEVELOPMENT_ONLY",
-            "experiment_id": "HELIX-ABC-DEVELOPMENT-PILOT-9201-V1",
+            "experiment_id": "HELIX-ABC-DEVELOPMENT-PILOT-9202-V2",
             "formal_acceptance": False,
             "ordinary_execution_seed": base.ordinary_execution_seed,
             "scheduled_slots_per_arm_seed": PILOT_ROUNDS_PER_ARM,
@@ -142,7 +150,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
     ) -> None:
         super().__init__(
             root,
-            assignment_nonce="M6-PILOT-9201-OPAQUE-V1",
+            assignment_nonce="M6-PILOT-9202-OPAQUE-V2",
             broker=broker,
             contract=PilotStoreContractV1.create(),
             resource_ceilings=pilot_budget(),
@@ -169,7 +177,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         pre_execution: Any,
         materialization_artifacts: tuple[dict[str, Any], ...],
     ) -> tuple[Any, Any]:
-        if gate.decision != "ALLOW" or pre_execution.decision != "PASS":
+        if not pilot_common_gate_allows(gate.decision, pre_execution.decision):
             raise PreCanaryInvariantError(
                 "Pilot training requires common ALLOW/PASS decisions"
             )
@@ -348,6 +356,7 @@ __all__ = [
     "PilotStoreContractV1",
     "RealPilotOrchestratorV1",
     "pilot_budget",
+    "pilot_common_gate_allows",
     "pilot_guard_context",
     "pilot_protocol",
 ]

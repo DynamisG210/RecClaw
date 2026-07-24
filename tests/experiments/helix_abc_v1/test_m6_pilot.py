@@ -25,6 +25,9 @@ from recclaw_core.experiments.helix_abc_v1.pilot_training import (  # noqa: E402
 from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
     RealCanaryProposalBrokerV1,
 )
+from recclaw_core.experiments.helix_abc_v1.real_pilot import (  # noqa: E402
+    pilot_common_gate_allows,
+)
 
 
 TEMPLATES = ROOT / "tests" / "fixtures" / "bl_icf_anchor_programs_v1.json"
@@ -52,6 +55,10 @@ class FakeUpstream:
 
 
 class PilotTrainingProfileTests(unittest.TestCase):
+    def test_pilot_common_gate_uses_frozen_common_decision_value(self):
+        self.assertTrue(pilot_common_gate_allows("ALLOW", "COMMON_PASS"))
+        self.assertFalse(pilot_common_gate_allows("ALLOW", "PASS"))
+
     def test_supported_model_mapping_and_geometry_rejection(self):
         self.assertEqual(
             training_model_for_primitives(
