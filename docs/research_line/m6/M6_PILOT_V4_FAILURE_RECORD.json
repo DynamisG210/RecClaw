@@ -1,0 +1,135 @@
+{
+  "attempted_execution": {
+    "broker_calls_expected": 23,
+    "broker_calls_reused": 0,
+    "broker_calls_successful": 23,
+    "broker_calls_total": 23,
+    "broker_failures": 0,
+    "broker_input_tokens": 308034,
+    "broker_output_tokens": 9077,
+    "broker_retries": 0,
+    "broker_total_tokens": 317111,
+    "common_validation_debit": 36,
+    "gpu_cost_microunits": 523352,
+    "gpu_device_time_ms": 1884066,
+    "ordinary_execution_debit": 9,
+    "physical_llm_call_arm_debit": 27,
+    "proposal_count_debit": 36,
+    "round_close_count": 9,
+    "round_count": 9,
+    "search_seed": 9204,
+    "training_backend_starts": 9,
+    "wall_time_ms": 1884066
+  },
+  "authority": "NONE",
+  "contract": {
+    "content_digest": "4739c76f39f983bb2e8c50e0f6e222c725041f8c8180bc2d880bc2b62dc3cde0",
+    "pre_outcome_commit": "cbfbcbfd9793261a7f29364fd66b09582c68cc26",
+    "pre_outcome_tree": "f54dd7c75c6098572e6615a46e8d45c156052a58",
+    "record_schema": "recclaw.development-pilot-contract.v2",
+    "sha256": "796b9c3d83c67afb5e58606ac4080438df2c8ccb5732a8b231fefe25b571d4cd"
+  },
+  "diagnostic_readiness": {
+    "effect_size_used": false,
+    "failure_count": 3,
+    "failure_rate": 0.3333333333333333,
+    "failure_rate_ceiling": 0.25,
+    "opaque_instance_support": [
+      0,
+      3,
+      3
+    ],
+    "row_count": 9,
+    "success_count": 6,
+    "verdict": "NOT_READY"
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "failure": {
+    "authoritative_run": {
+      "error_message": "'TrainingSingleWriterExperimentStoreV1' object has no attribute 'integrity_check'",
+      "error_type": "AttributeError",
+      "failure_stage": "POST_RUN_PILOT_AUDIT",
+      "result_file": "results/research_line/m6_pilot_9204_v4/PILOT_FAILURE.json",
+      "result_file_sha256": "0be35050197efd59d6c4a894bb2c5b99d4e17bb8f65dfdc8198af7f5397b0fcd"
+    },
+    "confinement": {
+      "observed_public_root": "log",
+      "outside_arm_private_and_result_roots": true,
+      "shared_files_created": 9,
+      "tree_digest_projection": "SORTED_RELATIVE_PATH_SHA256_SIZE_JSON_V1",
+      "tree_digest": "0eea1c54d8a258343164bd162dc1469bce26a1602ec5651e836a05ea23ef0bea"
+    },
+    "training_runtime": {
+      "affected_model": "LightGCN",
+      "error_message": "'dok_matrix' object has no attribute '_update'",
+      "error_type": "AttributeError",
+      "failed_executions": 3,
+      "failure_signature_count": 1,
+      "opaque_instances_affected": 1,
+      "termination_class": "CRASH_OR_RUNTIME_FAILURE"
+    }
+  },
+  "formal_acceptance": false,
+  "independent_review": {
+    "P0": 0,
+    "P1": 3,
+    "P2": 0,
+    "findings": [
+      "The authoritative post-run audit path calls an API absent from TrainingSingleWriterExperimentStoreV1.",
+      "Frozen Pilot readiness is NOT_READY because three LightGCN executions failed and the failure-rate/support gates do not pass.",
+      "All nine RecBole executions created shared empty log files under the project-root log directory, outside the frozen Arm-private/result roots."
+    ]
+  },
+  "mechanical_closure": {
+    "artifact_count": 117,
+    "budget_snapshot_identity_count": 1,
+    "common_runtime_identity_count": 1,
+    "execution_claim_states": {
+      "FINISHED": 9
+    },
+    "foreign_key_violations": 0,
+    "guard_call_count": 6,
+    "resource_violations": 0,
+    "runtime_binding_count": 9,
+    "runtime_release_digest": "9401d9c5f5f096057d183cf0e4dc4f2f76bbc85030099d17646ecdad5e8ad375",
+    "sqlite_integrity": "ok",
+    "triplet_barriers": [
+      [
+        1,
+        7,
+        1
+      ],
+      [
+        2,
+        7,
+        1
+      ],
+      [
+        3,
+        7,
+        1
+      ]
+    ]
+  },
+  "package": {
+    "broker_sqlite_sha256": "e17bf0f6050343f6f7cff548b926c7d1a1be3df5e43c6306837beb5dae4342df",
+    "evidence_guard_sqlite_sha256": "ec914c34965082c06f3508bb3cad1900b554fe6b4c88af441dbee3cd328f0dde",
+    "file_count": 215,
+    "result_root": "results/research_line/m6_pilot_9204_v4",
+    "result_tree_digest": "162b452ec63600d8c734940bd22fbf0f590a8847823cfae7a82473aba83e485f",
+    "result_tree_projection": "SORTED_RELATIVE_PATH_SHA256_SIZE_JSON_V1",
+    "state_sqlite_sha256": "68247d353aa7bcd106308585b87f7e2b2480ca8f7f3fcededf3ef8e71d3359a9",
+    "total_bytes": 1148945
+  },
+  "record_schema": "recclaw.m6-pilot-failure-record.v2",
+  "sealed_state": {
+    "M7_started": false,
+    "M8_started": false,
+    "effect_comparison_performed": false,
+    "new_pilot_authorized": false,
+    "pilot_version_closed": true,
+    "seed_reuse_permitted": false,
+    "treatment_unblinded": false
+  },
+  "verdict": "NOT_READY_AUTONOMOUS_HARD_STOP"
+}

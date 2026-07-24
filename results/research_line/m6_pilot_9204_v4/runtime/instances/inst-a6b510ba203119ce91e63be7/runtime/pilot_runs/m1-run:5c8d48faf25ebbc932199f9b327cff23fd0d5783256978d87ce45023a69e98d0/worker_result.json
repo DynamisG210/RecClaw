@@ -1,0 +1,1 @@
+{"best_valid_result": {"hit@10": 0.1988, "mrr@10": 0.0764, "ndcg@10": 0.0316, "precision@10": 0.0291, "recall@10": 0.0144}, "best_valid_score": 0.0316, "exit_status": "SUCCESS", "model": "SGL", "test_result": {"hit@10": 0.197, "mrr@10": 0.0823, "ndcg@10": 0.0337, "precision@10": 0.0306, "recall@10": 0.0144}}
