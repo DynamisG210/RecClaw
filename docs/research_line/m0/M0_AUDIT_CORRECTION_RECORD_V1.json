@@ -1,0 +1,99 @@
+{
+  "authority": "NONE",
+  "corrected_changeset": {
+    "digest": "658d7b7d92a570f9b973ee556e786d5384e6b62093542a2cf8b2fb71c0549086",
+    "digest_algorithm": "sha256(recclaw canonical JSON bytes of current implementation_files path/sha256 array)",
+    "scope": "The historical M0 implementation_files path order with current file SHA-256 values.",
+    "updated_files": [
+      {
+        "current_sha256": "539120604aa5d3e69dc8ef99659a48f9a2938779ed4e9084d1c68296ed9e2e6b",
+        "historical_sha256": "68f6bb98cd5ccf33bcd10314d9ca73617d1a3fb97f0de4d62da0ec7bc7207d47",
+        "path": "src/recclaw_core/experiments/helix_abc_v1/contracts.py"
+      },
+      {
+        "current_sha256": "76e97ddfb999bfd4477eb385fe9c1f498846489b8bcc33082771800a038f8ab7",
+        "historical_sha256": "9697f60a6abf3daa7755340e8065e68c7b162f9b6af290ac3cba4e8ed28d8003",
+        "path": "src/recclaw_core/experiments/helix_abc_v1/state_store.py"
+      },
+      {
+        "current_sha256": "811d8434293b5ead70a2125676c345ef17058c9f2ce036952335c27d37c111ad",
+        "historical_sha256": "e9921e62947f165fc0ddd14ac1753576dd61a3978e7b4c6763a545d7ba51fc1d",
+        "path": "tests/experiments/helix_abc_v1/test_m0_contracts.py"
+      },
+      {
+        "current_sha256": "79a1a415fb9510ece4f635b90bccc7b601a7bb929287a8776e5ad9632a025274",
+        "historical_sha256": "f0e20323ce97fb527aadcbce93ebcbe965456a9191539f9f1725b19e08ff7d18",
+        "path": "tests/experiments/helix_abc_v1/test_m0_state_store.py"
+      }
+    ]
+  },
+  "correction_policy": {
+    "historical_execution_record_modified": false,
+    "historical_handoff_modified": false,
+    "repair_round": 1,
+    "scope_expanded": false
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "findings": [
+    {
+      "finding_id": "M0-AUD-001",
+      "original_severity": "P1",
+      "resolution": "The loader now rejects unknown fields and type coercion by requiring the canonical input payload to equal the constructed closed contract.",
+      "status": "RESOLVED",
+      "subject": "ExperimentContractV1 closed loading"
+    },
+    {
+      "finding_id": "M0-AUD-002",
+      "original_severity": "P1",
+      "resolution": "Arms B and C now receive the same content-derived INITIAL_EMPTY Search Memory digest.",
+      "status": "RESOLVED",
+      "subject": "B/C initial Search Memory equality"
+    },
+    {
+      "finding_id": "M0-AUD-003",
+      "original_severity": "P1",
+      "resolution": "open_round now compares the supplied before-state digest with the committed arm_state controller digest.",
+      "status": "RESOLVED",
+      "subject": "SearchRound predecessor-state closure"
+    },
+    {
+      "finding_id": "M0-AUD-004",
+      "original_severity": "P1",
+      "resolution": "Explicit Evidence Authority and Guard-control field aliases are normalized and rejected in Research-owned fixture payloads.",
+      "status": "RESOLVED",
+      "subject": "Research Utility and Evidence Authority field boundary"
+    }
+  ],
+  "formal_acceptance": false,
+  "historical_record": {
+    "changeset_digest": "f034fd0e6402974c1671149eb7631d0eb71dcbf1e8fc96a0c8693251f613a082",
+    "execution_record_path": "docs/research_line/m0/M0_EXECUTION_RECORD_V1.json",
+    "execution_record_sha256": "571d80dcc0bbbbbb1ac5f6430b05b75a3ed0726c9a50bd63472ad2e9533f2fca",
+    "status": "PRESERVED_EXACT_BYTES"
+  },
+  "milestone": "M0",
+  "record_schema": "recclaw.m0-audit-correction-record.v1",
+  "test_results": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests/experiments/helix_abc_v1 -p 'test_m0_*.py' -q",
+      "passed": 26,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_research_line.py' -q",
+      "passed": 4,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_candidate_proposal.py' -q",
+      "passed": 17,
+      "result": "PASS"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /tmp/recclaw_m0_audit_venv/bin/python -m unittest discover -s tests -p 'test_bl_icf_mechanism_space.py' -q",
+      "passed": 27,
+      "result": "PASS"
+    }
+  ],
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}

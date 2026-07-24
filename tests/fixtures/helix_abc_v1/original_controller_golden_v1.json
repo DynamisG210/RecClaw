@@ -1,0 +1,99 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "fixed_input": {
+    "budget_snapshot": {
+      "common_validation_count": 0,
+      "gpu_cost_microunits": 0,
+      "gpu_device_time_ms": 0,
+      "ordinary_executions": 0,
+      "proposal_attempt_debit": 3,
+      "retry_debit": 0,
+      "total_billed_token_debit": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_proposal_count": 3,
+      "wall_time_ms": 0
+    },
+    "common_eligible_actions": [
+      {
+        "candidate_id": "candidate_low",
+        "original_score": 0.5
+      },
+      {
+        "candidate_id": "candidate_high",
+        "original_score": 1.5
+      },
+      {
+        "candidate_id": "candidate_tie",
+        "original_score": 1.5
+      }
+    ],
+    "expected_budget_debits": {
+      "ordinary_execution": 0,
+      "physical_llm_call": 0,
+      "proposal_attempt": 3,
+      "proposal_generation_session": 1
+    },
+    "final_round": 5,
+    "proposal_every": 3,
+    "round_feedback": {
+      "candidate_id": "candidate_high",
+      "decision": "KEEP_DEVELOPMENT_ONLY",
+      "outcome_class": "FIXTURE_RESULT"
+    },
+    "start_round": 1
+  },
+  "formal_acceptance": false,
+  "golden_schema": "recclaw.original-controller-golden-trace.v1",
+  "resolved_source": {
+    "agent_blob_sha1": "c40334b72dbb9557eced2bd081915b5333156fdf",
+    "first_research_line_commit": "a96db67d98ccddde58e4fa641d8ccea92f10c33a",
+    "first_research_line_parent": "2d8c881354e1b536a6c66d7dfbb977e0c5090e50",
+    "path": "scripts/agent.py",
+    "pre_research_line_commit": "2d8c881354e1b536a6c66d7dfbb977e0c5090e50",
+    "research_line_path_absent_at_source": "scripts/research_line.py"
+  },
+  "trace_expected": {
+    "budget_debits": {
+      "ordinary_execution": 0,
+      "physical_llm_call": 0,
+      "proposal_attempt": 3,
+      "proposal_generation_session": 1
+    },
+    "feedback_consumption_count": 1,
+    "proposal_schedule": [
+      {
+        "refresh_required": true,
+        "round_index": 1
+      },
+      {
+        "refresh_required": false,
+        "round_index": 2
+      },
+      {
+        "refresh_required": false,
+        "round_index": 3
+      },
+      {
+        "refresh_required": true,
+        "round_index": 4
+      },
+      {
+        "refresh_required": false,
+        "round_index": 5
+      }
+    ],
+    "selected_candidate_id": "candidate_high",
+    "selection_order": [
+      "candidate_high",
+      "candidate_tie",
+      "candidate_low"
+    ],
+    "stop": {
+      "after_round": 5,
+      "next_round_opened": false,
+      "reason": "CONFIGURED_FINAL_ROUND"
+    }
+  }
+}

@@ -16,11 +16,14 @@ Formal acceptance: `false`
 implicit-feedback, ID-only collaborative top-N ranking. It freezes the accepted
 recommendation protocol while opening model and training mechanisms.
 
-This package is for the future Research-only versus Full Helix comparison. It
-does not replace, reinterpret, or rerun the frozen Original versus Evidence-only
-narrow-space experiment. It also does not add sequential, session, metadata,
-multimodal, knowledge-graph, cold-start, online/OPE, LLM-recommender, or
-evaluation-protocol search.
+The earlier narrow-space comparison statement is superseded for
+`HELIX-ABC-001` by
+`docs/research_line/THREE_ARM_IMPLEMENTATION_ROADMAP.md` and
+`docs/research_line/AMENDMENT_01_BOUNDED_MULTI_AGENT.md`. Arms A/B/C all use
+this exact BL-ICF space; A preserves only the pre-Research-Line Original
+proposal/selection/feedback behavior. This package still does not add
+sequential, session, metadata, multimodal, knowledge-graph, cold-start,
+online/OPE, LLM-recommender, or evaluation-protocol search.
 
 ## Contract layers
 

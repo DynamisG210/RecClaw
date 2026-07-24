@@ -1,0 +1,88 @@
+{
+  "arm_policies": [
+    {
+      "arm": "A",
+      "bl_icf_search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
+      "bl_icf_search_space_ref": "recclaw.bl-icf.mechanism-space.v1",
+      "common_execution_guard_digest": "e874e9ed5eba968416f22adc33317d849c612e194f7c4201464cc0cb35162821",
+      "common_execution_guard_ref": "recclaw.common-execution-guard.contract.v1",
+      "controller": "OriginalControllerV1",
+      "controller_policy_digest": "0bd1ac36b632351417df023312ece7300c61d9cfd306f89418116d41e4da03bc",
+      "deterministic_fusion_digest": "e63ccc4b699a90f9d391ba3a146d8408c881d28ea6ea71dc56cd18809c33116d",
+      "deterministic_fusion_ref": "recclaw.deterministic-fusion.m0.v1",
+      "evidence_port": "NullEvidencePortV1",
+      "meta_policy_mode": null,
+      "producer_execution_mode": null,
+      "research_line_enabled": false
+    },
+    {
+      "arm": "B",
+      "bl_icf_search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
+      "bl_icf_search_space_ref": "recclaw.bl-icf.mechanism-space.v1",
+      "common_execution_guard_digest": "e874e9ed5eba968416f22adc33317d849c612e194f7c4201464cc0cb35162821",
+      "common_execution_guard_ref": "recclaw.common-execution-guard.contract.v1",
+      "controller": "ResearchLineControllerV1",
+      "controller_policy_digest": "e3670ae2e49c5ac34f83251c101732affbca0a5478ef73c93aecc77338acade7",
+      "deterministic_fusion_digest": "e63ccc4b699a90f9d391ba3a146d8408c881d28ea6ea71dc56cd18809c33116d",
+      "deterministic_fusion_ref": "recclaw.deterministic-fusion.m0.v1",
+      "evidence_port": "NullEvidencePortV1",
+      "meta_policy_mode": "VERSIONED_POLICY_UPDATE",
+      "producer_execution_mode": "BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1",
+      "research_line_enabled": true
+    },
+    {
+      "arm": "C",
+      "bl_icf_search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
+      "bl_icf_search_space_ref": "recclaw.bl-icf.mechanism-space.v1",
+      "common_execution_guard_digest": "e874e9ed5eba968416f22adc33317d849c612e194f7c4201464cc0cb35162821",
+      "common_execution_guard_ref": "recclaw.common-execution-guard.contract.v1",
+      "controller": "ResearchLineControllerV1",
+      "controller_policy_digest": "e3670ae2e49c5ac34f83251c101732affbca0a5478ef73c93aecc77338acade7",
+      "deterministic_fusion_digest": "e63ccc4b699a90f9d391ba3a146d8408c881d28ea6ea71dc56cd18809c33116d",
+      "deterministic_fusion_ref": "recclaw.deterministic-fusion.m0.v1",
+      "evidence_port": "EvidenceGuardPortV1",
+      "meta_policy_mode": "VERSIONED_POLICY_UPDATE",
+      "producer_execution_mode": "BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1",
+      "research_line_enabled": true
+    }
+  ],
+  "authority": "NONE",
+  "dataset": "ML-1M",
+  "evaluation_protocol": "frozen_full_sort",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "experiment_id": "HELIX-ABC-001",
+  "formal_acceptance": false,
+  "implementation_milestone": "M0",
+  "implementation_profile": "MINIMUM_SUFFICIENT_V1",
+  "ordinary_execution_seed": 2026,
+  "post_selection_stability_seeds": [
+    2026,
+    2027,
+    2028
+  ],
+  "primary_metric": "NDCG@10",
+  "proposal_sessions_per_open_round": 1,
+  "resource_ceiling_equality": "EXACT_ACROSS_A_B_C",
+  "resource_units": [
+    "PROPOSAL_GENERATION_SESSION",
+    "PHYSICAL_LLM_CALL_TREATMENT_COST",
+    "INPUT_TOKEN",
+    "OUTPUT_TOKEN",
+    "BILLED_TOKEN_DEBIT",
+    "PROPOSAL",
+    "WALL_TIME_MS",
+    "RETRY",
+    "PROPOSAL_ATTEMPT",
+    "ORDINARY_EXECUTION",
+    "COMMON_VALIDATION",
+    "GPU_DEVICE_TIME_MS",
+    "GPU_COST_MICROUNITS"
+  ],
+  "scheduled_slots_per_arm_seed": 50,
+  "search_seeds": [
+    42,
+    43,
+    44
+  ]
+}
+

@@ -1,0 +1,31 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "milestone": "M0",
+  "p0_count": 0,
+  "p1_count": 0,
+  "p2_count": 2,
+  "record_schema": "recclaw.milestone-risk-register.v1",
+  "risks": [
+    {
+      "affected_invariant": "One package-owned state-store writer per experiment root",
+      "blocking_for_m1": false,
+      "blocking_milestone": "M4",
+      "risk_id": "M0-P2-001",
+      "severity": "P2",
+      "status": "OPEN",
+      "verification_required": "Cross-instance contention and writer-ownership adversarial test"
+    },
+    {
+      "affected_invariant": "Exact matched-triplet budget-snapshot equality",
+      "blocking_for_m1": false,
+      "blocking_milestone": "M4",
+      "risk_id": "M0-P2-002",
+      "severity": "P2",
+      "status": "OPEN",
+      "verification_required": "Neutral broker/orchestrator rejects unequal A/B/C budget snapshots"
+    }
+  ],
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}
