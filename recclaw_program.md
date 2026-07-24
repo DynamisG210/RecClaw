@@ -50,10 +50,16 @@ signals. Router decisions are written into trial memory and
 
 Search Memory is rebuilt from `results/agent_memory.jsonl` each round. It tracks
 family outcomes, producer outcomes, duplicate parameter/execution signatures,
-blocker signatures, promising families, and frozen families. The
-Meta-Research advisory is deliberately offline/advisory in this version: it can
-suggest producer downweights, memory transformations, and router updates, but it
-does not automatically promote a new strategy version into the runtime.
+action outcomes, producer-action outcomes, recent route trajectories, blocker
+signatures, promising families, and frozen families.
+
+The Meta-Research Controller is implemented as a shadow-only strategy learner.
+It treats Producer, Router, Memory, and algorithm-policy changes as
+`MetaUpdateProposal`s, runs deterministic Offline Replay on Search Memory,
+performs Shadow Evaluation against the current runtime policy, and reports a
+Champion-Challenger decision plus an independent Promotion gate. It can
+recommend strategy updates, but it does not automatically promote a new
+strategy version into the active runtime.
 
 The current runnable method line is general recommendation on ML-1M with
 RecBole, focused on BPR and LightGCN action-space exploration. Stronger RecBole

@@ -105,6 +105,57 @@ class ResearchLineTests(unittest.TestCase):
         self.assertIn("route_decision", chosen)
         self.assertIn("base_score", chosen["route_decision"]["factors"])
 
+    def test_meta_research_update_builds_shadow_gate(self) -> None:
+        memory = research_line.build_search_memory(
+            [
+                {
+                    "candidate_id": "cand_rank",
+                    "parent_candidate_id": "cand_bpr_margin_loss",
+                    "status": "success",
+                    "decision": "keep",
+                    "producer_id": "llm_algorithm",
+                    "producer_role": "mechanism_discovery",
+                    "route_decision": {"score": 0.42, "reason": "family=cand_bpr_margin_loss; action=rank_aware_loss"},
+                    "result": {"ndcg@10": 0.281},
+                },
+                {
+                    "candidate_id": "cand_aux",
+                    "parent_candidate_id": "cand_lightgcn_aux_alignment_loss",
+                    "status": "success",
+                    "decision": "revise",
+                    "producer_id": "heuristic_algorithm",
+                    "producer_role": "template_expansion",
+                    "route_decision": {"score": 0.31, "reason": "family=cand_lightgcn_aux_alignment_loss; action=auxiliary_loss"},
+                    "result": {"ndcg@10": 0.275},
+                },
+                {
+                    "candidate_id": "cand_bad",
+                    "parent_candidate_id": "cand_bad",
+                    "status": "crash",
+                    "decision": "crash",
+                    "producer_id": "repair_ablation",
+                    "route_decision": {"score": -0.15, "reason": "family=cand_bad; action=regularization"},
+                },
+                {
+                    "event": "proposal_rejected",
+                    "candidate_id": "proposal_bad",
+                    "action_type": "regularization",
+                    "producer_id": "repair_ablation",
+                    "errors": ["duplicate parameter_signature already run"],
+                },
+            ]
+        )
+
+        update = research_line.meta_research_update(memory)
+
+        self.assertEqual(update["controller_version"], "meta_research.v2")
+        self.assertIn("action_stats", memory)
+        self.assertIn("rank_aware_loss", memory["action_stats"])
+        self.assertGreaterEqual(len(update["meta_update_proposals"]), 4)
+        self.assertEqual(update["offline_replay"]["status"], "completed")
+        self.assertIn("challenger", update["shadow_evaluation"])
+        self.assertIn(update["promotion_gate"]["decision"], {"hold_shadow", "candidate_for_independent_promotion"})
+
     def test_comparison_planner_writes_pair_commands_inside_current_results(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "plan.json"

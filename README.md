@@ -13,7 +13,8 @@ with local extension code under `recclaw_ext/`.
 - `configs/candidate_registry.yaml`: runnable candidate catalog.
 - `scripts/agent.py`: Observe -> Plan -> Propose -> Validate -> Run -> Reflect loop.
 - `scripts/research_line.py`: explicit research-ability line with Candidate
-  Producers, Research Router, Search Memory, and Meta-Research advisory state.
+  Producers, Research Router, Search Memory, and a shadow-only Meta-Research
+  Controller for replaying and gating strategy updates.
 - `scripts/run_candidate.py`: isolated candidate execution.
 - `scripts/build_experience_summary.py`: reflection memory and search steering.
 - `scripts/plan_research_line_comparison.py`: paired command-plan generator for

@@ -1935,6 +1935,9 @@ class RecClawAgent:
             "duplicate_signatures": self.search_memory.get("duplicate_signatures", [])[:20],
             "blocker_counts": dict(list((self.search_memory.get("blocker_counts") or {}).items())[:10]),
             "producer_stats": list((self.search_memory.get("producer_stats") or {}).values())[:10],
+            "action_stats": list((self.search_memory.get("action_stats") or {}).values())[:12],
+            "producer_action_stats": list((self.search_memory.get("producer_action_stats") or {}).values())[:12],
+            "recent_trials": self.search_memory.get("recent_trials", [])[-12:],
         }
         meta_update = meta_research_update(self.search_memory) if self.config.research_line_enabled else {}
         post_validation_followup = self._post_validation_followup_state()

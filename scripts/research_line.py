@@ -94,6 +94,30 @@ class RouteDecision:
         }
 
 
+@dataclass(frozen=True)
+class MetaUpdateProposal:
+    proposal_id: str
+    target: str
+    summary: str
+    policy_delta: dict[str, Any]
+    expected_effect: str
+    replay_score: float = 0.0
+    replay_factors: dict[str, float] = field(default_factory=dict)
+    risks: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "proposal_id": self.proposal_id,
+            "target": self.target,
+            "summary": self.summary,
+            "policy_delta": self.policy_delta,
+            "expected_effect": self.expected_effect,
+            "replay_score": round(self.replay_score, 6),
+            "replay_factors": {key: round(value, 6) for key, value in sorted(self.replay_factors.items())},
+            "risks": list(self.risks),
+        }
+
+
 def load_yaml(path: str | Path) -> dict[str, Any]:
     if yaml is None:
         return {}
@@ -175,6 +199,29 @@ def mechanism_tokens(record: dict[str, Any]) -> list[str]:
     return tokens
 
 
+def row_action_type(record: dict[str, Any]) -> str:
+    action = str(record.get("action_type") or "").strip()
+    if action:
+        return action
+    route = record.get("route_decision")
+    reason = ""
+    if isinstance(route, dict):
+        reason = str(route.get("reason") or "")
+    for part in reason.split(";"):
+        part = part.strip()
+        if part.startswith("action="):
+            value = part.split("=", 1)[1].strip()
+            return "" if value == "unknown" else value
+    return ""
+
+
+def route_score(record: dict[str, Any]) -> float | None:
+    route = record.get("route_decision")
+    if not isinstance(route, dict):
+        return None
+    return to_float(route.get("score"))
+
+
 def family_matches(candidate_family: str, target_family: str) -> bool:
     candidate_family = str(candidate_family or "")
     target_family = str(target_family or "")
@@ -205,6 +252,8 @@ def build_search_memory(
     event_rows = [row for row in rows if row.get("event")]
     family_stats: dict[str, dict[str, Any]] = {}
     producer_stats: dict[str, dict[str, Any]] = {}
+    action_stats: dict[str, dict[str, Any]] = {}
+    producer_action_stats: dict[str, dict[str, Any]] = {}
     duplicate_signatures: set[str] = set()
     seen_signatures: set[str] = set()
     blocker_counts: dict[str, int] = {}
@@ -262,9 +311,74 @@ def build_search_memory(
                 current_best = to_float(producer_row.get("best"))
                 if current_best is None or value > current_best:
                     producer_row["best"] = round(value, 6)
+        action = row_action_type(row) or "unknown"
+        action_row = action_stats.setdefault(
+            action,
+            {
+                "action_type": action,
+                "trials": 0,
+                "keeps": 0,
+                "revises": 0,
+                "discards": 0,
+                "crashes": 0,
+                "best": None,
+                "route_score_sum": 0.0,
+                "route_score_count": 0,
+            },
+        )
+        action_row["trials"] += 1
+        action_row["keeps"] += int(decision == "keep")
+        action_row["revises"] += int(decision == "revise")
+        action_row["discards"] += int(decision == "discard")
+        action_row["crashes"] += int(decision == "crash" or status in BLOCKER_STATUS)
+        if value is not None:
+            current_best = to_float(action_row.get("best"))
+            if current_best is None or value > current_best:
+                action_row["best"] = round(value, 6)
+        score = route_score(row)
+        if score is not None:
+            action_row["route_score_sum"] += score
+            action_row["route_score_count"] += 1
+        producer = str(row.get("producer_id") or row.get("proposal_source") or "unknown")
+        combo_key = f"{producer}::{action}"
+        combo_row = producer_action_stats.setdefault(
+            combo_key,
+            {
+                "producer_id": producer,
+                "action_type": action,
+                "trials": 0,
+                "keeps": 0,
+                "crashes": 0,
+                "best": None,
+            },
+        )
+        combo_row["trials"] += 1
+        combo_row["keeps"] += int(decision == "keep")
+        combo_row["crashes"] += int(decision == "crash" or status in BLOCKER_STATUS)
+        if value is not None:
+            current_best = to_float(combo_row.get("best"))
+            if current_best is None or value > current_best:
+                combo_row["best"] = round(value, 6)
 
     for event in event_rows:
         status = str(event.get("status") or event.get("event") or "").lower()
+        action = row_action_type(event) or "unknown"
+        action_row = action_stats.setdefault(
+            action,
+            {
+                "action_type": action,
+                "trials": 0,
+                "keeps": 0,
+                "revises": 0,
+                "discards": 0,
+                "crashes": 0,
+                "best": None,
+                "route_score_sum": 0.0,
+                "route_score_count": 0,
+            },
+        )
+        if any(token in status for token in ("rejected", "failed", "crash", "blocker", "skipped")):
+            action_row["crashes"] += 1
         if not any(token in status for token in ("rejected", "failed", "crash", "blocker", "skipped")):
             continue
         reason_parts = []
@@ -276,6 +390,13 @@ def build_search_memory(
                 reason_parts.append(str(value))
         signature = "; ".join(reason_parts)[:180] or status
         blocker_counts[signature] = blocker_counts.get(signature, 0) + 1
+
+    for stats in action_stats.values():
+        count = int(stats.get("route_score_count") or 0)
+        if count > 0:
+            stats["mean_route_score"] = round(float(stats.get("route_score_sum") or 0.0) / count, 6)
+        stats.pop("route_score_sum", None)
+        stats.pop("route_score_count", None)
 
     for family, stats in family_stats.items():
         best = to_float(stats.get("best"))
@@ -304,6 +425,22 @@ def build_search_memory(
         )
         if bool(stats.get("high_potential"))
     ]
+    recent_trials = []
+    for row in trial_rows[-25:]:
+        value = extract_result_metric(row, metric)
+        item = {
+            "round_id": row.get("round_id"),
+            "candidate_id": row.get("candidate_id", ""),
+            "parent_candidate_id": row.get("parent_candidate_id", ""),
+            "producer_id": row.get("producer_id") or row.get("proposal_source") or "",
+            "producer_role": row.get("producer_role", ""),
+            "action_type": row_action_type(row),
+            "decision": row.get("decision", ""),
+            "status": row.get("status", ""),
+            "metric": round(value, 6) if value is not None else None,
+            "route_score": route_score(row),
+        }
+        recent_trials.append(item)
     return {
         "metric": metric,
         "trial_count": len(trial_rows),
@@ -312,6 +449,9 @@ def build_search_memory(
         "best_family": best_family,
         "family_stats": family_stats,
         "producer_stats": producer_stats,
+        "action_stats": action_stats,
+        "producer_action_stats": producer_action_stats,
+        "recent_trials": recent_trials,
         "duplicate_signatures": sorted(duplicate_signatures),
         "seen_signatures": sorted(seen_signatures),
         "blocker_counts": dict(sorted(blocker_counts.items(), key=lambda item: (-item[1], item[0]))),
@@ -710,33 +850,284 @@ def route_candidate_option(
     )
 
 
-def meta_research_update(search_memory: dict[str, Any]) -> dict[str, Any]:
-    producer_rows = list((search_memory.get("producer_stats") or {}).values())
-    producer_rows = [row for row in producer_rows if isinstance(row, dict)]
-    producer_rows.sort(
+def _quality_score(row: dict[str, Any]) -> float:
+    trials = max(1, int(row.get("trials") or 0))
+    keeps = int(row.get("keeps") or 0)
+    revises = int(row.get("revises") or 0)
+    crashes = int(row.get("crashes") or 0)
+    best = to_float(row.get("best"))
+    best_signal = min(1.0, max(0.0, (best or 0.0) / 0.30))
+    return (
+        0.36 * (keeps / trials)
+        + 0.18 * (revises / trials)
+        + 0.24 * (1.0 - min(1.0, crashes / trials))
+        + 0.22 * best_signal
+    )
+
+
+def _rank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ranked = []
+    for row in rows:
+        item = dict(row)
+        item["quality_score"] = round(_quality_score(item), 6)
+        ranked.append(item)
+    return sorted(
+        ranked,
         key=lambda row: (
-            (int(row.get("keeps") or 0) - int(row.get("crashes") or 0)),
+            float(row.get("quality_score") or 0.0),
             to_float(row.get("best")) if to_float(row.get("best")) is not None else -1,
+            int(row.get("trials") or 0),
         ),
         reverse=True,
     )
+
+
+def _build_meta_update_candidates(search_memory: dict[str, Any]) -> list[MetaUpdateProposal]:
+    producer_rows = _rank_rows(
+        [row for row in (search_memory.get("producer_stats") or {}).values() if isinstance(row, dict)]
+    )
+    action_rows = _rank_rows(
+        [row for row in (search_memory.get("action_stats") or {}).values() if isinstance(row, dict)]
+    )
+    champion_producers = [str(row.get("producer_id")) for row in producer_rows[:2] if row.get("producer_id")]
     weak_producers = [
         str(row.get("producer_id"))
         for row in producer_rows
-        if int(row.get("trials") or 0) >= 3 and int(row.get("keeps") or 0) == 0 and int(row.get("crashes") or 0) > 0
+        if int(row.get("trials") or 0) >= 3 and float(row.get("quality_score") or 0.0) < 0.22
+    ][:3]
+    top_actions = [
+        str(row.get("action_type"))
+        for row in action_rows
+        if row.get("action_type") and str(row.get("action_type")) != "unknown"
+    ][:3]
+    underexplored_algorithm_actions = [
+        action
+        for action, _ in sorted(ACTION_INFORMATION_PRIOR.items(), key=lambda item: item[1], reverse=True)
+        if action in ALGORITHM_ACTION_TYPES and action not in set(top_actions)
+    ][:3]
+
+    candidates = [
+        MetaUpdateProposal(
+            proposal_id="meta_router_v2_blocker_aware",
+            target="router",
+            summary="Increase penalties for repeated blocker signatures and frozen families before spending execution budget.",
+            policy_delta={
+                "blocker_penalty_multiplier": 1.35,
+                "frozen_family_penalty_multiplier": 1.25,
+                "preserve_promising_family_escape_hatch": True,
+            },
+            expected_effect="Reduce invalid or repeatedly crashing candidates while keeping promising families eligible.",
+            risks=["may over-penalize high-risk algorithmic mechanisms after too few trials"],
+        ),
+        MetaUpdateProposal(
+            proposal_id="meta_memory_v2_trajectory_features",
+            target="memory",
+            summary="Track producer-action quality, recent route scores, and blocker signatures as replay features.",
+            policy_delta={
+                "add_features": ["action_stats", "producer_action_stats", "recent_trials"],
+                "dedupe_keys": ["parameter_signature", "execution_signature"],
+            },
+            expected_effect="Let future routers distinguish mechanism failure from implementation or runtime failure.",
+            risks=[],
+        ),
+        MetaUpdateProposal(
+            proposal_id="meta_producer_v2_champion_weighting",
+            target="producer",
+            summary="Allocate more proposal slots to producers with stronger historical quality and fewer crashes.",
+            policy_delta={
+                "champion_producers": champion_producers,
+                "downweight_producers": weak_producers,
+                "max_weight_shift_per_window": 0.20,
+            },
+            expected_effect="Improve proposal quality without collapsing producer diversity.",
+            risks=["may reduce novelty if one producer wins on a small evidence window"],
+        ),
+        MetaUpdateProposal(
+            proposal_id="meta_operator_v2_algorithm_scout",
+            target="algorithm_policy",
+            summary="Reserve a bounded slot for underexplored high-information algorithm actions.",
+            policy_delta={
+                "preferred_actions": underexplored_algorithm_actions,
+                "budget_floor": 1,
+                "requires_ablation_parent": True,
+            },
+            expected_effect="Expose the expanded BPR/LightGCN search space instead of only local tuning.",
+            risks=["higher implementation cost and a larger chance of code-required blockers"],
+        ),
     ]
+    if top_actions:
+        candidates.append(
+            MetaUpdateProposal(
+                proposal_id="meta_router_v2_action_prior_calibration",
+                target="router",
+                summary="Calibrate information-gain priors using action-level search outcomes.",
+                policy_delta={
+                    "upweight_actions": top_actions,
+                    "downweight_after_consecutive_crashes": 2,
+                    "minimum_trials_before_strong_bias": 3,
+                },
+                expected_effect="Prefer action families that have shown credible signal under the current protocol.",
+                risks=["can exploit a noisy early signal before seed validation"],
+            )
+        )
+    return candidates
+
+
+def _offline_replay_score(proposal: MetaUpdateProposal, search_memory: dict[str, Any]) -> tuple[float, dict[str, float]]:
+    trial_count = int(search_memory.get("trial_count") or 0)
+    duplicate_count = len(search_memory.get("duplicate_signatures") or [])
+    blocker_count = sum(int(value or 0) for value in (search_memory.get("blocker_counts") or {}).values())
+    producer_rows = _rank_rows(
+        [row for row in (search_memory.get("producer_stats") or {}).values() if isinstance(row, dict)]
+    )
+    action_rows = _rank_rows(
+        [row for row in (search_memory.get("action_stats") or {}).values() if isinstance(row, dict)]
+    )
+    best_producer = float(producer_rows[0].get("quality_score") or 0.0) if producer_rows else 0.0
+    best_action = float(action_rows[0].get("quality_score") or 0.0) if action_rows else 0.0
+    evidence = min(0.24, 0.03 * trial_count)
+    duplicate_pressure = min(0.18, 0.04 * duplicate_count)
+    blocker_pressure = min(0.24, 0.03 * blocker_count)
+    diversity = min(0.18, 0.03 * len(action_rows))
+    target = proposal.target
+    factors = {"evidence": evidence}
+    if target == "router":
+        factors.update(
+            {
+                "blocker_pressure": blocker_pressure,
+                "duplicate_pressure": duplicate_pressure,
+                "action_signal": 0.12 * best_action,
+            }
+        )
+    elif target == "producer":
+        factors.update(
+            {
+                "producer_signal": 0.34 * best_producer,
+                "diversity_guard": diversity,
+                "small_window_penalty": -0.12 if trial_count < 6 else 0.0,
+            }
+        )
+    elif target == "algorithm_policy":
+        factors.update(
+            {
+                "underexplored_action_credit": 0.18,
+                "diversity_guard": diversity,
+                "blocker_risk": -0.08 if blocker_count >= 3 else 0.0,
+            }
+        )
+    else:
+        factors.update(
+            {
+                "memory_feature_value": 0.18,
+                "duplicate_pressure": duplicate_pressure,
+                "blocker_pressure": blocker_pressure,
+            }
+        )
+    return sum(factors.values()), factors
+
+
+def _attach_replay_scores(
+    candidates: list[MetaUpdateProposal],
+    search_memory: dict[str, Any],
+) -> list[MetaUpdateProposal]:
+    scored = []
+    for proposal in candidates:
+        score, factors = _offline_replay_score(proposal, search_memory)
+        scored.append(
+            MetaUpdateProposal(
+                proposal_id=proposal.proposal_id,
+                target=proposal.target,
+                summary=proposal.summary,
+                policy_delta=proposal.policy_delta,
+                expected_effect=proposal.expected_effect,
+                replay_score=score,
+                replay_factors=factors,
+                risks=proposal.risks,
+            )
+        )
+    return sorted(scored, key=lambda item: item.replay_score, reverse=True)
+
+
+def meta_research_update(search_memory: dict[str, Any]) -> dict[str, Any]:
+    producer_rows = list((search_memory.get("producer_stats") or {}).values())
+    producer_rows = [row for row in producer_rows if isinstance(row, dict)]
+    producer_rows = _rank_rows(producer_rows)
+    weak_producers = [
+        str(row.get("producer_id"))
+        for row in producer_rows
+        if int(row.get("trials") or 0) >= 3 and float(row.get("quality_score") or 0.0) < 0.22
+    ]
+    candidates = _attach_replay_scores(_build_meta_update_candidates(search_memory), search_memory)
+    incumbent = {
+        "strategy_id": "current_runtime_policy",
+        "replay_score": 0.0,
+        "status": "champion",
+        "note": "The incumbent remains active until an update passes independent promotion.",
+    }
+    challenger = candidates[0].as_dict() if candidates else {}
+    margin = float(challenger.get("replay_score") or 0.0) - float(incumbent["replay_score"])
+    blockers = []
+    trial_count = int(search_memory.get("trial_count") or 0)
+    if trial_count < 6:
+        blockers.append("need at least 6 development trials before promotion")
+    if margin < 0.20:
+        blockers.append("shadow replay margin below 0.20")
+    if challenger and challenger.get("risks"):
+        blockers.append("requires human review for listed risks")
+    promotion_eligible = bool(challenger) and not blockers
+    promotion_decision = "candidate_for_independent_promotion" if promotion_eligible else "hold_shadow"
     return {
-        "status": "advisory",
+        "status": "shadow_only" if candidates else "insufficient_data",
+        "controller_version": "meta_research.v2",
+        "evidence_window": {
+            "trial_count": trial_count,
+            "event_count": int(search_memory.get("event_count") or 0),
+            "best_metric": search_memory.get("best_metric"),
+            "best_family": search_memory.get("best_family", ""),
+            "recent_trial_count": len(search_memory.get("recent_trials") or []),
+        },
         "champion_producers": [str(row.get("producer_id")) for row in producer_rows[:3] if row.get("producer_id")],
         "downweight_producers": weak_producers[:3],
+        "meta_update_proposals": [item.as_dict() for item in candidates],
+        "offline_replay": {
+            "status": "completed",
+            "method": "deterministic historical replay over Search Memory aggregates",
+            "candidates_evaluated": len(candidates),
+            "top_candidate_id": challenger.get("proposal_id", "") if challenger else "",
+            "top_replay_score": challenger.get("replay_score") if challenger else None,
+        },
+        "shadow_evaluation": {
+            "status": "completed",
+            "incumbent": incumbent,
+            "challenger": challenger,
+            "recommendation": promotion_decision,
+        },
+        "champion_challenger": {
+            "champion": incumbent["strategy_id"],
+            "challenger": challenger.get("proposal_id", "") if challenger else "",
+            "replay_margin": round(margin, 6),
+            "decision": "promote_to_independent_gate" if promotion_eligible else "keep_champion",
+        },
+        "promotion_gate": {
+            "eligible": promotion_eligible,
+            "decision": promotion_decision,
+            "blockers": blockers,
+            "required_evidence": [
+                "offline replay improves over current runtime policy",
+                "shadow evaluation passes with sufficient margin",
+                "independent human or held-out run approves promotion",
+            ],
+        },
         "memory_transformations": [
             "deduplicate by parent parameter_signature and execution_signature",
             "track blocker signatures separately from algorithm mechanism failures",
+            "track producer-action outcomes for strategy replay",
             "promote families only after same-protocol multi-seed evidence",
         ],
         "router_updates": [
             "increase information-gain weight for underexplored algorithmic actions",
             "penalize repeated local repair after plateau detection",
             "route parameter-only tuning after a credible algorithm signal",
+            "shadow-test router changes before promotion into the active runtime",
         ],
     }
