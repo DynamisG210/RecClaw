@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 import subprocess
 from dataclasses import dataclass
@@ -132,7 +133,9 @@ class CodexCliCanaryBrokerV1:
         self.private_root = private_root.resolve()
         self.private_root.mkdir(parents=True, exist_ok=True)
         self.schema_path = schema_path.resolve()
-        self.schema = json.loads(self.schema_path.read_text(encoding="utf-8"))
+        self.schema_bytes = self.schema_path.read_bytes()
+        self.schema = json.loads(self.schema_bytes)
+        self.schema_file_sha256 = hashlib.sha256(self.schema_bytes).hexdigest()
         jsonschema.validators.validator_for(self.schema).check_schema(self.schema)
         self.codex_executable = codex_executable.resolve()
         if not self.codex_executable.is_file():
@@ -168,7 +171,7 @@ class CodexCliCanaryBrokerV1:
             model=model,
             reasoning_effort=reasoning_effort,
             sandbox_mode="read-only",
-            response_schema_digest=sha256_digest(self.schema),
+            response_schema_digest=self.schema_file_sha256,
             timeout_ms=timeout_ms,
             workspace=self.workspace,
         )
@@ -315,7 +318,7 @@ class CodexCliCanaryBrokerV1:
             "model": self.model,
             "prompt": prompt,
             "reasoning_effort": self.reasoning_effort,
-            "response_schema_sha256": sha256_digest(self.schema),
+            "response_schema_sha256": self.release.response_schema_digest,
             "service_tier": self.service_tier,
         }
         request_digest = sha256_digest(request)

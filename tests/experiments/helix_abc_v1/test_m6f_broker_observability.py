@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import signal
@@ -253,6 +254,13 @@ class BrokerProcessCaptureTests(unittest.TestCase):
             / "broker_process_release_v2.json"
         )
         frozen = json.loads(release_path.read_text(encoding="utf-8"))
+        schema_path = (
+            release_path.parent / "pilot_proposal_response_v1.schema.json"
+        )
+        self.assertEqual(
+            hashlib.sha256(schema_path.read_bytes()).hexdigest(),
+            frozen["response_schema_digest"],
+        )
         computed = BrokerProcessReleaseV2.create(
             executable=Path(frozen["broker_executable_path"]),
             cli_version=frozen["broker_cli_version"],
