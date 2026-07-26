@@ -398,6 +398,7 @@ class BrokerProcessCaptureTests(unittest.TestCase):
     def test_broker_v2_persists_complete_success_receipts_and_replays(self):
         fake_codex = self.root / "fake-codex"
         broker_root = self.root / "broker-v2"
+        spawn_count_path = self.root / "success-spawn-count"
         expected_output = (
             broker_root
             / "outputs"
@@ -412,6 +413,8 @@ import json, pathlib, sys
 if '--version' in sys.argv:
     print('fixture-codex 2')
     raise SystemExit(0)
+count = pathlib.Path({str(spawn_count_path)!r})
+count.write_text(count.read_text() + 'x' if count.exists() else 'x')
 path = pathlib.Path({str(expected_output)!r})
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text('{{"proposals":[]}}', encoding='utf-8')
@@ -449,6 +452,34 @@ print(json.dumps({{"type":"turn.completed","input_tokens":1,"output_tokens":1,"t
             self.assertEqual(first, replay)
             self.assertEqual(outcome.status, "SUCCESS")
             self.assertEqual(receipt.exit_code_or_NONE, 0)
+            self.assertEqual(broker.call_count(), 1)
+            broker._connection.execute(
+                "DELETE FROM calls WHERE logical_call_id='success-call'"
+            )
+            broker._connection.commit()
+            with self.assertRaisesRegex(
+                (CanaryBrokerError, ValueError),
+                "conflict|exist|replay",
+            ):
+                broker.call_with_session(
+                    logical_call_id="success-call",
+                    proposal_generation_session_id="success-session",
+                    prompt="different request",
+                    expected_proposal_count=0,
+                )
+            recovered = broker.call_with_session(
+                logical_call_id="success-call",
+                proposal_generation_session_id="success-session",
+                prompt="fixed",
+                expected_proposal_count=0,
+            )
+            recovered_receipt, recovered_outcome = broker.conformance_evidence(
+                "success-call"
+            )
+            self.assertEqual(first, recovered)
+            self.assertEqual(receipt, recovered_receipt)
+            self.assertEqual(outcome, recovered_outcome)
+            self.assertEqual(spawn_count_path.read_text(), "x")
             self.assertEqual(broker.call_count(), 1)
         finally:
             broker.close()
@@ -501,12 +532,15 @@ print(json.dumps({{"type":"turn.completed","input_tokens":1,"output_tokens":1,"t
 
     def test_broker_v2_failure_row_keeps_receipt_and_never_retries(self):
         fake_codex = self.root / "failing-codex"
+        spawn_count_path = self.root / "failure-spawn-count"
         fake_codex.write_text(
             f"""#!{sys.executable}
-import sys
+import pathlib, sys
 if '--version' in sys.argv:
     print('fixture-codex 2')
     raise SystemExit(0)
+count = pathlib.Path({str(spawn_count_path)!r})
+count.write_text(count.read_text() + 'x' if count.exists() else 'x')
 print('fixture process failure', file=sys.stderr)
 raise SystemExit(1)
 """,
@@ -543,6 +577,15 @@ raise SystemExit(1)
                 first.exception.receipt, replay.exception.receipt
             )
             self.assertEqual(first.exception.physical_call_count, 1)
+            broker._connection.execute(
+                "DELETE FROM calls WHERE logical_call_id='failure-call'"
+            )
+            broker._connection.commit()
+            with self.assertRaises(CanaryBrokerError) as recovered:
+                broker.call_with_session(**arguments)
+            self.assertEqual(first.exception.outcome, recovered.exception.outcome)
+            self.assertEqual(first.exception.receipt, recovered.exception.receipt)
+            self.assertEqual(spawn_count_path.read_text(), "x")
             connection = sqlite3.connect(broker.db_path)
             try:
                 count = int(
@@ -553,6 +596,73 @@ raise SystemExit(1)
             finally:
                 connection.close()
             self.assertEqual(count, 1)
+        finally:
+            broker.close()
+
+    def test_broker_v2_response_failure_recovers_row_without_respawn(self):
+        fake_codex = self.root / "semantic-failure-codex"
+        broker_root = self.root / "broker-semantic-failure-v2"
+        spawn_count_path = self.root / "semantic-failure-spawn-count"
+        expected_output = (
+            broker_root
+            / "outputs"
+            / (
+                sha256_digest({"logical_call_id": "semantic-failure-call"})
+                + ".json"
+            )
+        )
+        fake_codex.write_text(
+            f"""#!{sys.executable}
+import json, pathlib, sys
+if '--version' in sys.argv:
+    print('fixture-codex 2')
+    raise SystemExit(0)
+count = pathlib.Path({str(spawn_count_path)!r})
+count.write_text(count.read_text() + 'x' if count.exists() else 'x')
+path = pathlib.Path({str(expected_output)!r})
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text('{{"proposals":[{{}}]}}', encoding='utf-8')
+print(json.dumps({{"type":"turn.completed","input_tokens":1,"output_tokens":1,"total_tokens":2}}))
+""",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o755)
+        schema_path = self.root / "semantic-failure-schema.json"
+        schema_path.write_text(json.dumps(SCHEMA), encoding="utf-8")
+        broker = CodexCliCanaryBrokerV1(
+            broker_root,
+            schema_path=schema_path,
+            codex_executable=fake_codex,
+            model="fixture",
+            reasoning_effort="none",
+            service_tier="default",
+            max_total_tokens_per_call=10,
+            timeout_ms=2_000,
+        )
+        arguments = {
+            "logical_call_id": "semantic-failure-call",
+            "proposal_generation_session_id": "semantic-failure-session",
+            "prompt": "fixed",
+            "expected_proposal_count": 0,
+        }
+        try:
+            with self.assertRaises(CanaryBrokerError) as first:
+                broker.call_with_session(**arguments)
+            broker._connection.execute(
+                "DELETE FROM calls WHERE logical_call_id='semantic-failure-call'"
+            )
+            broker._connection.commit()
+            with self.assertRaises(CanaryBrokerError) as recovered:
+                broker.call_with_session(**arguments)
+            self.assertEqual(first.exception.outcome, recovered.exception.outcome)
+            self.assertEqual(first.exception.receipt, recovered.exception.receipt)
+            self.assertEqual(spawn_count_path.read_text(), "x")
+            self.assertEqual(
+                broker._connection.execute(
+                    "SELECT COUNT(*) FROM calls"
+                ).fetchone()[0],
+                1,
+            )
         finally:
             broker.close()
 

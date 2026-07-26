@@ -805,6 +805,10 @@ class BrokerProcessRunnerV2:
                 request=request,
                 response_output=response_output,
             )
+        if response_output.exists():
+            raise ValueError(
+                "Broker response output exists without a matching durable call"
+            )
         call_root.mkdir(parents=True, exist_ok=True)
         _write_durable_json(call_root / "request_envelope.json", request.to_dict())
         stdout_path = call_root / "stdout.bin"

@@ -328,8 +328,6 @@ class CodexCliCanaryBrokerV1:
         output_path = self.output_root / (
             sha256_digest({"logical_call_id": logical_call_id}) + ".json"
         )
-        if output_path.exists():
-            raise CanaryBrokerError("uncommitted broker output path already exists")
         command = [
             str(self.codex_executable),
             "exec",
