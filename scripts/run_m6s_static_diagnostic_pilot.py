@@ -70,20 +70,20 @@ from recclaw_core.experiments.helix_abc_v1.training_runtime_release import (  # 
 )
 
 
-STATIC_DIAGNOSTIC_SEARCH_SEED = 9206
+STATIC_DIAGNOSTIC_SEARCH_SEED = 9207
 STATIC_DIAGNOSTIC_ROUNDS_PER_ARM = 1
 STATIC_DIAGNOSTIC_EXPERIMENT_ID = (
-    "HELIX-ABC-DEVELOPMENT-STATIC-DIAGNOSTIC-9206-V1"
+    "HELIX-ABC-DEVELOPMENT-STATIC-DIAGNOSTIC-9207-V2"
 )
-STATIC_DIAGNOSTIC_NONCE = "M6S-STATIC-DIAGNOSTIC-9206-OPAQUE-V1"
+STATIC_DIAGNOSTIC_NONCE = "M6S-STATIC-DIAGNOSTIC-9207-OPAQUE-V2"
 CONTRACT_PATH = (
     ROOT
     / "docs"
     / "research_line"
     / "m6s"
-    / "STATIC_DIAGNOSTIC_PILOT_CONTRACT_V1.json"
+    / "STATIC_DIAGNOSTIC_PILOT_CONTRACT_V2.json"
 )
-SEALED_PILOT_SEEDS = frozenset({9201, 9202, 9203, 9204, 9205})
+SEALED_PILOT_SEEDS = frozenset({9201, 9202, 9203, 9204, 9205, 9206})
 
 
 def static_policy_identity_digest() -> str:
@@ -156,13 +156,13 @@ def static_diagnostic_guard_context():
     return GuardContext(
         claim={
             **claim,
-            "claim_id": "CLAIM-M6S-STATIC-DIAGNOSTIC-9206-V1",
+            "claim_id": "CLAIM-M6S-STATIC-DIAGNOSTIC-9207-V2",
         },
         protocol=protocol,
         current_evidence={
             **current_evidence,
-            "snapshot_id": "M6S-STATIC-DIAGNOSTIC-9206-V1-EMPTY",
-            "claim_id": "CLAIM-M6S-STATIC-DIAGNOSTIC-9206-V1",
+            "snapshot_id": "M6S-STATIC-DIAGNOSTIC-9207-V2-EMPTY",
+            "claim_id": "CLAIM-M6S-STATIC-DIAGNOSTIC-9207-V2",
         },
     )
 
@@ -333,6 +333,9 @@ def verify_contract(contract_path: Path) -> dict[str, Any]:
         Path(contract["broker"]["models_cache_path"]): contract["broker"][
             "models_cache_sha256"
         ],
+        Path(contract["common_runtime_authorization"]["path"]): contract[
+            "common_runtime_authorization"
+        ]["sha256"],
     }
     for path, expected_hash in exact_files.items():
         if file_sha256(path) != expected_hash:

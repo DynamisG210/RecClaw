@@ -76,6 +76,21 @@ M6F_AUDIT_PATH = (
     / "M6F_CLOSURE_INDEPENDENT_AUDIT.md"
 )
 META_STOP_REPORT_PATH = ROOT / "META_V2_AUTONOMOUS_PROGRAM_STOP_REPORT.md"
+V1_CONTRACT_PATH = (
+    ROOT
+    / "docs"
+    / "research_line"
+    / "m6s"
+    / "STATIC_DIAGNOSTIC_PILOT_CONTRACT_V1.json"
+)
+V1_FAILURE_PATH = (
+    ROOT
+    / "docs"
+    / "research_line"
+    / "m6s"
+    / "M6S_STATIC_DIAGNOSTIC_V1_FAILURE_RECORD.json"
+)
+TASK_AUTHORIZATION_PATH = ROOT / "RecClaw_Codex_Autonomous_M1_M8_Master_Goal.md"
 MODELS_CACHE = (
     ROOT
     / "src"
@@ -132,7 +147,14 @@ def build_contract() -> dict[str, Any]:
         raise RuntimeError("refusing to freeze static diagnostic before M6F PASS")
 
     store = StaticDiagnosticPilotStoreContractV1.create()
-    if tuple(sorted(SEALED_PILOT_SEEDS)) != (9201, 9202, 9203, 9204, 9205):
+    if tuple(sorted(SEALED_PILOT_SEEDS)) != (
+        9201,
+        9202,
+        9203,
+        9204,
+        9205,
+        9206,
+    ):
         raise RuntimeError("sealed Pilot seed registry changed")
     assignment = PrivateTreatmentAssignmentV1.create(
         store.experiment_id, nonce=STATIC_DIAGNOSTIC_NONCE
@@ -208,6 +230,10 @@ def build_contract() -> dict[str, Any]:
             "service_tier": "default",
         },
         "budget_per_arm_round": pilot_budget().to_dict(),
+        "common_runtime_authorization": {
+            "path": str(TASK_AUTHORIZATION_PATH),
+            "sha256": file_sha256(TASK_AUTHORIZATION_PATH),
+        },
         "dataset": predecessor["dataset"],
         "evidence_class": "DEVELOPMENT_ONLY",
         "formal_acceptance": False,
@@ -225,6 +251,12 @@ def build_contract() -> dict[str, Any]:
             "meta_v2_stop_report_sha256": file_sha256(META_STOP_REPORT_PATH),
             "pilot_v5_contract_content_digest": predecessor["content_digest"],
             "pilot_v5_contract_sha256": file_sha256(V5_CONTRACT_PATH),
+            "static_diagnostic_v1_contract_sha256": file_sha256(
+                V1_CONTRACT_PATH
+            ),
+            "static_diagnostic_v1_failure_sha256": file_sha256(
+                V1_FAILURE_PATH
+            ),
         },
         "m6e": {
             "P0": int(m6e["P0"]),
@@ -285,7 +317,7 @@ def main() -> int:
     if CONTRACT_PATH.exists():
         raise RuntimeError(f"refusing to overwrite frozen contract: {CONTRACT_PATH}")
     contract = build_contract()
-    CONTRACT_PATH.parent.mkdir(parents=True, exist_ok=False)
+    CONTRACT_PATH.parent.mkdir(parents=True, exist_ok=True)
     CONTRACT_PATH.write_bytes(canonical_json_bytes(contract) + b"\n")
     print(
         json.dumps(
