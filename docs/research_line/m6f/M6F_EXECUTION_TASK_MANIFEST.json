@@ -1,0 +1,115 @@
+{
+  "acceptance": {
+    "broker_failure_closure_exactly_once": true,
+    "broker_process_release_v2_content_bound": true,
+    "fake_process_capture_and_adversarial_suite": "PASS_REQUIRED",
+    "immutable_sqlite_snapshot_audit": true,
+    "independent_audit": {
+      "P0": 0,
+      "P1": 0
+    },
+    "live_audit_side_effect_count": 0,
+    "original_shape_real_conformance_probe": "PASS_REQUIRED",
+    "producer_shape_real_conformance_probe": "PASS_REQUIRED",
+    "public_assignment_exposure_count": 0
+  },
+  "active_slice": "M6F_BROKER_OBSERVABILITY_AND_FAILURE_CLOSURE_V1",
+  "authority": "NONE",
+  "base_git": {
+    "ahead_of_upstream": 24,
+    "branch": "feat/research-line-abc",
+    "commit": "fe1ee557876a08937ea27518c6aaac1b54558567",
+    "known_unrelated_dirty_paths": [
+      "notes/method_change_space.md",
+      "recclaw_ext/models/lightgcn_lw.py",
+      "scripts/agent.py",
+      "RecClaw_Codex_Autonomous_M1_M8_Master_Goal.md",
+      "RecClaw_Codex_Autonomous_M1_M8_Master_Goal.md:Zone.Identifier",
+      "results/agent_state_summary.json",
+      "results/research_routes.jsonl",
+      "results/research_line/m6e_canaries",
+      "results/research_line/m6e_superseded_cpu_fallback_canaries",
+      "results/research_line/m6e_superseded_pre_recursive_ro_canaries",
+      "results/research_line/m6e_superseded_proc_root_canaries"
+    ],
+    "tree": "dec81137f39c42eb0ad94810dccae1783c272e4f",
+    "upstream": "origin/feat/research_line"
+  },
+  "content_digest": "7c989a4dc015b1c1e25c12b648d04133cfcd7bcd4aba8b3b28a19628d34112c7",
+  "content_digest_projection": "RFC8785_SHA256_EXCLUDING_CONTENT_DIGEST_V1",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "implementation_scope": [
+    "CONTENT_BOUND_BROKER_PROCESS_RELEASE_V2",
+    "BOUNDED_PRIVATE_STDOUT_STDERR_CAPTURE",
+    "TYPED_PROCESS_START_EXIT_AND_OUTCOME_RECORDS",
+    "EVIDENCE_BASED_CLOSED_DOMAIN_ERROR_CLASSIFICATION",
+    "EXACTLY_ONCE_BROKER_FAILURE_CLOSURE_V1",
+    "IMMUTABLE_SQLITE_AUDIT_SNAPSHOTS",
+    "ASSOCIATION_FREE_AGGREGATE_NEUTRAL_AUDIT",
+    "TREATMENT_FREE_EXACT_EXECUTION_CONFORMANCE_PROBES"
+  ],
+  "manifest_schema": "recclaw.m6f-execution-task-manifest.v1",
+  "milestone_id": "M6F",
+  "non_goals": [
+    "NO_V5_PATCH_RERUN_REOPEN_REUSE_OR_LIVE_DB_READ",
+    "NO_META_LEARNING_PRODUCER_ROUTER_OR_RESEARCH_POLICY_CHANGE",
+    "NO_EVIDENCE_GUARD_FUSION_OR_BL_ICF_SEMANTIC_CHANGE",
+    "NO_TRAINING_RUNTIME_PROFILE_OR_HANDLER_CHANGE",
+    "NO_PILOT_THRESHOLD_BUDGET_TREATMENT_OR_ENDPOINT_CHANGE",
+    "NO_BROKER_RETRY_REFUND_FALLBACK_OR_EXTRA_PROPOSAL",
+    "NO_PROVIDER_ROOT_CAUSE_GUESSING",
+    "NO_MAIN_M7_M8_CHANGE_BEFORE_AUTHORIZED_RESUME",
+    "NO_PUSH_PROMOTION_AUTHORITY_OR_FORMAL_CLAIM"
+  ],
+  "normative_inputs": {
+    "m6e_execution_record_sha256": "2e63264d006c315e272387eb67049f3c656749847ff971bc6e50b2aa16004b64",
+    "m6e_independent_audit_sha256": "0fb306da466b45c9f453419ed8531af832edd4a5659d7707bc7ffdfd0ac9b798",
+    "m6e_stop_report_sha256": "eeac91ce6847002c340a4cbd36935c8b0323f70ed12342ddfad5cf1a6c532e8d",
+    "m6f_authorization_sha256": "69514678978d61b020a433487453fb882458846631956e6ddd8980885ecd5bfb",
+    "master_goal_sha256": "78e262aaac33606428b82a26b76bef29ee25d494255327c9d497cf69a9c40f10",
+    "roadmap_sha256": "e2c8f64b208e31099f32633f69410ec0857194d1a77f2b8e7b571a6aa36f7cec",
+    "v5_failure_record_sha256": "7aad7e87be54419c06252d74c2621a57bc28e255f97984a06e753cb56497878e",
+    "v5_independent_audit_sha256": "0396ee1446ce6737d047541a6fdfedb860a5f7eb526e387a48b9344bdd4af3c9"
+  },
+  "provider_probe_policy": {
+    "diagnose_before_change": true,
+    "fresh_pilot_before_m6f_pass": false,
+    "minimal_evidenced_fix_limit": 1,
+    "real_probe_order": [
+      "ORIGINAL_SHAPE",
+      "PRODUCER_SHAPE"
+    ],
+    "real_reprobe_limit_after_failed_probe": 1,
+    "required_precondition": "LOCAL_FAKE_PROCESS_CAPTURE_AND_ADVERSARIAL_SUITE_PASS"
+  },
+  "sealed_predecessor": {
+    "pilot_root": {
+      "file_count": 12,
+      "path": "results/research_line/m6_pilot_9205_v5",
+      "search_seed": 9205,
+      "total_bytes": 251040,
+      "tree_digest": "affa504ec72ff85461beb4cc2f6a15f55e7211da39209f1aac03f26bef7e7b59"
+    },
+    "pilot_v5_checkpoint_commit": "fe1ee557876a08937ea27518c6aaac1b54558567",
+    "pilot_v5_checkpoint_tree": "dec81137f39c42eb0ad94810dccae1783c272e4f",
+    "provider_level_root_cause": "UNKNOWN",
+    "tree_digest_projection": "SORTED_PATH_SHA256_SIZE_BYTES_JSON_V1"
+  },
+  "source_change_precondition": "MANIFEST_CONTENT_DIGEST_VERIFIED",
+  "status": "ACTIVE_PRE_SOURCE_CHANGE",
+  "touch_scope": [
+    "docs/research_line/m6f",
+    "src/recclaw_core/experiments/helix_abc_v1/canary_broker.py",
+    "src/recclaw_core/experiments/helix_abc_v1/broker_process.py",
+    "src/recclaw_core/experiments/helix_abc_v1/broker_failure_closure.py",
+    "src/recclaw_core/experiments/helix_abc_v1/audit_snapshot.py",
+    "src/recclaw_core/experiments/helix_abc_v1/state_store.py",
+    "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
+    "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+    "src/recclaw_core/experiments/helix_abc_v1/real_pilot.py",
+    "scripts/run_m6_pilot.py",
+    "scripts/run_m6f_conformance.py",
+    "tests/research_line"
+  ]
+}
