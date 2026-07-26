@@ -61,7 +61,9 @@ def proposal(label: str, *, intent: str = "DISCOVERY", index: int = 0):
             "geometry",
         ),
     )
-    backbone, objective, sampler, axis = choices[index % len(choices)]
+    choice_index = index % len(choices)
+    backbone, objective, sampler, axis = choices[choice_index]
+    utility = 0.55 + 0.1 * choice_index
     return {
         "backbone": backbone,
         "candidate_label": label,
@@ -75,10 +77,10 @@ def proposal(label: str, *, intent: str = "DISCOVERY", index: int = 0):
         "utility_features": {
             "blocker_risk": 0.1,
             "cost": 0.3,
-            "frontier_potential": 0.8,
-            "information_gain": 0.7,
+            "frontier_potential": utility,
+            "information_gain": utility,
             "runnable_probability": 0.9,
-            "useful_signal": 0.8,
+            "useful_signal": utility,
         },
     }
 
@@ -213,6 +215,12 @@ class M5RealCanaryTest(unittest.TestCase):
         self.assertEqual(b.output_tokens, c.output_tokens)
         self.assertEqual(b.billed_tokens, c.billed_tokens)
         self.assertEqual(broker.bc_controller_identity_digest, broker.bc_controller_identity_digest)
+        first_primitives = {
+            component["primitive_id"]
+            for component in b.ordered_programs[0]["program_payload"]["components"]
+            if "primitive_id" in component
+        }
+        self.assertIn("regularizer.alignment", first_primitives)
 
     def test_three_round_fake_upstream_canary_closes_records_and_active_meta(self) -> None:
         upstream = FakeUpstream()

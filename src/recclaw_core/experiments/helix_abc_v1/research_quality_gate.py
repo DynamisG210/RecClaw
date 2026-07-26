@@ -364,6 +364,20 @@ def combine_research_quality_gate(
         and len(route.decisions) == len(proposals)
         and {item.candidate_id for item in route.decisions}
         == {item.candidate_id for item in proposals}
+        and all(
+            next(
+                decision
+                for decision in route.decisions
+                if decision.candidate_id == candidate_id
+            ).allowed
+            for candidate_id in route.ranked_candidate_ids
+        )
+        and route.selected_candidate_id
+        == (
+            route.ranked_candidate_ids[0]
+            if route.ranked_candidate_ids
+            else None
+        )
     )
     lineage_complete = (
         sum(

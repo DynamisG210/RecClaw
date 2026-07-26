@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from recclaw_core.mechanism_space.canonical import deep_thaw
 from recclaw_core.helix.contracts import (
     CandidateEnvelope,
     GuardContext,
@@ -36,7 +37,10 @@ from .research_capability import (
     DISCOVERY_PRODUCERS,
     VersionedMetaPolicyUpdaterV1,
 )
-from .research_contracts import DevelopmentalMechanismBeliefV1
+from .research_contracts import (
+    CandidateProposalV2,
+    DevelopmentalMechanismBeliefV1,
+)
 from .research_controller import ResearchLineControllerV1
 from .real_canary import RealCanaryProposalBrokerV1
 from .runtime_contracts import CommonDecision, GateStatus
@@ -570,16 +574,41 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         *,
         selected: CandidateEnvelope,
         feedback: Mapping[str, Any],
+        proposal: CandidateProposalV2,
     ) -> DevelopmentalMechanismBeliefV1:
+        payload = deep_thaw(proposal.mechanism_program)["program_payload"]
+        failure_modes = tuple(
+            str(item) for item in payload.get("failure_modes", ())
+        )
+        expected_effects = canonical_value(payload.get("expected_effects", {}))
+        outcome = canonical_value(feedback["search_outcome"])
         return DevelopmentalMechanismBeliefV1(
-            hypothesis_id=f"m6-{selected.candidate_id}",
-            mechanism_axis="pilot_observation",
-            competing_hypotheses=("runtime_failure", "weak_local_signal"),
-            predicted_outcome_signature="bounded Pilot metric or runtime blocker",
-            evidence_for=(str(feedback["raw_search_feedback_digest"]),),
+            hypothesis_id=str(selected.candidate_id),
+            mechanism_axis=str(proposal.mechanism_axis),
+            competing_hypotheses=(
+                failure_modes
+                or ("runtime_failure", "weak_local_signal", "confounded_anchor_effect")
+            ),
+            predicted_outcome_signature=(
+                f"{proposal.proposal_intent.value}:"
+                f"{proposal.mechanism_axis}:"
+                f"{expected_effects}"
+            ),
+            evidence_for=(
+                "development_observation:"
+                + str(feedback["raw_search_feedback_digest"]),
+            ),
             evidence_against=(),
-            unresolved_confounds=("three_epoch_budget", "single_training_seed"),
-            next_discriminative_test="next frozen Pilot round",
+            unresolved_confounds=(
+                "three_epoch_budget",
+                "single_training_seed",
+                "no_same-parent_ablation",
+                f"run_status={outcome['run_status']}",
+            ),
+            next_discriminative_test=(
+                f"same-protocol {proposal.mechanism_axis} ablation "
+                "against the frozen comparator"
+            ),
         )
 
     def _after_research_close(

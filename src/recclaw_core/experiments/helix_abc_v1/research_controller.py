@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from .canonical import sha256_digest
+from .canonical import canonical_value, sha256_digest
 from .contracts import ProducerExecutionModeV1, ResourceCeilingsV1
 from .research_capability import (
     FixtureProducerBrokerV1,
@@ -109,6 +109,15 @@ class ResearchLineControllerV1:
         return {
             "feedback_consumption_count": 1,
             "memory_snapshot_digest": snapshot.digest,
+            "search_memory_projection": canonical_value(
+                {
+                    "namespace": snapshot.namespace,
+                    "round_index": snapshot.round_index,
+                    "snapshot_digest": snapshot.digest,
+                    "beliefs": [item.to_dict() for item in snapshot.beliefs],
+                    "feedback": feedback_projection,
+                }
+            ),
             "ordinary_execution_opportunities": plan.ordinary_execution_opportunities,
             "round_transition_digest": sha256_digest(
                 {

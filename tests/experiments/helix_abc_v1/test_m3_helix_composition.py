@@ -33,6 +33,9 @@ from recclaw_core.helix.ledger import (  # noqa: E402
     GuardLedgerError,
 )
 from recclaw_core.helix.ports import NullEvidencePortV1  # noqa: E402
+from recclaw_core.experiments.helix_abc_v1.canonical import (  # noqa: E402
+    sha256_digest,
+)
 
 
 def protocol() -> dict[str, object]:
@@ -156,14 +159,55 @@ class M3HelixCompositionTest(unittest.TestCase):
         self.assertEqual(offenders, ["recclaw_core/helix/guard_adapter.py"])
 
     def test_research_and_common_runtime_bytes_remain_frozen(self) -> None:
-        m2 = json.loads(
+        m2_path = (
+            ROOT
+            / "docs/research_line/m2/RESEARCH_LINE_STANDALONE_READINESS_V1.json"
+        )
+        m2 = json.loads(m2_path.read_text())
+        successor = json.loads(
             (
                 ROOT
-                / "docs/research_line/m2/RESEARCH_LINE_STANDALONE_READINESS_V1.json"
+                / "docs/research_line/readiness/NON_META_RESEARCH_LINE_RELEASE_V2.json"
             ).read_text()
         )
+        self.assertEqual(
+            successor["predecessor"]["artifact_path"],
+            m2_path.relative_to(ROOT).as_posix(),
+        )
+        self.assertEqual(
+            successor["predecessor"]["artifact_sha256"],
+            hashlib.sha256(m2_path.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(
+            successor["predecessor"]["content_digest"],
+            m2["content_digest"],
+        )
+        audit_report = successor["audit_report"]
+        self.assertEqual(
+            hashlib.sha256((ROOT / audit_report["artifact_path"]).read_bytes()).hexdigest(),
+            audit_report["artifact_sha256"],
+        )
+        for path, digest in successor["preserved_historical_artifacts"]:
+            self.assertEqual(
+                hashlib.sha256((ROOT / path).read_bytes()).hexdigest(),
+                digest,
+            )
+        successor_preimage = copy.deepcopy(successor)
+        successor_preimage.pop("content_digest")
+        self.assertEqual(
+            sha256_digest(successor_preimage),
+            successor["content_digest"],
+        )
+        successor_components = dict(successor["component_digests"])
         for path, digest in m2["component_digests"]:
-            self.assertEqual(hashlib.sha256((ROOT / path).read_bytes()).hexdigest(), digest)
+            current = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+            if current != digest:
+                self.assertEqual(successor_components[path], current)
+        for path, digest in successor["component_digests"]:
+            self.assertEqual(
+                hashlib.sha256((ROOT / path).read_bytes()).hexdigest(),
+                digest,
+            )
         m1 = json.loads(
             (
                 ROOT

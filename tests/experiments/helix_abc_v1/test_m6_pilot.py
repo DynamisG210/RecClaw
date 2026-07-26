@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src"
@@ -13,6 +16,9 @@ if str(SRC) not in sys.path:
 
 from recclaw_core.experiments.helix_abc_v1.canary_broker import (  # noqa: E402
     CanaryBrokerCallV1,
+)
+from recclaw_core.experiments.helix_abc_v1.broker_process import (  # noqa: E402
+    BrokerProcessReleaseV2,
 )
 from recclaw_core.experiments.helix_abc_v1.contracts import ArmCode  # noqa: E402
 from recclaw_core.experiments.helix_abc_v1.pilot_analysis import (  # noqa: E402
@@ -24,6 +30,8 @@ from recclaw_core.experiments.helix_abc_v1.pilot_training import (  # noqa: E402
 )
 from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
     RealCanaryProposalBrokerV1,
+    _load_templates,
+    _program_from_proposal,
 )
 from recclaw_core.experiments.helix_abc_v1.real_pilot import (  # noqa: E402
     FRESH_PILOT_SEARCH_SEED,
@@ -63,6 +71,127 @@ class FakeUpstream:
 
 
 class PilotTrainingProfileTests(unittest.TestCase):
+    @staticmethod
+    def _proposal(
+        *,
+        backbone: str,
+        objective: str,
+        mechanism_axis: str,
+        hypothesis: str = "A bounded executable recipe may change ranking quality.",
+    ) -> dict[str, object]:
+        return {
+            "backbone": backbone,
+            "candidate_label": "closed executable recipe",
+            "expected_signal": "bounded positive, neutral, or negative signal",
+            "failure_mode": "the frozen recipe may not improve the metric",
+            "hypothesis": hypothesis,
+            "mechanism_axis": mechanism_axis,
+            "objective": objective,
+            "proposal_intent": "DISCOVERY",
+            "sampler": "UNIFORM",
+            "utility_features": {
+                "blocker_risk": 0.1,
+                "cost": 0.2,
+                "frontier_potential": 0.7,
+                "information_gain": 0.7,
+                "runnable_probability": 0.9,
+                "useful_signal": 0.7,
+            },
+        }
+
+    def test_pilot_schema_admits_only_four_claim_aligned_executable_recipes(self):
+        schema_path = (
+            SRC
+            / "recclaw_core"
+            / "experiments"
+            / "helix_abc_v1"
+            / "resources"
+            / "pilot_proposal_response_v2.schema.json"
+        )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        validator = Draft202012Validator(schema)
+        valid = (
+            ("LATENT_FACTOR", "PAIRWISE_RANKING", "objective"),
+            ("LIGHT_GRAPH_PROPAGATION", "PAIRWISE_RANKING", "propagation"),
+            ("MESSAGE_TRANSFORM_GRAPH", "PAIRWISE_RANKING", "architecture"),
+            (
+                "LIGHT_GRAPH_PROPAGATION",
+                "CONTRASTIVE_AUXILIARY",
+                "self_supervision",
+            ),
+        )
+        for backbone, objective, axis in valid:
+            document = {
+                "proposals": [
+                    self._proposal(
+                        backbone=backbone,
+                        objective=objective,
+                        mechanism_axis=axis,
+                    )
+                ]
+            }
+            self.assertEqual(list(validator.iter_errors(document)), [])
+
+        misaligned = {
+            "proposals": [
+                self._proposal(
+                    backbone="LIGHT_GRAPH_PROPAGATION",
+                    objective="PAIRWISE_RANKING",
+                    mechanism_axis="sampling",
+                )
+            ]
+        }
+        self.assertTrue(list(validator.iter_errors(misaligned)))
+
+    def test_claim_aligned_schema_has_additive_content_bound_broker_release(self):
+        resource_root = (
+            SRC
+            / "recclaw_core"
+            / "experiments"
+            / "helix_abc_v1"
+            / "resources"
+        )
+        schema_path = resource_root / "pilot_proposal_response_v2.schema.json"
+        release = BrokerProcessReleaseV2(
+            **json.loads(
+                (
+                    resource_root
+                    / "broker_process_release_v2_pilot_schema_v2.json"
+                ).read_text(encoding="utf-8")
+            )
+        )
+        release.verify()
+        self.assertEqual(
+            release.response_schema_digest,
+            hashlib.sha256(schema_path.read_bytes()).hexdigest(),
+        )
+
+    def test_free_text_cannot_change_or_overstate_executed_mechanism(self):
+        proposal = self._proposal(
+            backbone="LIGHT_GRAPH_PROPAGATION",
+            objective="PAIRWISE_RANKING",
+            mechanism_axis="propagation",
+            hypothesis=(
+                "Unsupported residual degree-tempered propagation with a new "
+                "loss and sampler."
+            ),
+        )
+        program = _program_from_proposal(
+            proposal,
+            _load_templates(TEMPLATES),
+        )
+        payload = program["program_payload"]
+        scientific_projection = {
+            "core_hypothesis": payload["core_hypothesis"],
+            "mechanism_explanation": payload["mechanism_explanation"],
+            "failure_modes": payload["failure_modes"],
+            "expected_effects": payload["expected_effects"],
+        }
+        serialized = json.dumps(scientific_projection, sort_keys=True).lower()
+        self.assertNotIn("degree-tempered", serialized)
+        self.assertNotIn("new sampler", serialized)
+        self.assertIn("recipe=lightgcn", serialized)
+
     def test_fresh_v4_identity_is_additive_and_does_not_reuse_v3(self):
         historical = PilotStoreContractV1.create()
         fresh = PilotStoreContractV2.create()

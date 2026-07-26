@@ -668,10 +668,12 @@ def original_canary_prompt(
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Protocol: ML-1M, frozen full-sort NDCG@10, unchanged protocol, one eventual execution.
 Search seed: {search_seed}. Round: {round_index}.
-Propose exactly four diverse runnable mechanism directions. You may choose only the closed
-backbone/objective/sampler/axis values in the schema. Keep each hypothesis mechanistic,
-state an expected signal and a concrete failure mode. This is proposal generation, not
-scientific adjudication. Stay within search utility only."""
+ Propose exactly four diverse runnable mechanism directions. You may choose only the closed
+ backbone/objective/sampler/axis combinations admitted by the schema. Do not describe a
+ residual path, degree tempering, alternative sampler, loss term, or other intervention
+ not encoded by those fields. Keep each rationale mechanistic, state an expected signal
+ and a concrete failure mode. This is proposal generation, not scientific adjudication.
+ Stay within search utility only."""
 
 
 _ROLE_INSTRUCTIONS = {
@@ -705,10 +707,12 @@ def research_canary_prompt(
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Your role is to {instruction}. Protocol: ML-1M, frozen full-sort NDCG@10, unchanged.
 Search seed: {search_seed}. Round: {round_index}. Return exactly one proposal and set
-proposal_intent to {required_intent}. Use only the closed backbone/objective/sampler/axis
-values. Optimize search utility: runnable probability, useful signal, frontier potential,
-information gain, cost and blocker risk. Stay within search utility only.
-{memory_line}"""
+ proposal_intent to {required_intent}. Use only the closed backbone/objective/sampler/axis
+ combinations admitted by the schema. Do not describe a residual path, degree tempering,
+ alternative sampler, loss term, or other intervention not encoded by those fields.
+ Optimize search utility: runnable probability, useful signal, frontier potential,
+ information gain, cost and blocker risk. Stay within search utility only.
+ {memory_line}"""
 
 
 __all__ = [

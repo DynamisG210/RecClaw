@@ -332,8 +332,15 @@ class StrongStaticRouterV1:
             }
         )
         decisions: list[RouterHardGateDecisionV1] = []
-        scored: list[tuple[float, int, CandidateProposalV2]] = []
-        seen_semantics: set[str] = set()
+        eligible: list[
+            tuple[
+                float,
+                int,
+                CandidateProposalV2,
+                str,
+                str,
+            ]
+        ] = []
         for index, proposal in enumerate(proposals):
             compile_digest = None
             semantics_digest = None
@@ -348,9 +355,7 @@ class StrongStaticRouterV1:
             except Exception:
                 reason = RouterHardGateReasonV1.BL_COMPILE_FAILED
             feature = proposal.utility_features
-            if reason is RouterHardGateReasonV1.ALLOW and semantics_digest in seen_semantics:
-                reason = RouterHardGateReasonV1.SEMANTIC_DUPLICATE
-            elif reason is RouterHardGateReasonV1.ALLOW and feature.runnable_probability < self.runnable_floor:
+            if reason is RouterHardGateReasonV1.ALLOW and feature.runnable_probability < self.runnable_floor:
                 reason = RouterHardGateReasonV1.RUNNABLE_BELOW_FLOOR
             elif reason is RouterHardGateReasonV1.ALLOW and feature.useful_signal < self.utility_floor:
                 reason = RouterHardGateReasonV1.UTILITY_BELOW_FLOOR
@@ -358,8 +363,6 @@ class StrongStaticRouterV1:
                 reason = RouterHardGateReasonV1.BLOCKER_RISK_ABOVE_CEILING
             elif reason is RouterHardGateReasonV1.ALLOW and feature.cost > self.cost_ceiling:
                 reason = RouterHardGateReasonV1.COST_ABOVE_CEILING
-            if semantics_digest is not None:
-                seen_semantics.add(semantics_digest)
             allowed = reason is RouterHardGateReasonV1.ALLOW
             decisions.append(
                 RouterHardGateDecisionV1(
@@ -372,26 +375,56 @@ class StrongStaticRouterV1:
                     policy_digest=effective_policy_digest,
                 )
             )
-            if allowed:
-                scored.append((self.score(feature, policy_projection), index, proposal))
-
-        scored.sort(key=lambda item: (-item[0], item[1]))
-        keep_ids = {item[2].candidate_id for item in scored[: self.slate_ceiling]}
-        for index, decision in enumerate(decisions):
-            if decision.allowed and decision.candidate_id not in keep_ids:
-                decisions[index] = RouterHardGateDecisionV1(
-                    candidate_id=decision.candidate_id,
-                    allowed=False,
-                    reason=RouterHardGateReasonV1.SLATE_CEILING,
-                    compile_report_digest=decision.compile_report_digest,
-                    mechanism_semantics_digest=decision.mechanism_semantics_digest,
-                    feature_digest=decision.feature_digest,
-                    policy_digest=decision.policy_digest,
+            if allowed and semantics_digest is not None and compile_digest is not None:
+                eligible.append(
+                    (
+                        self.score(feature, policy_projection),
+                        index,
+                        proposal,
+                        semantics_digest,
+                        compile_digest,
+                    )
                 )
-        selected = scored[0] if scored else None
+
+        # Choose the strongest representative of each executable semantic
+        # program. Producer call order must not decide which duplicate survives.
+        eligible.sort(key=lambda item: (-item[0], item[1]))
+        ranked_unique: list[
+            tuple[float, int, CandidateProposalV2, str, str]
+        ] = []
+        seen_semantics: set[str] = set()
+        duplicate_ids: set[str] = set()
+        for item in eligible:
+            semantics_digest = item[3]
+            if semantics_digest in seen_semantics:
+                duplicate_ids.add(item[2].candidate_id)
+                continue
+            seen_semantics.add(semantics_digest)
+            ranked_unique.append(item)
+
+        keep = ranked_unique[: max(0, self.slate_ceiling)]
+        keep_ids = {item[2].candidate_id for item in keep}
+        for index, decision in enumerate(decisions):
+            if decision.candidate_id in duplicate_ids:
+                reason = RouterHardGateReasonV1.SEMANTIC_DUPLICATE
+            elif decision.allowed and decision.candidate_id not in keep_ids:
+                reason = RouterHardGateReasonV1.SLATE_CEILING
+            else:
+                continue
+            decisions[index] = RouterHardGateDecisionV1(
+                candidate_id=decision.candidate_id,
+                allowed=False,
+                reason=reason,
+                compile_report_digest=decision.compile_report_digest,
+                mechanism_semantics_digest=decision.mechanism_semantics_digest,
+                feature_digest=decision.feature_digest,
+                policy_digest=decision.policy_digest,
+            )
+        selected = keep[0] if keep else None
         return RouteTraceV1(
             pool_digest=sha256_digest([item.to_dict() for item in proposals]),
             ordered_candidate_ids=tuple(item.candidate_id for item in proposals),
+            ranked_candidate_ids=tuple(item[2].candidate_id for item in keep),
             decisions=tuple(decisions),
             selected_candidate_id=selected[2].candidate_id if selected else None,
             selection_score=selected[0] if selected else None,

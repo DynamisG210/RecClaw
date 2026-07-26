@@ -45,6 +45,9 @@ from recclaw_core.experiments.helix_abc_v1.research_contracts import (  # noqa: 
 from recclaw_core.experiments.helix_abc_v1.research_controller import (  # noqa: E402
     ResearchLineControllerV1,
 )
+from recclaw_core.experiments.helix_abc_v1 import (  # noqa: E402
+    ResearchLineControllerV1 as PublicResearchLineControllerV1,
+)
 from recclaw_core.experiments.helix_abc_v1.research_quality_gate import (  # noqa: E402
     combine_research_quality_gate,
     run_agentization_gate,
@@ -238,6 +241,7 @@ class M2ResearchCapabilityTest(unittest.TestCase):
         reasons = {item.reason for item in trace.decisions}
         self.assertIn(RouterHardGateReasonV1.SEMANTIC_DUPLICATE, reasons)
         self.assertIsNotNone(trace.selected_candidate_id)
+        self.assertEqual(trace.selected_candidate_id, trace.ranked_candidate_ids[0])
         self.assertEqual(len(trace.decisions), len(session.proposals))
 
         blocked = mode_drafts()[
@@ -258,6 +262,44 @@ class M2ResearchCapabilityTest(unittest.TestCase):
             blocked_trace.decisions[0].reason,
             RouterHardGateReasonV1.BLOCKER_RISK_ABOVE_CEILING,
         )
+
+    def test_router_ranks_best_candidate_and_best_semantic_representative_first(self) -> None:
+        drafts = [
+            draft("BPR_MF", "objective", ProposalIntentV1.DISCOVERY.value, 0.45),
+            draft("BPR_MF", "objective", ProposalIntentV1.DISCOVERY.value, 0.90),
+            draft("LIGHTGCN", "propagation", ProposalIntentV1.FALSIFICATION.value, 0.80),
+            draft("SGL", "self_supervision", ProposalIntentV1.DISCOVERY.value, 0.70),
+        ]
+        session = FixtureProducerBrokerV1().dispatch(
+            session_id="ranked-router-test",
+            mode=ProducerExecutionModeV1.BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1,
+            drafts=drafts,
+            context={"round": 1},
+            role_memory={role: {} for role in DISCOVERY_PRODUCERS},
+            seed=2026,
+            ceilings=ceilings(),
+        )
+        trace = StrongStaticRouterV1().route(session.proposals)
+        self.assertEqual(
+            trace.selected_candidate_id,
+            session.proposals[1].candidate_id,
+        )
+        self.assertEqual(
+            trace.ranked_candidate_ids[0],
+            session.proposals[1].candidate_id,
+        )
+        first_duplicate = next(
+            decision
+            for decision in trace.decisions
+            if decision.candidate_id == session.proposals[0].candidate_id
+        )
+        self.assertEqual(
+            first_duplicate.reason,
+            RouterHardGateReasonV1.SEMANTIC_DUPLICATE,
+        )
+
+    def test_public_package_exports_runtime_research_controller(self) -> None:
+        self.assertIs(PublicResearchLineControllerV1, ResearchLineControllerV1)
 
     def test_mechanism_belief_has_exactly_eight_search_fields(self) -> None:
         item = belief()
@@ -548,6 +590,16 @@ class M2ResearchCapabilityTest(unittest.TestCase):
             self.assertEqual(transition["feedback_consumption_count"], 1)
             self.assertEqual(plan.ordinary_execution_opportunities, 1)
             self.assertNotEqual(transition["memory_snapshot_digest"], predecessor)
+            self.assertEqual(
+                transition["search_memory_projection"]["round_index"],
+                round_index,
+            )
+            self.assertEqual(
+                transition["search_memory_projection"]["beliefs"][0][
+                    "mechanism_axis"
+                ],
+                belief(round_index).mechanism_axis,
+            )
             predecessor = transition["memory_snapshot_digest"]
             if round_index == 1:
                 controller.apply_meta_update(

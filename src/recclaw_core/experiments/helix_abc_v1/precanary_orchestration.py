@@ -64,7 +64,7 @@ from .research_capability import (
     StrongStaticRouterV1,
     initial_research_policy,
 )
-from .research_contracts import DevelopmentalMechanismBeliefV1
+from .research_contracts import CandidateProposalV2, DevelopmentalMechanismBeliefV1
 from .research_controller import (
     ResearchLineControllerV1,
     ResearchRoundPlanV1,
@@ -388,6 +388,7 @@ class FakeProposalSessionV1:
     proposal_session_digest: str
     route_trace_digest: str | None
     research_plan: ResearchRoundPlanV1 | None
+    research_proposals: tuple[CandidateProposalV2, ...] = ()
 
 
 @dataclass(slots=True)
@@ -506,11 +507,7 @@ class ThreeArmFakeBrokerV1:
         if route.selected_candidate_id is None:
             raise PreCanaryInvariantError("M4 fake Research route selected nothing")
         by_id = {item.candidate_id: item for item in session.proposals}
-        ordered_ids = [
-            item.candidate_id
-            for item in route.decisions
-            if item.allowed and item.candidate_id in by_id
-        ]
+        ordered_ids = list(route.ranked_candidate_ids)
         ordered = tuple(by_id[item].mechanism_program for item in ordered_ids)
         plan = ResearchRoundPlanV1(
             round_index=round_index,
@@ -537,6 +534,7 @@ class ThreeArmFakeBrokerV1:
             proposal_session_digest=session.digest,
             route_trace_digest=route.digest,
             research_plan=plan,
+            research_proposals=session.proposals,
         )
 
 
@@ -856,16 +854,22 @@ class ThreeArmPreCanaryOrchestratorV1:
         *,
         selected: CandidateEnvelope,
         feedback: Mapping[str, Any],
+        proposal: CandidateProposalV2,
     ) -> DevelopmentalMechanismBeliefV1:
         return DevelopmentalMechanismBeliefV1(
-            hypothesis_id=f"m4-{selected.candidate_id}",
-            mechanism_axis="precanary",
+            hypothesis_id=str(selected.candidate_id),
+            mechanism_axis=proposal.mechanism_axis,
             competing_hypotheses=("fake_null",),
-            predicted_outcome_signature="synthetic closure",
+            predicted_outcome_signature=(
+                f"{proposal.proposal_intent.value}:{proposal.mechanism_axis}:"
+                "synthetic closure"
+            ),
             evidence_for=(str(feedback["raw_search_feedback_digest"]),),
             evidence_against=(),
             unresolved_confounds=("synthetic_fixture",),
-            next_discriminative_test="real canary",
+            next_discriminative_test=(
+                f"real {proposal.mechanism_axis} canary under the frozen protocol"
+            ),
         )
 
     def run_fake_triplet(
@@ -1124,9 +1128,27 @@ class ThreeArmPreCanaryOrchestratorV1:
             plan = session.research_plan
             if plan is None:
                 raise PreCanaryInvariantError("Research Arm is missing its plan")
+            actual_proposal = next(
+                (
+                    proposal
+                    for proposal in session.research_proposals
+                    if str(
+                        compile_program(
+                            deep_thaw(proposal.mechanism_program)
+                        ).candidate_id
+                    )
+                    == selected.candidate_id
+                ),
+                None,
+            )
+            if actual_proposal is None:
+                raise PreCanaryInvariantError(
+                    "Research execution is missing selected proposal lineage"
+                )
             belief = self._research_belief(
                 selected=selected,
-                feedback=feedback,
+                feedback=controller_feedback,
+                proposal=actual_proposal,
             )
             transition = self.broker.research_controllers[arm].close_round(
                 plan=plan,
@@ -1138,7 +1160,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 self.broker, "record_search_feedback", None
             )
             if record_feedback is not None:
-                record_feedback(arm, controller_feedback)
+                record_feedback(arm, transition["search_memory_projection"])
             self._after_research_close(
                 arm=arm,
                 round_index=round_index,

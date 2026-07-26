@@ -109,6 +109,15 @@ _TEMPLATE_BY_SIGNATURE = {
     ("LATENT_FACTOR", "*"): "BPR_MF",
 }
 
+_AXIS_BY_TEMPLATE = {
+    "BPR_MF": "objective",
+    "DIRECTAU": "geometry",
+    "LIGHTGCN": "propagation",
+    "NGCF": "architecture",
+    "SGL": "self_supervision",
+    "ULTRAGCN": "architecture",
+}
+
 
 def _template_name(proposal: Mapping[str, Any]) -> str:
     exact = (str(proposal["objective"]), str(proposal["sampler"]))
@@ -120,7 +129,13 @@ def _template_name(proposal: Mapping[str, Any]) -> str:
     ):
         if key in _TEMPLATE_BY_SIGNATURE:
             return _TEMPLATE_BY_SIGNATURE[key]
-    return "BPR_MF"
+    raise PreCanaryInvariantError(
+        "proposal does not identify a supported executable BL-ICF recipe"
+    )
+
+
+def _executable_axis(proposal: Mapping[str, Any]) -> str:
+    return _AXIS_BY_TEMPLATE[_template_name(proposal)]
 
 
 def _load_templates(path: Path) -> dict[str, dict[str, Any]]:
@@ -135,19 +150,35 @@ def _program_from_proposal(
     proposal: Mapping[str, Any],
     templates: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
-    program = copy.deepcopy(templates[_template_name(proposal)])
+    template_name = _template_name(proposal)
+    executable_axis = _executable_axis(proposal)
+    program = copy.deepcopy(templates[template_name])
     payload = program["program_payload"]
-    payload["research_question"] = str(proposal["hypothesis"])
-    payload["core_hypothesis"] = str(proposal["hypothesis"])
-    payload["mechanism_explanation"] = (
-        f"{proposal['candidate_label']}: {proposal['expected_signal']}"
+    executable_signature = (
+        f"recipe={template_name}; backbone={proposal['backbone']}; "
+        f"objective={proposal['objective']}; sampler={proposal['sampler']}"
     )
-    payload["failure_modes"] = [str(proposal["failure_mode"])]
+    payload["research_question"] = (
+        f"Evaluate the closed executable {template_name} recipe under the "
+        "frozen development protocol. Non-executable proposal label retained "
+        f"for provenance only: {proposal['candidate_label']}."
+    )
+    payload["core_hypothesis"] = (
+        f"The {executable_axis} intervention represented exactly by "
+        f"{executable_signature} may change the frozen ranking metric."
+    )
+    payload["mechanism_explanation"] = (
+        f"Closed BL-ICF executable signature: {executable_signature}."
+    )
+    payload["failure_modes"] = [
+        f"The executable {template_name} recipe may be neutral or harmful "
+        "under the frozen budget and protocol."
+    ]
     payload["expected_effects"] = {
         "coverage": "development Canary only",
-        "efficiency": str(proposal["expected_signal"]),
-        "relevance": str(proposal["expected_signal"]),
-        "robustness": str(proposal["failure_mode"]),
+        "efficiency": f"bounded runtime behavior for {template_name}",
+        "relevance": f"bounded ranking change for {template_name}",
+        "robustness": f"no claim beyond the exact {template_name} execution",
     }
     return program
 
@@ -376,7 +407,7 @@ class RealCanaryProposalBrokerV1:
                 )
             typed_drafts.append(
                 {
-                    "mechanism_axis": proposal["mechanism_axis"],
+                    "mechanism_axis": _executable_axis(proposal),
                     "mechanism_program": _program_from_proposal(
                         proposal, templates
                     ),
@@ -426,11 +457,7 @@ class RealCanaryProposalBrokerV1:
         if route.selected_candidate_id is None:
             raise PreCanaryInvariantError("real Research route selected nothing")
         by_id = {item.candidate_id: item for item in session.proposals}
-        ordered_ids = [
-            item.candidate_id
-            for item in route.decisions
-            if item.allowed and item.candidate_id in by_id
-        ]
+        ordered_ids = list(route.ranked_candidate_ids)
         ordered = tuple(by_id[item].mechanism_program for item in ordered_ids)
         plan = ResearchRoundPlanV1(
             round_index=round_index,
@@ -464,6 +491,7 @@ class RealCanaryProposalBrokerV1:
             ),
             route_trace_digest=route.digest,
             research_plan=plan,
+            research_proposals=session.proposals,
         )
 
 

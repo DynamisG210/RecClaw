@@ -18,7 +18,8 @@ from .contracts import (
     ResourceCeilingsV1,
     default_experiment_contract,
 )
-from .controllers import OriginalControllerV1, ResearchLineControllerV1
+from .controllers import OriginalControllerV1
+from .research_controller import ResearchLineControllerV1
 from .common_execution_guard import CommonExecutionGuardV1
 from .evidence import NullEvidencePortV1
 from .fake_runner import (

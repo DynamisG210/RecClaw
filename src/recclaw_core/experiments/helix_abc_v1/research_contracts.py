@@ -247,10 +247,31 @@ class RouterHardGateDecisionV1:
 class RouteTraceV1:
     pool_digest: str
     ordered_candidate_ids: tuple[str, ...]
+    ranked_candidate_ids: tuple[str, ...]
     decisions: tuple[RouterHardGateDecisionV1, ...]
     selected_candidate_id: str | None
     selection_score: float | None
     policy_digest: str
+
+    def __post_init__(self) -> None:
+        decision_by_id = {item.candidate_id: item for item in self.decisions}
+        if len(decision_by_id) != len(self.decisions):
+            raise ValueError("RouteTrace candidate decisions must be unique")
+        if set(decision_by_id) != set(self.ordered_candidate_ids):
+            raise ValueError("RouteTrace decisions must cover the complete proposal pool")
+        if any(
+            candidate_id not in decision_by_id
+            or not decision_by_id[candidate_id].allowed
+            for candidate_id in self.ranked_candidate_ids
+        ):
+            raise ValueError("RouteTrace ranking may contain only allowed candidates")
+        expected_selected = (
+            self.ranked_candidate_ids[0] if self.ranked_candidate_ids else None
+        )
+        if self.selected_candidate_id != expected_selected:
+            raise ValueError("RouteTrace selection must be the first ranked candidate")
+        if (self.selected_candidate_id is None) != (self.selection_score is None):
+            raise ValueError("RouteTrace selection and score must be present together")
 
     @property
     def digest(self) -> str:
