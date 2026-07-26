@@ -54,6 +54,10 @@ from recclaw_core.experiments.helix_abc_v1.state_store import (  # noqa: E402
 from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
     RealCanaryProposalBrokerV1,
 )
+from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (  # noqa: E402
+    BrokerRoundFailureError,
+    ThreeArmPreCanaryOrchestratorV1,
+)
 
 
 SCHEMA = {
@@ -696,6 +700,63 @@ class BrokerFailureClosureAndAuditTests(unittest.TestCase):
         )
         with self.assertRaises(IdempotencyConflict):
             close_broker_failure(**{**args, "outcome": changed})
+
+    def test_orchestrator_process_failure_closes_before_guard_or_execution(self):
+        receipt, outcome = self.failure_records()
+
+        class FailingBroker:
+            def generate(self, **_kwargs):
+                raise CanaryBrokerError(
+                    "fixture process failure",
+                    outcome=outcome,
+                    receipt=receipt,
+                    physical_call_count=1,
+                    wall_time_ms=receipt.latency_ms,
+                )
+
+        with ThreeArmPreCanaryOrchestratorV1(
+            self.root / "orchestrator", broker=FailingBroker()
+        ) as orchestrator:
+            with self.assertRaises(BrokerRoundFailureError) as raised:
+                orchestrator.run_fake_triplet(
+                    search_seed=42, round_index=1, drafts=()
+                )
+            self.assertEqual(
+                raised.exception.closure.round_terminal_class,
+                "BROKER_PROCESS_FAILURE",
+            )
+            self.assertEqual(orchestrator.guard_ledger.count(), 0)
+            connection = sqlite3.connect(orchestrator.store.db_path)
+            try:
+                terminal_rows = connection.execute(
+                    "SELECT terminal_class, COUNT(*) FROM rounds "
+                    "GROUP BY terminal_class"
+                ).fetchall()
+                execution_claim_count = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM execution_claims"
+                    ).fetchone()[0]
+                )
+                session_debit = int(
+                    connection.execute(
+                        "SELECT SUM(quantity) FROM resource_ledger "
+                        "WHERE dimension='PROPOSAL_GENERATION_SESSION'"
+                    ).fetchone()[0]
+                )
+                stopped_slots = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM scheduled_slots "
+                        "WHERE slot_status='NOT_STARTED_STOP'"
+                    ).fetchone()[0]
+                )
+            finally:
+                connection.close()
+            self.assertEqual(
+                terminal_rows, [("BROKER_PROCESS_FAILURE", 1)]
+            )
+            self.assertEqual(execution_claim_count, 0)
+            self.assertEqual(session_debit, 1)
+            self.assertGreater(stopped_slots, 0)
 
     def test_immutable_snapshots_create_no_sidecars_and_neutralize_association(self):
         state_snapshot = self.root / "snapshots" / "state.sqlite3"
