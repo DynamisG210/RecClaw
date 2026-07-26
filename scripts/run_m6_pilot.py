@@ -21,6 +21,9 @@ if str(SRC) not in sys.path:
 from recclaw_core.experiments.helix_abc_v1.canary_broker import (  # noqa: E402
     CodexCliCanaryBrokerV1,
 )
+from recclaw_core.experiments.helix_abc_v1.audit_snapshot import (  # noqa: E402
+    open_immutable_snapshot,
+)
 from recclaw_core.experiments.helix_abc_v1.canonical import (  # noqa: E402
     canonical_json_bytes,
     sha256_digest,
@@ -170,18 +173,22 @@ def source_snapshot(contract: Mapping[str, Any]) -> dict[str, str]:
 
 
 def broker_export(db_path: Path) -> list[dict[str, Any]]:
-    connection = sqlite3.connect(db_path)
+    connection = open_immutable_snapshot(db_path)
     connection.row_factory = sqlite3.Row
     try:
         return [
-            dict(row)
+            {
+                "call_count": int(row["call_count"]),
+                "error_type": str(row["error_type"]),
+                "status": str(row["status"]),
+            }
             for row in connection.execute(
                 """
-                SELECT logical_call_id, request_digest, response_digest,
-                       input_tokens, cached_input_tokens, output_tokens,
-                       total_tokens, latency_ms, returned_model, status,
-                       error_type
-                FROM calls ORDER BY logical_call_id
+                SELECT status, COALESCE(error_type, 'NONE') AS error_type,
+                       COUNT(*) AS call_count
+                FROM calls
+                GROUP BY status, COALESCE(error_type, 'NONE')
+                ORDER BY status, error_type
                 """
             )
         ]
@@ -192,14 +199,14 @@ def broker_export(db_path: Path) -> list[dict[str, Any]]:
 def resource_audit(
     db_path: Path, contract: Mapping[str, Any]
 ) -> dict[str, Any]:
-    connection = sqlite3.connect(db_path)
+    connection = open_immutable_snapshot(db_path)
     try:
         rows = connection.execute(
             """
-            SELECT arm_code, round_index, dimension, SUM(quantity)
+            SELECT round_index, dimension, SUM(quantity)
             FROM resource_ledger JOIN rounds USING(round_id)
-            GROUP BY arm_code, round_index, dimension
-            ORDER BY arm_code, round_index, dimension
+            GROUP BY round_id, round_index, dimension
+            ORDER BY round_index, dimension
             """
         ).fetchall()
         budget_digests = connection.execute(
@@ -222,11 +229,10 @@ def resource_audit(
         "WALL_TIME_MS": "wall_time_ms",
     }
     violations = []
-    for arm, round_index, dimension, quantity in rows:
+    for round_index, dimension, quantity in rows:
         if dimension in mapping and int(quantity) > int(ceilings[mapping[dimension]]):
             violations.append(
                 {
-                    "arm": arm,
                     "ceiling": int(ceilings[mapping[dimension]]),
                     "dimension": dimension,
                     "quantity": int(quantity),
@@ -242,21 +248,21 @@ def resource_audit(
 
 
 def runtime_identity_audit(db_path: Path) -> dict[str, Any]:
-    connection = sqlite3.connect(db_path)
+    connection = open_immutable_snapshot(db_path)
     try:
         rows = connection.execute(
             """
-            SELECT r.arm_code, c.runtime_release_digest, c.runner_abi,
+            SELECT r.arm_instance_id, c.runtime_release_digest, c.runner_abi,
                    c.execution_purpose, c.metric_contract_digest,
                    c.resource_contract_digest, c.claim_state,
                    c.execution_debited, COUNT(*)
             FROM execution_claims c
             JOIN rounds r USING(round_id)
-            GROUP BY r.arm_code, c.runtime_release_digest, c.runner_abi,
+            GROUP BY r.arm_instance_id, c.runtime_release_digest, c.runner_abi,
                      c.execution_purpose, c.metric_contract_digest,
                      c.resource_contract_digest, c.claim_state,
                      c.execution_debited
-            ORDER BY r.arm_code
+            ORDER BY r.arm_instance_id
             """
         ).fetchall()
         runtime_binding_count = int(
@@ -277,11 +283,11 @@ def runtime_identity_audit(db_path: Path) -> dict[str, Any]:
         )
         for row in rows
     }
-    counts_by_arm = {
-        str(row[0]): int(row[8])
+    closed_execution_counts = sorted(
+        int(row[8])
         for row in rows
         if str(row[6]) == "FINISHED" and int(row[7]) == 1
-    }
+    )
     return {
         "A_B_C_common_runtime_identity_equal": (
             len(common_identities) == 1
@@ -296,24 +302,24 @@ def runtime_identity_audit(db_path: Path) -> dict[str, Any]:
                 )
             }
         ),
-        "closed_execution_count_by_arm": counts_by_arm,
-        "rows": [list(row) for row in rows],
+        "closed_execution_counts": closed_execution_counts,
+        "rows_digest": sha256_digest([list(row)[1:] for row in rows]),
         "runtime_binding_count": runtime_binding_count,
     }
 
 
 def collect_rows(db_path: Path, artifact_root: Path) -> list[dict[str, Any]]:
-    connection = sqlite3.connect(db_path)
+    connection = open_immutable_snapshot(db_path)
     connection.row_factory = sqlite3.Row
     try:
         rounds = connection.execute(
             """
-            SELECT r.round_id, r.arm_code, r.arm_instance_id, r.round_index,
+            SELECT r.round_id, r.arm_instance_id, r.round_index,
                    a.relative_path
             FROM rounds r
             JOIN artifact_index a USING(round_id)
             WHERE a.artifact_type='RAW_RESULT_ENVELOPE_V1'
-            ORDER BY r.round_index, r.arm_code
+            ORDER BY r.round_index, r.arm_instance_id
             """
         ).fetchall()
         debits = {
@@ -339,7 +345,6 @@ def collect_rows(db_path: Path, artifact_root: Path) -> list[dict[str, Any]]:
         metrics = dict(envelope["normalized_metrics"])
         rows.append(
             {
-                "arm_code": str(row["arm_code"]),
                 "billed_tokens": debits.get(
                     (round_id, "BILLED_TOKEN_DEBIT"), 0
                 ),
@@ -432,6 +437,17 @@ def execute(
         max_total_tokens_per_call=int(
             contract["broker"]["max_total_tokens_per_call"]
         ),
+        cli_version=contract["broker"]["codex_cli_version"],
+        login_mode=contract["broker"]["login_mode"],
+        release_manifest_path=(
+            ROOT
+            / "src"
+            / "recclaw_core"
+            / "experiments"
+            / "helix_abc_v1"
+            / "resources"
+            / "broker_process_release_v2.json"
+        ),
     )
     broker = RealCanaryProposalBrokerV1.create(
         upstream=upstream,
@@ -449,24 +465,56 @@ def execute(
             data_path=Path(contract["dataset"]["root"]).parent,
             python_executable=Path(contract["runtime"]["python"]),
         ) as orchestrator:
-            rounds = orchestrator.run_pilot()
-            audit = orchestrator.pilot_audit()
-            neutral = [
-                orchestrator.neutral_audit_projection(triplet)
-                for triplet in rounds
-            ]
+            try:
+                rounds = orchestrator.run_pilot()
+            except Exception:
+                failure_bundle = orchestrator.immutable_audit_bundle(
+                    output_root / "audit_snapshots"
+                )
+                write_json(
+                    output_root / "IMMUTABLE_AUDIT_BUNDLE.json",
+                    failure_bundle,
+                )
+                raise
+            audit_bundle = orchestrator.immutable_audit_bundle(
+                output_root / "audit_snapshots"
+            )
+            write_json(
+                output_root / "IMMUTABLE_AUDIT_BUNDLE.json",
+                audit_bundle,
+            )
+            state_db = (
+                output_root
+                / "audit_snapshots"
+                / "neutral_state.audit.sqlite3"
+            )
+            broker_db = (
+                output_root
+                / "audit_snapshots"
+                / "broker_state.audit.sqlite3"
+            )
+            guard_db = (
+                output_root
+                / "audit_snapshots"
+                / "guard_state.audit.sqlite3"
+            )
+            audit = orchestrator.pilot_audit(state_db, guard_db)
             private_mapping = {
                 arm.value: opaque
                 for arm, opaque in orchestrator.assignment.arm_to_instance
             }
             write_json(
-                output_root / "ROUND_RESULTS.json",
+                output_root / "sealed" / "ROUND_RESULTS.json",
                 [
                     [result.to_dict() for result in triplet]
                     for triplet in rounds
                 ],
+                mode=0o600,
             )
-            write_json(output_root / "NEUTRAL_AUDIT.json", neutral)
+            write_json(
+                output_root / "NEUTRAL_AUDIT.json",
+                audit_bundle["neutral_projection"],
+            )
             write_json(
                 output_root / "sealed" / "TREATMENT_MAPPING.json",
                 {
@@ -476,7 +524,6 @@ def execute(
                 },
                 mode=0o600,
             )
-            state_db = orchestrator.store.db_path
             resource = resource_audit(state_db, contract)
             runtime_identity = runtime_identity_audit(state_db)
             rows = collect_rows(
@@ -484,7 +531,7 @@ def execute(
                 output_root / "runtime" / "neutral" / "artifacts",
             )
         upstream.close()
-        calls = broker_export(output_root / "broker_private" / "broker.sqlite3")
+        calls = broker_export(broker_db)
         after = source_snapshot(contract)
         readiness = pilot_readiness(
             rows,
@@ -499,8 +546,12 @@ def execute(
         gates = {
             "analysis_readiness": readiness["verdict"],
             "barriers_closed": bool(audit["barriers_closed"]),
-            "broker_call_count": len(calls),
-            "broker_failures": sum(row["status"] != "SUCCESS" for row in calls),
+            "broker_call_count": sum(row["call_count"] for row in calls),
+            "broker_failures": sum(
+                row["call_count"]
+                for row in calls
+                if row["status"] != "SUCCESS"
+            ),
             "budget_accounting_closed": bool(resource["closed"]),
             "cross_arm_mutation_count": 0,
             "execution_count": int(audit["execution_count"]),
@@ -528,18 +579,22 @@ def execute(
             and gates["feedback_count"] == expected_rounds
             and gates["guard_call_count"] == 2 * PILOT_ROUNDS_PER_ARM
             and gates["runtime_identity_equal"]
-            and runtime_identity["closed_execution_count_by_arm"]
-            == {"A": 3, "B": 3, "C": 3}
+            and runtime_identity["closed_execution_counts"] == [3, 3, 3]
             and runtime_identity["runtime_binding_count"] == expected_rounds
             and gates["no_source_mutation"]
             and gates["round_count"] == expected_rounds
             and gates["state_store_integrity"]
         )
         write_json(output_root / "BROKER_CALL_AUDIT.json", calls)
-        write_json(output_root / "PILOT_ITT_ROWS.json", rows)
         write_json(
-            output_root / "FOUR_AXIS_FRONTIERS.json",
+            output_root / "sealed" / "PILOT_ITT_ROWS.json",
+            rows,
+            mode=0o600,
+        )
+        write_json(
+            output_root / "sealed" / "FOUR_AXIS_FRONTIERS.json",
             four_axis_frontiers(rows),
+            mode=0o600,
         )
         write_json(output_root / "PILOT_READINESS.json", readiness)
         write_json(
@@ -564,14 +619,25 @@ def execute(
             upstream.close()
         except Exception:
             pass
+        closure = getattr(error, "closure", None)
         write_json(
             output_root / "PILOT_FAILURE.json",
             {
                 "authority": "NONE",
+                "broker_failure_closure_digest": (
+                    closure.closure_digest if closure is not None else None
+                ),
                 "error_type": type(error).__name__,
                 "evidence_class": "DEVELOPMENT_ONLY",
+                "failure_class": (
+                    closure.failure_class if closure is not None else None
+                ),
                 "formal_acceptance": False,
-                "reason": str(error)[:500],
+                "reason": (
+                    "BROKER_PROCESS_FAILURE/COMMON_NO_EXECUTION"
+                    if closure is not None
+                    else "INTERNAL_PILOT_FAILURE"
+                ),
                 "verdict": "NOT_READY",
             },
         )

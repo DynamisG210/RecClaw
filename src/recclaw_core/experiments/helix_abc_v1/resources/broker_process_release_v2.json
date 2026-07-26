@@ -1,0 +1,21 @@
+{
+  "argv_template_digest": "2f6b656d200795c4983d5357b2ab31970c1f93f87a2a7b69dbe71f49b62fc68d",
+  "broker_cli_version": "codex-cli 0.144.1",
+  "broker_executable_path": "/mnt/c/Users/gtrho/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
+  "broker_executable_sha256": "cbacbb9726262ef558b4af0438a1b2a5bba9076132401d947b5b4d2bf92ab0e4",
+  "broker_release_id": "RECCLAW_BROKER_PROCESS_RELEASE_V2",
+  "environment_allowlist_policy_digest": "ca6bac2832c771bb19817ea0d119b0e520d7bdada6442c2cd651aebcb1a82afe",
+  "error_classifier_digest": "967c8c65cfce89945a0bc22f5e3cc695b373402f4d2f09ec5610890a2d26b779",
+  "login_mode": "CHATGPT",
+  "model": "gpt-5.4",
+  "process_capture_policy_digest": "6d4f452b03a7086b23240c6d2e260ac3b247c3eaeecc6c6206587c9f0b327a3f",
+  "reasoning_effort": "low",
+  "redaction_policy_digest": "093871f4b6678d547dda8accb4c223a540ad60538f3ac0038d9875a5a4cae157",
+  "release_digest": "631cc487f73b39e384ebdbb1c50a020ce08268459858176ce802ce4be908e155",
+  "request_encoder_digest": "56fee8e28c86ea3ae06f45f2f89c38c2b238deee9027e37e14c405ea40dcfdc2",
+  "response_parser_digest": "dc37b54d83267ce8078d65c45b0305018461dd1166ef1889f8fd5563133b7b77",
+  "response_schema_digest": "e043b49e10b6e3bd67a1da40a18bfcab0cfb987c37d1b27222b1ecc207c167b4",
+  "sandbox_mode": "read-only",
+  "timeout_policy_digest": "05584f54b651f78683b3093a773821bd47d9cac8a026a47b2ddb18efc5cd28bb",
+  "working_directory_policy_digest": "d16637188795288b1ffa08faa58a50b6287ad1afb3815316795f574f1f4a5380"
+}

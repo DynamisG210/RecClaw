@@ -34,6 +34,11 @@ from recclaw_core.helix.ledger import EvidenceGuardLedgerWriterV1
 from recclaw_core.helix.ports import NullEvidencePortV1
 
 from .canonical import canonical_json_bytes, canonical_value, sha256_digest
+from .broker_failure_closure import (
+    BrokerFailureClosureV1,
+    close_broker_failure,
+)
+from .canary_broker import CanaryBrokerError
 from .common_execution_guard import CommonExecutionGuardV1
 from .contracts import (
     ArmCode,
@@ -80,6 +85,15 @@ from .state_store import (
 
 class PreCanaryInvariantError(RuntimeError):
     pass
+
+
+class BrokerRoundFailureError(PreCanaryInvariantError):
+    def __init__(self, closure: BrokerFailureClosureV1) -> None:
+        super().__init__(
+            "Pilot Broker round closed as "
+            f"{closure.failure_class}/COMMON_NO_EXECUTION"
+        )
+        self.closure = closure
 
 
 def m4_budget() -> ResourceCeilingsV1:
@@ -899,6 +913,10 @@ class ThreeArmPreCanaryOrchestratorV1:
         ceilings: ResourceCeilingsV1,
     ) -> ArmRoundResultV1:
         opaque_id = self.assignment.mapping[arm]
+        controller_state_before_digest = self._controller_state_before(
+            opaque_instance_id=opaque_id,
+            search_seed=search_seed,
+        )
         opened = self.store.open_round(
             OpenRoundCommand(
                 experiment_id=self.contract.experiment_id,
@@ -907,20 +925,38 @@ class ThreeArmPreCanaryOrchestratorV1:
                 search_seed=search_seed,
                 round_index=round_index,
                 budget_snapshot=ceilings,
-                controller_state_before_digest=self._controller_state_before(
-                    opaque_instance_id=opaque_id,
-                    search_seed=search_seed,
-                ),
+                controller_state_before_digest=controller_state_before_digest,
                 idempotency_key=f"m4:open:{search_seed}:{round_index}:{opaque_id}",
             )
         )
-        session = self.broker.generate(
-            arm=arm,
-            round_index=round_index,
-            search_seed=search_seed,
-            drafts=drafts,
-            ceilings=ceilings,
-        )
+        try:
+            session = self.broker.generate(
+                arm=arm,
+                round_index=round_index,
+                search_seed=search_seed,
+                drafts=drafts,
+                ceilings=ceilings,
+            )
+        except CanaryBrokerError as error:
+            if error.outcome is None or error.receipt is None:
+                raise
+            closure = close_broker_failure(
+                store=self.store,
+                experiment_id=self.contract.experiment_id,
+                search_seed=search_seed,
+                round_index=round_index,
+                round_id=str(opened["round_id"]),
+                controller_state_digest=controller_state_before_digest,
+                ceilings=ceilings,
+                receipt=error.receipt,
+                outcome=error.outcome,
+                physical_call_count=error.physical_call_count,
+                input_tokens=error.input_tokens,
+                output_tokens=error.output_tokens,
+                billed_tokens=error.billed_tokens,
+                wall_time_ms=error.wall_time_ms,
+            )
+            raise BrokerRoundFailureError(closure) from error
         common_guard = CommonExecutionGuardV1()
         eligible: list[tuple[Mapping[str, Any], Any, Any]] = []
         denials: list[tuple[str, tuple[str, ...]]] = []

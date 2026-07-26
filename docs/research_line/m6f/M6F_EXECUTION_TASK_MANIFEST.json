@@ -35,7 +35,7 @@
     "tree": "dec81137f39c42eb0ad94810dccae1783c272e4f",
     "upstream": "origin/feat/research_line"
   },
-  "content_digest": "7c989a4dc015b1c1e25c12b648d04133cfcd7bcd4aba8b3b28a19628d34112c7",
+  "content_digest": "b4b8aac5ae2e5ee69f474e468b9e058bf75d5b463e26e485a0388c744abe9fd2",
   "content_digest_projection": "RFC8785_SHA256_EXCLUDING_CONTENT_DIGEST_V1",
   "evidence_class": "DEVELOPMENT_ONLY",
   "formal_acceptance": false,
@@ -104,12 +104,12 @@
     "src/recclaw_core/experiments/helix_abc_v1/broker_process.py",
     "src/recclaw_core/experiments/helix_abc_v1/broker_failure_closure.py",
     "src/recclaw_core/experiments/helix_abc_v1/audit_snapshot.py",
-    "src/recclaw_core/experiments/helix_abc_v1/state_store.py",
     "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
     "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
     "src/recclaw_core/experiments/helix_abc_v1/real_pilot.py",
+    "src/recclaw_core/experiments/helix_abc_v1/resources/broker_process_release_v2.json",
     "scripts/run_m6_pilot.py",
     "scripts/run_m6f_conformance.py",
-    "tests/research_line"
+    "tests/experiments/helix_abc_v1"
   ]
 }

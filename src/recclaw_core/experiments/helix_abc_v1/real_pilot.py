@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sqlite3
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -14,6 +14,12 @@ from recclaw_core.helix.contracts import (
 )
 
 from .canonical import canonical_value, sha256_digest
+from .audit_snapshot import (
+    association_free_neutral_audit,
+    create_immutable_audit_snapshot,
+    open_immutable_snapshot,
+    verify_immutable_snapshot,
+)
 from .contracts import ArmCode, ResourceCeilingsV1, default_experiment_contract
 from .m6e_conformance import require_m6e_conformance_packet
 from .pilot_training import (
@@ -627,6 +633,62 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             ):
                 raise PreCanaryInvariantError("Pilot triplet fails a frozen ceiling")
 
+    def immutable_audit_bundle(self, snapshot_root: Path) -> dict[str, Any]:
+        snapshot_root = snapshot_root.resolve()
+        snapshot_root.mkdir(parents=True, exist_ok=False)
+        state_path = snapshot_root / "neutral_state.audit.sqlite3"
+        broker_path = snapshot_root / "broker_state.audit.sqlite3"
+        guard_path = snapshot_root / "guard_state.audit.sqlite3"
+        with self.store._lock:
+            state_manifest = create_immutable_audit_snapshot(
+                writer_connection=self.store._connection,
+                source_db_path=self.store.db_path,
+                snapshot_path=state_path,
+                source_schema_identity=self.store.migration_sha256,
+                audit_purpose="M6F_NEUTRAL_STATE_AUDIT",
+            )
+        upstream = self.broker.upstream
+        create_broker_snapshot = getattr(upstream, "create_audit_snapshot", None)
+        if create_broker_snapshot is None:
+            raise PreCanaryInvariantError(
+                "Pilot Broker lacks immutable snapshot capability"
+            )
+        broker_manifest = create_broker_snapshot(
+            broker_path, audit_purpose="M6F_BROKER_STATE_AUDIT"
+        )
+        guard_manifest = create_immutable_audit_snapshot(
+            writer_connection=self.guard_ledger._connection,
+            source_db_path=self.guard_ledger.db_path,
+            snapshot_path=guard_path,
+            source_schema_identity=sha256_digest(
+                {"guard_calls_table": "EVIDENCE_GUARD_LEDGER_V1"}
+            ),
+            audit_purpose="M6F_GUARD_STATE_AUDIT",
+        )
+        manifests = {
+            "broker": broker_manifest,
+            "guard": guard_manifest,
+            "state": state_manifest,
+        }
+        return {
+            "manifests": {
+                name: manifest.to_dict()
+                for name, manifest in manifests.items()
+            },
+            "neutral_projection": association_free_neutral_audit(
+                state_snapshot=state_path,
+                broker_snapshot=broker_path,
+                guard_snapshot=guard_path,
+            ),
+            "verification": {
+                "broker": verify_immutable_snapshot(
+                    broker_path, broker_manifest
+                ),
+                "guard": verify_immutable_snapshot(guard_path, guard_manifest),
+                "state": verify_immutable_snapshot(state_path, state_manifest),
+            },
+        }
+
     def run_pilot(self) -> tuple[tuple[ArmRoundResultV1, ...], ...]:
         search_seed = int(self.contract.search_seeds[0])
         return tuple(
@@ -638,8 +700,28 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             for round_index in range(1, PILOT_ROUNDS_PER_ARM + 1)
         )
 
-    def pilot_audit(self) -> dict[str, Any]:
-        connection = sqlite3.connect(self.store.db_path)
+    def pilot_audit(
+        self,
+        state_snapshot: Path | None = None,
+        guard_snapshot: Path | None = None,
+    ) -> dict[str, Any]:
+        legacy_temp: tempfile.TemporaryDirectory[str] | None = None
+        legacy_store_integrity: dict[str, Any] | None = None
+        if state_snapshot is None:
+            legacy_temp = tempfile.TemporaryDirectory()
+            state_snapshot = Path(legacy_temp.name) / "state.audit.sqlite3"
+            with self.store._lock:
+                create_immutable_audit_snapshot(
+                    writer_connection=self.store._connection,
+                    source_db_path=self.store.db_path,
+                    snapshot_path=state_snapshot,
+                    source_schema_identity=self.store.migration_sha256,
+                    audit_purpose="M6E_PRESEAL_AUDIT_REHEARSAL",
+                )
+            legacy_store_integrity = (
+                self.store_audit_port.audit_store().to_dict()
+            )
+        connection = open_immutable_snapshot(state_snapshot)
         try:
             round_count = int(
                 connection.execute("SELECT COUNT(*) FROM rounds").fetchone()[0]
@@ -660,24 +742,50 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
                 "SELECT round_index, closed_bitmap, next_index_authorized "
                 "FROM triplet_barrier ORDER BY round_index"
             ).fetchall()
+            integrity_check = str(
+                connection.execute("PRAGMA integrity_check").fetchone()[0]
+            )
+            foreign_key_violations = [
+                list(row)
+                for row in connection.execute("PRAGMA foreign_key_check").fetchall()
+            ]
         finally:
             connection.close()
-        return {
+        if guard_snapshot is None:
+            guard_call_count = int(self.guard_ledger.count())
+        else:
+            guard_connection = open_immutable_snapshot(guard_snapshot)
+            try:
+                guard_call_count = int(
+                    guard_connection.execute(
+                        "SELECT COUNT(*) FROM guard_calls"
+                    ).fetchone()[0]
+                )
+            finally:
+                guard_connection.close()
+        result = {
             "barriers_closed": all(
                 int(bitmap) == 7 and int(authorized) == 1
                 for _round, bitmap, authorized in barriers
             ),
             "execution_count": execution_count,
             "feedback_count": feedback_count,
-            "guard_call_count": self.guard_ledger.count(),
+            "guard_call_count": guard_call_count,
             "initial_research_identity": self.initial_research_identity,
             "meta_versions": {
                 arm.value: self.broker.research_controllers[arm].policy.version
                 for arm in (ArmCode.B, ArmCode.C)
             },
             "round_count": round_count,
-            "state_store_integrity": self.store_audit_port.audit_store().to_dict(),
+            "state_store_integrity": legacy_store_integrity
+            or {
+                    "foreign_key_violations": foreign_key_violations,
+                    "integrity_check": integrity_check,
+                },
         }
+        if legacy_temp is not None:
+            legacy_temp.cleanup()
+        return result
 
 
 def fresh_pilot_guard_context_v2() -> GuardContext:

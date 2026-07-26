@@ -17,6 +17,7 @@ from recclaw_core.helix.contracts import CandidateEnvelope, RawResultEnvelope
 
 from .canary_broker import (
     CanaryBrokerCallV1,
+    CanaryBrokerError,
     CodexCliCanaryBrokerV1,
     original_canary_prompt,
     research_canary_prompt,
@@ -221,24 +222,67 @@ class RealCanaryProposalBrokerV1:
             memory_component = (
                 f"-m{memory_digest[:12]}" if self.adaptive_memory else ""
             )
-            self._research_calls[key] = tuple(
-                self.upstream.call(
-                    logical_call_id=(
-                        f"{self.call_prefix}research-"
-                        f"{search_seed}-{round_index}{memory_component}-{role}"
-                    ),
-                    prompt=research_canary_prompt(
-                        role=role,
-                        round_index=round_index,
-                        search_seed=search_seed,
-                        phase_name=self.phase_name,
-                        memory_summary=memory_summary,
-                    ),
-                    expected_proposal_count=1,
-                )
-                for role in DISCOVERY_PRODUCERS
-            )
+            calls: list[CanaryBrokerCallV1] = []
+            for role in DISCOVERY_PRODUCERS:
+                try:
+                    call = self._upstream_call(
+                        logical_call_id=(
+                            f"{self.call_prefix}research-"
+                            f"{search_seed}-{round_index}{memory_component}-{role}"
+                        ),
+                        proposal_generation_session_id=(
+                            f"{self.call_prefix}research-session-"
+                            f"{search_seed}-{round_index}{memory_component}"
+                        ),
+                        prompt=research_canary_prompt(
+                            role=role,
+                            round_index=round_index,
+                            search_seed=search_seed,
+                            phase_name=self.phase_name,
+                            memory_summary=memory_summary,
+                        ),
+                        expected_proposal_count=1,
+                    )
+                except CanaryBrokerError as error:
+                    error.physical_call_count += len(calls)
+                    error.input_tokens += sum(
+                        item.input_tokens for item in calls
+                    )
+                    error.output_tokens += sum(
+                        item.output_tokens for item in calls
+                    )
+                    error.billed_tokens += sum(
+                        item.total_tokens for item in calls
+                    )
+                    error.wall_time_ms += sum(
+                        item.latency_ms for item in calls
+                    )
+                    raise
+                calls.append(call)
+            self._research_calls[key] = tuple(calls)
         return self._research_calls[key]
+
+    def _upstream_call(
+        self,
+        *,
+        logical_call_id: str,
+        proposal_generation_session_id: str,
+        prompt: str,
+        expected_proposal_count: int,
+    ) -> CanaryBrokerCallV1:
+        call_with_session = getattr(self.upstream, "call_with_session", None)
+        if call_with_session is not None:
+            return call_with_session(
+                logical_call_id=logical_call_id,
+                proposal_generation_session_id=proposal_generation_session_id,
+                prompt=prompt,
+                expected_proposal_count=expected_proposal_count,
+            )
+        return self.upstream.call(
+            logical_call_id=logical_call_id,
+            prompt=prompt,
+            expected_proposal_count=expected_proposal_count,
+        )
 
     def record_search_feedback(
         self, arm: ArmCode, feedback_projection: Mapping[str, Any]
@@ -258,9 +302,12 @@ class RealCanaryProposalBrokerV1:
         del drafts
         templates = _load_templates(self.template_path)
         if arm is ArmCode.A:
-            call = self.upstream.call(
+            call = self._upstream_call(
                 logical_call_id=(
                     f"{self.call_prefix}original-{search_seed}-{round_index}"
+                ),
+                proposal_generation_session_id=(
+                    f"{self.call_prefix}original-session-{search_seed}-{round_index}"
                 ),
                 prompt=original_canary_prompt(
                     round_index=round_index,
