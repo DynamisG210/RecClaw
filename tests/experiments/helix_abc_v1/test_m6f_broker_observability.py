@@ -581,6 +581,10 @@ raise SystemExit(1)
                 "DELETE FROM calls WHERE logical_call_id='failure-call'"
             )
             broker._connection.commit()
+            with self.assertRaisesRegex(ValueError, "logical call.*conflict"):
+                broker.call_with_session(
+                    **{**arguments, "prompt": "different request"}
+                )
             with self.assertRaises(CanaryBrokerError) as recovered:
                 broker.call_with_session(**arguments)
             self.assertEqual(first.exception.outcome, recovered.exception.outcome)
@@ -652,6 +656,10 @@ print(json.dumps({{"type":"turn.completed","input_tokens":1,"output_tokens":1,"t
                 "DELETE FROM calls WHERE logical_call_id='semantic-failure-call'"
             )
             broker._connection.commit()
+            with self.assertRaisesRegex(ValueError, "logical call.*conflict"):
+                broker.call_with_session(
+                    **{**arguments, "expected_proposal_count": 1}
+                )
             with self.assertRaises(CanaryBrokerError) as recovered:
                 broker.call_with_session(**arguments)
             self.assertEqual(first.exception.outcome, recovered.exception.outcome)

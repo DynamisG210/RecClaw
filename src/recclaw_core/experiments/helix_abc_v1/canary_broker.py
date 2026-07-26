@@ -361,6 +361,7 @@ class CodexCliCanaryBrokerV1:
             argv=command,
             cwd=self.workspace,
             response_output=output_path,
+            broker_request_digest=request_digest,
         )
         outcome = captured.outcome
         if outcome.status != "SUCCESS":

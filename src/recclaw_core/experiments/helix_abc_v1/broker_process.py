@@ -255,7 +255,13 @@ class BrokerProcessReleaseV2:
                 }
             ),
             "request_encoder_digest": sha256_digest(
-                {"encoding": "UTF-8", "transport": "STDIN", "version": 2}
+                {
+                    "broker_request_identity": "FULL_REQUEST_V1",
+                    "encoding": "UTF-8",
+                    "logical_call_binding": "PRIVATE_DURABLE_V1",
+                    "transport": "STDIN",
+                    "version": 3,
+                }
             ),
             "response_parser_digest": sha256_digest(
                 {
@@ -631,6 +637,22 @@ class BrokerProcessRunnerV2:
         self.response_schema = dict(response_schema)
         self.timeout_ms = timeout_ms
 
+    def _bind_logical_call(self, request: BrokerRequestEnvelopeV2) -> None:
+        binding_root = self.private_root / "logical_calls"
+        binding_root.mkdir(parents=True, exist_ok=True)
+        binding_path = binding_root / (
+            sha256_digest({"logical_call_id": request.logical_call_id}) + ".json"
+        )
+        binding = {
+            "logical_call_id": request.logical_call_id,
+            "request_envelope_digest": request.envelope_digest,
+        }
+        if binding_path.is_file():
+            if json.loads(binding_path.read_text("utf-8")) != binding:
+                raise ValueError("Broker logical call replay conflicts")
+            return
+        _write_durable_json(binding_path, binding)
+
     def _recover_existing(
         self,
         *,
@@ -770,6 +792,7 @@ class BrokerProcessRunnerV2:
         argv: Sequence[str],
         cwd: Path,
         response_output: Path,
+        broker_request_digest: str | None = None,
     ) -> CapturedProcessV2:
         self.release.verify()
         if (
@@ -789,7 +812,9 @@ class BrokerProcessRunnerV2:
             "model": self.release.model,
             "proposal_generation_session_id": proposal_generation_session_id,
             "reasoning_effort": self.release.reasoning_effort,
-            "request_digest": bytes_sha256(request_bytes),
+            "request_digest": (
+                broker_request_digest or bytes_sha256(request_bytes)
+            ),
             "request_size_bytes": len(request_bytes),
             "response_schema_digest": self.release.response_schema_digest,
             "sandbox_mode": self.release.sandbox_mode,
@@ -798,6 +823,7 @@ class BrokerProcessRunnerV2:
         request = BrokerRequestEnvelopeV2(
             **request_payload, envelope_digest=sha256_digest(request_payload)
         )
+        self._bind_logical_call(request)
         call_root = self.private_root / "calls" / request.envelope_digest
         if call_root.exists():
             return self._recover_existing(
