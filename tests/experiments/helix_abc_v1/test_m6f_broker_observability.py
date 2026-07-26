@@ -448,6 +448,34 @@ print(json.dumps({{"type":"turn.completed","input_tokens":1,"output_tokens":1,"t
                 prompt="fixed",
                 expected_proposal_count=0,
             )
+            with self.assertRaisesRegex(
+                CanaryBrokerError, "proposal session"
+            ):
+                broker.call_with_session(
+                    logical_call_id="success-call",
+                    proposal_generation_session_id="different-session",
+                    prompt="fixed",
+                    expected_proposal_count=0,
+                )
+            broker._connection.execute(
+                "UPDATE calls SET broker_release_digest=? "
+                "WHERE logical_call_id='success-call'",
+                ("0" * 64,),
+            )
+            broker._connection.commit()
+            with self.assertRaisesRegex(CanaryBrokerError, "release"):
+                broker.call_with_session(
+                    logical_call_id="success-call",
+                    proposal_generation_session_id="success-session",
+                    prompt="fixed",
+                    expected_proposal_count=0,
+                )
+            broker._connection.execute(
+                "UPDATE calls SET broker_release_digest=? "
+                "WHERE logical_call_id='success-call'",
+                (broker.release.release_digest,),
+            )
+            broker._connection.commit()
             receipt, outcome = broker.conformance_evidence("success-call")
             self.assertEqual(first, replay)
             self.assertEqual(outcome.status, "SUCCESS")

@@ -252,7 +252,10 @@ class CodexCliCanaryBrokerV1:
         )
 
     def _stored(
-        self, logical_call_id: str, request_digest: str
+        self,
+        logical_call_id: str,
+        request_digest: str,
+        proposal_generation_session_id: str,
     ) -> CanaryBrokerCallV1 | None:
         row = self._connection.execute(
             "SELECT * FROM calls WHERE logical_call_id=?", (logical_call_id,)
@@ -263,6 +266,17 @@ class CodexCliCanaryBrokerV1:
         record = dict(zip(columns, row, strict=True))
         if record["request_digest"] != request_digest:
             raise CanaryBrokerError("logical call id binds different request bytes")
+        if (
+            record["proposal_generation_session_id"]
+            != proposal_generation_session_id
+        ):
+            raise CanaryBrokerError(
+                "logical call id binds a different proposal session"
+            )
+        if record["broker_release_digest"] != self.release.release_digest:
+            raise CanaryBrokerError(
+                "stored broker call binds a different Broker release"
+            )
         if record["status"] != "SUCCESS":
             outcome = BrokerCallOutcomeV2(**json.loads(record["outcome_json"]))
             receipt = BrokerProcessExitReceiptV2(
@@ -322,7 +336,11 @@ class CodexCliCanaryBrokerV1:
             "service_tier": self.service_tier,
         }
         request_digest = sha256_digest(request)
-        prior = self._stored(logical_call_id, request_digest)
+        prior = self._stored(
+            logical_call_id,
+            request_digest,
+            proposal_generation_session_id,
+        )
         if prior is not None:
             return prior
         output_path = self.output_root / (
