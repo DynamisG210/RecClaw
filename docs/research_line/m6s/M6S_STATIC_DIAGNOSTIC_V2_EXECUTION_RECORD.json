@@ -1,0 +1,107 @@
+{
+  "audit": {
+    "independence": "LOCAL_FRESH_CONTEXT_NOT_EXTERNAL_OR_INDEPENDENT",
+    "p0_count": 0,
+    "p1_count": 0,
+    "p2_count": 1,
+    "path": "docs/research_line/m6s/M6S_STATIC_DIAGNOSTIC_V2_AUDIT.md",
+    "verdict": "PASS_WITH_NONBLOCKING_P2"
+  },
+  "authority": "NONE",
+  "broker": {
+    "actual_provider_process_calls": 5,
+    "failures": 0,
+    "resource_ledger_treatment_calls": 9,
+    "status": "PASS"
+  },
+  "contract": {
+    "content_digest": "9b2c3178a4dbb7cad3e228fdb61326d6d880961adb70a33b62cf8fff7af06d04",
+    "path": "docs/research_line/m6s/STATIC_DIAGNOSTIC_PILOT_CONTRACT_V2.json",
+    "sha256": "9da1cbf0fa53f0102cd3aa769f591f74defa159d54b58365785da5505713ddce"
+  },
+  "effect": {
+    "A_ndcg_at_10": 0.0337,
+    "B_minus_A": 0.0,
+    "B_ndcg_at_10": 0.0337,
+    "C_minus_A": 0.0,
+    "C_minus_B": 0.0,
+    "C_ndcg_at_10": 0.0337,
+    "interpretation": "DESCRIPTIVE_SINGLE_ROUND_ONLY",
+    "main_or_meta_evidence": false
+  },
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "experiment_id": "HELIX-ABC-DEVELOPMENT-STATIC-DIAGNOSTIC-9207-V2",
+  "formal_acceptance": false,
+  "gates": {
+    "A_B_C_common_runtime_identity_equal": true,
+    "all_training_runs_successful": true,
+    "barriers_closed": true,
+    "budget_accounting_closed": true,
+    "execution_count": 3,
+    "feedback_count": 3,
+    "filesystem_mount_audits_passed": 3,
+    "guard_call_count": 2,
+    "meta_versions": {
+      "B": 1,
+      "C": 1
+    },
+    "round_count": 3,
+    "runtime_binding_count": 3,
+    "sqlite_foreign_key_violations": 0,
+    "sqlite_integrity": "ok"
+  },
+  "implementation_git": {
+    "commit": "4c6471ffb4e4eba598482f9bc10c3a6f29ed394b",
+    "tree": "f6e07318b84d46faf5064a2996906320b514cf9d"
+  },
+  "meta": {
+    "activation": "NONE",
+    "formal_meta_required_for_main": true,
+    "mode": "STATIC_RESEARCH_ROUTER",
+    "policy_label": "RESEARCH_STATIC_V2",
+    "updated": false
+  },
+  "output_identity": {
+    "broker_call_audit_sha256": "a19c73f840e1cc11204b60d166b48f68b1041c60eb06459b94f78ade6e07aaf2",
+    "descriptive_effect_summary_sha256": "316aa2f3f1e6da1f620f2c0eda109e27ebf51ee7e5c8b6766fb59b3e1ef2411c",
+    "file_count": 139,
+    "immutable_audit_bundle_sha256": "f5ff66b613cf167369ca83572d668b70082ab630c9ede0b96a5a353708855182",
+    "logical_bytes": 875836,
+    "manifest_digest": "4e72ee1d86c54f734d709df5889c049dc8ed5c391fb209f01557716bab098a3c",
+    "neutral_audit_sha256": "760179f24f90b72944d7c107423eceea0a17690a5df7f8f7e019aa9b0ff1307b",
+    "result_sha256": "3a1f4eb875a5424bcce02a7494be21da705aface876141f79bf16b2f1c2b7379",
+    "root": "results/research_line/m6s_static_diagnostic_9207_v2",
+    "runtime_identity_audit_sha256": "7781177fd95defe576f450dfc12897a9207801bb502cdce44b994aa4d3506360",
+    "static_chain_readiness_sha256": "99da9365e2393fd9f5a078855e0adb2dd95473a7f038c406f039acdd3668d206"
+  },
+  "resource_totals": {
+    "billed_token_debit": 123511,
+    "gpu_cost_microunits": 125854,
+    "gpu_device_time_ms": 453074,
+    "ordinary_executions": 3,
+    "proposal_count": 12
+  },
+  "schema": "recclaw.m6s-static-diagnostic-execution-record.v1",
+  "search_seed": 9207,
+  "semantic_observation": {
+    "A_candidate_id": "bl1_9644d20a957b947ee289",
+    "B_C_candidate_id": "bl1_ecdfddf281f98e247319",
+    "distinct_candidate_ids": 2,
+    "distinct_mechanism_semantics": 1,
+    "mechanism_semantics_digest": "162ae284a35067c89b3df434521ea070fa2e058b40a6304c6cc9401de2494329",
+    "training_models": [
+      "SGL",
+      "SGL",
+      "SGL"
+    ]
+  },
+  "test_results": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /root/projects/RecClaw_m6_training_runtime_v2/bin/python -m unittest tests.experiments.helix_abc_v1.test_m6_pilot tests.experiments.helix_abc_v1.test_m6e_environment_closure tests.experiments.helix_abc_v1.test_m6f_broker_observability tests.experiments.helix_abc_v1.test_m6s_static_diagnostic -q",
+      "failed": 0,
+      "passed": 51,
+      "phase": "PRE_AND_POST_EXECUTION"
+    }
+  ],
+  "verdict": "PASS_WITH_NONBLOCKING_P2"
+}
