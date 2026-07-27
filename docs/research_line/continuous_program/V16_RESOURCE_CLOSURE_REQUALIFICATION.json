@@ -1,0 +1,58 @@
+{
+  "record_schema": "recclaw.v16-resource-closure-requalification.v1",
+  "verdict": "PASS",
+  "p0": 0,
+  "p1": 0,
+  "p2": 1,
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "source_checkpoint": "8f7f84a03f3b7ad0fae7444493b8deffc9318671",
+  "recovery_commits": {
+    "resource_rejection_round_closure": "83df9e1",
+    "training_runtime_v9": "eab85f9",
+    "v16_fresh_pilot_path": "8f7f84a"
+  },
+  "training_runtime_release_id": "TRAINING_RUNTIME_RELEASE_V9",
+  "training_runtime_release_digest": "7656416459915d687f826e04798418dfb1dccfb09bc8dad8ec6c92eb6514d678",
+  "campaign_runtime_profile_digest": "eb321f6c19910127e5486777be6355f12ef1d77ae62887e85f6b8daf6505d98e",
+  "source_bundle_sha256": "0980e5c192fa67c653b6b961403f80de91d5a318ca00864442465486d6ca7f9b",
+  "parent_backend_audit": "docs/research_line/continuous_program/V15_BACKEND_CONFORMANCE_AUDIT.json",
+  "parent_failure_record": "docs/research_line/continuous_program/V15_FAILURE_RECORD.json",
+  "root_cause": {
+    "class": "POST_TRAINING_RESOURCE_REJECTION_ROUND_CLOSURE",
+    "observed": "The actual GPU debit exceeded the frozen per-round allocation after CommonExecutionGuard had already emitted a typed resource-ceiling rejection.",
+    "fix": "Preserve actual resource use in immutable execution artifacts and feedback, while the allocation ledger debits the frozen ceiling only for the typed resource-ceiling rejection.",
+    "scope": "ROUND_CLOSURE_ONLY",
+    "budgets_or_thresholds_changed": false,
+    "training_recipe_changed": false,
+    "arm_treatments_changed": false
+  },
+  "verification": {
+    "local_targeted_and_state_store_tests": "35 passed",
+    "typed_actual_over_ceiling_fixture": {
+      "gpu_device_time_ms": 1368131,
+      "gpu_cost_microunits": 380036,
+      "wall_time_ms": 1368131,
+      "round_terminal": "CLOSED",
+      "feedback_events": 1,
+      "actual_values_preserved": true,
+      "allocation_debits_capped": true
+    },
+    "remote_release_validation": "PASS",
+    "remote_compile_import": "PASS",
+    "remote_backend": "gpu5 RTX 4090",
+    "provider_calls": 0,
+    "new_training_executions": 0
+  },
+  "evidence_reuse_boundary": {
+    "v15_root_reused": false,
+    "v15_outcomes_imported_to_search_memory": false,
+    "v15_result_used_only_as_failure_reproduction": true,
+    "v16_seed": 9218,
+    "v16_root": "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_v15_backend_v1/pilot_9218_v16"
+  },
+  "p2_limitations": [
+    "V16 must not start until one qualified RTX 4090 is genuinely free; transient low utilization with high reserved memory is insufficient."
+  ]
+}
