@@ -1,0 +1,415 @@
+{
+  "catalog_id": "RECCLAW_EXECUTABLE_MECHANISM_CATALOG_V1",
+  "catalog_version": "1.0.0",
+  "entries": [
+    {
+      "mechanism_id": "BPR_MF",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "objective",
+      "parent_mechanism_id": null,
+      "summary": "Latent-factor BPR with uniform negative sampling.",
+      "entrypoint": "recbole.model.general_recommender.bpr:BPR",
+      "model": "BPR",
+      "config": {},
+      "transforms": []
+    },
+    {
+      "mechanism_id": "BPR_MARGIN",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "objective",
+      "parent_mechanism_id": "BPR_MF",
+      "summary": "BPR with an explicit pairwise margin.",
+      "entrypoint": "recclaw_ext.models.bpr_margin:BPRMargin",
+      "model": "BPRMargin",
+      "config": {"margin": 0.2},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "objective",
+          "primitive_id": "objective.margin_bpr",
+          "parameters": {"margin": 0.2}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "BPR_MIXED_NEGATIVE",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "sampling",
+      "parent_mechanism_id": "BPR_MF",
+      "summary": "BPR with a popularity-uniform mixed negative sampler.",
+      "entrypoint": "recclaw_ext.models.bpr_sampling:BPRHardNegative",
+      "model": "BPRHardNegative",
+      "config": {"hard_negative_ratio": 0.5},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "sampler",
+          "primitive_id": "sampler.mixed",
+          "parameters": {
+            "false_negative_policy": "ALLOW_UNKNOWN",
+            "hardness": "STATIC",
+            "negative_count": 1,
+            "purpose": ["RANKING_SIGNAL", "HARDNESS_APPROXIMATION"],
+            "refresh_frequency": "BATCH",
+            "replacement": true
+          }
+        }
+      ]
+    },
+    {
+      "mechanism_id": "BPR_POPULARITY_NEGATIVE",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "sampling",
+      "parent_mechanism_id": "BPR_MF",
+      "summary": "BPR with popularity-shaped negative sampling.",
+      "entrypoint": "recclaw_ext.models.bpr_sampling:BPRPopularityAwareNegative",
+      "model": "BPRPopularityAwareNegative",
+      "config": {"popularity_alpha": 0.5},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "sampler",
+          "primitive_id": "sampler.popularity",
+          "parameters": {
+            "false_negative_policy": "ALLOW_UNKNOWN",
+            "hardness": "STATIC",
+            "negative_count": 1,
+            "purpose": ["RANKING_SIGNAL"],
+            "refresh_frequency": "BATCH",
+            "replacement": true
+          }
+        }
+      ]
+    },
+    {
+      "mechanism_id": "BPR_MIXED_NEGATIVE_MARGIN",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "objective",
+      "parent_mechanism_id": "BPR_MIXED_NEGATIVE",
+      "summary": "Mixed negative sampling composed with a margin-aware BPR objective.",
+      "entrypoint": "recclaw_ext.models.bpr_composed:BPRHardNegativeMargin",
+      "model": "BPRHardNegativeMargin",
+      "config": {"hard_negative_ratio": 0.5, "margin": 0.2},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "sampler",
+          "primitive_id": "sampler.mixed",
+          "parameters": {
+            "false_negative_policy": "ALLOW_UNKNOWN",
+            "hardness": "STATIC",
+            "negative_count": 1,
+            "purpose": ["RANKING_SIGNAL", "HARDNESS_APPROXIMATION"],
+            "refresh_frequency": "BATCH",
+            "replacement": true
+          }
+        },
+        {
+          "op": "replace_component",
+          "component_id": "objective",
+          "primitive_id": "objective.margin_bpr",
+          "parameters": {"margin": 0.2}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "BPR_POPULARITY_MARGIN",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "objective",
+      "parent_mechanism_id": "BPR_POPULARITY_NEGATIVE",
+      "summary": "Popularity-shaped negative sampling composed with margin BPR.",
+      "entrypoint": "recclaw_ext.models.bpr_composed:BPRPopularityAwareMargin",
+      "model": "BPRPopularityAwareMargin",
+      "config": {"popularity_alpha": 0.5, "margin": 0.2},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "sampler",
+          "primitive_id": "sampler.popularity",
+          "parameters": {
+            "false_negative_policy": "ALLOW_UNKNOWN",
+            "hardness": "STATIC",
+            "negative_count": 1,
+            "purpose": ["RANKING_SIGNAL"],
+            "refresh_frequency": "BATCH",
+            "replacement": true
+          }
+        },
+        {
+          "op": "replace_component",
+          "component_id": "objective",
+          "primitive_id": "objective.margin_bpr",
+          "parameters": {"margin": 0.2}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "BPR_NORM_CONSTRAINED",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "geometry",
+      "parent_mechanism_id": "BPR_MF",
+      "summary": "BPR with soft embedding-norm matching.",
+      "entrypoint": "recclaw_ext.models.bpr_regularized:BPRNormConstrained",
+      "model": "BPRNormConstrained",
+      "config": {"lambda_norm": 0.0001, "max_norm": 1.0},
+      "transforms": [
+        {
+          "op": "append_regularizer",
+          "component_id": "regularizer",
+          "primitive_id": "regularizer.norm_matching",
+          "parameters": {"weight": 0.0001},
+          "source_component_id": "encoder"
+        }
+      ]
+    },
+    {
+      "mechanism_id": "BPR_POPULARITY_REGULARIZED",
+      "anchor_name": "BPR_MF",
+      "mechanism_axis": "geometry",
+      "parent_mechanism_id": "BPR_MF",
+      "summary": "BPR with popularity-sensitive regularization.",
+      "entrypoint": "recclaw_ext.models.bpr_regularized:BPRPopularityRegularized",
+      "model": "BPRPopularityRegularized",
+      "config": {"lambda_pop": 0.0001},
+      "transforms": [
+        {
+          "op": "append_regularizer",
+          "component_id": "regularizer",
+          "primitive_id": "regularizer.popularity_sensitive",
+          "parameters": {"weight": 0.0001},
+          "source_component_id": "encoder"
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "propagation",
+      "parent_mechanism_id": null,
+      "summary": "Symmetric linear graph propagation with layer fusion.",
+      "entrypoint": "recbole.model.general_recommender.lightgcn:LightGCN",
+      "model": "LightGCN",
+      "config": {},
+      "transforms": []
+    },
+    {
+      "mechanism_id": "LIGHTGCN_SHALLOW",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "propagation",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "One-layer LightGCN control for propagation-depth effects.",
+      "entrypoint": "recbole.model.general_recommender.lightgcn:LightGCN",
+      "model": "LightGCN",
+      "config": {"embedding_size": 64, "n_layers": 1},
+      "transforms": [
+        {
+          "op": "set_component_parameters",
+          "component_id": "propagation",
+          "parameters": {"depth": 1}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN_LAYER_WEIGHTED",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "message_transform",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "LightGCN with learnable layer-weighted aggregation.",
+      "entrypoint": "recclaw_ext.models.lightgcn_lw:LightGCNLW",
+      "model": "LightGCNLW",
+      "config": {"embedding_size": 64, "n_layers": 3, "reg_weight": 0.0001},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "fusion",
+          "primitive_id": "fusion.attention",
+          "parameters": {}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN_RESIDUAL",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "message_transform",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "LightGCN with an ego-embedding residual path.",
+      "entrypoint": "recclaw_ext.models.lightgcn_residual:LightGCNResidualMix",
+      "model": "LightGCNResidualMix",
+      "config": {"embedding_size": 64, "n_layers": 3, "residual_weight": 0.2},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "fusion",
+          "primitive_id": "fusion.residual",
+          "parameters": {}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN_RESIDUAL_NORM",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "geometry",
+      "parent_mechanism_id": "LIGHTGCN_RESIDUAL",
+      "summary": "Residual LightGCN with soft embedding-norm control.",
+      "entrypoint": "recclaw_ext.models.lightgcn_residual_norm:LightGCNResidualNormConstrained",
+      "model": "LightGCNResidualNormConstrained",
+      "config": {
+        "embedding_size": 128,
+        "n_layers": 3,
+        "residual_weight": 0.2,
+        "lambda_norm": 0.0001,
+        "max_norm": 1.0
+      },
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "fusion",
+          "primitive_id": "fusion.residual",
+          "parameters": {}
+        },
+        {
+          "op": "append_regularizer",
+          "component_id": "regularizer",
+          "primitive_id": "regularizer.residual_norm",
+          "parameters": {"weight": 0.0001},
+          "source_component_id": "fusion"
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN_EDGE_DROPOUT_RESIDUAL",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "propagation",
+      "parent_mechanism_id": "LIGHTGCN_RESIDUAL",
+      "summary": "Residual LightGCN with training-time graph edge dropout.",
+      "entrypoint": "recclaw_ext.models.lightgcn_edge_dropout_residual:LightGCNEdgeDropoutResidualMix",
+      "model": "LightGCNEdgeDropoutResidualMix",
+      "config": {
+        "embedding_size": 64,
+        "n_layers": 3,
+        "residual_weight": 0.2,
+        "edge_dropout": 0.1
+      },
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "propagation",
+          "primitive_id": "propagation.dropout",
+          "parameters": {"depth": 3, "rate": 0.1}
+        },
+        {
+          "op": "replace_component",
+          "component_id": "fusion",
+          "primitive_id": "fusion.residual",
+          "parameters": {}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN_DEBIASED_NEGATIVE",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "sampling",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "LightGCN with inverse-popularity negative sampling.",
+      "entrypoint": "recclaw_ext.models.lightgcn_sampling:LightGCNDebiasedNegative",
+      "model": "LightGCNDebiasedNegative",
+      "config": {"debias_alpha": 0.5},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "sampler",
+          "primitive_id": "sampler.inverse_popularity",
+          "parameters": {
+            "false_negative_policy": "ALLOW_UNKNOWN",
+            "hardness": "STATIC",
+            "negative_count": 1,
+            "purpose": ["RANKING_SIGNAL"],
+            "refresh_frequency": "BATCH",
+            "replacement": true
+          }
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN_AUX_ALIGNMENT",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "geometry",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "LightGCN with an auxiliary representation-alignment term.",
+      "entrypoint": "recclaw_ext.models.lightgcn_objectives:LightGCNAuxAlignment",
+      "model": "LightGCNAuxAlignment",
+      "config": {"lambda_align": 0.001},
+      "transforms": [
+        {
+          "op": "append_regularizer",
+          "component_id": "regularizer",
+          "primitive_id": "regularizer.alignment",
+          "parameters": {"weight": 0.001},
+          "source_component_id": "fusion"
+        }
+      ]
+    },
+    {
+      "mechanism_id": "LIGHTGCN_RANK_AWARE",
+      "anchor_name": "LIGHTGCN",
+      "mechanism_axis": "objective",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "LightGCN with rank-weighted pairwise optimization.",
+      "entrypoint": "recclaw_ext.models.lightgcn_objectives:LightGCNRankAware",
+      "model": "LightGCNRankAware",
+      "config": {"rank_weight_alpha": 0.5},
+      "transforms": [
+        {
+          "op": "replace_component",
+          "component_id": "objective",
+          "primitive_id": "objective.weighted_bpr",
+          "parameters": {"weight": 0.5}
+        }
+      ]
+    },
+    {
+      "mechanism_id": "NGCF",
+      "anchor_name": "NGCF",
+      "mechanism_axis": "architecture",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "Nonlinear graph collaborative filtering with transformed messages.",
+      "entrypoint": "recbole.model.general_recommender.ngcf:NGCF",
+      "model": "NGCF",
+      "config": {},
+      "transforms": []
+    },
+    {
+      "mechanism_id": "SGL",
+      "anchor_name": "SGL",
+      "mechanism_axis": "self_supervision",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "Graph collaborative filtering with edge-dropout contrastive learning.",
+      "entrypoint": "recbole.model.general_recommender.sgl:SGL",
+      "model": "SGL",
+      "config": {},
+      "transforms": []
+    },
+    {
+      "mechanism_id": "NCL",
+      "anchor_name": "NCL",
+      "mechanism_axis": "self_supervision",
+      "parent_mechanism_id": "LIGHTGCN",
+      "summary": "Neighborhood-enriched contrastive graph recommendation.",
+      "entrypoint": "recbole.model.general_recommender.ncl:NCL",
+      "model": "NCL",
+      "config": {},
+      "transforms": []
+    },
+    {
+      "mechanism_id": "SIMPLEX",
+      "anchor_name": "SIMPLEX",
+      "mechanism_axis": "objective",
+      "parent_mechanism_id": "BPR_MF",
+      "summary": "Cosine collaborative filtering with negative aggregation.",
+      "entrypoint": "recbole.model.general_recommender.simplex:SimpleX",
+      "model": "SimpleX",
+      "config": {},
+      "transforms": []
+    }
+  ]
+}

@@ -10,6 +10,11 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .campaign_runtime import (
+    CampaignRuntimeError,
+    campaign_training_profile,
+    execution_recipe_for_program,
+)
 from .canonical import canonical_json_bytes, sha256_digest
 from .state_store import RegisterArtifactCommand
 from .training_filesystem import (
@@ -32,6 +37,7 @@ from .training_runtime_contracts import (
     TrainingRuntimeBindingV2,
 )
 from .training_runtime_release import resolve_bound_training_release
+from .training_runtime_release import CAMPAIGN_TRAINING_RUNNER_ABI
 from .training_state_store import (
     MarkTrainingExecutionFinishedCommandV1,
     MarkTrainingExecutionStartedCommandV1,
@@ -142,12 +148,28 @@ class PilotTrainingLauncherV1:
         materialization_artifacts: tuple[dict[str, Any], ...],
         force_failure: bool = False,
     ) -> tuple[TrainingRawRunOutputV2, RawResultEnvelopeV2]:
-        profile = pilot_training_profile()
         claim = self._store.get_execution_claim(str(binding.round_id))
         release = resolve_bound_training_release(
             runner_abi=str(claim["runner_abi"]),
             runtime_release_digest=str(claim["runtime_release_digest"]),
             execution_purpose=str(claim["execution_purpose"]),
+        )
+        campaign_mode = (
+            release.runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI
+        )
+        profile = (
+            campaign_training_profile()
+            if campaign_mode
+            else pilot_training_profile()
+        )
+        epochs_requested = int(
+            profile["fixed_canary_max_epochs"]
+            if (
+                campaign_mode
+                and binding.execution_purpose
+                == TrainingExecutionPurposeV1.FIXED_CANARY.value
+            )
+            else profile["max_epochs"]
         )
         if (
             claim["claim_state"] != "CLAIMED"
@@ -180,7 +202,29 @@ class PilotTrainingLauncherV1:
             / "handler_config.json"
         )
         handler = json.loads(config_path.read_text(encoding="utf-8"))
-        model = training_model_for_primitives(handler["primitives"])
+        program_path = config_path.with_name("program.json")
+        program = json.loads(program_path.read_text(encoding="utf-8"))
+        if campaign_mode:
+            try:
+                execution_recipe = execution_recipe_for_program(program)
+            except CampaignRuntimeError as error:
+                raise ValueError(
+                    "training candidate is outside the exact campaign catalog"
+                ) from error
+            if (
+                handler.get("execution_recipe") != execution_recipe
+                or execution_recipe["candidate_id"] != binding.candidate_id
+                or execution_recipe["mechanism_program_digest"]
+                != binding.mechanism_program_digest
+                or execution_recipe["mechanism_semantics_digest"]
+                != binding.mechanism_semantics_digest
+            ):
+                raise ValueError(
+                    "training execution recipe does not bind the candidate"
+                )
+            model = str(execution_recipe["model"])
+        else:
+            model = training_model_for_program(program)
         self._store.prepare_training_attempt(
             PrepareTrainingAttemptCommandV1(
                 round_id=str(binding.round_id),
@@ -241,7 +285,15 @@ class PilotTrainingLauncherV1:
             "--propagation",
             "private",
             str(self._python),
-            str(self._project_root / "scripts" / "pilot_train_worker.py"),
+            str(
+                self._project_root
+                / "scripts"
+                / (
+                    "campaign_train_worker.py"
+                    if campaign_mode
+                    else "pilot_train_worker.py"
+                )
+            ),
             "--binding-digest",
             binding.digest,
             "--claim-id",
@@ -253,7 +305,7 @@ class PilotTrainingLauncherV1:
             "--dataset",
             str(profile["dataset"]),
             "--epochs",
-            str(profile["max_epochs"]),
+            str(epochs_requested),
             "--execution-purpose",
             str(binding.execution_purpose),
             "--filesystem-capability-path",
@@ -287,6 +339,10 @@ class PilotTrainingLauncherV1:
             "--start-gate-path",
             str(gate_path),
         ]
+        if campaign_mode:
+            command.extend(
+                ["--execution-recipe-path", str(config_path)]
+            )
         if force_failure:
             command.append("--force-failure")
         environment = {
@@ -438,9 +494,14 @@ class PilotTrainingLauncherV1:
             shared_side_effect_audit,
             dict(worker.get("filesystem_mount_audit", {})),
         )
+        metric_payload = (
+            worker.get("best_valid_result", {})
+            if campaign_mode
+            else worker.get("test_result", {})
+        )
         metrics = {
             str(key).lower(): float(value)
-            for key, value in dict(worker.get("test_result", {})).items()
+            for key, value in dict(metric_payload).items()
             if isinstance(value, (int, float)) and math.isfinite(float(value))
         }
         if "ndcg@10" in metrics:
@@ -460,7 +521,7 @@ class PilotTrainingLauncherV1:
                 "binding_digest": binding.digest,
                 "budget_digest": binding.budget_digest,
                 "candidate_id": binding.candidate_id,
-                "epochs_requested": int(profile["max_epochs"]),
+                "epochs_requested": epochs_requested,
                 "environment_lock_digest": (
                     runtime_binding.environment_lock_digest
                 ),

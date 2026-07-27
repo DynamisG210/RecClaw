@@ -11,6 +11,11 @@ from typing import Any, Mapping
 
 from recclaw_core.mechanism_space import compile_program
 
+from .campaign_runtime import (
+    CampaignRuntimeError,
+    campaign_runtime_profile,
+    execution_recipe_for_program,
+)
 from .canonical import (
     bytes_sha256,
     canonical_json_bytes,
@@ -129,6 +134,28 @@ def _select_template(primitives: tuple[str, ...]) -> str:
     raise ValueError("no package-owned template covers this mechanism program")
 
 
+def _materialization_projection(
+    program: Mapping[str, Any],
+    *,
+    campaign: bool,
+) -> tuple[str, str, str, Mapping[str, Any] | None]:
+    if campaign:
+        recipe = execution_recipe_for_program(program)
+        return (
+            str(campaign_runtime_profile()["profile_digest"]),
+            str(recipe["mechanism_id"]),
+            str(recipe["entrypoint"]),
+            recipe,
+        )
+    primitives, _operators = _program_parts(program)
+    return (
+        executable_profile_digest(),
+        _select_template(primitives),
+        runtime_release_contract()["allowed_entrypoint"],
+        None,
+    )
+
+
 class DeterministicMaterializerV1:
     materializer_id = _MATERIALIZER_ID
 
@@ -162,7 +189,18 @@ class DeterministicMaterializerV1:
         if not _SAFE_ID.fullmatch(candidate_id):
             raise ValueError("compiler-derived candidate ID is not path safe")
         primitives, operators = _program_parts(program)
-        template_id = _select_template(primitives)
+        (
+            campaign_profile_digest,
+            template_id,
+            entrypoint,
+            execution_recipe,
+        ) = _materialization_projection(
+            program,
+            campaign=(
+                eligible.release_projection_digest
+                == campaign_runtime_profile()["profile_digest"]
+            ),
+        )
         candidate_prefix = f"recclaw_ext/generated/{candidate_id}"
         program_bytes = canonical_json_bytes(program)
         handler_config = {
@@ -173,10 +211,12 @@ class DeterministicMaterializerV1:
             "primitives": list(primitives),
             "template_id": template_id,
         }
+        if execution_recipe is not None:
+            handler_config["execution_recipe"] = execution_recipe
         config_bytes = canonical_json_bytes(handler_config)
         manifest = {
             "candidate_id": candidate_id,
-            "entrypoint": runtime_release_contract()["allowed_entrypoint"],
+            "entrypoint": entrypoint,
             "generated_files": [
                 {
                     "path": f"{candidate_prefix}/handler_config.json",
@@ -211,7 +251,7 @@ class DeterministicMaterializerV1:
         return MaterializationReportV1(
             {
                 "candidate_id": candidate_id,
-                "campaign_profile_digest": executable_profile_digest(),
+                "campaign_profile_digest": campaign_profile_digest,
                 "compile_report_digest": eligible.compile_report_digest,
                 "dependencies": [
                     {
@@ -220,13 +260,17 @@ class DeterministicMaterializerV1:
                         "usage": runtime_release_contract()["recbole_usage"],
                     },
                     {
-                        "identity": source_manifest_digest(),
-                        "name": "recclaw-m1-package-handlers",
+                        "identity": campaign_profile_digest,
+                        "name": (
+                            "recclaw-campaign-executable-catalog"
+                            if execution_recipe is not None
+                            else "recclaw-m1-package-handlers"
+                        ),
                         "usage": "EXECUTED",
                     },
                 ],
                 "diagnostics": [],
-                "entrypoint": runtime_release_contract()["allowed_entrypoint"],
+                "entrypoint": entrypoint,
                 "files": file_rows,
                 "implementation_digest": implementation_identity_digest(files),
                 "materializer_digest": sha256_digest(
@@ -252,11 +296,28 @@ def classify_execution_trust(
     reasons: list[str] = []
     if report.status != "MATERIALIZED":
         reasons.append("MATERIALIZATION_NOT_COMPLETE")
-    if report.entrypoint != runtime_release_contract()["allowed_entrypoint"]:
+    config_path = (
+        root
+        / "recclaw_ext"
+        / "generated"
+        / str(report.candidate_id)
+        / "handler_config.json"
+    )
+    expected_profile = executable_profile_digest()
+    expected_entrypoint = runtime_release_contract()["allowed_entrypoint"]
+    try:
+        handler_config = json.loads(config_path.read_text(encoding="utf-8"))
+        recipe = handler_config.get("execution_recipe")
+        if recipe is not None:
+            expected_profile = str(campaign_runtime_profile()["profile_digest"])
+            expected_entrypoint = str(recipe["entrypoint"])
+    except (OSError, ValueError, json.JSONDecodeError, TypeError, KeyError):
+        reasons.append("HANDLER_CONFIG_UNREADABLE")
+    if report.entrypoint != expected_entrypoint:
         reasons.append("CALLABLE_OR_ENTRYPOINT_SUBSTITUTION")
     if report.runner_abi != runtime_release_contract()["runner_abi"]:
         reasons.append("RUNNER_ABI_SUBSTITUTION")
-    if report.campaign_profile_digest != executable_profile_digest():
+    if report.campaign_profile_digest != expected_profile:
         reasons.append("TEMPLATE_PROFILE_SUBSTITUTION")
     expected_sources = {item["path"]: item for item in source_manifest()}
     if "runtime_handlers.py" not in expected_sources:
@@ -367,10 +428,24 @@ def verify_materialization(
         reasons.append("MATERIALIZED_COMPILE_PROJECTION_MISMATCH")
     try:
         primitives, operators = _program_parts(program)
-        template_id = _select_template(primitives)
+        (
+            campaign_profile_digest,
+            template_id,
+            entrypoint,
+            execution_recipe,
+        ) = _materialization_projection(
+            program,
+            campaign=(
+                eligible.release_projection_digest
+                == campaign_runtime_profile()["profile_digest"]
+            ),
+        )
     except (KeyError, TypeError, ValueError):
         reasons.append("MATERIALIZED_TEMPLATE_UNSUPPORTED")
         primitives, operators, template_id = (), (), ""
+        campaign_profile_digest = executable_profile_digest()
+        entrypoint = runtime_release_contract()["allowed_entrypoint"]
+        execution_recipe = None
     expected_config = {
         "candidate_id": eligible.candidate_id,
         "mechanism_program_digest": compiled.mechanism_program_digest,
@@ -379,11 +454,13 @@ def verify_materialization(
         "primitives": list(primitives),
         "template_id": template_id,
     }
+    if execution_recipe is not None:
+        expected_config["execution_recipe"] = execution_recipe
     if config != expected_config or config_bytes != canonical_json_bytes(expected_config):
         reasons.append("HANDLER_CONFIG_SUBSTITUTION")
     expected_manifest = {
         "candidate_id": eligible.candidate_id,
-        "entrypoint": runtime_release_contract()["allowed_entrypoint"],
+        "entrypoint": entrypoint,
         "generated_files": [
             {
                 "path": f"{prefix}/handler_config.json",
@@ -415,7 +492,7 @@ def verify_materialization(
         if row["sha256"] != bytes_sha256(payload) or row["size_bytes"] != len(payload):
             reasons.append("MATERIALIZATION_REPORT_FILE_MISMATCH")
     expected_report = {
-        "campaign_profile_digest": executable_profile_digest(),
+        "campaign_profile_digest": campaign_profile_digest,
         "candidate_id": eligible.candidate_id,
         "compile_report_digest": eligible.compile_report_digest,
         "dependencies": [
@@ -425,13 +502,17 @@ def verify_materialization(
                 "usage": runtime_release_contract()["recbole_usage"],
             },
             {
-                "identity": source_manifest_digest(),
-                "name": "recclaw-m1-package-handlers",
+                "identity": campaign_profile_digest,
+                "name": (
+                    "recclaw-campaign-executable-catalog"
+                    if execution_recipe is not None
+                    else "recclaw-m1-package-handlers"
+                ),
                 "usage": "EXECUTED",
             },
         ],
         "diagnostics": [],
-        "entrypoint": runtime_release_contract()["allowed_entrypoint"],
+        "entrypoint": entrypoint,
         "materializer_digest": sha256_digest(
             {"id": _MATERIALIZER_ID, "source_sha256": _source_digest()}
         ),
@@ -479,7 +560,7 @@ def build_binding_v2(
             "mechanism_program_digest": report.mechanism_program_digest,
             "mechanism_semantics_digest": report.mechanism_semantics_digest,
             "opaque_arm_instance_id": opaque_arm_instance_id,
-            "profile_digest": executable_profile_digest(),
+            "profile_digest": report.campaign_profile_digest,
             "round_id": round_id,
             "run_id": run_id,
             "runner_abi": runtime_release_contract()["runner_abi"],
@@ -505,7 +586,7 @@ def verify_binding_v2(
         "materialization_digest": report.digest,
         "mechanism_program_digest": report.mechanism_program_digest,
         "mechanism_semantics_digest": report.mechanism_semantics_digest,
-        "profile_digest": executable_profile_digest(),
+        "profile_digest": report.campaign_profile_digest,
         "runner_abi": runtime_release_contract()["runner_abi"],
         "runtime_release_digest": runtime_release_digest(),
         "trust_classification_digest": trust.digest,

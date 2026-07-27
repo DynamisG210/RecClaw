@@ -8,6 +8,11 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Mapping
 
+from .campaign_dataset import campaign_partition_profile
+from .campaign_runtime import (
+    campaign_readiness_failures,
+    campaign_runtime_profile,
+)
 from .canonical import bytes_sha256, sha256_digest
 from .runtime_release import runtime_release_contract, runtime_release_digest
 from .store_audit import store_audit_contract_digest
@@ -33,6 +38,7 @@ from .training_runtime_contracts import (
     TrainingRuntimePlanDecisionV1,
     TrainingRuntimeReleaseV1,
     TrainingRuntimeReleaseV2,
+    TrainingRuntimeReleaseV3,
 )
 
 
@@ -42,6 +48,16 @@ TRAINING_RELEASE_RESOURCE = "training_runtime_release_v2.json"
 TRAINING_RUNNER_ABI = "recclaw.package-owned-search-training-runner.v1"
 TRAINING_LAUNCHER_ABI = "recclaw.package-owned-training-launcher.v1"
 TRAINING_LAUNCH_PROTOCOL_ID = "CLAIM_PREPARE_CONFIRM_START_V1"
+CAMPAIGN_TRAINING_RELEASE_RESOURCE = "training_runtime_release_v5.json"
+CAMPAIGN_TRAINING_RUNNER_ABI = (
+    "recclaw.package-owned-search-training-runner.v2"
+)
+CAMPAIGN_TRAINING_LAUNCHER_ABI = (
+    "recclaw.package-owned-training-launcher.v2"
+)
+CAMPAIGN_TRAINING_LAUNCH_PROTOCOL_ID = (
+    "CLAIM_PREPARE_CONFIRM_START_V2"
+)
 
 _COMPONENT_NAMES = (
     "campaign_contract",
@@ -90,7 +106,24 @@ def _source_manifest_map(
     return {str(row["path"]): str(row["sha256"]) for row in release.source_manifest}
 
 
-def _handler_registry_projection() -> dict[str, Any]:
+def _handler_registry_projection(
+    runner_abi: str = TRAINING_RUNNER_ABI,
+) -> dict[str, Any]:
+    if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI:
+        return {
+            "campaign_runtime_profile_digest": (
+                campaign_runtime_profile()["profile_digest"]
+            ),
+            "closed_abis": [
+                runtime_release_contract()["runner_abi"],
+                TRAINING_RUNNER_ABI,
+                CAMPAIGN_TRAINING_RUNNER_ABI,
+            ],
+            "training_release_id": "TRAINING_RUNTIME_RELEASE_V5",
+            "training_release_resource": (
+                CAMPAIGN_TRAINING_RELEASE_RESOURCE
+            ),
+        }
     return {
         "closed_abis": [
             "recclaw.fake-non-training-runner.v1",
@@ -150,6 +183,12 @@ def training_runtime_release() -> TrainingRuntimeReleaseV2:
     return TrainingRuntimeReleaseV2(_resource_json(TRAINING_RELEASE_RESOURCE))
 
 
+def campaign_training_runtime_release() -> TrainingRuntimeReleaseV3:
+    return TrainingRuntimeReleaseV3(
+        _resource_json(CAMPAIGN_TRAINING_RELEASE_RESOURCE)
+    )
+
+
 def training_runtime_release_digest() -> str:
     return training_runtime_release().digest
 
@@ -170,7 +209,24 @@ def resolve_runtime_release(runner_abi: str) -> Mapping[str, Any]:
             "release_digest": release.digest,
             "runner_abi": release.runner_abi,
         }
+    if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI:
+        release = campaign_training_runtime_release()
+        return {
+            "profile_id": release.profile_id,
+            "release_digest": release.digest,
+            "runner_abi": release.runner_abi,
+        }
     raise ValueError(f"unknown package runtime ABI: {runner_abi}")
+
+
+def training_release_for_abi(
+    runner_abi: str,
+) -> TrainingRuntimeReleaseV2 | TrainingRuntimeReleaseV3:
+    if runner_abi == TRAINING_RUNNER_ABI:
+        return training_runtime_release()
+    if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI:
+        return campaign_training_runtime_release()
+    raise ValueError(f"unknown package training ABI: {runner_abi}")
 
 
 def resolve_bound_training_release(
@@ -178,13 +234,14 @@ def resolve_bound_training_release(
     runner_abi: str,
     runtime_release_digest: str,
     execution_purpose: str,
-) -> TrainingRuntimeReleaseV2:
+) -> TrainingRuntimeReleaseV2 | TrainingRuntimeReleaseV3:
     """Resolve claim-bound identity without trusting later receipt bytes."""
 
     resolved = resolve_runtime_release(runner_abi)
-    release = training_runtime_release()
+    release = training_release_for_abi(runner_abi)
     if (
-        runner_abi != TRAINING_RUNNER_ABI
+        runner_abi
+        not in {TRAINING_RUNNER_ABI, CAMPAIGN_TRAINING_RUNNER_ABI}
         or resolved["release_digest"] != release.digest
         or runtime_release_digest != release.digest
         or execution_purpose not in set(release.supported_execution_purposes)
@@ -336,6 +393,105 @@ def validate_training_runtime_release(
     return tuple(sorted(failures))
 
 
+def validate_campaign_training_runtime_release(
+    *,
+    data_path: Path,
+    python_executable: Path,
+    recbole_root: Path,
+) -> tuple[str, ...]:
+    """Validate the Main-equivalent Campaign release without mutating V2."""
+
+    release = campaign_training_runtime_release()
+    root = _project_root()
+    failures: list[str] = []
+    if (
+        release.profile_id
+        != RuntimeProfileIdV1.PACKAGE_TRAINING_V3.value
+        or release.runner_abi != CAMPAIGN_TRAINING_RUNNER_ABI
+        or release.launcher_abi != CAMPAIGN_TRAINING_LAUNCHER_ABI
+        or release.launch_protocol_id
+        != CAMPAIGN_TRAINING_LAUNCH_PROTOCOL_ID
+        or release.online_metric_source != "BEST_VALID_RESULT"
+        or release.campaign_runtime_profile_digest
+        != campaign_runtime_profile()["profile_digest"]
+        or release.partition_profile_digest
+        != sha256_digest(campaign_partition_profile())
+    ):
+        failures.append("CAMPAIGN_TRAINING_RELEASE_PROFILE_MISMATCH")
+    for row in release.source_manifest:
+        path = root / str(row["path"])
+        if (
+            not path.is_file()
+            or bytes_sha256(path.read_bytes()) != row["sha256"]
+        ):
+            failures.append(
+                f"CAMPAIGN_TRAINING_SOURCE_MISMATCH:{row['path']}"
+            )
+    for contract_name in ("environment_lock", "training_config"):
+        for row in getattr(release, contract_name)["files"]:
+            path = root / str(row["path"])
+            if (
+                not path.is_file()
+                or bytes_sha256(path.read_bytes()) != row["sha256"]
+            ):
+                failures.append(
+                    f"CAMPAIGN_TRAINING_INPUT_MISMATCH:{row['path']}"
+                )
+    dataset_root = (
+        data_path.resolve() / str(release.read_contract["dataset_dir"])
+    )
+    for name, expected in release.read_contract["dataset_files"].items():
+        path = dataset_root / str(name)
+        if (
+            not path.is_file()
+            or bytes_sha256(path.read_bytes()) != expected
+        ):
+            failures.append(f"CAMPAIGN_TRAINING_DATASET_MISMATCH:{name}")
+    python_path = python_executable.absolute()
+    if (
+        not python_path.is_file()
+        or bytes_sha256(python_path.read_bytes())
+        != release.backend_identity["python_executable_sha256"]
+    ):
+        failures.append("CAMPAIGN_TRAINING_PYTHON_IDENTITY_MISMATCH")
+    else:
+        try:
+            frozen = subprocess.check_output(
+                [str(python_path), "-m", "pip", "freeze", "--all"],
+                timeout=20,
+            )
+        except (OSError, subprocess.SubprocessError):
+            failures.append(
+                "CAMPAIGN_TRAINING_ENVIRONMENT_LOCK_UNAVAILABLE"
+            )
+        else:
+            if (
+                bytes_sha256(frozen)
+                != release.backend_identity["pip_freeze_digest"]
+            ):
+                failures.append(
+                    "CAMPAIGN_TRAINING_ENVIRONMENT_LOCK_MISMATCH"
+                )
+    try:
+        commit, tree, status = _git_identity(recbole_root.resolve())
+    except (OSError, subprocess.SubprocessError):
+        failures.append("CAMPAIGN_RECBOLE_IDENTITY_UNAVAILABLE")
+    else:
+        if (
+            commit != release.backend_identity["recbole_commit"]
+            or tree != release.backend_identity["recbole_tree"]
+            or status
+        ):
+            failures.append("CAMPAIGN_RECBOLE_IDENTITY_MISMATCH")
+    failures.extend(
+        f"CAMPAIGN_RUNTIME:{item}"
+        for item in campaign_readiness_failures(
+            import_entrypoints=True
+        )
+    )
+    return tuple(sorted(set(failures)))
+
+
 def _resolved_root(value: str) -> str:
     return Path(value).resolve().as_posix()
 
@@ -367,8 +523,9 @@ def build_training_runtime_binding(
     seed_policy_digest: str,
     training_config_budget_digest: str,
     filesystem_capability_digest: str,
+    runner_abi: str = TRAINING_RUNNER_ABI,
 ) -> TrainingRuntimeBindingV2:
-    release = training_runtime_release()
+    release = training_release_for_abi(runner_abi)
     if execution_purpose not in set(release.supported_execution_purposes):
         raise ValueError(
             f"training release does not support purpose: {execution_purpose}"
@@ -442,8 +599,10 @@ def build_training_runtime_binding(
 
 def training_runtime_component_abis(
     overrides: Mapping[str, str] | None = None,
+    *,
+    runner_abi: str = TRAINING_RUNNER_ABI,
 ) -> dict[str, str]:
-    values = {name: TRAINING_RUNNER_ABI for name in _COMPONENT_NAMES}
+    values = {name: runner_abi for name in _COMPONENT_NAMES}
     values.update(dict(overrides or {}))
     return values
 
@@ -454,15 +613,24 @@ def training_runtime_compatibility_preflight(
     fixture: TrainingRuntimeCompatibilityFixtureV1,
     python_executable: Path,
     recbole_root: Path,
+    runner_abi: str = TRAINING_RUNNER_ABI,
 ) -> TrainingRuntimeCompatibilityPreflightV1:
     """Traverse the concrete campaign-to-close release chain before broker use."""
 
-    release = training_runtime_release()
+    release = training_release_for_abi(runner_abi)
     failures = list(
-        validate_training_runtime_release(
-            data_path=data_path,
-            python_executable=python_executable,
-            recbole_root=recbole_root,
+        (
+            validate_campaign_training_runtime_release(
+                data_path=data_path,
+                python_executable=python_executable,
+                recbole_root=recbole_root,
+            )
+            if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI
+            else validate_training_runtime_release(
+                data_path=data_path,
+                python_executable=python_executable,
+                recbole_root=recbole_root,
+            )
         )
     )
     checks: list[dict[str, Any]] = []
@@ -514,6 +682,7 @@ def training_runtime_compatibility_preflight(
             seed_policy_digest=fixture.seed_policy_digest,
             training_config_budget_digest=fixture.training_config_budget_digest,
             filesystem_capability_digest=capability.capability_digest,
+            runner_abi=runner_abi,
         )
     except ValueError:
         capability = None
@@ -540,16 +709,21 @@ def training_runtime_compatibility_preflight(
     check(
         "PACKAGE_HANDLER_REGISTRY",
         release.package_owned_handler_registry_digest
-        == sha256_digest(_handler_registry_projection()),
+        == sha256_digest(_handler_registry_projection(runner_abi)),
         "TRAINING_HANDLER_REGISTRY_MISMATCH",
     )
     sources = _source_manifest_map(release)
+    worker_source_path = (
+        "scripts/campaign_train_worker.py"
+        if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI
+        else "scripts/pilot_train_worker.py"
+    )
     check(
         "RELEASE_DECLARED_IDENTITIES",
         release.runner_entrypoint_digest
-        == sources.get("scripts/pilot_train_worker.py")
+        == sources.get(worker_source_path)
         and release.runner_source_digest
-        == sources.get("scripts/pilot_train_worker.py")
+        == sources.get(worker_source_path)
         and release.launcher_source_digest
         == sources.get(
             "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py"
@@ -587,7 +761,11 @@ def training_runtime_compatibility_preflight(
         == store_audit_contract_digest()
         and release.training_profile_digest
         == sha256_digest(
-            _resource_json("pilot_training_profile_v1.json")
+            _resource_json(
+                "campaign_training_profile_v1.json"
+                if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI
+                else "pilot_training_profile_v1.json"
+            )
         ),
         "TRAINING_DECLARED_RELEASE_IDENTITY_MISMATCH",
     )
@@ -647,14 +825,24 @@ def training_runtime_compatibility_preflight(
     )
     check(
         "LAUNCHER_PROTOCOL",
-        release.launcher_abi == TRAINING_LAUNCHER_ABI
-        and release.launch_protocol_id == TRAINING_LAUNCH_PROTOCOL_ID
+        release.launcher_abi
+        == (
+            CAMPAIGN_TRAINING_LAUNCHER_ABI
+            if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI
+            else TRAINING_LAUNCHER_ABI
+        )
+        and release.launch_protocol_id
+        == (
+            CAMPAIGN_TRAINING_LAUNCH_PROTOCOL_ID
+            if runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI
+            else TRAINING_LAUNCH_PROTOCOL_ID
+        )
         and bool(
             _source_manifest_map(release).get(
                 "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py"
             )
         )
-        and bool(_source_manifest_map(release).get("scripts/pilot_train_worker.py")),
+        and bool(_source_manifest_map(release).get(worker_source_path)),
         "TRAINING_LAUNCHER_PROTOCOL_MISMATCH",
     )
     expected_schemas = {
@@ -691,7 +879,7 @@ def training_runtime_compatibility_preflight(
             {
                 "metric_contract": release.metric_contract,
                 "worker_source": _source_manifest_map(release).get(
-                    "scripts/pilot_train_worker.py"
+                    worker_source_path
                 ),
             }
         )
@@ -702,7 +890,7 @@ def training_runtime_compatibility_preflight(
     for component in _COMPONENT_NAMES:
         check(
             f"ABI:{component}",
-            component_abis.get(component) == TRAINING_RUNNER_ABI,
+            component_abis.get(component) == runner_abi,
             f"TRAINING_COMPONENT_ABI_MISMATCH:{component}",
         )
 
@@ -718,7 +906,7 @@ def training_runtime_compatibility_preflight(
             "checked_release_digest": release.digest,
             "closure_projection_digest": sha256_digest(closure_projection),
             "component_checks": checks,
-            "expected_runner_abi": TRAINING_RUNNER_ABI,
+            "expected_runner_abi": runner_abi,
             "failure_codes": sorted(set(failures)),
             "fixture_digest": fixture.digest,
             "profile_id": release.profile_id,
@@ -733,10 +921,14 @@ def training_runtime_compatibility_preflight(
 
 
 __all__ = [
+    "CAMPAIGN_TRAINING_LAUNCHER_ABI",
+    "CAMPAIGN_TRAINING_LAUNCH_PROTOCOL_ID",
+    "CAMPAIGN_TRAINING_RUNNER_ABI",
     "TRAINING_LAUNCHER_ABI",
     "TRAINING_LAUNCH_PROTOCOL_ID",
     "TRAINING_RUNNER_ABI",
     "build_training_runtime_binding",
+    "campaign_training_runtime_release",
     "historical_training_runtime_release_v1",
     "resolve_bound_training_release",
     "resolve_runtime_release",
@@ -744,5 +936,6 @@ __all__ = [
     "training_runtime_component_abis",
     "training_runtime_release",
     "training_runtime_release_digest",
+    "validate_campaign_training_runtime_release",
     "validate_training_runtime_release",
 ]

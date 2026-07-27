@@ -12,6 +12,7 @@ class RuntimeProfileIdV1(str, Enum):
     FAKE_NON_TRAINING = "FAKE_NON_TRAINING_RELEASE_V1"
     PACKAGE_TRAINING = "PACKAGE_OWNED_TRAINING_RELEASE_V1"
     PACKAGE_TRAINING_V2 = "PACKAGE_OWNED_TRAINING_RELEASE_V2"
+    PACKAGE_TRAINING_V3 = "PACKAGE_OWNED_TRAINING_RELEASE_V3"
 
 
 class TrainingExecutionPurposeV1(str, Enum):
@@ -86,6 +87,17 @@ class TrainingRuntimeReleaseV2(ClosedRuntimeRecord):
             "filesystem_capability_policy_digest",
             "store_audit_contract_digest",
             "training_profile_digest",
+        }
+    )
+
+
+class TrainingRuntimeReleaseV3(ClosedRuntimeRecord):
+    record_type = "TrainingRuntimeReleaseV3"
+    required_fields = TrainingRuntimeReleaseV2.required_fields | frozenset(
+        {
+            "campaign_runtime_profile_digest",
+            "online_metric_source",
+            "partition_profile_digest",
         }
     )
 

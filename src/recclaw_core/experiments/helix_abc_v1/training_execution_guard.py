@@ -27,9 +27,10 @@ from .training_runtime_contracts import (
     TrainingRuntimePlanDecisionV1,
 )
 from .training_runtime_release import (
+    CAMPAIGN_TRAINING_RUNNER_ABI,
     TRAINING_RUNNER_ABI,
     resolve_runtime_release,
-    training_runtime_release,
+    training_release_for_abi,
 )
 
 
@@ -55,13 +56,17 @@ class CommonTrainingExecutionGuardV1:
         except ValueError:
             resolved = None
             failures.append("TRAINING_PLAN_UNKNOWN_RUNTIME_RELEASE")
-        release = training_runtime_release()
+        release = training_release_for_abi(runtime_binding.runner_abi)
         if (
             base_plan.decision != CommonDecision.PASS.value
             or resolved is None
             or resolved["release_digest"] != release.digest
             or runtime_binding.release_digest != release.digest
-            or runtime_binding.runner_abi != TRAINING_RUNNER_ABI
+            or runtime_binding.runner_abi
+            not in {
+                TRAINING_RUNNER_ABI,
+                CAMPAIGN_TRAINING_RUNNER_ABI,
+            }
             or runtime_binding.execution_purpose
             not in set(release.supported_execution_purposes)
         ):
@@ -97,7 +102,7 @@ class CommonTrainingExecutionGuardV1:
             runtime_binding=runtime_binding,
         )
         resolved = resolve_runtime_release(binding.runner_abi)
-        release = training_runtime_release()
+        release = training_release_for_abi(binding.runner_abi)
         valid = (
             valid_binding
             and base_permit.binding_digest == base_binding.digest
@@ -106,7 +111,8 @@ class CommonTrainingExecutionGuardV1:
             and binding.runtime_release_digest == release.digest
             and runtime_binding.release_digest == release.digest
             and resolved["release_digest"] == release.digest
-            and binding.runner_abi == TRAINING_RUNNER_ABI
+            and binding.runner_abi
+            in {TRAINING_RUNNER_ABI, CAMPAIGN_TRAINING_RUNNER_ABI}
             and training_plan.decision == CommonDecision.PASS.value
             and training_plan.runtime_binding_digest == runtime_binding.digest
             and training_plan.runtime_release_digest == release.digest
@@ -151,7 +157,7 @@ class CommonTrainingExecutionGuardV1:
     ) -> tuple[CommonResultClosureV2, RawResultEnvelopeV2 | None]:
         failures: list[str] = []
         subchecks: list[dict[str, str]] = []
-        release = training_runtime_release()
+        release = training_release_for_abi(binding.runner_abi)
 
         exact = {
             "binding_digest": binding.digest,
@@ -166,7 +172,8 @@ class CommonTrainingExecutionGuardV1:
             permit.binding_digest == binding.digest
             and permit.runtime_binding_digest == runtime_binding.digest
             and permit.runtime_release_digest == release.digest
-            and permit.runner_abi == TRAINING_RUNNER_ABI
+            and permit.runner_abi
+            in {TRAINING_RUNNER_ABI, CAMPAIGN_TRAINING_RUNNER_ABI}
             and permit.execution_purpose == binding.execution_purpose
         )
         subchecks.append(_subcheck("PERMIT_RELEASE", permit_ok))

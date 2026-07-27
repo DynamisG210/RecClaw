@@ -73,6 +73,7 @@ from recclaw_core.experiments.helix_abc_v1.training_runtime_release import (
     training_runtime_compatibility_preflight,
     training_runtime_component_abis,
     training_runtime_release,
+    validate_campaign_training_runtime_release,
     validate_training_runtime_release,
 )
 from recclaw_core.experiments.helix_abc_v1.training_state_store import (
@@ -152,7 +153,7 @@ def runtime_binding_for(
     )
 
 
-def test_plan(runtime_binding: Any) -> CommonPlanDecisionV1:
+def _test_plan(runtime_binding: Any) -> CommonPlanDecisionV1:
     return CommonPlanDecisionV1(
         {
             "candidate_id": runtime_binding.candidate_id,
@@ -272,7 +273,7 @@ def close_chain(
     )
     guard = CommonTrainingExecutionGuardV1()
     training_plan = guard.plan_check(
-        base_plan=test_plan(runtime_binding),
+        base_plan=_test_plan(runtime_binding),
         runtime_binding=runtime_binding,
     )
     permit = guard.pre_execute(
@@ -446,10 +447,23 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
         PYTHON.is_file() and RECBOLE.is_dir() and DATA.is_dir(),
         "package training runtime is unavailable",
     )
-    def test_content_bound_release_and_v3_mismatch_preflight(self) -> None:
+    def test_historical_v2_is_not_reissued_after_v3_successor(self) -> None:
+        historical_failures = validate_training_runtime_release(
+            data_path=DATA,
+            python_executable=PYTHON,
+            recbole_root=RECBOLE,
+        )
+        self.assertTrue(
+            any(
+                item.startswith("TRAINING_SOURCE_MISMATCH:")
+                for item in historical_failures
+            )
+        )
         self.assertEqual(
-            validate_training_runtime_release(
-                data_path=DATA,
+            validate_campaign_training_runtime_release(
+                data_path=Path(
+                    "/root/projects/RecClaw_campaign_dataset_v1/search"
+                ),
                 python_executable=PYTHON,
                 recbole_root=RECBOLE,
             ),
@@ -465,12 +479,12 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
             )
             self.assertEqual(
                 positive.status,
-                TrainingCompatibilityStatusV1.COMPATIBLE.value,
+                TrainingCompatibilityStatusV1.INCOMPATIBLE.value,
             )
             self.assertTrue(
-                all(
-                    row["status"] == "VERIFIED"
-                    for row in positive.component_checks
+                any(
+                    item.startswith("TRAINING_SOURCE_MISMATCH:")
+                    for item in positive.failure_codes
                 )
             )
             negative = training_runtime_compatibility_preflight(
@@ -584,7 +598,7 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
         )
         training_guard = CommonTrainingExecutionGuardV1()
         training_plan = training_guard.plan_check(
-            base_plan=test_plan(runtime_binding),
+            base_plan=_test_plan(runtime_binding),
             runtime_binding=runtime_binding,
         )
         permit = training_guard.pre_execute(

@@ -11,7 +11,10 @@ from .training_runtime_contracts import (
     TrainingExecutionPurposeV1,
     TrainingRuntimeBindingV2,
 )
-from .training_runtime_release import TRAINING_RUNNER_ABI
+from .training_runtime_release import (
+    CAMPAIGN_TRAINING_RUNNER_ABI,
+    TRAINING_RUNNER_ABI,
+)
 
 
 def build_training_binding_v3(
@@ -34,7 +37,10 @@ def build_training_binding_v3(
     for field, value in expected.items():
         if getattr(runtime_binding, field) != value:
             raise ValueError(f"training runtime binding mismatch: {field}")
-    if runtime_binding.runner_abi != TRAINING_RUNNER_ABI:
+    if runtime_binding.runner_abi not in {
+        TRAINING_RUNNER_ABI,
+        CAMPAIGN_TRAINING_RUNNER_ABI,
+    }:
         raise ValueError("training runtime binding uses the wrong ABI")
     if runtime_binding.instance_private_root_digest != sha256_digest(
         {

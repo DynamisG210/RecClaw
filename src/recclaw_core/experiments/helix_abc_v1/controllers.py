@@ -5,10 +5,10 @@ These adapters contain no LLM, Router, Meta, materializer, or Runner.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
 
-from .canonical import sha256_digest
+from .canonical import canonical_value, sha256_digest
 from .contracts import validate_no_research_evidence_authority_fields
 
 ORIGINAL_SOURCE_COMMIT = "2d8c881354e1b536a6c66d7dfbb977e0c5090e50"
@@ -171,6 +171,212 @@ class OriginalControllerV1:
         }
 
 
+@dataclass(slots=True)
+class OriginalRuntimeAdapterV1:
+    """Faithful BL projection of the pre-Research-Line planner behavior.
+
+    It preserves the Original refresh cadence, novelty/revisit/crash scoring,
+    family outcome credit, execution-signature de-duplication and one feedback
+    transition per SearchRound.  It intentionally has no Research Router,
+    Search Memory, Meta, or Evidence authority dependency.
+    """
+
+    proposal_every: int = 3
+    novelty_weight: float = 0.45
+    priority_weight: float = 0.25
+    status_weight: float = 0.20
+    revisit_penalty: float = 0.10
+    crash_penalty: float = 0.20
+    recent_schedule_penalty: float = 0.15
+    history: list[dict[str, Any]] = field(default_factory=list)
+    cached_proposals: tuple[Mapping[str, Any], ...] = ()
+    last_refresh_round: int | None = None
+
+    @property
+    def identity_digest(self) -> str:
+        return sha256_digest(
+            {
+                "adapter": "OriginalRuntimeAdapterV1",
+                "proposal_every": self.proposal_every,
+                "source_blob_sha1": ORIGINAL_AGENT_BLOB_SHA1,
+                "source_commit": ORIGINAL_SOURCE_COMMIT,
+                "weights": {
+                    "crash_penalty": self.crash_penalty,
+                    "novelty_weight": self.novelty_weight,
+                    "priority_weight": self.priority_weight,
+                    "recent_schedule_penalty": self.recent_schedule_penalty,
+                    "revisit_penalty": self.revisit_penalty,
+                    "status_weight": self.status_weight,
+                },
+            }
+        )
+
+    def refresh_required(self, round_index: int) -> bool:
+        return OriginalControllerV1.proposal_refresh_required(
+            round_index=round_index,
+            proposal_every=self.proposal_every,
+            force_refresh=False,
+            proposal_artifact_exists=bool(self.cached_proposals),
+        )
+
+    def install_proposals(
+        self, *, round_index: int, proposals: Sequence[Mapping[str, Any]]
+    ) -> None:
+        if not proposals:
+            raise ControllerContractError("Original proposal refresh is empty")
+        self.cached_proposals = tuple(dict(item) for item in proposals)
+        self.last_refresh_round = round_index
+
+    def _family_credit(self, family_id: str) -> float:
+        keeps = revises = discards = crashes = collapses = 0
+        for row in self.history:
+            if str(row.get("family_id")) != family_id:
+                continue
+            decision = str(row.get("decision"))
+            keeps += int(decision == "keep")
+            revises += int(decision == "revise")
+            discards += int(decision == "discard")
+            crashes += int(decision == "crash")
+            collapses += int(bool(row.get("quality_collapse")))
+        return min(0.45, 0.2 * keeps + 0.04 * revises) - min(
+            0.45, 0.15 * crashes + 0.04 * discards + 0.18 * collapses
+        )
+
+    def _score(self, action: Mapping[str, Any]) -> float:
+        candidate_id = str(action["candidate_id"])
+        family_id = str(action.get("family_id") or action.get("mechanism_id"))
+        runs = [
+            row
+            for row in self.history
+            if str(row.get("candidate_id")) == candidate_id
+        ]
+        explored = len(runs)
+        crashes = sum(
+            int(str(row.get("decision")) == "crash") for row in runs
+        )
+        recently_scheduled = bool(self.history) and str(
+            self.history[-1].get("candidate_id")
+        ) == candidate_id
+        priority = {"high": 1.0, "medium": 0.5, "low": 0.2}.get(
+            str(action.get("priority", "high")).lower(), 0.0
+        )
+        status = {
+            "implemented": 1.0,
+            "implement-ready": 0.7,
+            "spec-ready": 0.3,
+            "idea": 0.1,
+        }.get(str(action.get("status", "implemented")).lower(), 0.0)
+        novelty = 1.0 / (1.0 + explored)
+        return (
+            self.novelty_weight * novelty
+            + self.priority_weight * priority
+            + self.status_weight * status
+            + self._family_credit(family_id)
+            - self.revisit_penalty * explored
+            - self.crash_penalty * crashes
+            - (
+                self.recent_schedule_penalty
+                if recently_scheduled
+                else 0.0
+            )
+        )
+
+    def rank(
+        self, common_eligible_actions: Sequence[Mapping[str, Any]]
+    ) -> tuple[Mapping[str, Any], ...]:
+        if not common_eligible_actions:
+            return ()
+        used_semantics = {
+            str(row["mechanism_semantics_digest"])
+            for row in self.history
+            if row.get("mechanism_semantics_digest")
+        }
+        indexed = list(enumerate(common_eligible_actions))
+        indexed.sort(
+            key=lambda item: (
+                1
+                if str(item[1].get("mechanism_semantics_digest"))
+                in used_semantics
+                else 0,
+                -self._score(item[1]),
+                item[0],
+            )
+        )
+        return tuple(dict(item) for _index, item in indexed)
+
+    def close_round(self, feedback: Mapping[str, Any]) -> Mapping[str, Any]:
+        validate_no_research_evidence_authority_fields(feedback)
+        outcome = dict(feedback["search_outcome"])
+        metrics = dict(outcome.get("normalized_metrics", {}))
+        metric = metrics.get("ndcg@10", metrics.get("ndcg"))
+        prior_values = [
+            float(row["metric"])
+            for row in self.history
+            if isinstance(row.get("metric"), (int, float))
+        ]
+        prior_best = max(prior_values) if prior_values else None
+        if str(outcome.get("run_status")) != "SUCCESS" or metric is None:
+            decision = "crash"
+        elif prior_best is None or float(metric) > prior_best + 1e-5:
+            decision = "keep"
+        elif float(metric) >= prior_best - 0.002:
+            decision = "revise"
+        else:
+            decision = "discard"
+        row = {
+            "candidate_id": str(feedback["candidate_id"]),
+            "decision": decision,
+            "family_id": str(feedback.get("mechanism_id") or ""),
+            "mechanism_semantics_digest": feedback.get(
+                "mechanism_semantics_digest"
+            ),
+            "metric": float(metric) if metric is not None else None,
+            "quality_collapse": (
+                prior_best is not None
+                and metric is not None
+                and float(metric) < prior_best - 0.05
+            ),
+            "round_index": int(feedback["round_index"]),
+        }
+        self.history.append(row)
+        transition = {
+            "applied_transition_class": "ORIGINAL_RUNTIME_FEEDBACK_CONSUMED",
+            "decision": decision,
+            "feedback_consumption_count": 1,
+            "history_digest": sha256_digest(self.history),
+            "round_feedback_digest": sha256_digest(feedback),
+            "search_memory_commit": "NO_WRITE",
+            "source_blob_sha1": ORIGINAL_AGENT_BLOB_SHA1,
+            "source_commit": ORIGINAL_SOURCE_COMMIT,
+        }
+        return {**transition, "transition_digest": sha256_digest(transition)}
+
+    def state_projection(self) -> Mapping[str, Any]:
+        return canonical_value(
+            {
+                "best_metric": max(
+                    (
+                        float(row["metric"])
+                        for row in self.history
+                        if isinstance(row.get("metric"), (int, float))
+                    ),
+                    default=None,
+                ),
+                "executed": [
+                    {
+                        "candidate_id": row["candidate_id"],
+                        "decision": row["decision"],
+                        "family_id": row["family_id"],
+                        "metric": row["metric"],
+                    }
+                    for row in self.history[-12:]
+                ],
+                "last_refresh_round": self.last_refresh_round,
+                "proposal_every": self.proposal_every,
+            }
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class ResearchLineControllerV1:
     """A seam only; Producer, Router, Meta, and Search Memory arrive in M2."""
@@ -221,4 +427,3 @@ class ResearchLineControllerV1:
             "search_memory_commit": search_memory_commit_or_no_write,
         }
         return {**transition, "transition_digest": sha256_digest(transition)}
-

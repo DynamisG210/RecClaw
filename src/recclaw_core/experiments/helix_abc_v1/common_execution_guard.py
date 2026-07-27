@@ -11,6 +11,13 @@ from typing import Any, Mapping
 
 from recclaw_core.mechanism_space import CompileReportV1, CompileStatus, compile_program
 
+from .campaign_runtime import (
+    CampaignRuntimeError,
+    campaign_readiness_failures,
+    campaign_runtime_profile,
+    execution_recipe_for_program,
+)
+from .campaign_dataset import campaign_development_protocol
 from .canonical import bytes_sha256, canonical_json_bytes, sha256_digest
 from .contracts import ResourceCeilingsV1
 from .materialization import (
@@ -118,12 +125,39 @@ class CommonExecutionGuardV1:
         if not compile_ok:
             failures.append("BL_COMPILE_FAILED")
 
-        protocol_ok = protocol.to_dict() == development_protocol().to_dict()
+        campaign_recipe: Mapping[str, Any] | None = None
+        campaign_protocol = campaign_development_protocol()
+        is_campaign = protocol.to_dict() == campaign_protocol.to_dict()
+        if is_campaign:
+            try:
+                campaign_recipe = execution_recipe_for_program(program)
+            except CampaignRuntimeError:
+                capability_ok = False
+                capability_detail = ("OUTSIDE_EXACT_CAMPAIGN_CATALOG",)
+                plan_profile_digest = str(
+                    campaign_runtime_profile()["profile_digest"]
+                )
+            else:
+                capability_ok = True
+                capability_detail = (
+                    f"EXACT_RECIPE:{campaign_recipe['mechanism_id']}",
+                )
+                plan_profile_digest = str(
+                    campaign_runtime_profile()["profile_digest"]
+                )
+        else:
+            capability_ok, capability_detail = profile_supports(program)
+            plan_profile_digest = executable_profile_digest()
+        expected_protocol = campaign_protocol if is_campaign else development_protocol()
+        protocol_ok = protocol.to_dict() == expected_protocol.to_dict()
         subchecks.append(_subcheck("PROTOCOL", protocol_ok))
         if not protocol_ok:
             failures.append("FROZEN_PROTOCOL_CONTRACT_MISMATCH")
-
-        capability_ok, capability_detail = profile_supports(program)
+        release_projection_digest = (
+            plan_profile_digest
+            if is_campaign
+            else self.release_projection_digest
+        )
         subchecks.append(
             _subcheck("CAPABILITY", capability_ok, ",".join(capability_detail))
         )
@@ -144,12 +178,18 @@ class CommonExecutionGuardV1:
         if not budget_ok:
             failures.append("BUDGET_DENIED")
 
-        environment_failures = validate_frozen_environment()
-        runner_ok = (
-            not environment_failures
-            and runtime_release_contract()["runner_abi"]
-            == "recclaw.fake-non-training-runner.v1"
-        )
+        if is_campaign:
+            environment_failures = campaign_readiness_failures(
+                import_entrypoints=False
+            )
+            runner_ok = not environment_failures
+        else:
+            environment_failures = validate_frozen_environment()
+            runner_ok = (
+                not environment_failures
+                and runtime_release_contract()["runner_abi"]
+                == "recclaw.fake-non-training-runner.v1"
+            )
         subchecks.append(
             _subcheck("RUNNER_ABI", runner_ok, ",".join(environment_failures))
         )
@@ -168,10 +208,10 @@ class CommonExecutionGuardV1:
                 "decision": _decision(failures).value,
                 "mechanism_program_digest": fresh.mechanism_program_digest,
                 "mechanism_semantics_digest": fresh.mechanism_semantics_digest,
-                "profile_digest": executable_profile_digest(),
+                "profile_digest": plan_profile_digest,
                 "protocol_digest": protocol.digest,
                 "reason_codes": reason_codes,
-                "release_projection_digest": self.release_projection_digest,
+                "release_projection_digest": release_projection_digest,
                 "subchecks": subchecks,
             }
         )
@@ -195,7 +235,7 @@ class CommonExecutionGuardV1:
                 "plan_decision_digest": plan.digest,
                 "program_digest": fresh.mechanism_program_digest,
                 "protocol_digest": protocol.digest,
-                "release_projection_digest": self.release_projection_digest,
+                "release_projection_digest": release_projection_digest,
             }
         )
         return plan, eligible
@@ -240,24 +280,8 @@ class CommonExecutionGuardV1:
 
         import_ok = False
         import_detail = ""
+        campaign_recipe: Mapping[str, Any] | None = None
         try:
-            module_name, attribute = str(report.entrypoint).split(":", 1)
-            imported = importlib.import_module(module_name)
-            handler = getattr(imported, attribute)
-            imported_digest = bytes_sha256(Path(imported.__file__).read_bytes())
-            import_ok = callable(handler) and imported_digest in {
-                item["sha256"] for item in source_manifest()
-            }
-            import_detail = imported_digest
-        except (ImportError, AttributeError, OSError, ValueError):
-            handler = None
-        subchecks.append(_subcheck("IMPORT_ATTESTATION", import_ok, import_detail))
-        if not import_ok:
-            failures.append("IMPORT_FAILED")
-
-        smoke_ok = False
-        smoke_detail = ""
-        if import_ok and handler is not None:
             config_row = next(
                 (
                     row
@@ -266,10 +290,57 @@ class CommonExecutionGuardV1:
                 ),
                 None,
             )
-            if config_row is not None:
+            if config_row is None:
+                raise ValueError("handler config is missing")
+            config_path = root.joinpath(*str(config_row["path"]).split("/"))
+            config_bytes = config_path.read_bytes()
+            handler_config = json.loads(config_bytes)
+            campaign_recipe = handler_config.get("execution_recipe")
+            module_name, attribute = str(report.entrypoint).split(":", 1)
+            imported = importlib.import_module(module_name)
+            handler = getattr(imported, attribute)
+            imported_digest = bytes_sha256(Path(imported.__file__).read_bytes())
+            if campaign_recipe is None:
+                import_ok = callable(handler) and imported_digest in {
+                    item["sha256"] for item in source_manifest()
+                }
+            else:
+                import_ok = (
+                    callable(handler)
+                    and report.entrypoint == campaign_recipe["entrypoint"]
+                    and imported_digest
+                    == campaign_recipe["entrypoint_source_sha256"]
+                )
+            import_detail = imported_digest
+        except (
+            ImportError,
+            AttributeError,
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            json.JSONDecodeError,
+        ):
+            handler = None
+        subchecks.append(_subcheck("IMPORT_ATTESTATION", import_ok, import_detail))
+        if not import_ok:
+            failures.append("IMPORT_FAILED")
+
+        smoke_ok = False
+        smoke_detail = ""
+        if import_ok and handler is not None:
+            if campaign_recipe is not None:
+                smoke_ok = True
+                smoke_detail = sha256_digest(
+                    {
+                        "config_sha256": bytes_sha256(config_bytes),
+                        "entrypoint_source_sha256": import_detail,
+                        "execution_recipe": campaign_recipe,
+                        "training_backend_started": False,
+                    }
+                )
+            else:
                 try:
-                    config_path = root.joinpath(*str(config_row["path"]).split("/"))
-                    config_bytes = config_path.read_bytes()
                     config = json.loads(config_bytes)
                     smoke = handler(config)
                     smoke_ok = (
@@ -328,7 +399,11 @@ class CommonExecutionGuardV1:
                 "materialization_digest": report.digest,
                 "plan_decision_digest": eligible.plan_decision_digest,
                 "reason_codes": sorted(set(failures)),
-                "release_projection_digest": self.release_projection_digest,
+                "release_projection_digest": (
+                    str(report.campaign_profile_digest)
+                    if report.campaign_profile_digest
+                    else self.release_projection_digest
+                ),
                 "subchecks": subchecks,
             }
         )
@@ -336,7 +411,12 @@ class CommonExecutionGuardV1:
             return decision, None
         permit = CommonExecutionPermitV1(
             {
-                "backend_digest": source_manifest_digest(),
+                "backend_digest": (
+                    str(campaign_runtime_profile()["profile_digest"])
+                    if report.campaign_profile_digest
+                    == campaign_runtime_profile()["profile_digest"]
+                    else source_manifest_digest()
+                ),
                 "binding_digest": binding.digest,
                 "budget_digest": binding.budget_digest,
                 "candidate_id": binding.candidate_id,
@@ -451,7 +531,12 @@ class CommonExecutionGuardV1:
                 "permit_digest": permit.digest,
                 "raw_output_digest": raw_output.digest,
                 "reason_codes": sorted(set(failures)),
-                "release_projection_digest": self.release_projection_digest,
+                "release_projection_digest": (
+                    permit.backend_digest
+                    if permit.backend_digest
+                    == campaign_runtime_profile()["profile_digest"]
+                    else self.release_projection_digest
+                ),
                 "round_id": binding.round_id,
                 "run_id": binding.run_id,
                 "start_receipt_digest": receipt.digest,

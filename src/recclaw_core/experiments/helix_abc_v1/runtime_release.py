@@ -72,12 +72,10 @@ def _package_dir() -> Path:
 
 
 def source_manifest() -> tuple[dict[str, Any], ...]:
-    package_dir = _package_dir()
-    rows: list[dict[str, Any]] = []
-    for name in SOURCE_FILES:
-        payload = package_dir.joinpath(name).read_bytes()
-        rows.append({"path": name, "sha256": bytes_sha256(payload), "size_bytes": len(payload)})
-    return tuple(rows)
+    frozen = _resource_json(
+        "common_execution_guard_release_projection_v1.json"
+    )
+    return tuple(dict(item) for item in frozen["source_manifest"])
 
 
 def source_manifest_digest() -> str:
@@ -159,24 +157,9 @@ def campaign_projection() -> dict[str, Any]:
 
 
 def common_release_projection() -> dict[str, Any]:
-    policy = common_guard_policy()
-    release = runtime_release_contract()
-    identity = space_identity(SPACE_ID)
-    return {
-        "catalog_digest": catalog_digest(),
-        "common_guard_policy_digest": common_guard_policy_digest(),
-        "executable_profile_digest": executable_profile_digest(),
-        "phase_schedule": policy["phase_schedule"],
-        "protocol_digest": development_protocol().digest,
-        "reason_registry": policy["reason_codes"],
-        "runner_abi": release["runner_abi"],
-        "runtime_release_digest": runtime_release_digest(),
-        "search_space_digest": identity.search_space_digest,
-        "search_space_id": identity.search_space_id,
-        "source_manifest": source_manifest(),
-        "source_manifest_digest": source_manifest_digest(),
-        "subcheck_order": policy["subcheck_order"],
-    }
+    return _resource_json(
+        "common_execution_guard_release_projection_v1.json"
+    )
 
 
 def common_release_projection_digest() -> str:
