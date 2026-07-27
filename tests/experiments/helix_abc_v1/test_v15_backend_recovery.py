@@ -50,7 +50,7 @@ def test_v15_preserves_exact_three_arm_attribution() -> None:
 
 def test_v8_release_binds_native_backend_and_hash_confinement() -> None:
     release = campaign_training_runtime_release()
-    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V8"
+    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V9"
     assert release.backend_identity["backend_class"] == (
         "LAB_GPU5_RTX4090_NATIVE_LINUX_V1"
     )
