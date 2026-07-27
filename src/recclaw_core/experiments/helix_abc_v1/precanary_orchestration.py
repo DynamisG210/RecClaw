@@ -137,6 +137,33 @@ def m4_budget() -> ResourceCeilingsV1:
     )
 
 
+def _round_execution_budget_debits(
+    *,
+    gpu_device_time_ms: int,
+    gpu_cost_microunits: int,
+    wall_time_ms: int,
+    ceilings: ResourceCeilingsV1,
+    resource_ceiling_rejected: bool,
+) -> tuple[ResourceDebitV1, ...]:
+    """Debit the allocation while preserving actual use in result artifacts."""
+
+    if resource_ceiling_rejected:
+        gpu_device_time_ms = min(
+            gpu_device_time_ms,
+            ceilings.gpu_device_time_ms,
+        )
+        gpu_cost_microunits = min(
+            gpu_cost_microunits,
+            ceilings.gpu_cost_microunits,
+        )
+        wall_time_ms = min(wall_time_ms, ceilings.wall_time_ms)
+    return (
+        ResourceDebitV1("GPU_DEVICE_TIME_MS", gpu_device_time_ms),
+        ResourceDebitV1("GPU_COST_MICROUNITS", gpu_cost_microunits),
+        ResourceDebitV1("WALL_TIME_MS", wall_time_ms),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TreatmentAssignmentEnvelopeV1:
     experiment_id: str
@@ -2035,11 +2062,15 @@ class ThreeArmPreCanaryOrchestratorV1:
             if bool(getattr(self.broker, "v13_mode", False))
             else execution_wall_time_ms
         )
-        execution_debits = (
-            ResourceDebitV1("GPU_DEVICE_TIME_MS", gpu_device_time_ms),
-            ResourceDebitV1("GPU_COST_MICROUNITS", gpu_cost_microunits),
-            ResourceDebitV1(
-                "WALL_TIME_MS", accounted_wall_time_ms
+        execution_debits = _round_execution_budget_debits(
+            gpu_device_time_ms=gpu_device_time_ms,
+            gpu_cost_microunits=gpu_cost_microunits,
+            wall_time_ms=accounted_wall_time_ms,
+            ceilings=self.resource_ceilings,
+            resource_ceiling_rejected=(
+                common_result.exit_status == "COMMON_EXECUTION_FAILURE"
+                and common_result.metric_source
+                == "NOT_ADMITTED_RESOURCE_CEILING"
             ),
         )
         closed = self.store.close_round(
