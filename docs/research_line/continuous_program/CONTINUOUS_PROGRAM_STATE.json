@@ -1,9 +1,9 @@
 {
   "record_schema": "recclaw.continuous-program.state.v1",
-  "active_stage": "V15_FROZEN_PRE_START",
+  "active_stage": "V15_START_AUTHORIZED",
   "active_processes": [],
-  "last_completed_checkpoint": "V15_SCIENTIFIC_ATTRIBUTION_AND_BACKEND_GATE_PASS",
-  "next_automatic_action": "RUN_V15_LIVE_START_AUDIT_AND_START_ON_SUFFICIENTLY_FREE_QUALIFIED_GPU",
+  "last_completed_checkpoint": "V15_LIVE_START_AUDIT_PASS",
+  "next_automatic_action": "START_EXACT_FROZEN_V15_ON_GPU2_AND_SUPERVISE",
   "current_source_commit": "10e8fca7768a7aeb295973925df050bf07ec4fd3",
   "current_contract_digest": "b7ce48653f91c42f5c83ed0fa925bbc85c5aeff6e9d21ddf4d3236dd7a7611d0",
   "current_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
