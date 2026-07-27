@@ -1,24 +1,24 @@
 {
   "record_schema": "recclaw.continuous-program.state.v1",
-  "active_stage": "V15_START_AUTHORIZED",
+  "active_stage": "V16_RESOURCE_REJECTION_ROUND_CLOSURE_RECOVERY",
   "active_processes": [],
-  "last_completed_checkpoint": "V15_LIVE_START_AUDIT_PASS",
-  "next_automatic_action": "START_EXACT_FROZEN_V15_ON_GPU2_AND_SUPERVISE",
+  "last_completed_checkpoint": "V15_PERMANENTLY_SEALED_NON_GO",
+  "next_automatic_action": "SEPARATE_ACTUAL_RESOURCE_AUDIT_FROM_CAPPED_BUDGET_DEBIT_AND_REQUALIFY",
   "current_source_commit": "10e8fca7768a7aeb295973925df050bf07ec4fd3",
   "current_contract_digest": "b7ce48653f91c42f5c83ed0fa925bbc85c5aeff6e9d21ddf4d3236dd7a7611d0",
   "current_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "current_meta_checkpoint": "META_VNEXT_V19_PROVIDER_STRICT_SCHEMA_REBIND",
   "current_backend_release": "TRAINING_RUNTIME_RELEASE_V8_CBFF7492",
-  "pilot_or_main_version": "V15_FROZEN_UNRUN",
+  "pilot_or_main_version": "V15_SEALED_RECOVERING_TO_V16",
   "search_seed": 9217,
   "round_progress": {
     "closed": 0,
     "planned_per_arm": 5,
-    "successful_broker_calls": 0,
-    "ordinary_executions": 0
+    "successful_broker_calls": 4,
+    "ordinary_executions": 1
   },
   "P0": 0,
-  "P1": 0,
+  "P1": 1,
   "P2": 2,
   "hard_stop": false
 }
