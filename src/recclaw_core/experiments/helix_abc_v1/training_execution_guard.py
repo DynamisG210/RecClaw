@@ -232,10 +232,6 @@ class CommonTrainingExecutionGuardV1:
             and raw_output.gpu_device_time_ms >= 0
             and raw_output.gpu_cost_microunits >= 0
             and raw_output.wall_time_ms >= 0
-            and raw_output.gpu_device_time_ms
-            <= runtime_binding.gpu_device_time_ceiling_ms
-            and raw_output.gpu_cost_microunits
-            <= runtime_binding.gpu_cost_ceiling_microunits
             and all(
                 math.isfinite(float(value))
                 for value in raw_output.normalized_metrics.values()
@@ -263,6 +259,17 @@ class CommonTrainingExecutionGuardV1:
         subchecks.append(_subcheck("RAW_RESULT_RELEASE", raw_ok))
         if not raw_ok:
             failures.append("TRAINING_RAW_RESULT_MISMATCH")
+        resource_ceiling_ok = (
+            raw_output.gpu_device_time_ms
+            <= runtime_binding.gpu_device_time_ceiling_ms
+            and raw_output.gpu_cost_microunits
+            <= runtime_binding.gpu_cost_ceiling_microunits
+        )
+        subchecks.append(
+            _subcheck("RESOURCE_CEILING", resource_ceiling_ok)
+        )
+        if not resource_ceiling_ok:
+            failures.append("TRAINING_RESOURCE_CEILING_EXCEEDED")
 
         expected_debits = [
             {"dimension": "GPU_COST_MICROUNITS", "quantity": raw_output.gpu_cost_microunits},
@@ -331,6 +338,32 @@ class CommonTrainingExecutionGuardV1:
                 "subchecks": subchecks,
             }
         )
+        if failures == ["TRAINING_RESOURCE_CEILING_EXCEEDED"]:
+            envelope = RawResultEnvelopeV2(
+                {
+                    "artifact_closure": artifact_closure,
+                    "binding_digest": binding.digest,
+                    "candidate_id": binding.candidate_id,
+                    "common_result_closure_digest": closure.digest,
+                    "evaluation_purpose": binding.execution_purpose,
+                    "exit_status": "COMMON_EXECUTION_FAILURE",
+                    "metric_source": "NOT_ADMITTED_RESOURCE_CEILING",
+                    "normalized_metrics": {},
+                    "ordinary_execution_start_index": 1,
+                    "partition_role": runtime_binding.partition_purpose,
+                    "raw_output_digest": raw_output.digest,
+                    "resource_accounting_digest": (
+                        resource_accounting.digest
+                    ),
+                    "round_id": binding.round_id,
+                    "run_id": binding.run_id,
+                    "runner_abi": binding.runner_abi,
+                    "runtime_binding_digest": runtime_binding.digest,
+                    "runtime_release_digest": release.digest,
+                    "seed": seed,
+                }
+            )
+            return closure, envelope
         if failures:
             return closure, None
         envelope = RawResultEnvelopeV2(

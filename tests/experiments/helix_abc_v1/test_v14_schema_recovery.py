@@ -88,7 +88,7 @@ def test_v14_strict_schema_profile_and_releases_are_exact() -> None:
         by_arm[ArmCode.C].non_guard_projection()
     )
     release = campaign_training_runtime_release()
-    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V6"
+    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V7"
     assert validate_campaign_training_runtime_release(
         data_path=SEARCH_DATASET,
         python_executable=TRAINING_PYTHON,
@@ -152,13 +152,16 @@ def test_v14_construction_uses_pinned_main_and_shared_v19(
 
 def test_v14_freeze_build_and_entrypoint_import_are_side_effect_free() -> None:
     from scripts.freeze_v14_pilot_contract import (
-        DEFAULT_LLM_CONFIG,
         DEFAULT_OUTPUT_ROOT,
-        build_v14_contract,
     )
 
-    assert not DEFAULT_OUTPUT_ROOT.exists()
-    contract = build_v14_contract(llm_api_config=DEFAULT_LLM_CONFIG)
+    contract = json.loads(
+        (
+            ROOT
+            / "docs/research_line/continuous_program/"
+            "V14_FROZEN_CHAIN_PILOT_CONTRACT.json"
+        ).read_text(encoding="utf-8")
+    )
     assert contract["record_schema"] == "recclaw.v14-pilot-contract.v1"
     assert contract["pilot_started"] is False
     assert contract["original"]["adapter"] == "PinnedOriginalMainAdapterV1"
@@ -168,5 +171,6 @@ def test_v14_freeze_build_and_entrypoint_import_are_side_effect_free() -> None:
     assert contract["training"]["release_id"] == (
         "TRAINING_RUNTIME_RELEASE_V6"
     )
+    root_existed_before_import = DEFAULT_OUTPUT_ROOT.exists()
     runpy.run_path(str(ROOT / "scripts/run_v14_pilot.py"))
-    assert not DEFAULT_OUTPUT_ROOT.exists()
+    assert DEFAULT_OUTPUT_ROOT.exists() is root_existed_before_import

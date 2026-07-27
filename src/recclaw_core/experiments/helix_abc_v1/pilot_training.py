@@ -676,8 +676,6 @@ class PilotTrainingLauncherV1:
             artifact_closure=artifact_closure,
             seed=int(profile["ordinary_execution_seed"]),
         )
-        if envelope is None:
-            raise RuntimeError("CommonExecutionGuard rejected the training result")
         _register(
             self._store,
             round_id=str(binding.round_id),
@@ -687,6 +685,10 @@ class PilotTrainingLauncherV1:
             idempotency_key=f"m6r-closure:{claim['claim_id']}",
             payload=canonical_json_bytes(closure.to_dict()),
         )
+        if envelope is None:
+            raise RuntimeError(
+                "CommonExecutionGuard rejected the training result"
+            )
         _register(
             self._store,
             round_id=str(binding.round_id),

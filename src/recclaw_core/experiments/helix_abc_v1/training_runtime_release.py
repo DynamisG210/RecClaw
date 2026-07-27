@@ -48,7 +48,7 @@ TRAINING_RELEASE_RESOURCE = "training_runtime_release_v2.json"
 TRAINING_RUNNER_ABI = "recclaw.package-owned-search-training-runner.v1"
 TRAINING_LAUNCHER_ABI = "recclaw.package-owned-training-launcher.v1"
 TRAINING_LAUNCH_PROTOCOL_ID = "CLAIM_PREPARE_CONFIRM_START_V1"
-CAMPAIGN_TRAINING_RELEASE_RESOURCE = "training_runtime_release_v6.json"
+CAMPAIGN_TRAINING_RELEASE_RESOURCE = "training_runtime_release_v7.json"
 CAMPAIGN_TRAINING_RUNNER_ABI = (
     "recclaw.package-owned-search-training-runner.v2"
 )
@@ -119,7 +119,7 @@ def _handler_registry_projection(
                 TRAINING_RUNNER_ABI,
                 CAMPAIGN_TRAINING_RUNNER_ABI,
             ],
-            "training_release_id": "TRAINING_RUNTIME_RELEASE_V6",
+            "training_release_id": "TRAINING_RUNTIME_RELEASE_V7",
             "training_release_resource": (
                 CAMPAIGN_TRAINING_RELEASE_RESOURCE
             ),

@@ -944,7 +944,16 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
                 over_budget.decision,
                 TrainingClosureDecisionV1.REJECTED.value,
             )
-            self.assertIsNone(envelope)
+            self.assertIsNotNone(envelope)
+            self.assertEqual(
+                envelope.exit_status,
+                "COMMON_EXECUTION_FAILURE",
+            )
+            self.assertEqual(envelope.normalized_metrics, {})
+            self.assertIn(
+                "TRAINING_RESOURCE_CEILING_EXCEEDED",
+                over_budget.reason_codes,
+            )
 
             missing_metric, envelope = close(
                 close_chain(root / "metric", metrics={})
