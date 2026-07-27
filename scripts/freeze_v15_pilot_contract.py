@@ -380,7 +380,7 @@ def main() -> int:
     contract = build_v15_contract(
         llm_api_config=args.llm_api_config.resolve(),
         output_root=args.output_root.resolve(),
-        training_python=args.python.resolve(),
+        training_python=args.python.absolute(),
         recbole_root=args.recbole_root.resolve(),
         data_path=args.data_path.resolve(),
     )
