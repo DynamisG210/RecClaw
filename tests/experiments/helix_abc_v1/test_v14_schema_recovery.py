@@ -81,7 +81,7 @@ def test_v14_strict_schema_profile_and_releases_are_exact() -> None:
         by_arm[ArmCode.C].non_guard_projection()
     )
     release = campaign_training_runtime_release()
-    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V8"
+    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V9"
 
 
 def test_v19_rebind_preserves_v18_learned_policy() -> None:
