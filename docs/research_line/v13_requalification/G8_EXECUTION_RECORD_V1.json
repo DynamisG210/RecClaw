@@ -1,0 +1,61 @@
+{
+  "record_schema": "recclaw.m6g.g8-execution-record.v1",
+  "program": "M6G - V13_SCIENTIFIC_ATTRIBUTION_CLOSURE_AND_PILOT_REQUALIFICATION",
+  "stage": "G8_V13_CONTRACT_SOURCE_PROFILE_CHECKPOINT_FREEZE",
+  "status": "PASS",
+  "authority": "DEVELOPMENT_ONLY",
+  "provider_calls": 0,
+  "ordinary_training_executions": 0,
+  "pilot_started": false,
+  "base_commit": "ab1585aa6da873be3d43e3b752e11e4c61572a03",
+  "source_freeze_commit": "a0956c64dc96fa61a2cf34039111ea0075d04f38",
+  "source_freeze_tree": "fdf048b91ad4ddff22e1b838fe19313cb1177053",
+  "contract": {
+    "path": "docs/research_line/v13_requalification/V13_FROZEN_PILOT_CONTRACT.json",
+    "sha256": "15ee85e50d1b7ca3143276e775faa369d01861a638b6a8507114288d93d3d2ee",
+    "content_digest": "f9c16d06604b1789222a48e5af11c004d6a2bad5aa8cd7512d3a609b5dbb029f",
+    "source_manifest_digest": "620106b753d12b7f9edd296d728b525fde2716f41383c1289d338bb3c101dc3b",
+    "search_seed": 9215,
+    "rounds_per_arm": 5,
+    "output_root": "/root/projects/RecClaw_campaign_pilot_9215_v13",
+    "output_root_absent": true
+  },
+  "frozen_inputs": {
+    "executable_profile_digest": "d483faa471c3f26d321daa89c6946ab67a11a95d459d2d5c095c9da419ee5da1",
+    "runtime_profile_digest": "745b67509bb920a2345e99b8ef4c7ba3daffb8a3d62188ecc1e1978a3a002b87",
+    "meta_policy_bundle_digest": "2d42ac7b9ced6057d3e20e19f1f470338ed00b0fcbc70e790bdce7fa44706024",
+    "broker_release_digest": "3fd4943a6771af1044a25ec7fff0cdb02a609c7e253ff6a16e7fcf2a56bb19d9",
+    "training_release_digest": "b0b1d54699fbdf0cffad11be2c0ec7ecb2d8c2c2fd221a98596d95ca2e0ded74",
+    "g7_gate_result_digest": "262c39b4af9f34aaaaa6fcb3ca7bd25927c0bf3e36f78295a63eeeea5272c970"
+  },
+  "verification": [
+    {
+      "scope": "g8_focused_freeze_runtime_analysis_and_g7_gate",
+      "result": "11 passed"
+    },
+    {
+      "scope": "all_v13_lab_api_m6r_training_m6e_environment",
+      "result": "99 passed, 10 upstream warnings"
+    },
+    {
+      "scope": "frozen_contract_build_and_verify",
+      "result": "PASS"
+    },
+    {
+      "scope": "compile_and_diff",
+      "result": "PASS"
+    }
+  ],
+  "findings": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 3
+  },
+  "p2_inherited_from_g6": [
+    "FAST_ML1M_OUT_OF_SUPPORT_DISABLED",
+    "NEW_AXES_USE_GENERIC_TRANSFER_WITHOUT_AXIS_SPECIFIC_CLAIM",
+    "SLOW_POLICY_CONCENTRATION_REQUIRES_PILOT_OBSERVATION"
+  ],
+  "next_stage": "G9_ONE_FRESH_V13_PILOT",
+  "next_stage_started": false
+}

@@ -1,0 +1,102 @@
+{
+  "record_schema": "recclaw.v13-feedback-mapping.v1",
+  "authority": "DEVELOPMENT_ONLY",
+  "admission": "DeterministicHelixAdmissionV13",
+  "research_visible_fields": [
+    "SearchUtilityEventV2",
+    "ResearchTaskV1.prompt_projection"
+  ],
+  "guard_private_fields_forbidden_from_research": [
+    "claim_ceiling",
+    "reason_codes",
+    "protocol_status",
+    "evidence_use",
+    "protocol_branch",
+    "guard_event_id_or_digest",
+    "fusion_control_id_or_digest",
+    "raw_result_or_artifact_locator"
+  ],
+  "post_mapping": [
+    {
+      "disposition": "NOT_ADJUDICATED",
+      "search_feedback_class": "BASELINE_RESULT",
+      "search_utility": "INCLUDE",
+      "queue": "NONE",
+      "frontier": "SEARCH_ELIGIBLE",
+      "controller_update": true,
+      "meta_update": true,
+      "search_memory_update": true
+    },
+    {
+      "disposition": "DEVELOPMENT_EVIDENCE_USE_ALLOWED",
+      "search_feedback_class": "ADMITTED_SEARCH_RESULT",
+      "search_utility": "INCLUDE",
+      "queue": "OPTIONAL",
+      "frontier": "SEARCH_ELIGIBLE",
+      "controller_update": true,
+      "meta_update": true,
+      "search_memory_update": true
+    },
+    {
+      "disposition": "REQUIRES_CONFIRMATION",
+      "search_feedback_class": "PRELIMINARY_SEARCH_SIGNAL",
+      "search_utility": "INCLUDE_COMMON_ONLY",
+      "queue": "VALIDATE_SAME_CANDIDATE",
+      "frontier": "SEARCH_ELIGIBLE_PRELIMINARY",
+      "controller_update": true,
+      "meta_update": true,
+      "search_memory_update": true
+    },
+    {
+      "disposition": "DIAGNOSTIC_ONLY",
+      "search_feedback_class": "DIAGNOSTIC_ONLY",
+      "search_utility": "EXCLUDE",
+      "queue": "OPTIONAL_DIAGNOSTIC",
+      "frontier": "EXCLUDED",
+      "controller_update": false,
+      "meta_update": false,
+      "search_memory_update": false
+    },
+    {
+      "disposition": "NOT_ADMISSIBLE",
+      "search_feedback_class": "ENGINEERING_ONLY",
+      "search_utility": "EXCLUDE",
+      "queue": "NONE",
+      "frontier": "EXCLUDED",
+      "controller_update": false,
+      "meta_update": false,
+      "search_memory_update": false
+    },
+    {
+      "disposition": "PROTOCOL_BRANCH",
+      "search_feedback_class": "PROTOCOL_BRANCH_TASK",
+      "search_utility": "EXCLUDE",
+      "queue": "PROTOCOL_BRANCH_DIAGNOSTIC",
+      "frontier": "EXCLUDED",
+      "controller_update": true,
+      "meta_update": false,
+      "search_memory_update": true
+    },
+    {
+      "disposition": "QUARANTINE_POST_OR_GUARD_INCONCLUSIVE",
+      "search_feedback_class": "NO_SEARCH_UPDATE",
+      "search_utility": "EXCLUDE",
+      "queue": "NONE",
+      "frontier": "EXCLUDED",
+      "controller_update": false,
+      "meta_update": false,
+      "search_memory_update": false
+    },
+    {
+      "disposition": "ALL_PRE_BLOCKED_OR_PRE_CONTRACT_FAILURE_OR_COMMON_FAILURE",
+      "search_feedback_class": "NO_SEARCH_UPDATE",
+      "search_utility": "EXCLUDE",
+      "queue": "NONE",
+      "frontier": "EXCLUDED",
+      "controller_update": false,
+      "meta_update": false,
+      "search_memory_update": false
+    }
+  ],
+  "confirmed_frontier": "NEVER_UPDATED_BY_ORDINARY_PILOT_RESULT"
+}

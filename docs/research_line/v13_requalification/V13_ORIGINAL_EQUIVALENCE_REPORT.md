@@ -84,13 +84,12 @@ The golden suite covers:
 For fixed source, state, candidates, comparator inputs and seed, the direct
 reference trace equals the V13 Arm A non-projection trace.
 
-## Remaining dependency
+## Matched-comparator closure
 
-The current generic orchestrator still emits typed `NOT_AVAILABLE` for
-comparator delta. The pinned Original correctly treats a missing baseline
-comparison as `revise`; it does not invent a delta. G4 must connect the exact
-matched comparator result to both Original feedback and Research mechanism
-beliefs before Pilot freeze. This is an explicit next-stage dependency, not an
-equivalence exception.
+G4 closed the earlier comparator dependency. Exact matched-comparator results
+are used when available; absence remains the typed value `NOT_AVAILABLE` and
+does not borrow the temporally adjacent same-Arm result. The pinned Original
+therefore receives either an exact comparison or the same explicit missing
+comparison state as the Research path.
 
 No Broker, Provider, training runtime or Pilot was run in G3.
