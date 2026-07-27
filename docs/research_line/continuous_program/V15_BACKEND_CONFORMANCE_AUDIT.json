@@ -30,7 +30,7 @@
     "git_version": "2.25.1",
     "git_executable_sha256": "c3edb15c9715b79fcfb1fa978256cdfc14a9ad72a4a8d5680a9fc5ebc6a57e0e",
     "git_package_sha256": "3fd5cbfa9a6095a2ee2f8d222530f2f1e2bbb53376ab35bd37319562dc914329",
-    "source_bundle_sha256": "9603c4d80386697616571d83a93b94535ec239d51076c7876f0e995bcb9a8de4",
+    "source_bundle_sha256": "f4777318b09f29606b972a778e19936a70477dfbd294ce0d8f08b6cd3b7817a9",
     "exact_blob_materialization": "PASS"
   },
   "fixed_canaries": [
