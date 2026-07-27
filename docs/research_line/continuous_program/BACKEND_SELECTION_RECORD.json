@@ -1,19 +1,33 @@
 {
-  "record_schema": "recclaw.continuous-program.backend-selection.v1",
-  "stage": "V13_AND_SUCCESSOR_CHAIN_PILOT",
-  "selected_backend": "LOCAL_FROZEN_V13_ENVIRONMENT",
+  "record_schema": "recclaw.continuous-program.backend-selection.v2",
+  "stage": "V15_SUCCESSOR_CHAIN_PILOT_AND_LATER_CAMPAIGNS",
+  "selected_backend": "LAB_GPU5_RTX4090_NATIVE_LINUX_V1",
+  "source_checkpoint_commit": "4a88c59ec20bdea6fad3db6fdd5db56a83e63e33",
   "research_llm": {
     "provider": "LABORATORY_API",
     "model": "gpt-5.4",
     "contract_equivalent_fallback": false
   },
   "training": {
-    "python": "/root/projects/RecClaw_m6_training_runtime_v2/bin/python",
-    "recbole_root": "/root/projects/RecBole_m6_runtime",
-    "dataset_root": "/root/projects/RecClaw_campaign_dataset_v1/search",
-    "hardware_class": "LOCAL_SINGLE_GPU_SHARED_SEQUENTIAL_ARMS"
+    "backend_release": "TRAINING_RUNTIME_RELEASE_V8",
+    "campaign_runtime_release_digest": "cbff7492788bb1616e50fb3b947454b8af6f078abbb3df32d941b8489250f80b",
+    "release_content_digest": "da982f05cf1d7121fc95f491fd2c6ee792bf41ed18ccf5ef1e915d2f844dd597",
+    "release_file_sha256": "58bd4c559d7c0612d544de42f30ce47c2ba4db91f0a69457cac8e41825217ec6",
+    "environment_lock_sha256": "638606890c0d529ece7a88ddf9bc5e110bb89e4e35c0791d2bf4a4c52b70b367",
+    "python": "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_v15_backend_v1/runtime_exact_v2/bin/python",
+    "recbole_root": "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_v15_backend_v1/recbole",
+    "dataset_root": "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_v15_backend_v1/search_dataset",
+    "source_root": "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_v15_backend_v1/source",
+    "hardware_class": "NVIDIA_GEFORCE_RTX_4090",
+    "driver_version": "550.76",
+    "torch": "2.10.0+cu128",
+    "scipy": "1.12.0",
+    "filesystem_mode": "HASH_AUDITED_PRIVATE_ROOT_V1",
+    "arm_schedule": "ONE_HARDWARE_CLASS_SEQUENTIAL_BALANCED_A_B_C"
   },
-  "selection_reason": "The chain Pilot must preserve the frozen local runtime, dataset and sequential balanced A/B/C schedule. Longer Effect/Main backend selection remains pending after chain qualification.",
+  "selection_reason": "The local RTX 4070 exceeded the frozen GPU-time and normalized-cost ceilings on V14. gpu5 reproduces the exact project, dataset, Python overlay and locally modified RecBole bytes on one RTX 4090 hardware class; fixed BPR, LightGCN and compositional canaries close within the unchanged ceilings. gpu2 cannot initialize CUDA and is not qualified.",
+  "qualification_record": "V15_BACKEND_CONFORMANCE_AUDIT.json",
   "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
   "formal_acceptance": false
 }

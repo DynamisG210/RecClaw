@@ -246,6 +246,11 @@ def build_contract(
     scientific_gate_path: Path = G7_GATE,
     record_schema: str = "recclaw.v13-pilot-contract.v1",
     source_files: tuple[str, ...] | None = None,
+    training_python: Path = DEFAULT_PYTHON,
+    training_recbole_root: Path = DEFAULT_RECBOLE,
+    training_data_path: Path = DEFAULT_SEARCH_PARENT,
+    dataset_projection: dict[str, Any] | None = None,
+    git_head_at_freeze: str | None = None,
 ) -> dict[str, Any]:
     version_label = record_schema.split(".")[1].upper()
     if output_root.exists():
@@ -280,9 +285,9 @@ def build_contract(
             f"{version_label} laboratory API release is not exact"
         )
     runtime_failures = validate_campaign_training_runtime_release(
-        data_path=DEFAULT_SEARCH_PARENT,
-        python_executable=DEFAULT_PYTHON,
-        recbole_root=DEFAULT_RECBOLE,
+        data_path=training_data_path,
+        python_executable=training_python,
+        recbole_root=training_recbole_root,
     )
     if runtime_failures:
         raise RuntimeError(
@@ -402,7 +407,7 @@ def build_contract(
             ],
             "retries": 0,
         },
-        "dataset": _dataset_projection(),
+        "dataset": dataset_projection or _dataset_projection(),
         "meta": {
             "activation_boundary": "NEXT_CAMPAIGN",
             "checkpoint_path": meta_checkpoint.as_posix(),
@@ -445,8 +450,8 @@ def build_contract(
             "release_manifest_sha256": file_sha256(training_release_path),
             "runner_abi": CAMPAIGN_TRAINING_RUNNER_ABI,
             "profile": campaign_training_profile(),
-            "python": DEFAULT_PYTHON.as_posix(),
-            "recbole_root": DEFAULT_RECBOLE.as_posix(),
+            "python": training_python.as_posix(),
+            "recbole_root": training_recbole_root.as_posix(),
         },
         "analysis": {
             "frontier_projections": [
@@ -462,7 +467,9 @@ def build_contract(
         "source": {
             "files": source_files,
             "manifest_digest": sha256_digest(source_files),
-            "git_head_at_freeze": _git_value("HEAD"),
+            "git_head_at_freeze": (
+                git_head_at_freeze or _git_value("HEAD")
+            ),
             "selected_source_manifest_is_authoritative": True,
         },
     }

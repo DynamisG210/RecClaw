@@ -1,0 +1,61 @@
+{
+  "record_schema": "recclaw.v15-scientific-attribution-gate.v1",
+  "verdict": "PASS",
+  "p0": 0,
+  "p1": 0,
+  "p2": 2,
+  "provider_calls": 0,
+  "training_executions": 3,
+  "parent_gate_result_digest": "6ab03c3a13766efddf9c96124d33880a1b6bfce938bed1a47a1c5e5a9faf19ce",
+  "executable_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
+  "meta_policy_bundle_digest": "95923b800e89c4c4bfb994b5aa8a16069ac8429af056b456f01b42af4ab33744",
+  "training_runtime_release_id": "TRAINING_RUNTIME_RELEASE_V8",
+  "training_runtime_release_digest": "cbff7492788bb1616e50fb3b947454b8af6f078abbb3df32d941b8489250f80b",
+  "backend_conformance_record": "docs/research_line/continuous_program/V15_BACKEND_CONFORMANCE_AUDIT.json",
+  "pilot_outcomes_used": false,
+  "budget_or_threshold_change": false,
+  "checked_invariants": [
+    "single_typed_guard_fusion_search_path",
+    "guard_controls_search_memory_meta_frontier",
+    "no_guard_private_research_input",
+    "exact_pinned_main_original",
+    "four_genuine_discovery_producers",
+    "cross_round_exact_lineage",
+    "matched_comparator_mechanism_beliefs",
+    "runtime_derived_router_utility",
+    "utility_floor_enforced",
+    "same_common_profile_all_arms",
+    "b_c_non_guard_identity_equal",
+    "b_c_evidence_port_only_treatment_difference",
+    "observed_search_eligible_confirmed_separated",
+    "provider_strict_schema_closed",
+    "v19_preserves_v18_slow_policy_and_router_coefficients",
+    "remote_source_profile_and_dataset_content_bound",
+    "local_modified_recbole_bytes_preserved",
+    "fixed_bpr_lightgcn_and_compositional_canaries_closed",
+    "cross_arm_sibling_mutation_detected"
+  ],
+  "verification": [
+    {
+      "scope": "local_v15_v14_and_training_runtime_regression",
+      "result": "19 passed"
+    },
+    {
+      "scope": "remote_backend_and_isolation_regression",
+      "result": "5 passed"
+    },
+    {
+      "scope": "fixed_training_canaries",
+      "result": "PASS, 3 executions, one per declared family"
+    },
+    {
+      "scope": "remote_compile_import_and_runtime_identity",
+      "result": "PASS"
+    }
+  ],
+  "p2_limitations": [
+    "FULL_PILOT_REQUIRES_A_SUFFICIENTLY_FREE_QUALIFIED_GPU_TO_AVOID_EXTERNAL_CONTENTION_CONSUMING_FROZEN_BUDGET",
+    "BACKEND_LACKS_UNPRIVILEGED_MOUNT_NAMESPACE_AND_USES_CONTENT_HASH_CONFINEMENT"
+  ],
+  "gate_result_digest": "4f42cf1f3710fc6a4232ab9c1fce861e5a3a1d8bc1441b1b75f5e910ca8b74a9"
+}
