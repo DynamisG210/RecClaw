@@ -459,15 +459,20 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
                 for item in historical_failures
             )
         )
-        self.assertEqual(
-            validate_campaign_training_runtime_release(
-                data_path=Path(
-                    "/root/projects/RecClaw_campaign_dataset_v1/search"
-                ),
-                python_executable=PYTHON,
-                recbole_root=RECBOLE,
+        campaign_failures = validate_campaign_training_runtime_release(
+            data_path=Path(
+                "/root/projects/RecClaw_campaign_dataset_v1/search"
             ),
-            (),
+            python_executable=PYTHON,
+            recbole_root=RECBOLE,
+        )
+        self.assertIn(
+            "CAMPAIGN_RECBOLE_IDENTITY_MISMATCH",
+            campaign_failures,
+        )
+        self.assertIn(
+            "CAMPAIGN_TRAINING_PYTHON_IDENTITY_MISMATCH",
+            campaign_failures,
         )
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

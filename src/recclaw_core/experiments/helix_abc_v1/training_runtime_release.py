@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from importlib import resources
 from pathlib import Path
@@ -48,7 +49,7 @@ TRAINING_RELEASE_RESOURCE = "training_runtime_release_v2.json"
 TRAINING_RUNNER_ABI = "recclaw.package-owned-search-training-runner.v1"
 TRAINING_LAUNCHER_ABI = "recclaw.package-owned-training-launcher.v1"
 TRAINING_LAUNCH_PROTOCOL_ID = "CLAIM_PREPARE_CONFIRM_START_V1"
-CAMPAIGN_TRAINING_RELEASE_RESOURCE = "training_runtime_release_v7.json"
+CAMPAIGN_TRAINING_RELEASE_RESOURCE = "training_runtime_release_v8.json"
 CAMPAIGN_TRAINING_RUNNER_ABI = (
     "recclaw.package-owned-search-training-runner.v2"
 )
@@ -119,7 +120,7 @@ def _handler_registry_projection(
                 TRAINING_RUNNER_ABI,
                 CAMPAIGN_TRAINING_RUNNER_ABI,
             ],
-            "training_release_id": "TRAINING_RUNTIME_RELEASE_V7",
+            "training_release_id": "TRAINING_RUNTIME_RELEASE_V8",
             "training_release_resource": (
                 CAMPAIGN_TRAINING_RELEASE_RESOURCE
             ),
@@ -157,8 +158,18 @@ def _live_torch_cuda_environment(python_executable: Path) -> dict[str, Any]:
     )
     if not isinstance(payload, dict):
         raise ValueError("torch/CUDA identity probe did not return an object")
-    nvidia_smi = Path("/usr/lib/wsl/lib/nvidia-smi")
-    if nvidia_smi.is_file():
+    nvidia_smi = next(
+        (
+            path
+            for path in (
+                Path("/usr/lib/wsl/lib/nvidia-smi"),
+                Path("/usr/bin/nvidia-smi"),
+            )
+            if path.is_file()
+        ),
+        None,
+    )
+    if nvidia_smi is not None:
         payload["nvidia_driver_version"] = subprocess.check_output(
             [
                 str(nvidia_smi),
@@ -267,6 +278,38 @@ def _git_identity(path: Path) -> tuple[str, str, str]:
         timeout=5,
     )
     return commit, tree, status
+
+
+def _directory_content_manifest(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    root = path.resolve()
+    for directory, names, files in os.walk(root, followlinks=False):
+        names[:] = [
+            name
+            for name in sorted(names)
+            if name not in {".git", "__pycache__"}
+        ]
+        directory_path = Path(directory)
+        for name in sorted(files):
+            file_path = directory_path / name
+            if file_path.suffix == ".pyc":
+                continue
+            relative = file_path.relative_to(root).as_posix()
+            if file_path.is_symlink():
+                payload = os.readlink(file_path).encode("utf-8")
+                kind = "SYMLINK"
+            else:
+                payload = file_path.read_bytes()
+                kind = "FILE"
+            rows.append(
+                {
+                    "kind": kind,
+                    "path": relative,
+                    "sha256": bytes_sha256(payload),
+                    "size_bytes": len(payload),
+                }
+            )
+    return rows
 
 
 def validate_training_runtime_release(
@@ -472,17 +515,94 @@ def validate_campaign_training_runtime_release(
                 failures.append(
                     "CAMPAIGN_TRAINING_ENVIRONMENT_LOCK_MISMATCH"
                 )
-    try:
-        commit, tree, status = _git_identity(recbole_root.resolve())
-    except (OSError, subprocess.SubprocessError):
-        failures.append("CAMPAIGN_RECBOLE_IDENTITY_UNAVAILABLE")
-    else:
+        try:
+            package_versions = json.loads(
+                subprocess.check_output(
+                    [
+                        str(python_path),
+                        "-c",
+                        (
+                            "import importlib.metadata as m,json,sys;"
+                            "names=json.loads(sys.argv[1]);"
+                            "print(json.dumps({name:m.version(name) for name in names},"
+                            "sort_keys=True,separators=(',',':')))"
+                        ),
+                        json.dumps(
+                            sorted(
+                                release.backend_identity[
+                                    "python_package_versions"
+                                ]
+                            )
+                        ),
+                    ],
+                    text=True,
+                    timeout=20,
+                )
+            )
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            failures.append(
+                "CAMPAIGN_TRAINING_PYTHON_PACKAGE_LOCK_UNAVAILABLE"
+            )
+        else:
+            if package_versions != dict(
+                release.backend_identity["python_package_versions"]
+            ):
+                failures.append(
+                    "CAMPAIGN_TRAINING_PYTHON_PACKAGE_LOCK_MISMATCH"
+                )
+        try:
+            torch_cuda = _live_torch_cuda_environment(python_path)
+        except (
+            OSError,
+            ValueError,
+            subprocess.SubprocessError,
+            json.JSONDecodeError,
+        ):
+            failures.append(
+                "CAMPAIGN_TRAINING_TORCH_CUDA_IDENTITY_UNAVAILABLE"
+            )
+        else:
+            observed_digest = sha256_digest(torch_cuda)
+            if (
+                observed_digest
+                != release.backend_identity[
+                    "torch_cuda_environment_digest"
+                ]
+                or sha256_digest(
+                    release.backend_identity["torch_cuda_environment"]
+                )
+                != observed_digest
+            ):
+                failures.append(
+                    "CAMPAIGN_TRAINING_TORCH_CUDA_IDENTITY_MISMATCH"
+                )
+    frozen_recbole_manifest = release.backend_identity.get(
+        "recbole_source_manifest"
+    )
+    if frozen_recbole_manifest is not None:
+        observed_recbole_manifest = _directory_content_manifest(
+            recbole_root
+        )
         if (
-            commit != release.backend_identity["recbole_commit"]
-            or tree != release.backend_identity["recbole_tree"]
-            or status
+            observed_recbole_manifest != list(frozen_recbole_manifest)
+            or sha256_digest(observed_recbole_manifest)
+            != release.backend_identity[
+                "recbole_source_manifest_digest"
+            ]
         ):
             failures.append("CAMPAIGN_RECBOLE_IDENTITY_MISMATCH")
+    else:
+        try:
+            commit, tree, status = _git_identity(recbole_root.resolve())
+        except (OSError, subprocess.SubprocessError):
+            failures.append("CAMPAIGN_RECBOLE_IDENTITY_UNAVAILABLE")
+        else:
+            if (
+                commit != release.backend_identity["recbole_commit"]
+                or tree != release.backend_identity["recbole_tree"]
+                or status
+            ):
+                failures.append("CAMPAIGN_RECBOLE_IDENTITY_MISMATCH")
     failures.extend(
         f"CAMPAIGN_RUNTIME:{item}"
         for item in campaign_readiness_failures(

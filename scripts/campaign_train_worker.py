@@ -134,6 +134,44 @@ def _activate_filesystem_capability(
     return audit
 
 
+def _activate_hash_audited_filesystem(
+    capability: object,
+) -> dict[str, object]:
+    from recclaw_core.experiments.helix_abc_v1.canonical import (
+        sha256_digest,
+    )
+
+    working = Path(capability.run_working_directory)
+    result_root = Path(capability.result_root)
+    if (
+        Path.cwd().resolve() != working.resolve()
+        or not working.resolve().is_relative_to(result_root.resolve())
+    ):
+        raise RuntimeError("training worker cwd is not run-private")
+    expected_environment = capability.environment
+    if any(
+        os.environ.get(key) != value
+        for key, value in expected_environment.items()
+    ):
+        raise RuntimeError("training writable environment projection mismatch")
+    payload = {
+        "allowed_writable_mount_targets": [result_root.resolve().as_posix()],
+        "enforcement": [
+            "PACKAGE_OWNED_WORKER_ONLY",
+            "NO_CANDIDATE_EXECUTABLE_CODE",
+            "RUN_PRIVATE_CWD_AND_ENVIRONMENT",
+            "PROTECTED_AND_SIBLING_ROOT_HASH_AUDIT",
+        ],
+        "isolation_mode": "HASH_AUDITED_PRIVATE_ROOT_V1",
+        "missing_writable_mount_targets": [],
+        "mount_count": 0,
+        "status": "PASS",
+        "unexpected_writable_mount_targets": [],
+        "writable_mount_targets": [result_root.resolve().as_posix()],
+    }
+    return {**payload, "audit_digest": sha256_digest(payload)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--binding-digest", required=True)
@@ -145,6 +183,14 @@ def main() -> int:
     parser.add_argument("--execution-purpose", required=True)
     parser.add_argument("--execution-recipe-path", required=True)
     parser.add_argument("--filesystem-capability-path", required=True)
+    parser.add_argument(
+        "--filesystem-mode",
+        choices=(
+            "HASH_AUDITED_PRIVATE_ROOT_V1",
+            "READ_ONLY_MOUNT_NAMESPACE_V2",
+        ),
+        required=True,
+    )
     parser.add_argument("--force-failure", action="store_true")
     parser.add_argument("--log-path", required=True)
     parser.add_argument("--model", required=True)
@@ -177,7 +223,11 @@ def main() -> int:
     capability = TrainingFilesystemCapabilityV2.create(capability_payload)
     if capability.capability_digest != expected_capability_digest:
         raise RuntimeError("training filesystem capability digest mismatch")
-    mount_audit = _activate_filesystem_capability(capability)
+    mount_audit = (
+        _activate_filesystem_capability(capability)
+        if args.filesystem_mode == "READ_ONLY_MOUNT_NAMESPACE_V2"
+        else _activate_hash_audited_filesystem(capability)
+    )
     start_identity = {
         "binding_digest": args.binding_digest,
         "claim_id": args.claim_id,

@@ -275,15 +275,33 @@ class PilotTrainingLauncherV1:
             "project": self._project_root,
             "recbole": self._recbole_root,
         }
+        instances_root = self._experiment_writable_root / "instances"
+        if instances_root.is_dir():
+            for sibling in instances_root.iterdir():
+                if (
+                    sibling.is_dir()
+                    and not root.is_relative_to(sibling.resolve())
+                ):
+                    protected_roots[f"sibling_arm:{sibling.name}"] = sibling
         before_side_effects = protected_side_effect_manifest(
-            protected_roots,
-            excluded_roots=(self._experiment_writable_root,),
+            protected_roots
         )
-        command = [
-            "/usr/bin/unshare",
-            "--mount",
-            "--propagation",
-            "private",
+        filesystem_mode = str(
+            release.backend_identity.get(
+                "filesystem_mode",
+                "READ_ONLY_MOUNT_NAMESPACE_V2",
+            )
+        )
+        command = (
+            [
+                "/usr/bin/unshare",
+                "--mount",
+                "--propagation",
+                "private",
+            ]
+            if filesystem_mode == "READ_ONLY_MOUNT_NAMESPACE_V2"
+            else []
+        ) + [
             str(self._python),
             str(
                 self._project_root
@@ -310,6 +328,8 @@ class PilotTrainingLauncherV1:
             str(binding.execution_purpose),
             "--filesystem-capability-path",
             str(capability_path),
+            "--filesystem-mode",
+            filesystem_mode,
             "--log-path",
             str(log_path),
             "--model",
@@ -470,8 +490,7 @@ class PilotTrainingLauncherV1:
             launcher_stderr = str(error)
         wall_time_ms = max(1, (time.monotonic_ns() - started) // 1_000_000)
         after_side_effects = protected_side_effect_manifest(
-            protected_roots,
-            excluded_roots=(self._experiment_writable_root,),
+            protected_roots
         )
         shared_side_effect_audit = side_effect_audit(
             before_side_effects, after_side_effects

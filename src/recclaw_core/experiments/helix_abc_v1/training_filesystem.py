@@ -22,9 +22,10 @@ FILESYSTEM_CAPABILITY_POLICY_V2 = {
         "TORCH_HOME",
         "XDG_CACHE_HOME",
     ],
-    "mount_namespace": "PRIVATE",
+    "mount_namespace": "BACKEND_RELEASE_BOUND",
     "process_cwd": "RUN_PRIVATE_WORKING_DIRECTORY",
-    "root_filesystem": "READ_ONLY_BIND_REMOUNT",
+    "root_filesystem": "BACKEND_RELEASE_BOUND",
+    "gpu_device_access": "PLATFORM_GPU_DEVICE_SET",
     "writable_mounts": [
         "EXACT_RUN_ROOT",
         "PRIVATE_TMP",
@@ -150,6 +151,30 @@ def _checked_directory(path: Path, *, field_name: str) -> Path:
         if parent.exists() and parent.is_symlink():
             raise ValueError(f"{field_name} traverses a symlink")
     return resolved
+
+
+def platform_gpu_device_mounts(
+    dev_root: Path = Path("/dev"),
+) -> tuple[str, ...]:
+    """Resolve the concrete WSL or native-NVIDIA device capability."""
+
+    wsl_device = dev_root / "dxg"
+    if wsl_device.exists():
+        return (wsl_device.resolve().as_posix(),)
+    native_devices = [
+        path
+        for path in (
+            dev_root / "nvidiactl",
+            dev_root / "nvidia-uvm",
+            dev_root / "nvidia-uvm-tools",
+            *sorted(dev_root.glob("nvidia[0-9]*")),
+            dev_root / "nvidia-caps",
+        )
+        if path.exists()
+    ]
+    if not native_devices:
+        raise ValueError("no WSL or native-NVIDIA device capability is available")
+    return tuple(path.resolve().as_posix() for path in native_devices)
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,7 +308,7 @@ def build_training_filesystem_capability(
             ],
             "cache_root": cache_root.as_posix(),
             "checkpoint_root": checkpoint.as_posix(),
-            "device_access_mounts": ["/dev/dxg"],
+            "device_access_mounts": list(platform_gpu_device_mounts()),
             "environment_projection": environment,
             "forbidden_shared_roots": [
                 (project / "log").as_posix(),
@@ -439,6 +464,7 @@ __all__ = [
     "make_mount_tree_read_only",
     "make_mount_writable",
     "materialize_training_filesystem_capability",
+    "platform_gpu_device_mounts",
     "protected_side_effect_manifest",
     "side_effect_audit",
 ]

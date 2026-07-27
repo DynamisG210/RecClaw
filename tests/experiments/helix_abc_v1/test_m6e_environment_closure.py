@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 from scipy.sparse import dok_matrix
 
@@ -38,6 +40,7 @@ from recclaw_core.experiments.helix_abc_v1.training_filesystem import (
     build_training_filesystem_capability,
     filesystem_confinement_audit,
     filesystem_mount_audit,
+    platform_gpu_device_mounts,
     protected_side_effect_manifest,
     side_effect_audit,
 )
@@ -88,6 +91,67 @@ def _filesystem_capability(root: Path, arm: str = "a"):
 
 
 class M6EEnvironmentClosureTest(unittest.TestCase):
+    def test_hash_audited_native_worker_requires_private_cwd_and_env(
+        self,
+    ) -> None:
+        from scripts.campaign_train_worker import (
+            _activate_hash_audited_filesystem,
+        )
+
+        with tempfile.TemporaryDirectory() as raw:
+            result = Path(raw) / "run"
+            working = result / "work"
+            working.mkdir(parents=True)
+            environment = {
+                "HOME": (result / "home").as_posix(),
+                "TMPDIR": (result / "tmp").as_posix(),
+            }
+            capability = SimpleNamespace(
+                environment=environment,
+                result_root=result.as_posix(),
+                run_working_directory=working.as_posix(),
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(working)
+                with mock.patch.dict(
+                    os.environ, environment, clear=False
+                ):
+                    audit = _activate_hash_audited_filesystem(
+                        capability
+                    )
+            finally:
+                os.chdir(previous)
+            self.assertEqual(audit["status"], "PASS")
+            self.assertEqual(
+                audit["isolation_mode"],
+                "HASH_AUDITED_PRIVATE_ROOT_V1",
+            )
+
+    def test_native_nvidia_device_capability_is_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            dev = Path(raw)
+            for name in (
+                "nvidia0",
+                "nvidia1",
+                "nvidiactl",
+                "nvidia-uvm",
+                "nvidia-uvm-tools",
+            ):
+                (dev / name).touch()
+            (dev / "nvidia-caps").mkdir()
+            self.assertEqual(
+                platform_gpu_device_mounts(dev),
+                (
+                    (dev / "nvidiactl").as_posix(),
+                    (dev / "nvidia-uvm").as_posix(),
+                    (dev / "nvidia-uvm-tools").as_posix(),
+                    (dev / "nvidia0").as_posix(),
+                    (dev / "nvidia1").as_posix(),
+                    (dev / "nvidia-caps").as_posix(),
+                ),
+            )
+
     def test_base_store_satisfies_audit_port(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             store = _initialized_store(

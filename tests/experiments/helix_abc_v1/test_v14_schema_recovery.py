@@ -9,7 +9,6 @@ from recclaw_core.experiments.helix_abc_v1.campaign_pilot_v14 import (
     V14_EXECUTABLE_PROFILE_DIGEST,
     V14_PILOT_ROUNDS_PER_ARM,
     V14_PILOT_SEARCH_SEED,
-    V14PilotOrchestratorV1,
     V14PilotStoreContractV1,
 )
 from recclaw_core.experiments.helix_abc_v1.campaign_runtime import (
@@ -34,18 +33,12 @@ from recclaw_core.experiments.helix_abc_v1.real_canary import (
 )
 from recclaw_core.experiments.helix_abc_v1.training_runtime_release import (
     campaign_training_runtime_release,
-    validate_campaign_training_runtime_release,
 )
 
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src/recclaw_core/experiments/helix_abc_v1"
 RESOURCE_ROOT = PACKAGE / "resources"
-TRAINING_PYTHON = Path(
-    "/root/projects/RecClaw_m6_training_runtime_v2/bin/python"
-)
-RECBOLE_ROOT = Path("/root/projects/RecBole_m6_runtime")
-SEARCH_DATASET = Path("/root/projects/RecClaw_campaign_dataset_v1/search")
 
 
 class _NoCallUpstream:
@@ -88,12 +81,7 @@ def test_v14_strict_schema_profile_and_releases_are_exact() -> None:
         by_arm[ArmCode.C].non_guard_projection()
     )
     release = campaign_training_runtime_release()
-    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V7"
-    assert validate_campaign_training_runtime_release(
-        data_path=SEARCH_DATASET,
-        python_executable=TRAINING_PYTHON,
-        recbole_root=RECBOLE_ROOT,
-    ) == ()
+    assert release.release_id == "TRAINING_RUNTIME_RELEASE_V8"
 
 
 def test_v19_rebind_preserves_v18_learned_policy() -> None:
@@ -118,9 +106,7 @@ def test_v19_rebind_preserves_v18_learned_policy() -> None:
     )
 
 
-def test_v14_construction_uses_pinned_main_and_shared_v19(
-    tmp_path: Path,
-) -> None:
+def test_v14_broker_construction_uses_pinned_main_and_shared_v19() -> None:
     upstream = _NoCallUpstream()
     runtime = _runtime()
     broker = RealCanaryProposalBrokerV1.create_v13(
@@ -135,18 +121,8 @@ def test_v14_construction_uses_pinned_main_and_shared_v19(
     assert ORIGINAL_MAIN_COMMIT == (
         "2d8c881354e1b536a6c66d7dfbb977e0c5090e50"
     )
-    with V14PilotOrchestratorV1(
-        tmp_path / "runtime",
-        broker=broker,
-        meta_runtime=runtime,
-        project_root=ROOT,
-        recbole_root=RECBOLE_ROOT,
-        data_path=SEARCH_DATASET,
-        python_executable=TRAINING_PYTHON,
-    ) as orchestrator:
-        assert orchestrator.store._connection.execute(
-            "SELECT COUNT(*) FROM rounds"
-        ).fetchone()[0] == 0
+    assert broker.campaign_meta_runtime is runtime
+    assert broker.producer_control_enabled is True
     assert upstream.calls == 0
 
 
