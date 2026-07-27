@@ -1,0 +1,65 @@
+{
+  "record_schema": "recclaw.v12-supersession-record.v1",
+  "recorded_date": "2026-07-27",
+  "recovery_program": "M6G_V13_SCIENTIFIC_ATTRIBUTION_CLOSURE_AND_PILOT_REQUALIFICATION",
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "formal_acceptance": false,
+  "v12": {
+    "experiment_id": "HELIX-ABC-DEVELOPMENT-CAMPAIGN-PILOT-9214-V12",
+    "contract_path": "docs/research_line/readiness/CAMPAIGN_PILOT_V12_FROZEN_CONTRACT.json",
+    "contract_sha256": "c252857649faf3501c97ebe7e76fbcd5c6008711292aaf1fe540bb41d6a3bec5",
+    "contract_content_digest": "83ffd4ca758a888fcd5c8d956f24195df24e942f9e32d56a68aa1704671e3412",
+    "readiness_record_path": "docs/research_line/readiness/CAMPAIGN_PILOT_V12_PRE_RUN_READINESS_AUDIT.md",
+    "readiness_record_sha256": "145ffd26b51e6cb54e2140ade01b2ca41acab8239f489edbdee25a2be0bfe68c",
+    "output_root": "/root/projects/RecClaw_campaign_pilot_9214_v12",
+    "output_root_state": "ABSENT",
+    "pilot_started": false,
+    "ready_to_start": "SUPERSEDED",
+    "reusable": false,
+    "reason": "SCIENTIFIC_ATTRIBUTION_CLOSURE_REQUIRED"
+  },
+  "resolved_input_identity": {
+    "worktree": "/root/projects/RecClaw_static_pilot",
+    "branch": "feat/research-line-meta-v17-pilot",
+    "head": "664cae9d1d490a09def2594c6c31a7d16355b04c",
+    "head_tree": "742b541afcc4e0840ccf76a3ddc80ef300f3d151",
+    "upstream": null,
+    "tracked_diff_sha256": "d07abc666c5c1f6356175ecd8281674f74a3dd584aaf3f9b435ebb9eacde00a8",
+    "untracked_manifest_sha256": "5c6cf5e73700881c0e96f27b93e3dd7e952aee84b37d1a77840edee46e0def16",
+    "v12_worktree_state": "DIRTY_PREEXISTING_M6_AND_V12_BOUNDARY",
+    "meta_checkpoint_sha256": "759791dc5a26154237cef2a79cebde43714f54035d9fc54be1c97c623c126d00",
+    "meta_policy_bundle_digest": "20e3dd88d1e6d6f338ffc8b06d2e196762116c4779456dde43b1a2fe38918f61",
+    "bl_executable_catalog_sha256": "09aacb27038621a3576bd5c3ff4e214f587900066850280c032afb65fd842794",
+    "bl_catalog_projection_digest": "47a74bd5fc95dae2068ab4681addde370a3f93dc94d16ceb106d7a6c52ac761a",
+    "campaign_runtime_profile_digest": "f9ae3e944f07d4b63f9e834f15ba614d84ccc016f7456f6e660b2bb5cdffebb5",
+    "guard_core_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+    "training_runtime_release_sha256": "cd450b4c0cfa57da454935ed34346f6b6aa24ac2d1e77f68736d551c69dc6a76",
+    "broker_release_sha256": "3953b95eb1120b505a30991b1d6e4098015ce1549e7a0ab6ba86c03762436205",
+    "m6g_command_sha256": "961c034efc13db365ef913a978b166cd1dda5e67255cecf6a15bedb89963132b"
+  },
+  "scientific_attribution_findings": [
+    "V12 ordinary dict feedback bypasses the typed fused-feedback contract.",
+    "Guard dispositions do not control Search Memory, Meta state, or frontier eligibility.",
+    "Guard evidence input remains an empty campaign-start snapshot and validation is not a typed normal-budget queue.",
+    "Arm A uses a handwritten approximation rather than a differential-equivalent pinned Original decision core.",
+    "The falsification Producer is forced into a CONTROL-only slot and the deterministic control service has no active runtime consumer.",
+    "Cross-round lineage falls back to catalog roots and mechanism beliefs compare unrelated temporal neighbors.",
+    "Router runnable and blocker features are placeholders and the declared utility floor is not enforced.",
+    "The 21-recipe menu is not a Main-grade 50-round compositional executable profile.",
+    "Ordinary one-seed metrics are mislabeled as confirmed frontier observations."
+  ],
+  "preservation": {
+    "v12_artifacts_modified": false,
+    "v12_artifacts_deleted": false,
+    "v12_execution_permitted": false,
+    "v12_roots_reusable": false
+  },
+  "next_gate": {
+    "name": "PilotScientificAttributionGateV13",
+    "required_verdict": "PASS",
+    "required_p0": 0,
+    "required_p1": 0,
+    "v13_pilot_authorized_before_gate": false
+  }
+}
