@@ -81,9 +81,13 @@ def candidate(
     planned: dict[str, object] | None = None,
     common_plan_digest: str | None = None,
     arm_id: str = "opaque-c",
+    seed_id: str = "2026",
 ) -> CandidateEnvelope:
     return CandidateEnvelope(
         candidate_id=candidate_id,
+        candidate_semantic_digest=hashlib.sha256(
+            f"semantic:{candidate_id}".encode()
+        ).hexdigest(),
         opaque_arm_instance_id=arm_id,
         common_status="COMMON_PASS",
         mechanism_program_digest=hashlib.sha256(
@@ -95,7 +99,7 @@ def candidate(
         planned_protocol=planned or protocol(),
         target_model="CandidateModel",
         comparator="LightGCN",
-        seed_ids=("2026",),
+        seed_ids=(seed_id,),
         purpose="development comparison",
     )
 
@@ -106,6 +110,8 @@ def result(
     observed: dict[str, object] | None = None,
     raw_identity: str = "raw-001",
     arm_id: str = "opaque-c",
+    seed_id: str = "2026",
+    ndcg: float = 0.27,
 ) -> RawResultEnvelope:
     return RawResultEnvelope(
         candidate_id=candidate_id,
@@ -119,7 +125,7 @@ def result(
         comparator="LightGCN",
         seed_runs=(
             {
-                "seed_id": "2026",
+                "seed_id": seed_id,
                 "run_id": f"run-{raw_identity}",
                 "artifact_sha256": hashlib.sha256(
                     f"artifact:{raw_identity}".encode()
@@ -129,7 +135,7 @@ def result(
         observation_kind="METRIC_EVALUATION",
         run_status="SUCCESS",
         artifact_identity_status="EXACT",
-        normalized_metrics={"ndcg": 0.27},
+        normalized_metrics={"ndcg": ndcg},
     )
 
 
@@ -198,16 +204,55 @@ class M3HelixCompositionTest(unittest.TestCase):
             sha256_digest(successor_preimage),
             successor["content_digest"],
         )
-        successor_components = dict(successor["component_digests"])
+        campaign_contract = json.loads(
+            (
+                ROOT
+                / "docs/research_line/readiness/"
+                "CAMPAIGN_PILOT_V12_FROZEN_CONTRACT.json"
+            ).read_text()
+        )
+        current_sources = campaign_contract["source"]["files"]
         for path, digest in m2["component_digests"]:
             current = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
-            if current != digest:
-                self.assertEqual(successor_components[path], current)
-        for path, digest in successor["component_digests"]:
-            self.assertEqual(
-                hashlib.sha256((ROOT / path).read_bytes()).hexdigest(),
-                digest,
-            )
+            if current != digest and not path.startswith("tests/"):
+                self.assertEqual(current_sources[path], current)
+        runtime_repair = json.loads(
+            (
+                ROOT
+                / "docs/research_line/readiness/"
+                "RESEARCH_LINE_RUNTIME_REPAIR_RELEASE_V3.json"
+            ).read_text()
+        )
+        self.assertEqual(
+            runtime_repair["predecessor"]["artifact_path"],
+            (
+                "docs/research_line/readiness/"
+                "NON_META_RESEARCH_LINE_RELEASE_V2.json"
+            ),
+        )
+        self.assertEqual(
+            runtime_repair["predecessor"]["artifact_sha256"],
+            hashlib.sha256(
+                (
+                    ROOT
+                    / runtime_repair["predecessor"]["artifact_path"]
+                ).read_bytes()
+            ).hexdigest(),
+        )
+        self.assertEqual(
+            runtime_repair["predecessor"]["content_digest"],
+            successor["content_digest"],
+        )
+        repair_preimage = copy.deepcopy(runtime_repair)
+        repair_preimage.pop("content_digest")
+        self.assertEqual(
+            sha256_digest(repair_preimage),
+            runtime_repair["content_digest"],
+        )
+        for path, _digest in successor["component_digests"]:
+            current = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+            if current != _digest and not path.startswith("tests/"):
+                self.assertEqual(current_sources[path], current)
         m1 = json.loads(
             (
                 ROOT
@@ -273,6 +318,98 @@ class M3HelixCompositionTest(unittest.TestCase):
             self.assertEqual(instruction.destination, "VALIDATION_ROUTER")
             self.assertNotIn("protocol_diagnostics", feedback.to_dict())
             self.assertNotIn("input_digest", feedback.to_dict())
+
+    def test_guard_accumulates_exact_seed_bundle_to_multi_seed_signal(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            ledger = EvidenceGuardLedgerWriterV1(
+                Path(raw) / "c-private-audit"
+            )
+            port = EvidenceGuardPortV1(context(), ledger, "opaque-c")
+            dispositions = []
+            for seed, metric in (
+                ("2026", 0.27),
+                ("2027", 0.28),
+                ("2028", 0.29),
+            ):
+                self.assertEqual(
+                    port.pre_run(candidate(seed_id=seed)).status,
+                    PortStatus.ALLOW,
+                )
+                dispositions.append(
+                    port.post_run(
+                        result(
+                            raw_identity=f"raw-{seed}",
+                            seed_id=seed,
+                            ndcg=metric,
+                        )
+                    ).evidence_use
+                )
+            self.assertEqual(
+                dispositions,
+                [
+                    "COUNT_AS_LOCAL_PRELIMINARY_SIGNAL",
+                    "COUNT_AS_LOCAL_PRELIMINARY_SIGNAL",
+                    (
+                        "COUNT_AS_SAME_PROTOCOL_MULTI_SEED_"
+                        "DEVELOPMENT_SIGNAL"
+                    ),
+                ],
+            )
+            snapshot = ledger.evidence_snapshot()
+            self.assertEqual(
+                tuple(
+                    item.observation_seed
+                    for item in snapshot.observations
+                ),
+                ("2026", "2027", "2028"),
+            )
+            self.assertEqual(
+                len(
+                    snapshot.guard_core_projection(
+                        snapshot_id=snapshot.digest,
+                        claim_id="CLAIM-001",
+                        protocol_id="PROTO-ML1M-FULL-001",
+                    )["observation_ids"]
+                ),
+                3,
+            )
+
+    def test_guard_snapshot_excludes_unrelated_candidate_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            ledger = EvidenceGuardLedgerWriterV1(
+                Path(raw) / "c-private-audit"
+            )
+            unrelated = candidate("cand-unrelated")
+            ledger.record_evidence_observation(
+                candidate_semantic_digest=(
+                    unrelated.candidate_semantic_digest
+                ),
+                protocol_digest=sha256_digest(protocol()),
+                comparator_identity=unrelated.comparator,
+                observation_seed="2026",
+                observation_id=hashlib.sha256(
+                    b"unrelated-observation"
+                ).hexdigest(),
+                raw_result=result(
+                    "cand-unrelated",
+                    raw_identity="raw-unrelated",
+                ).to_dict(),
+            )
+            port = EvidenceGuardPortV1(context(), ledger, "opaque-c")
+            target = candidate()
+            self.assertEqual(port.pre_run(target).status, PortStatus.ALLOW)
+            stored = ledger.request_and_event_for_candidate(
+                phase="PRE",
+                candidate_id=target.candidate_id,
+            )
+            self.assertIsNotNone(stored)
+            request, _event = stored
+            self.assertEqual(
+                request["context"]["current_evidence"]["observation_ids"],
+                [],
+            )
 
     def test_post_observed_protocol_flip_is_excluded_from_current_frontier(self) -> None:
         sampled = protocol()

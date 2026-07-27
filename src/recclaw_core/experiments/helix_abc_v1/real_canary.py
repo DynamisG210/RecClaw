@@ -1251,6 +1251,7 @@ class RealCanaryOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         selected: CandidateEnvelope,
         opaque_instance_id: str,
         common_result: Any,
+        observation_seed: str,
     ) -> RawResultEnvelope:
         return RawResultEnvelope(
             candidate_id=selected.candidate_id,
@@ -1281,7 +1282,7 @@ class RealCanaryOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             comparator="LightGCN",
             seed_runs=(
                 {
-                    "seed_id": "2026",
+                    "seed_id": observation_seed,
                     "run_id": str(common_result.run_id),
                     "artifact_sha256": str(common_result.raw_output_digest),
                 },

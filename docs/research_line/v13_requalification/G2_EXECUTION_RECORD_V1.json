@@ -1,0 +1,70 @@
+{
+  "record_schema": "recclaw.m6g.g2-execution-record.v1",
+  "program": "M6G — V13_SCIENTIFIC_ATTRIBUTION_CLOSURE_AND_PILOT_REQUALIFICATION",
+  "stage": "G2_EVIDENCE_SNAPSHOT_TASK_QUEUE_FRONTIER_SEMANTICS",
+  "status": "PASS",
+  "authority": "DEVELOPMENT_ONLY",
+  "provider_calls": 0,
+  "training_executions": 0,
+  "pilot_started": false,
+  "base_commit": "6284b74347e6f96fc7e4297736cd3ffdba05f1ec",
+  "base_tree": "d5be9939f2080989e7e6a9639da2701fcff0474d",
+  "findings": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 0
+  },
+  "closed_invariants": {
+    "evidence_key": [
+      "candidate_semantic_digest",
+      "protocol_digest",
+      "comparator_identity",
+      "observation_seed"
+    ],
+    "cross_candidate_evidence_contamination": false,
+    "validation_extra_llm_calls": 0,
+    "validation_extra_proposals": 0,
+    "validation_ordinary_executions_per_round": 1,
+    "validation_seed_sequence": [
+      "2026",
+      "2027",
+      "2028"
+    ],
+    "ordinary_one_seed_confirmed": false,
+    "pilot_treatment_effect_computed": false
+  },
+  "frontier_semantics": {
+    "OBSERVED": "all mechanically closed rows with valid metrics",
+    "SEARCH_ELIGIBLE": "explicit admitted and preliminary eligibility only",
+    "CONFIRMED": "explicit confirmed post-selection row under matching frozen evaluator only"
+  },
+  "audit": {
+    "path": "docs/research_line/v13_requalification/G2_INDEPENDENT_ADVERSARIAL_AUDIT.md",
+    "verdict": "PASS_P0_0_P1_0_P2_0"
+  },
+  "verification": [
+    {
+      "scope": "targeted_fake_e2e_and_adversarial",
+      "result": "31 passed, 1 superseded identity test deselected, 3 subtests passed"
+    },
+    {
+      "scope": "affected_legacy_regression",
+      "result": "19 passed; 2 documented non-G2 failures"
+    },
+    {
+      "scope": "compile_and_diff",
+      "result": "compileall PASS; git diff --check PASS"
+    }
+  ],
+  "source_sha256": {
+    "src/recclaw_core/experiments/helix_abc_v1/pilot_analysis.py": "de456760753cc1e6de801b57887462031c6d33c98dcf3eb81efe9d21868a6acf",
+    "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py": "13925048ad25f219e44b064550b07f937a0eb825c1019949786140ffc1e4f6d6",
+    "src/recclaw_core/experiments/helix_abc_v1/real_canary.py": "e0d799d233e5f07c5b609476170349a7ac1635bd81868d23872a9bc1f34f0058",
+    "src/recclaw_core/experiments/helix_abc_v1/real_pilot.py": "c978b13dc608d7013f9c756de8a545af43ec664ce9cba62990efb9f46651c37c",
+    "src/recclaw_core/helix/contracts.py": "71a68ffebb8cd15aa16679cedef1d7917c1fa62ae8dccc9fa8cd166543eca4ce",
+    "src/recclaw_core/helix/guard_adapter.py": "26561d035d20250ffef41173477cccf13f25e050df50a0a7f24b404722f04a55",
+    "src/recclaw_core/helix/ledger.py": "2a30c19434caecde026cc8b3375bc17be8625115adcb64d78273d4562aad2702",
+    "src/recclaw_core/helix/scientific_attribution.py": "57c84270a04e01e65cff83cc2cb7da6393063bda01d4938988226189d9aedee3"
+  },
+  "next_stage": "G3_EXACT_ORIGINAL_EQUIVALENCE"
+}

@@ -57,6 +57,9 @@ from recclaw_core.helix.contracts import (  # noqa: E402
     PortStatus,
 )
 from recclaw_core.helix.fusion import DeterministicHelixFusionV1  # noqa: E402
+from recclaw_core.helix.scientific_attribution import (  # noqa: E402
+    ResearchTaskTypeV1,
+)
 
 
 FIXTURES = ROOT / "tests" / "fixtures" / "bl_icf_anchor_programs_v1.json"
@@ -258,6 +261,7 @@ class M4BrokerAndE2ETest(unittest.TestCase):
             self.assertEqual(len(results), 3)
             self.assertTrue(all(item.terminal_class == "COMPLETED" for item in results))
             self.assertTrue(all(item.ordinary_execution_count == 1 for item in results))
+
             self.assertTrue(all(not item.training_backend_started for item in results))
             self.assertEqual(
                 [item.evidence_port_status for item in results],
@@ -353,6 +357,99 @@ class M4BrokerAndE2ETest(unittest.TestCase):
         )
         self.assertEqual(source_before, source_after)
 
+    def test_guard_validation_queue_consumes_normal_rounds_without_llm(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw, ThreeArmPreCanaryOrchestratorV1(
+            Path(raw) / "m4"
+        ) as orchestrator:
+            rounds = [
+                orchestrator.run_fake_triplet(
+                    search_seed=42,
+                    round_index=round_index,
+                    drafts=drafts(),
+                )
+                for round_index in (1, 2, 3)
+            ]
+            c_id = orchestrator.assignment.mapping[ArmCode.C]
+            c_results = [
+                next(
+                    item
+                    for item in triplet
+                    if item.opaque_instance_id == c_id
+                )
+                for triplet in rounds
+            ]
+            self.assertGreater(c_results[0].physical_call_count, 0)
+            self.assertEqual(
+                [item.physical_call_count for item in c_results[1:]],
+                [0, 0],
+            )
+            self.assertEqual(
+                [item.proposal_count for item in c_results[1:]],
+                [0, 0],
+            )
+            self.assertEqual(
+                [item.ordinary_execution_count for item in c_results],
+                [1, 1, 1],
+            )
+            self.assertEqual(
+                tuple(
+                    item.observation_seed
+                    for item in orchestrator.guard_ledger.evidence_snapshot().observations
+                ),
+                ("2026", "2027", "2028"),
+            )
+            self.assertIsNone(
+                orchestrator.research_task_queues[
+                    ArmCode.C
+                ].select_next(
+                    allowed_types=frozenset(
+                        {
+                            ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE
+                        }
+                    )
+                )
+            )
+
+    def test_post_training_learning_failure_preserves_completed_round_closure(
+        self,
+    ) -> None:
+        class FailingLearningHookOrchestrator(
+            ThreeArmPreCanaryOrchestratorV1
+        ):
+            def _after_research_close(self, **_kwargs) -> None:
+                raise RuntimeError("simulated post-training learning failure")
+
+        with tempfile.TemporaryDirectory() as raw, FailingLearningHookOrchestrator(
+            Path(raw) / "m4"
+        ) as orchestrator:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "post-training learning failure",
+            ):
+                orchestrator.run_fake_triplet(
+                    search_seed=42,
+                    round_index=1,
+                    drafts=drafts(),
+                )
+            rows = orchestrator.store._connection.execute(
+                "SELECT arm_instance_id, status, terminal_class FROM rounds "
+                "ORDER BY rowid"
+            ).fetchall()
+            self.assertGreaterEqual(len(rows), 1)
+            self.assertTrue(
+                all(
+                    row["status"] == "CLOSED"
+                    and row["terminal_class"] == "COMPLETED"
+                    for row in rows
+                )
+            )
+            self.assertIn(
+                orchestrator.assignment.mapping[ArmCode.B],
+                {row["arm_instance_id"] for row in rows},
+            )
+
     def test_all_pre_blocked_closes_zero_execution_one_feedback_without_refresh(self) -> None:
         class BlockingPort:
             def pre_run(self, candidate):
@@ -372,6 +469,9 @@ class M4BrokerAndE2ETest(unittest.TestCase):
         slate = tuple(
             CandidateEnvelope(
                 candidate_id=f"blocked-{index}",
+                candidate_semantic_digest=sha256_digest(
+                    {"semantic": index}
+                ),
                 opaque_arm_instance_id="opaque-c",
                 common_status="COMMON_PASS",
                 mechanism_program_digest=sha256_digest({"program": index}),

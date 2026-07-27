@@ -52,6 +52,7 @@ class GuardContext:
 @dataclass(frozen=True, slots=True)
 class CandidateEnvelope:
     candidate_id: str
+    candidate_semantic_digest: str
     opaque_arm_instance_id: str
     common_status: str
     mechanism_program_digest: str
@@ -71,6 +72,10 @@ class CandidateEnvelope:
         validate_sha256(
             self.mechanism_program_digest, field_name="mechanism_program_digest"
         )
+        validate_sha256(
+            self.candidate_semantic_digest,
+            field_name="candidate_semantic_digest",
+        )
         validate_sha256(self.common_plan_digest, field_name="common_plan_digest")
         object.__setattr__(
             self,
@@ -86,6 +91,9 @@ class CandidateEnvelope:
         return canonical_value(
             {
                 "candidate_id": self.candidate_id,
+                "candidate_semantic_digest": (
+                    self.candidate_semantic_digest
+                ),
                 "opaque_arm_instance_id": self.opaque_arm_instance_id,
                 "common_status": self.common_status,
                 "mechanism_program_digest": self.mechanism_program_digest,

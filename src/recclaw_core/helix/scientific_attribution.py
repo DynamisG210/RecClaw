@@ -67,7 +67,7 @@ class ResearchTaskStatusV1(str, Enum):
 
 
 def _closed_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
-    return deep_freeze(snapshot_json(dict(value)))
+    return deep_freeze(snapshot_json(deep_thaw(value)))
 
 
 def _delta(value: ComparatorDeltaV2) -> ComparatorDeltaV2:
@@ -254,11 +254,19 @@ class ResearchTaskQueueV1:
             )
         return self._tasks[task.task_id]
 
-    def select_next(self) -> ResearchTaskV1 | None:
+    def select_next(
+        self,
+        *,
+        allowed_types: frozenset[ResearchTaskTypeV1] | None = None,
+    ) -> ResearchTaskV1 | None:
         pending = [
             item
             for item in self._tasks.values()
             if item.task_status is ResearchTaskStatusV1.PENDING
+            and (
+                allowed_types is None
+                or item.task_type in allowed_types
+            )
         ]
         if not pending:
             return None
@@ -357,9 +365,11 @@ class GuardEvidenceSnapshotV1:
             "snapshot_id": snapshot_id,
             "claim_id": claim_id,
             "protocol_id": protocol_id,
-            "observation_ids": [
-                item.observation_id for item in self.observations
-            ],
+            "observation_ids": list(
+                dict.fromkeys(
+                    item.observation_id for item in self.observations
+                )
+            ),
         }
 
 

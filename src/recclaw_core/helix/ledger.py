@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from recclaw_core.experiments.helix_abc_v1.canonical import sha256_digest
+from recclaw_core.helix.scientific_attribution import (
+    GuardEvidenceObservationV1,
+    GuardEvidenceSnapshotV1,
+)
 
 
 class GuardLedgerError(RuntimeError):
@@ -34,6 +38,25 @@ class EvidenceGuardLedgerWriterV1:
                 request_json TEXT NOT NULL,
                 full_event_digest TEXT NOT NULL,
                 full_event_json TEXT NOT NULL
+            )
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS guard_evidence_observations (
+                candidate_semantic_digest TEXT NOT NULL,
+                protocol_digest TEXT NOT NULL,
+                comparator_identity TEXT NOT NULL,
+                observation_seed TEXT NOT NULL,
+                observation_id TEXT NOT NULL,
+                raw_result_digest TEXT NOT NULL,
+                raw_result_json TEXT NOT NULL,
+                PRIMARY KEY(
+                    candidate_semantic_digest,
+                    protocol_digest,
+                    comparator_identity,
+                    observation_seed
+                )
             )
             """
         )
@@ -101,7 +124,7 @@ class EvidenceGuardLedgerWriterV1:
             SELECT request_json, full_event_json
             FROM guard_calls
             WHERE phase=? AND candidate_id=?
-            ORDER BY guard_call_id
+            ORDER BY rowid DESC
             LIMIT 1
             """,
             (phase, candidate_id),
@@ -110,6 +133,163 @@ class EvidenceGuardLedgerWriterV1:
 
     def count(self) -> int:
         return int(self._connection.execute("SELECT COUNT(*) FROM guard_calls").fetchone()[0])
+
+    def record_evidence_observation(
+        self,
+        *,
+        candidate_semantic_digest: str,
+        protocol_digest: str,
+        comparator_identity: str,
+        observation_seed: str,
+        observation_id: str,
+        raw_result: Mapping[str, Any],
+    ) -> bool:
+        raw_result_digest = sha256_digest(raw_result)
+        raw_result_json = json.dumps(
+            raw_result, sort_keys=True, separators=(",", ":")
+        )
+        key = (
+            candidate_semantic_digest,
+            protocol_digest,
+            comparator_identity,
+            observation_seed,
+        )
+        self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._connection.execute(
+                """
+                SELECT observation_id, raw_result_digest
+                FROM guard_evidence_observations
+                WHERE candidate_semantic_digest=?
+                  AND protocol_digest=?
+                  AND comparator_identity=?
+                  AND observation_seed=?
+                """,
+                key,
+            ).fetchone()
+            if row is not None:
+                if (
+                    str(row[0]) != observation_id
+                    or str(row[1]) != raw_result_digest
+                ):
+                    raise GuardLedgerError(
+                        "exact evidence key identity substitution"
+                    )
+                self._connection.commit()
+                return False
+            self._connection.execute(
+                """
+                INSERT INTO guard_evidence_observations(
+                    candidate_semantic_digest,
+                    protocol_digest,
+                    comparator_identity,
+                    observation_seed,
+                    observation_id,
+                    raw_result_digest,
+                    raw_result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                key
+                + (
+                    observation_id,
+                    raw_result_digest,
+                    raw_result_json,
+                ),
+            )
+            self._connection.commit()
+            return True
+        except Exception:
+            self._connection.rollback()
+            raise
+
+    def evidence_snapshot(
+        self,
+        *,
+        candidate_semantic_digest: str | None = None,
+        protocol_digest: str | None = None,
+        comparator_identity: str | None = None,
+    ) -> GuardEvidenceSnapshotV1:
+        identity = (
+            candidate_semantic_digest,
+            protocol_digest,
+            comparator_identity,
+        )
+        if all(value is None for value in identity):
+            rows = self._connection.execute(
+                """
+                SELECT
+                    candidate_semantic_digest,
+                    protocol_digest,
+                    comparator_identity,
+                    observation_seed,
+                    observation_id
+                FROM guard_evidence_observations
+                ORDER BY
+                    candidate_semantic_digest,
+                    protocol_digest,
+                    comparator_identity,
+                    observation_seed
+                """
+            ).fetchall()
+        elif all(value is not None for value in identity):
+            rows = self._connection.execute(
+                """
+                SELECT
+                    candidate_semantic_digest,
+                    protocol_digest,
+                    comparator_identity,
+                    observation_seed,
+                    observation_id
+                FROM guard_evidence_observations
+                WHERE candidate_semantic_digest=?
+                  AND protocol_digest=?
+                  AND comparator_identity=?
+                ORDER BY observation_seed
+                """,
+                identity,
+            ).fetchall()
+        else:
+            raise ValueError("evidence snapshot requires one complete exact identity")
+        return GuardEvidenceSnapshotV1(
+            tuple(
+                GuardEvidenceObservationV1(
+                    candidate_semantic_digest=str(row[0]),
+                    protocol_digest=str(row[1]),
+                    comparator_identity=str(row[2]),
+                    observation_seed=str(row[3]),
+                    observation_id=str(row[4]),
+                )
+                for row in rows
+            )
+        )
+
+    def raw_results_for_identity(
+        self,
+        *,
+        candidate_semantic_digest: str,
+        protocol_digest: str,
+        comparator_identity: str,
+    ) -> tuple[dict[str, Any], ...]:
+        rows = self._connection.execute(
+            """
+            SELECT raw_result_json
+            FROM guard_evidence_observations
+            WHERE candidate_semantic_digest=?
+              AND protocol_digest=?
+              AND comparator_identity=?
+            ORDER BY observation_seed
+            """,
+            (
+                candidate_semantic_digest,
+                protocol_digest,
+                comparator_identity,
+            ),
+        ).fetchall()
+        unique: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            payload = json.loads(row[0])
+            unique[sha256_digest(payload)] = payload
+        return tuple(unique[key] for key in sorted(unique))
 
     def close(self) -> None:
         self._connection.close()

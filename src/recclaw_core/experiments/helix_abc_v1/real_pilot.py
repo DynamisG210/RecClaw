@@ -623,6 +623,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         selected: CandidateEnvelope,
         opaque_instance_id: str,
         common_result: Any,
+        observation_seed: str,
     ) -> RawResultEnvelope:
         metrics = {
             str(key): float(value)
@@ -640,7 +641,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             comparator=selected.comparator,
             seed_runs=(
                 {
-                    "seed_id": "2026",
+                    "seed_id": observation_seed,
                     "run_id": str(common_result.run_id),
                     "artifact_sha256": str(common_result.raw_output_digest),
                 },
