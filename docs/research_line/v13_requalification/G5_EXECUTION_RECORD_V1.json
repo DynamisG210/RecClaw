@@ -1,0 +1,59 @@
+{
+  "record_schema": "recclaw.m6g.g5-execution-record.v1",
+  "program": "M6G - V13_SCIENTIFIC_ATTRIBUTION_CLOSURE_AND_PILOT_REQUALIFICATION",
+  "stage": "G5_MAIN_GRADE_EXECUTABLE_PROFILE_V2",
+  "status": "PASS",
+  "authority": "DEVELOPMENT_ONLY",
+  "provider_calls": 0,
+  "training_executions": 9,
+  "training_scope": "FIXED_LOCAL_FAMILY_LOSS_BACKWARD_CANARIES",
+  "pilot_started": false,
+  "base_commit": "df4bd7c",
+  "profile_release": "docs/research_line/v13_requalification/BL_ICF_EXECUTABLE_PROFILE_V2_RELEASE.json",
+  "profile_digest": "d483faa471c3f26d321daa89c6946ab67a11a95d459d2d5c095c9da419ee5da1",
+  "profile_counts": {
+    "total": 66,
+    "base_controls": 2,
+    "single_operator": 16,
+    "two_operator": 48
+  },
+  "qualification": {
+    "compile": "66/66 PASS",
+    "common_guard": "66/66 PASS",
+    "materialization": "66/66 PASS",
+    "semantic_unique": "66/66",
+    "recipe_unique": "66/66",
+    "BPR_family_canaries": "4/4 PASS",
+    "LightGCN_family_canaries": "5/5 PASS",
+    "typed_provider_schema": "PASS"
+  },
+  "verification": [
+    {
+      "scope": "g5_targeted_profile_and_training_canaries",
+      "result": "6 passed"
+    },
+    {
+      "scope": "affected_v13_and_historical_regression",
+      "result": "93 passed, 2 documented historical tests deselected, 3 subtests passed"
+    },
+    {
+      "scope": "meta_control_plane_regression",
+      "result": "29 passed"
+    },
+    {
+      "scope": "compile_and_diff",
+      "result": "compileall PASS; git diff --check PASS"
+    }
+  ],
+  "findings": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 0
+  },
+  "audit": {
+    "path": "docs/research_line/v13_requalification/G5_INDEPENDENT_ADVERSARIAL_AUDIT.md",
+    "verdict": "PASS_P0_0_P1_0_P2_0"
+  },
+  "next_stage_dependency": "Meta checkpoint must be requalified against CandidateProposalV4 and the frozen 66-semantics profile",
+  "next_stage": "G6_META_CHECKPOINT_REQUALIFICATION"
+}

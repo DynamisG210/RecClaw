@@ -871,11 +871,22 @@ class RealCanaryProposalBrokerV1:
     ) -> CandidateProposalV3 | CandidateProposalV4:
         program = campaign_program_from_proposal(proposal)
         compiled = compile_program(program)
-        mechanism = executable_mechanism(str(proposal["mechanism_id"]))
+        resolved_recipe = execution_recipe_for_program(program)
+        mechanism = executable_mechanism(
+            str(resolved_recipe["mechanism_id"])
+        )
         utility = dict(proposal["utility_features"])
-        cost = 0.6 if mechanism.config.get("relative_cost") == "MEDIUM" else (
+        cost = (
             0.6
-            if mechanism.mechanism_id in {"NGCF", "SGL", "NCL"}
+            if len(mechanism.operator_ids) == 2
+            or bool(
+                set(mechanism.operator_ids)
+                & {
+                    "LGCN_AUX_ALIGNMENT",
+                    "LGCN_DUAL_PATH",
+                    "LGCN_EDGE_DROPOUT",
+                }
+            )
             else 0.3
         )
         intent = ProposalIntentV1(str(proposal["proposal_intent"]))
@@ -1086,6 +1097,10 @@ class RealCanaryProposalBrokerV1:
         call_records: list[ProducerCallRecordV1] = []
         for role, call in zip(DISCOVERY_PRODUCERS, calls, strict=True):
             raw = dict(call.response["proposals"][0])
+            raw_program = campaign_program_from_proposal(raw)
+            raw["mechanism_id"] = str(
+                execution_recipe_for_program(raw_program)["mechanism_id"]
+            )
             expected_intent = (
                 ProposalIntentV1.FALSIFICATION
                 if self.v13_mode and role == "falsification_designer"
@@ -1224,7 +1239,17 @@ class RealCanaryProposalBrokerV1:
                         ),
                     ),
                 )
-                raw_proposals = tuple(call.response["proposals"])
+                raw_proposals = tuple(
+                    {
+                        **dict(item),
+                        "mechanism_id": str(
+                            execution_recipe_for_program(
+                                campaign_program_from_proposal(item)
+                            )["mechanism_id"]
+                        ),
+                    }
+                    for item in call.response["proposals"]
+                )
                 if len(
                     {
                         str(item["mechanism_id"])
@@ -1370,7 +1395,7 @@ class RealCanaryProposalBrokerV1:
                     "execution_mode": "M0_FIXTURE_ONLY",
                     "fixture_proposals": fixture,
                 },
-                {"space": "BL_ICF_EXECUTABLE_PROFILE_V1"},
+                {"space": "BL_ICF_EXECUTABLE_PROFILE_V2"},
                 {"proposal_count": 4},
             )
             selected = original.select(

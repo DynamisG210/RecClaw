@@ -488,7 +488,7 @@ class ThreeArmFakeBrokerV1:
                     "execution_mode": "M0_FIXTURE_ONLY",
                     "fixture_proposals": fixture,
                 },
-                {"space": "BL_ICF_EXECUTABLE_PROFILE_V1"},
+                    {"space": "BL_ICF_EXECUTABLE_PROFILE_V2"},
                 {"proposal_count": 4},
             )
             selected = controller.select(

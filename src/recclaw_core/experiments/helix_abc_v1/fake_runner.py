@@ -64,7 +64,19 @@ class FakeNonTrainingRunnerV1:
             / "handler_config.json"
         )
         config = json.loads(config_path.read_bytes())
-        smoke = run_non_training_smoke(config)
+        smoke = run_non_training_smoke(
+            {
+                key: config[key]
+                for key in (
+                    "candidate_id",
+                    "mechanism_program_digest",
+                    "mechanism_semantics_digest",
+                    "operators",
+                    "primitives",
+                    "template_id",
+                )
+            }
+        )
         return RawRunOutputV1(
             {
                 "binding_digest": binding.digest,

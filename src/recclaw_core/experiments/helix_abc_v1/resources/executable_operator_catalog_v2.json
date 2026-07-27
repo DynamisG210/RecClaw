@@ -1,0 +1,157 @@
+{
+  "catalog_id": "RECCLAW_EXECUTABLE_OPERATOR_CATALOG_V2",
+  "catalog_version": 2,
+  "composition_contract": {
+    "forbid_same_axis": true,
+    "maximum_operator_count": 2,
+    "minimum_operator_count": 1
+  },
+  "bases": [
+    {
+      "anchor_name": "BPR_MF",
+      "base_model_config": "BPR",
+      "entrypoint": "recclaw_ext.models.composable_v2:BPRComposableV2",
+      "model": "BPRComposableV2",
+      "root_entrypoint": "recbole.model.general_recommender.bpr:BPR",
+      "root_mechanism_id": "BPR_MF"
+    },
+    {
+      "anchor_name": "LIGHTGCN",
+      "base_model_config": "LightGCN",
+      "entrypoint": "recclaw_ext.models.composable_v2:LightGCNComposableV2",
+      "model": "LightGCNComposableV2",
+      "root_entrypoint": "recbole.model.general_recommender.lightgcn:LightGCN",
+      "root_mechanism_id": "LIGHTGCN"
+    }
+  ],
+  "operators": [
+    {
+      "operator_id": "BPR_MIXED_NEGATIVE",
+      "base": "BPR_MF",
+      "axis": "sampling",
+      "summary": "mixed popularity and uniform negative sampling",
+      "config": {"hard_negative_ratio": 0.5},
+      "transforms": [{"op": "replace_component", "component_id": "sampler", "primitive_id": "sampler.mixed", "parameters": {"false_negative_policy": "ALLOW_UNKNOWN", "hardness": "STATIC", "negative_count": 1, "purpose": ["RANKING_SIGNAL", "HARDNESS_APPROXIMATION"], "refresh_frequency": "BATCH", "replacement": true}}]
+    },
+    {
+      "operator_id": "BPR_POPULARITY_NEGATIVE",
+      "base": "BPR_MF",
+      "axis": "sampling",
+      "summary": "popularity-shaped negative sampling",
+      "config": {"popularity_alpha": 0.5},
+      "transforms": [{"op": "replace_component", "component_id": "sampler", "primitive_id": "sampler.popularity", "parameters": {"false_negative_policy": "ALLOW_UNKNOWN", "hardness": "STATIC", "negative_count": 1, "purpose": ["RANKING_SIGNAL"], "refresh_frequency": "BATCH", "replacement": true}}]
+    },
+    {
+      "operator_id": "BPR_MARGIN",
+      "base": "BPR_MF",
+      "axis": "objective",
+      "summary": "explicit pairwise ranking margin",
+      "config": {"margin": 0.2},
+      "transforms": [{"op": "replace_component", "component_id": "objective", "primitive_id": "objective.margin_bpr", "parameters": {"margin": 0.2}}]
+    },
+    {
+      "operator_id": "BPR_RANK_AWARE",
+      "base": "BPR_MF",
+      "axis": "objective",
+      "summary": "rank-aware pair weighting",
+      "config": {"rank_weight_alpha": 0.2},
+      "transforms": [{"op": "replace_component", "component_id": "objective", "primitive_id": "objective.weighted_bpr", "parameters": {"weight": 0.2}}]
+    },
+    {
+      "operator_id": "BPR_TAIL_REWEIGHT",
+      "base": "BPR_MF",
+      "axis": "objective",
+      "summary": "long-tail positive-item reweighting",
+      "config": {"tail_weight_alpha": 0.35},
+      "transforms": [{"op": "replace_component", "component_id": "objective", "primitive_id": "objective.weighted_bpr", "parameters": {"weight": 0.35}}]
+    },
+    {
+      "operator_id": "BPR_NORM_CONSTRAINT",
+      "base": "BPR_MF",
+      "axis": "geometry",
+      "summary": "soft embedding norm constraint",
+      "config": {"lambda_norm": 0.0001, "max_norm": 1.0},
+      "transforms": [{"op": "append_regularizer", "component_id": "regularizer_norm", "primitive_id": "regularizer.norm_matching", "parameters": {"weight": 0.0001}, "source_component_id": "encoder"}]
+    },
+    {
+      "operator_id": "BPR_POPULARITY_REG",
+      "base": "BPR_MF",
+      "axis": "geometry",
+      "summary": "popularity-sensitive score regularization",
+      "config": {"lambda_pop": 0.0001},
+      "transforms": [{"op": "append_regularizer", "component_id": "regularizer_popularity", "primitive_id": "regularizer.popularity_sensitive", "parameters": {"weight": 0.0001}, "source_component_id": "encoder"}]
+    },
+    {
+      "operator_id": "LGCN_SHALLOW",
+      "base": "LIGHTGCN",
+      "axis": "propagation",
+      "summary": "one-hop graph propagation",
+      "config": {"n_layers": 1},
+      "transforms": [{"op": "set_component_parameters", "component_id": "propagation", "parameters": {"depth": 1}}]
+    },
+    {
+      "operator_id": "LGCN_EDGE_DROPOUT",
+      "base": "LIGHTGCN",
+      "axis": "propagation",
+      "summary": "training-time normalized-edge dropout",
+      "config": {"edge_dropout": 0.1},
+      "transforms": [{"op": "replace_component", "component_id": "propagation", "primitive_id": "propagation.dropout", "parameters": {"depth": 3, "rate": 0.1}}]
+    },
+    {
+      "operator_id": "LGCN_LAYER_WEIGHTED",
+      "base": "LIGHTGCN",
+      "axis": "message_transform",
+      "summary": "learned layer aggregation",
+      "config": {},
+      "transforms": [{"op": "replace_component", "component_id": "fusion", "primitive_id": "fusion.attention", "parameters": {}}]
+    },
+    {
+      "operator_id": "LGCN_RESIDUAL",
+      "base": "LIGHTGCN",
+      "axis": "message_transform",
+      "summary": "ego-to-propagated residual mixing",
+      "config": {"residual_weight": 0.2},
+      "transforms": [{"op": "replace_component", "component_id": "fusion", "primitive_id": "fusion.residual", "parameters": {}}]
+    },
+    {
+      "operator_id": "LGCN_DEBIASED_NEGATIVE",
+      "base": "LIGHTGCN",
+      "axis": "sampling",
+      "summary": "inverse-popularity negative sampling",
+      "config": {"debias_alpha": 0.5},
+      "transforms": [{"op": "replace_component", "component_id": "sampler", "primitive_id": "sampler.inverse_popularity", "parameters": {"false_negative_policy": "ALLOW_UNKNOWN", "hardness": "STATIC", "negative_count": 1, "purpose": ["RANKING_SIGNAL"], "refresh_frequency": "BATCH", "replacement": true}}]
+    },
+    {
+      "operator_id": "LGCN_RANK_AWARE",
+      "base": "LIGHTGCN",
+      "axis": "objective",
+      "summary": "rank-aware pair weighting",
+      "config": {"rank_weight_alpha": 0.5},
+      "transforms": [{"op": "replace_component", "component_id": "objective", "primitive_id": "objective.weighted_bpr", "parameters": {"weight": 0.5}}]
+    },
+    {
+      "operator_id": "LGCN_AUX_ALIGNMENT",
+      "base": "LIGHTGCN",
+      "axis": "self_supervision",
+      "summary": "cross-layer alignment auxiliary signal",
+      "config": {"lambda_align": 0.001},
+      "transforms": [{"op": "append_regularizer", "component_id": "regularizer_alignment", "primitive_id": "regularizer.alignment", "parameters": {"weight": 0.001}, "source_component_id": "fusion"}]
+    },
+    {
+      "operator_id": "LGCN_NORM_CONSTRAINT",
+      "base": "LIGHTGCN",
+      "axis": "geometry",
+      "summary": "soft propagated-embedding norm constraint",
+      "config": {"lambda_norm": 0.0001, "max_norm": 1.0},
+      "transforms": [{"op": "append_regularizer", "component_id": "regularizer_norm", "primitive_id": "regularizer.norm_matching", "parameters": {"weight": 0.0001}, "source_component_id": "fusion"}]
+    },
+    {
+      "operator_id": "LGCN_DUAL_PATH",
+      "base": "LIGHTGCN",
+      "axis": "architecture",
+      "summary": "dual mean-and-terminal propagation path blend",
+      "config": {"dual_path_weight": 0.35},
+      "transforms": [{"op": "replace_component", "component_id": "fusion", "primitive_id": "fusion.dual_path", "parameters": {}}]
+    }
+  ]
+}

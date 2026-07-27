@@ -1,0 +1,64 @@
+{
+  "record_schema": "recclaw.bl-icf-executable-profile-v2-release.v1",
+  "profile_id": "BL_ICF_EXECUTABLE_PROFILE_V2",
+  "status": "FROZEN_PRE_PILOT",
+  "authority": "DEVELOPMENT_ONLY",
+  "profile_digest": "d483faa471c3f26d321daa89c6946ab67a11a95d459d2d5c095c9da419ee5da1",
+  "catalog_digest": "324eabe99e495c3ab42cd090b2148b1136ea77dd0780448811d708a2eb2f4d1d",
+  "proposal_schema_sha256": "a3f8c66aca8599c4b36f4ff9818a389c3818902b14bf4331bfda86974a6f96e0",
+  "training_profile_digest": "8b2f0923dc1f4691e7cd54d96d8a72b708379a89ffce9d3f1993650a5f487735",
+  "composition_contract": {
+    "bases": [
+      "BPR_MF",
+      "LIGHTGCN"
+    ],
+    "primary_operator_count": 1,
+    "maximum_secondary_operator_count": 1,
+    "maximum_composition_depth": 2,
+    "same_axis_composition": "FORBIDDEN",
+    "same_component_mutation": "FORBIDDEN",
+    "arbitrary_python": "FORBIDDEN",
+    "handler_ownership": "PACKAGE_OWNED"
+  },
+  "pool": {
+    "total_unique_semantics": 66,
+    "BPR_MF_family": 24,
+    "LIGHTGCN_family": 42,
+    "base_controls": 2,
+    "single_operator": 16,
+    "two_operator": 48,
+    "scientific_axes": [
+      "architecture",
+      "geometry",
+      "message_transform",
+      "objective",
+      "propagation",
+      "sampling",
+      "self_supervision"
+    ]
+  },
+  "provider_contract": {
+    "input_unit": "TYPED_COMPOSITION",
+    "recipe_id_only_response": "REJECTED",
+    "resolution": "DETERMINISTIC_CONTENT_ADDRESSED",
+    "candidate_contract": "CandidateProposalV4"
+  },
+  "qualification": {
+    "compiler": "66/66 PASS",
+    "common_execution_guard": "66/66 PASS",
+    "deterministic_materializer": "66/66 PASS",
+    "semantic_uniqueness": "66/66 UNIQUE",
+    "execution_recipe_uniqueness": "66/66 UNIQUE",
+    "BPR_family_loss_backward_canaries": "4/4 PASS",
+    "LightGCN_family_loss_backward_canaries": "5/5 PASS",
+    "pilot_started": false
+  },
+  "source_sha256": {
+    "recclaw_ext/models/composable_v2.py": "3ede25434b7564a0eb3b0e541c9c08ac8c933fc5f3ddbb8431a8cd6fcb45c630",
+    "src/recclaw_core/experiments/helix_abc_v1/campaign_runtime.py": "2b126616fa504177f9792b6cfae6be836fd59818a7b3ab477d0671973bf2f9ef",
+    "src/recclaw_core/experiments/helix_abc_v1/resources/executable_operator_catalog_v2.json": "99edddd1cc54d7551b62c5d4c68580b3c39c1401f3338290afdcaee57d82ecf7",
+    "src/recclaw_core/experiments/helix_abc_v1/resources/campaign_proposal_response_v1.schema.json": "a3f8c66aca8599c4b36f4ff9818a389c3818902b14bf4331bfda86974a6f96e0",
+    "tests/experiments/helix_abc_v1/test_v13_executable_profile_v2.py": "ebaa77162951fd5eab895fc70ec9083c04152600ec77c30926d65d565f257e9e"
+  },
+  "pilot_main_equivalence_rule": "EXACT_PROFILE_DIGEST_REQUIRED"
+}

@@ -700,15 +700,16 @@ def original_canary_prompt(
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Protocol: ML-1M, frozen full-sort NDCG@10, unchanged protocol, one eventual execution.
 Search seed: {search_seed}. Round: {round_index}.
-Propose exactly four diverse candidates from the exact executable catalog below.
-Use each mechanism_id at most once. Preserve the Original policy's preference for
+Propose exactly four diverse candidates from the exact executable profile below.
+Choose a base plus zero, one or two compatible typed operators and return the
+composition object. Do not repeat a resolved composition. Preserve the Original policy's preference for
 novel runnable families, avoid recently executed semantics, and use prior outcomes
 without Research roles, Research Router scores, Meta policy, or Evidence authority.
 Set parent_candidate_id only when the supplied Original state contains that exact ID.
 Set original_priority to high, medium or low as the Original proposal policy's
 own priority assessment; the pinned Original planner consumes this field unchanged.
 Keep the mechanism hypothesis, competing hypothesis, predicted outcome signature and
-failure mode consistent with the selected catalog entry. This is proposal generation,
+failure mode consistent with the selected composition. This is proposal generation,
 not evidence adjudication.
 Executable catalog: {catalog}
 Original planner state: {state}"""
@@ -793,12 +794,14 @@ def research_canary_prompt(
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Your role is to {instruction}. Protocol: ML-1M, frozen full-sort NDCG@10, unchanged.
 Search seed: {search_seed}. Round: {round_index}. Return exactly one proposal and set
-proposal_intent to {required_intent}. Choose exactly one mechanism_id from the
-executable catalog and keep every scientific field consistent with that exact
-mechanism. Use parent_candidate_id only for an exact ID present in your role-scoped
+proposal_intent to {required_intent}. Choose one base plus one primary operator and
+at most one compatible secondary operator from the executable profile, and return
+the exact composition object. Keep every scientific field consistent with that
+composition. Use parent_candidate_id only for an exact ID present in your role-scoped
 memory or the exact_parent_candidate_id in the policy directive. When parent_policy
 is REQUIRE_EXACT_PRIOR_PARENT, copy that exact ID; when it is
-EXPLICIT_ROOT_REQUEST, return null. Do not invent a mechanism that the catalog cannot execute.
+EXPLICIT_ROOT_REQUEST, return null. Do not invent an operator or composition
+that the profile cannot execute.
 Optimize useful signal, frontier potential and information gain under the frozen
 budget. Executability and mechanical cost are derived by the package runtime, not
 self-reported by you. Stay within search utility only.

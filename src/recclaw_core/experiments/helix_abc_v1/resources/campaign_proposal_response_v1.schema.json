@@ -14,28 +14,27 @@
           "candidate_label": {"type": "string", "minLength": 1, "maxLength": 160},
           "mechanism_id": {
             "type": "string",
-            "enum": [
-              "BPR_MF",
-              "BPR_MARGIN",
-              "BPR_MIXED_NEGATIVE",
-              "BPR_POPULARITY_NEGATIVE",
-              "BPR_MIXED_NEGATIVE_MARGIN",
-              "BPR_POPULARITY_MARGIN",
-              "BPR_NORM_CONSTRAINED",
-              "BPR_POPULARITY_REGULARIZED",
-              "LIGHTGCN",
-              "LIGHTGCN_SHALLOW",
-              "LIGHTGCN_LAYER_WEIGHTED",
-              "LIGHTGCN_RESIDUAL",
-              "LIGHTGCN_RESIDUAL_NORM",
-              "LIGHTGCN_EDGE_DROPOUT_RESIDUAL",
-              "LIGHTGCN_DEBIASED_NEGATIVE",
-              "LIGHTGCN_AUX_ALIGNMENT",
-              "LIGHTGCN_RANK_AWARE",
-              "NGCF",
-              "SGL",
-              "NCL",
-              "SIMPLEX"
+            "pattern": "^(BPR_MF|LIGHTGCN)(__[A-Z0-9_]+){0,2}$"
+          },
+          "composition": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "base_mechanism_id": {
+                "type": "string",
+                "enum": ["BPR_MF", "LIGHTGCN"]
+              },
+              "primary_operator_id": {
+                "type": ["string", "null"]
+              },
+              "secondary_operator_id": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "base_mechanism_id",
+              "primary_operator_id",
+              "secondary_operator_id"
             ]
           },
           "mechanism_hypothesis": {"type": "string", "minLength": 1, "maxLength": 800},
@@ -67,7 +66,7 @@
         },
         "required": [
           "candidate_label",
-          "mechanism_id",
+          "composition",
           "mechanism_hypothesis",
           "competing_hypothesis",
           "predicted_outcome_signature",
