@@ -17,6 +17,9 @@ from recclaw_core.experiments.helix_abc_v1.campaign_runtime import (
     executable_mechanism,
     program_from_proposal,
 )
+from recclaw_core.experiments.helix_abc_v1.campaign_dataset import (
+    campaign_development_protocol,
+)
 from recclaw_core.experiments.helix_abc_v1.canary_broker import (
     CanaryBrokerCallV1,
 )
@@ -125,18 +128,25 @@ class _ScopedFakeUpstream:
         )
 
 
+class _V13NoTrainingOrchestrator(ThreeArmPreCanaryOrchestratorV1):
+    def _common_execution_protocol(self):
+        return campaign_development_protocol()
+
+
 def raw_proposal(
     *,
     mechanism_id: str,
     intent: str,
     parent_candidate_id: str | None = None,
 ) -> dict[str, object]:
+    mechanism = executable_mechanism(mechanism_id)
     return {
         "candidate_label": mechanism_id,
+        "composition": mechanism.prompt_projection()["composition"],
         "competing_hypothesis": "the observed change comes from a confound",
         "failure_mode": "the predicted signature is absent",
         "mechanism_hypothesis": "the declared axis causes the metric change",
-        "mechanism_id": mechanism_id,
+        "mechanism_id": mechanism.mechanism_id,
         "parent_candidate_id": parent_candidate_id,
         "predicted_outcome_signature": "positive matched delta",
         "proposal_intent": intent,
@@ -304,7 +314,7 @@ class V13ResearchScienceTest(unittest.TestCase):
         )
         upstream.broker = broker
         with tempfile.TemporaryDirectory() as raw:
-            with ThreeArmPreCanaryOrchestratorV1(
+            with _V13NoTrainingOrchestrator(
                 Path(raw) / "v13",
                 broker=broker,
                 resource_ceilings=canary_budget(),

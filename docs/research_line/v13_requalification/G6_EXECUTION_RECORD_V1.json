@@ -1,0 +1,127 @@
+{
+  "schema": "recclaw.m6g-g6-execution-record.v1",
+  "stage": "G6_META_REQUALIFICATION",
+  "status": "PASS",
+  "authority": "LOCAL_DEVELOPMENT_ONLY",
+  "pilot_started": false,
+  "main_started": false,
+  "checkpoint": {
+    "checkpoint_id": "META_VNEXT_V18_SUPPORT_AWARE",
+    "checkpoint_sha256": "0ef232905cb07abada89322f631908743b31b74527f36c59efc4c00f7b56fd9c",
+    "policy_bundle_digest": "2d42ac7b9ced6057d3e20e19f1f470338ed00b0fcbc70e790bdce7fa44706024",
+    "promotion_decision_digest": "ce5783e7f39f29135422dff3d3fb4a377d3a11a1283677a0a29ba4517064223e",
+    "parent_checkpoint_sha256": "759791dc5a26154237cef2a79cebde43714f54035d9fc54be1c97c623c126d00",
+    "parent_policy_bundle_digest": "20e3dd88d1e6d6f338ffc8b06d2e196762116c4779456dde43b1a2fe38918f61",
+    "parent_slow_policy_digest": "d09d599bb68fadbf5bcb3ab1c57d5a95b462b313623b3a478da4d10a96556601",
+    "coefficient_action": "INHERIT_EXACT_V17_FIT_AFTER_FROZEN_SUPPORT_PROJECTION",
+    "activation_boundary": "NEXT_CAMPAIGN",
+    "shadow_only": false,
+    "pilot_outcomes_used": false
+  },
+  "frozen_calibration_evidence": {
+    "feature_schema_digest": "6251741c5b4e3cc39e9774ea954ec7d995ba08f90a53fbae23ac8475cd7c839f",
+    "source_manifest_digest": "f894450e242550550dae7acc222ce2ed1be36fedf26dfb42936e7489fbdd7223",
+    "design_digest": "977406fe35630756922c2d8d1aa83f360e55ea1dd2919773bb084deb41efcbd6",
+    "design_sha256": "47b2dab05803505304387f6f395d268c77266f2ac39c520fdef1a538a1fb080e",
+    "fit_record_sha256": "824e566ac288c588def76642c0f9e5c3b701bc8e2b1b88d9a06b735824e6f401",
+    "heldout_evaluation_sha256": "ff043d7ed1a61212c1a566dd6f789f25b215270868b22549df3b6d08aeb21f8a",
+    "evaluation_report_digest": "8774afb8e5c76b5d228a95bf4f0967831fb2acf9f853e5a4566e2c7508022ef8",
+    "development_episodes": 84,
+    "development_candidate_results": 336,
+    "fresh_heldout_episodes": 48,
+    "fresh_heldout_candidate_results": 192,
+    "slow_vs_static_mean_net_value": 0.04075389120370371,
+    "slow_vs_static_80pct_interval": [
+      0.02834925537,
+      0.054488691343
+    ],
+    "slow_plus_fast_vs_slow_mean_net_value": 0.00594846851851852,
+    "slow_plus_fast_vs_slow_80pct_interval": [
+      0.002982231157,
+      0.009037780926
+    ]
+  },
+  "v13_support_requalification": {
+    "candidate_contract": "CandidateProposalV4",
+    "executable_profile_id": "BL_ICF_EXECUTABLE_PROFILE_V2",
+    "executable_profile_digest": "d483faa471c3f26d321daa89c6946ab67a11a95d459d2d5c095c9da419ee5da1",
+    "profile_executable_count": 66,
+    "research_discovery_candidate_count": 64,
+    "anchor_and_matched_control_count": 2,
+    "feature_support_sha256": "5065cd66f8673b65b4f123bbbabff2404c7df2ed7f32c07a7e3a62b802a47768",
+    "calibrated_axes": [
+      "message_transform",
+      "objective",
+      "propagation",
+      "self_supervision"
+    ],
+    "generic_transfer_axes": [
+      "architecture",
+      "geometry",
+      "sampling"
+    ],
+    "slow_projection": "CLIP_EACH_FEATURE_TO_FROZEN_DEVELOPMENT_RANGE",
+    "actual_ml1m_task_context": {
+      "task_scale": 1.0,
+      "task_density": 0.2843119865332499
+    },
+    "fast_task_scale_support": [
+      0.02896,
+      0.417513333333333
+    ],
+    "fast_task_density_support": [
+      0.183552566814974,
+      1.0
+    ],
+    "fast_status_for_v13_ml1m": "OUT_OF_SUPPORT_DISABLED",
+    "fast_state_scope": "OPAQUE_ARM_X_SEARCH_SEED_PRIVATE",
+    "utility_response_scenarios": 7,
+    "utility_response_selected_axis_count": 7,
+    "utility_response_max_producer_share": 0.2857142857142857,
+    "guard_private_rank_or_prompt_fields": 0
+  },
+  "verification": {
+    "targeted_meta_v18": {
+      "passed": 6,
+      "failed": 0
+    },
+    "meta_v17_and_architecture_regression": {
+      "passed": 29,
+      "failed": 0
+    },
+    "combined_meta_profile_research": {
+      "passed": 49,
+      "failed": 0
+    },
+    "python_compile": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "source_sha256": {
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py": "3ddc4ee680326853f1d23ba3ee6a19a082ecc624004e0035c7fdf0283e950174",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/v18_support.py": "934e18f35efff48d3615d2cfe787b941ba02228d4f2d708f081e6f91a2250b12",
+    "src/recclaw_core/experiments/helix_abc_v1/resources/meta_vnext_feature_support_v18.json": "5065cd66f8673b65b4f123bbbabff2404c7df2ed7f32c07a7e3a62b802a47768",
+    "src/recclaw_core/experiments/helix_abc_v1/resources/meta_vnext_policy_checkpoint_v18.json": "0ef232905cb07abada89322f631908743b31b74527f36c59efc4c00f7b56fd9c",
+    "tests/experiments/helix_abc_v1/test_v13_meta_v18_requalification.py": "2346d907bedae7ccc96f7583753507225dbe76cb97e1c324af02fb77f9cb3aff"
+  },
+  "findings": {
+    "P0": [],
+    "P1": [],
+    "P2": [
+      {
+        "id": "G6-P2-FAST-ML1M-OOS",
+        "disposition": "EXPLICIT_DESIGN_LIMIT",
+        "summary": "Fast residual remains disabled for the V13 ML-1M task because actual task_scale=1.0 exceeds the frozen 0.417513333333333 support ceiling."
+      },
+      {
+        "id": "G6-P2-NEW-AXIS-GENERIC-TRANSFER",
+        "disposition": "NO_AXIS_SPECIFIC_META_CLAIM",
+        "summary": "Architecture, geometry and sampling use static utility plus generic structural coefficients; no outcome-trained axis coefficient is claimed."
+      },
+      {
+        "id": "G6-P2-SLOW-AXIS-CONCENTRATION",
+        "disposition": "MONITOR_IN_DEVELOPMENT_PILOT",
+        "summary": "The inherited slow policy was concentrated in old held-out replay; V18 preserves four discovery Producers, uncovered-axis targeting and verified utility responsiveness, but the Pilot remains development evidence rather than an effect claim."
+      }
+    ]
+  }
+}

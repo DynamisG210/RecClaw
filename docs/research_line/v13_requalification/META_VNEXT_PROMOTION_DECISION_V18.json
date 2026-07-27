@@ -1,0 +1,14 @@
+{
+  "activation_boundary": "NEXT_CAMPAIGN",
+  "authority": "LOCAL_M6G_G6",
+  "checkpoint_sha256": "0ef232905cb07abada89322f631908743b31b74527f36c59efc4c00f7b56fd9c",
+  "decision_id": "meta-vnext-v18-support-aware",
+  "evaluation_report_digest": "8774afb8e5c76b5d228a95bf4f0967831fb2acf9f853e5a4566e2c7508022ef8",
+  "executable_profile_digest": "d483faa471c3f26d321daa89c6946ab67a11a95d459d2d5c095c9da419ee5da1",
+  "feature_support_sha256": "5065cd66f8673b65b4f123bbbabff2404c7df2ed7f32c07a7e3a62b802a47768",
+  "parent_policy_bundle_digest": "20e3dd88d1e6d6f338ffc8b06d2e196762116c4779456dde43b1a2fe38918f61",
+  "pilot_outcomes_used": false,
+  "policy_bundle_digest": "2d42ac7b9ced6057d3e20e19f1f470338ed00b0fcbc70e790bdce7fa44706024",
+  "schema": "recclaw.meta-vnext-promotion-decision.v18",
+  "verdict": "PROMOTE"
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "recclaw.meta-vnext-activation-gate-closure.v1",
+  "verdict": "PASS",
+  "promotion_decision_digest": "358dbaf87b9d7c030ec06c1a7e9229c0f5fc502b102b66fdffa40b31da3827f2",
+  "policy_bundle_digest": "20e3dd88d1e6d6f338ffc8b06d2e196762116c4779456dde43b1a2fe38918f61",
+  "parent_policy_digest": "80e35563680d70f9b01d53751d2cf71b1b4a4d0e3a5619f08fd0caf6d8c3fb1b",
+  "activation_boundary": "NEXT_CAMPAIGN",
+  "gates": {
+    "promotion_decision_is_promote": true,
+    "affected_m2_m5_requalified": true,
+    "m6f_pass": true,
+    "P0": 0,
+    "P1": 0
+  },
+  "fresh_pilot_preconditions_satisfied": true,
+  "activation_applied": false,
+  "fresh_pilot_executed": false,
+  "next_permitted_action": "CREATE_ACTIVATION_RECEIPT_AT_NEXT_CAMPAIGN_BOUNDARY_THEN_RUN_ONE_FRESH_PILOT",
+  "forbidden_before_activation_receipt": [
+    "PILOT",
+    "CURRENT_CAMPAIGN_POLICY_CHANGE",
+    "M6F_MUTATION"
+  ],
+  "authority": "GATE_CLOSURE_ONLY"
+}

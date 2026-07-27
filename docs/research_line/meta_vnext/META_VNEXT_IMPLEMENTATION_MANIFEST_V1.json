@@ -1,0 +1,110 @@
+{
+  "schema": "recclaw.meta-vnext-implementation-manifest.v1",
+  "status": "PROMOTED_SCIENTIFIC_SEAL",
+  "runtime_authority": "NONE_UNTIL_NEXT_CAMPAIGN_ACTIVATION",
+  "promotion_authority": "IMMUTABLE_PROMOTE",
+  "activation_applied": false,
+  "fresh_pilot_executed": false,
+  "source_identity": {
+    "branch": "feat/research-meta-v2",
+    "git_head": "b6ea3c4f8534d0b6267706d2a9577629db0c83a2",
+    "git_tree": "42d753e9a0a03dacc9311d8b9004f7e0a7c3f564",
+    "v17_source_manifest_digest": "f894450e242550550dae7acc222ce2ed1be36fedf26dfb42936e7489fbdd7223",
+    "source_manifest_file_count": 378,
+    "source_manifest_mismatch_count_at_seal": 0
+  },
+  "implementation_sources": {
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/contracts.py": "2b4958704f1f29ba7881928a1543870111bf0eda549b83c741c65f966716e017",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/features.py": "d111626edd67b6ee094f1d479262c73a73c9937703a589568f5f5621d703591c",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/learning.py": "08c4b9f85f1b7b659359ec7f738b749a8c95653bb18993343675b73c31c3fbdb",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/routing.py": "1a05c64d978a696a6f6be6d7cfdd49e3841cd7d906c56a32f0523b48734e54dd",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/evaluation.py": "6e3de254e6bbf5942c02526f7f4fff4311fc7d166e60419317fab35a7778b70c",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/integration.py": "b22ce50f45a58710fb281014b968239c2aad03dce97698a04209567b548b5633",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/calibration.py": "96498ad0a0707e9c63b81384a0136b624950096f1b5cc35a5e1f59ecba042a9b",
+    "scripts/run_meta_vnext_calibration_v17.py": "53e1b29ea5c21507083e00ec11b8869464f61e73529dcbbea5c24bac3f3f726c",
+    "scripts/prepare_movielens_latest_small_v1.py": "ae7796fcc0f02755184a9da3d6aca6c01ace7b9b85b621e51474dae2e7419c62",
+    "scripts/build_meta_vnext_tail_affinity_bands_v1.py": "6810d6e9b6c8b4e467748dc9e4c1cf3de604ed2db945a2c2b0a2d81b6d684baf"
+  },
+  "experiment_identity": {
+    "design_digest": "977406fe35630756922c2d8d1aa83f360e55ea1dd2919773bb084deb41efcbd6",
+    "runtime_manifest_digest": "b44e0be8e31b9f50cacb5d69970be6e8ed37fcc1b78499cfddda749b4cfcbf0f",
+    "development_replay_digest": "d4b5c0cb8484789d2508ebd36c5d1e87f40fb2efcb2294b3ff30f912250f8eb9",
+    "fit_record_digest": "ae0a5359c37b60851d34d49963db0ebc08b7ecf37bb4568128f9a3dd095cc293",
+    "development_gate_digest": "8084b2aa18a162b02f8d66512368c06f885cbb7117fec701685bdd49176be223",
+    "heldout_report_digest": "8774afb8e5c76b5d228a95bf4f0967831fb2acf9f853e5a4566e2c7508022ef8",
+    "promotion_decision_digest": "358dbaf87b9d7c030ec06c1a7e9229c0f5fc502b102b66fdffa40b31da3827f2"
+  },
+  "policy": {
+    "slow_policy_digest": "d09d599bb68fadbf5bcb3ab1c57d5a95b462b313623b3a478da4d10a96556601",
+    "router_configuration_digest": "e818190c19a1f3e7de87fe2adf6e1ec5f4b5988f6a77bcf34362a48fe4e00347",
+    "policy_bundle_digest": "20e3dd88d1e6d6f338ffc8b06d2e196762116c4779456dde43b1a2fe38918f61",
+    "parent_checkpoint_digest": "80e35563680d70f9b01d53751d2cf71b1b4a4d0e3a5619f08fd0caf6d8c3fb1b",
+    "fast_neighbor_count": 3,
+    "fast_override_margin": 0.001,
+    "activation_boundary": "NEXT_CAMPAIGN",
+    "rollback_parent_digest": "80e35563680d70f9b01d53751d2cf71b1b4a4d0e3a5619f08fd0caf6d8c3fb1b"
+  },
+  "verification": {
+    "focused_meta_tests": {
+      "run": 19,
+      "passed": 19,
+      "failed": 0
+    },
+    "affected_m2_m5_and_meta_regression_tests": {
+      "run": 114,
+      "passed": 114,
+      "failed": 0
+    },
+    "development_complete_pool_results": "336/336",
+    "fresh_heldout_candidate_results": "192/192",
+    "heldout_independent_group_count": 16,
+    "candidate_id_leakage_detected": false,
+    "complete_pool_support": true,
+    "same_episode_set": true,
+    "deterministic_replay": true,
+    "source_closure_reverified": true
+  },
+  "findings": {
+    "P0": [],
+    "P1": [],
+    "P2": [
+      {
+        "id": "P2-META-FAMILY-TAXONOMY-001",
+        "status": "ACCEPTED_MONITOR",
+        "summary": "All candidates intentionally share BL_ICF_V1, so family_max_share is non-discriminating; Producer and mechanism-axis diagnostics remain informative."
+      },
+      {
+        "id": "P2-META-SLOW-AXIS-CONCENTRATION-001",
+        "status": "ACCEPTED_MONITOR",
+        "summary": "Slow selected propagation in 47/48 held-out episodes; fast reduced the maximum mechanism-axis share to 29/48 while improving value."
+      },
+      {
+        "id": "P2-META-M6F-BRANCH-BINDING-001",
+        "status": "OPERATIONAL_FOLLOWUP",
+        "summary": "M6F PASS evidence is on trustworthy feat/research-line-abc commit ad6c7b6e51ebabf5af4a43244d5769b0233f8603; next-campaign activation packaging must bind it without mutating M6F."
+      }
+    ]
+  },
+  "stage_status": {
+    "IMPLEMENTATION": "PASS",
+    "ENGINEERING_REGRESSION": "PASS",
+    "SLOW_EFFICACY": "PASS",
+    "FAST_EFFICACY": "PASS",
+    "PROMOTION": "PROMOTE",
+    "M2_M5_REQUALIFICATION": "PASS_114_OF_114",
+    "M6F": "PASS_EXTERNAL_TRUSTWORTHY_BRANCH_P0_0_P1_0_P2_0",
+    "META_P0": 0,
+    "META_P1": 0,
+    "ACTIVATION": "BOUND_TO_NEXT_CAMPAIGN_NOT_APPLIED",
+    "FRESH_PILOT": "NOT_RUN"
+  },
+  "not_performed": [
+    "LLM_CALL",
+    "PILOT",
+    "NEW_CAMPAIGN_CREATION",
+    "M6F_MUTATION",
+    "POLICY_ACTIVATION",
+    "COMMIT",
+    "PUSH"
+  ]
+}
