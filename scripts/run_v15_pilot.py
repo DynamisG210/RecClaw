@@ -17,6 +17,7 @@ for import_root in (ROOT, SRC, ROOT / "scripts"):
 from freeze_v13_pilot_contract import DEFAULT_LLM_CONFIG  # noqa: E402
 from freeze_v15_pilot_contract import (  # noqa: E402
     DEFAULT_OUTPUT,
+    activate_original_git_tool,
     verify_v15_pilot_contract,
 )
 from recclaw_core.experiments.helix_abc_v1.campaign_pilot_v15 import (  # noqa: E402
@@ -31,6 +32,7 @@ from run_v13_pilot import execute_campaign_pilot  # noqa: E402
 
 
 def execute(contract_path: Path, llm_api_config: Path) -> int:
+    activate_original_git_tool()
     return execute_campaign_pilot(
         contract_path,
         llm_api_config,

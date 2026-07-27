@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -112,6 +114,18 @@ PARENT_CONTRACT = (
     / "V14_FROZEN_CHAIN_PILOT_CONTRACT.json"
 )
 RECORD_SCHEMA = "recclaw.v15-pilot-contract.v1"
+BACKEND_ROOT = Path(
+    "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_v15_backend_v1"
+)
+ORIGINAL_GIT_EXECUTABLE = (
+    BACKEND_ROOT / "tools/git-focal/usr/bin/git"
+)
+ORIGINAL_GIT_EXEC_PATH = (
+    BACKEND_ROOT / "tools/git-focal/usr/lib/git-core"
+)
+ORIGINAL_GIT_CONFIG_HOME = BACKEND_ROOT / "tools/git-config"
+ORIGINAL_GIT_CONFIG = ORIGINAL_GIT_CONFIG_HOME / "git/config"
+SOURCE_BUNDLE = BACKEND_ROOT / "recclaw_v15_source.bundle"
 
 
 def _v15_source_files() -> tuple[str, ...]:
@@ -157,6 +171,16 @@ def _git_head() -> str:
     ).strip()
 
 
+def activate_original_git_tool() -> None:
+    os.environ["PATH"] = (
+        ORIGINAL_GIT_EXECUTABLE.parent.as_posix()
+        + os.pathsep
+        + os.environ.get("PATH", "")
+    )
+    os.environ["GIT_EXEC_PATH"] = ORIGINAL_GIT_EXEC_PATH.as_posix()
+    os.environ["XDG_CONFIG_HOME"] = ORIGINAL_GIT_CONFIG_HOME.as_posix()
+
+
 def build_v15_contract(
     *,
     llm_api_config: Path,
@@ -165,6 +189,7 @@ def build_v15_contract(
     recbole_root: Path,
     data_path: Path,
 ) -> dict[str, object]:
+    activate_original_git_tool()
     contract = build_contract(
         llm_api_config=llm_api_config,
         output_root=output_root,
@@ -191,6 +216,26 @@ def build_v15_contract(
     )
     payload = dict(contract)
     payload.pop("content_digest")
+    if Path(shutil.which("git") or "").resolve() != (
+        ORIGINAL_GIT_EXECUTABLE.resolve()
+    ):
+        raise RuntimeError("V15 pinned Original Git tool is not active")
+    subprocess.run(
+        ["git", "cat-file", "-e", f"{ORIGINAL_MAIN_COMMIT}^{{commit}}"],
+        cwd=ROOT,
+        check=True,
+    )
+    payload["original"] = {
+        **payload["original"],
+        "git_config_path": ORIGINAL_GIT_CONFIG.as_posix(),
+        "git_config_sha256": file_sha256(ORIGINAL_GIT_CONFIG),
+        "git_executable": ORIGINAL_GIT_EXECUTABLE.as_posix(),
+        "git_executable_sha256": file_sha256(ORIGINAL_GIT_EXECUTABLE),
+        "git_exec_path": ORIGINAL_GIT_EXEC_PATH.as_posix(),
+        "source_bundle_path": SOURCE_BUNDLE.as_posix(),
+        "source_bundle_sha256": file_sha256(SOURCE_BUNDLE),
+        "source_repository_head": _git_head(),
+    }
     backend = json.loads(BACKEND_AUDIT.read_text(encoding="utf-8"))
     payload["backend_qualification"] = {
         "audit_path": BACKEND_AUDIT.as_posix(),
@@ -207,6 +252,7 @@ def build_v15_contract(
 
 
 def verify_v15_pilot_contract(path: Path) -> dict[str, object]:
+    activate_original_git_tool()
     contract = json.loads(path.read_text(encoding="utf-8"))
     preimage = dict(contract)
     expected = preimage.pop("content_digest")
@@ -258,6 +304,15 @@ def verify_v15_pilot_contract(path: Path) -> dict[str, object]:
         Path(contract["training"]["release_manifest_path"]): contract[
             "training"
         ]["release_manifest_sha256"],
+        Path(contract["original"]["git_config_path"]): contract[
+            "original"
+        ]["git_config_sha256"],
+        Path(contract["original"]["git_executable"]): contract[
+            "original"
+        ]["git_executable_sha256"],
+        Path(contract["original"]["source_bundle_path"]): contract[
+            "original"
+        ]["source_bundle_sha256"],
     }
     for artifact, digest in exact.items():
         if file_sha256(artifact) != digest:
@@ -267,6 +322,10 @@ def verify_v15_pilot_contract(path: Path) -> dict[str, object]:
         != contract["training"]["release_digest"]
     ):
         raise RuntimeError("V15 active training release changed")
+    if Path(shutil.which("git") or "").resolve() != Path(
+        contract["original"]["git_executable"]
+    ).resolve():
+        raise RuntimeError("V15 pinned Original Git tool is not active")
     runtime_failures = validate_campaign_training_runtime_release(
         data_path=Path(contract["dataset"]["search_parent"]),
         python_executable=Path(contract["training"]["python"]),

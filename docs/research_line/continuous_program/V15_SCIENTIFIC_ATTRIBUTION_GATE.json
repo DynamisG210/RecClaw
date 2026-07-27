@@ -32,17 +32,18 @@
     "v19_preserves_v18_slow_policy_and_router_coefficients",
     "remote_source_profile_and_dataset_content_bound",
     "local_modified_recbole_bytes_preserved",
+    "pinned_original_exact_main_blobs_materialized",
     "fixed_bpr_lightgcn_and_compositional_canaries_closed",
     "cross_arm_sibling_mutation_detected"
   ],
   "verification": [
     {
       "scope": "local_v15_v14_and_training_runtime_regression",
-      "result": "19 passed"
+      "result": "20 passed"
     },
     {
       "scope": "remote_backend_and_isolation_regression",
-      "result": "5 passed"
+      "result": "6 passed"
     },
     {
       "scope": "fixed_training_canaries",
@@ -57,5 +58,5 @@
     "FULL_PILOT_REQUIRES_A_SUFFICIENTLY_FREE_QUALIFIED_GPU_TO_AVOID_EXTERNAL_CONTENTION_CONSUMING_FROZEN_BUDGET",
     "BACKEND_LACKS_UNPRIVILEGED_MOUNT_NAMESPACE_AND_USES_CONTENT_HASH_CONFINEMENT"
   ],
-  "gate_result_digest": "4f42cf1f3710fc6a4232ab9c1fce861e5a3a1d8bc1441b1b75f5e910ca8b74a9"
+  "gate_result_digest": "b754bf632f3e3aa14f4aa249ac315ff96f5e214857654a196f99910cce577deb"
 }

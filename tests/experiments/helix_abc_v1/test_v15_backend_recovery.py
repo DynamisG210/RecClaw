@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from recclaw_core.experiments.helix_abc_v1.campaign_pilot_v15 import (
@@ -8,6 +9,8 @@ from recclaw_core.experiments.helix_abc_v1.campaign_pilot_v15 import (
 from recclaw_core.experiments.helix_abc_v1.contracts import ArmCode
 from recclaw_core.experiments.helix_abc_v1.original_main import (
     ORIGINAL_MAIN_COMMIT,
+    ORIGINAL_MAIN_FILES,
+    OriginalMainSourceReleaseV1,
 )
 from recclaw_core.experiments.helix_abc_v1.training_filesystem import (
     protected_side_effect_manifest,
@@ -61,3 +64,16 @@ def test_sibling_arm_write_is_detected(tmp_path: Path) -> None:
     (arm_b / "state.json").write_text("mutated", encoding="utf-8")
     changed = protected_side_effect_manifest({"sibling_arm:b": arm_b})
     assert side_effect_audit(before, changed)["status"] == "FAIL"
+
+
+def test_pinned_original_materializes_exact_main_blobs(tmp_path: Path) -> None:
+    release = OriginalMainSourceReleaseV1(
+        repository_root=Path(__file__).resolve().parents[3],
+        materialization_root=tmp_path / "original",
+    )
+    release.materialize()
+    for relative, (_blob_sha1, expected_sha256) in ORIGINAL_MAIN_FILES.items():
+        observed = hashlib.sha256(
+            (tmp_path / "original" / relative).read_bytes()
+        ).hexdigest()
+        assert observed == expected_sha256
