@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "controller_update_allowed": {
+      "type": "boolean"
+    },
+    "frontier_eligibility": {
+      "enum": [
+        "SEARCH_ELIGIBLE",
+        "SEARCH_ELIGIBLE_PRELIMINARY",
+        "EXCLUDED"
+      ],
+      "type": "string"
+    },
+    "meta_update_allowed": {
+      "type": "boolean"
+    },
+    "research_task": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_id": {
+              "type": "string"
+            },
+            "candidate_semantic_digest": {
+              "type": "string"
+            },
+            "comparator_identity": {
+              "type": "string"
+            },
+            "created_round": {
+              "type": "integer"
+            },
+            "mechanism_program": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "mechanism_program_digest": {
+              "type": "string"
+            },
+            "missing_seed_count": {
+              "type": "integer"
+            },
+            "parent_candidate_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "protocol_digest": {
+              "type": "string"
+            },
+            "required_seed_or_control": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "task_status": {
+              "enum": [
+                "PENDING",
+                "ACTIVE",
+                "COMPLETED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            },
+            "task_type": {
+              "enum": [
+                "VALIDATE_SAME_CANDIDATE",
+                "RUN_MATCHED_CONTROL",
+                "RUN_ABLATION",
+                "REPAIR_IMPLEMENTATION",
+                "PROTOCOL_BRANCH_DIAGNOSTIC"
+              ],
+              "type": "string"
+            },
+            "utility_priority": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "task_id",
+            "task_type",
+            "candidate_id",
+            "candidate_semantic_digest",
+            "mechanism_program_digest",
+            "parent_candidate_id",
+            "comparator_identity",
+            "protocol_digest",
+            "required_seed_or_control",
+            "task_status",
+            "created_round",
+            "utility_priority",
+            "missing_seed_count",
+            "mechanism_program"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "search_feedback_class": {
+      "enum": [
+        "BASELINE_RESULT",
+        "ADMITTED_SEARCH_RESULT",
+        "PRELIMINARY_SEARCH_SIGNAL",
+        "DIAGNOSTIC_ONLY",
+        "ENGINEERING_ONLY",
+        "PROTOCOL_BRANCH_TASK",
+        "NO_SEARCH_UPDATE",
+        "COMMON_NO_EXECUTION",
+        "COMMON_FAILED_EXECUTION"
+      ],
+      "type": "string"
+    },
+    "search_memory_update_allowed": {
+      "type": "boolean"
+    },
+    "search_utility_event": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_id": {
+              "type": "string"
+            },
+            "candidate_semantic_digest": {
+              "type": "string"
+            },
+            "common_outcome_class": {
+              "type": "string"
+            },
+            "comparator_delta": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "mechanism_axis": {
+              "type": "string"
+            },
+            "metric_contract_digest": {
+              "type": "string"
+            },
+            "observation_seed": {
+              "type": "string"
+            },
+            "resource_cost_projection": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "runnable_observation": {
+              "type": "string"
+            },
+            "typed_blocker_class": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "candidate_semantic_digest",
+            "candidate_id",
+            "mechanism_axis",
+            "common_outcome_class",
+            "runnable_observation",
+            "comparator_delta",
+            "metric_contract_digest",
+            "resource_cost_projection",
+            "typed_blocker_class",
+            "observation_seed"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "candidate_id",
+    "search_feedback_class",
+    "search_utility_event",
+    "frontier_eligibility",
+    "research_task",
+    "controller_update_allowed",
+    "meta_update_allowed",
+    "search_memory_update_allowed"
+  ],
+  "title": "FusedSearchFeedbackV2",
+  "type": "object",
+  "x-recclaw-generated-from": "recclaw_core.helix.scientific_attribution.FusedSearchFeedbackV2"
+}

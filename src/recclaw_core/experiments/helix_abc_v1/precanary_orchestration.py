@@ -25,13 +25,18 @@ from recclaw_core.helix.contracts import (
     GuardContext,
     RawResultEnvelope,
 )
-from recclaw_core.helix.fusion import (
-    DeterministicHelixFusionV1,
-    HelixFusionBridgeV1,
-)
 from recclaw_core.helix.guard_adapter import EvidenceGuardPortV1
 from recclaw_core.helix.ledger import EvidenceGuardLedgerWriterV1
 from recclaw_core.helix.ports import NullEvidencePortV1
+from recclaw_core.helix.scientific_attribution import (
+    DeterministicHelixAdmissionV13,
+    FusedSearchFeedbackV2,
+    NOT_AVAILABLE,
+    ResearchTaskStatusV1,
+    ResearchTaskTypeV1,
+    ResearchTaskV1,
+    SearchUtilityEventV2,
+)
 
 from .canonical import canonical_json_bytes, canonical_value, sha256_digest
 from .broker_failure_closure import (
@@ -39,6 +44,13 @@ from .broker_failure_closure import (
     close_broker_failure,
 )
 from .canary_broker import CanaryBrokerError
+from .campaign_runtime import (
+    CampaignRuntimeError,
+    campaign_runtime_profile,
+    executable_mechanism,
+    execution_recipe_for_program,
+    root_parent_mechanism_id,
+)
 from .common_execution_guard import CommonExecutionGuardV1
 from .contracts import (
     ArmCode,
@@ -64,7 +76,12 @@ from .research_capability import (
     StrongStaticRouterV1,
     initial_research_policy,
 )
-from .research_contracts import CandidateProposalV2, DevelopmentalMechanismBeliefV1
+from .research_contracts import (
+    CandidateProposalV2,
+    CandidateProposalV3,
+    DevelopmentalMechanismBeliefV1,
+    ProducerSessionResultV1,
+)
 from .research_controller import (
     ResearchLineControllerV1,
     ResearchRoundPlanV1,
@@ -388,7 +405,8 @@ class FakeProposalSessionV1:
     proposal_session_digest: str
     route_trace_digest: str | None
     research_plan: ResearchRoundPlanV1 | None
-    research_proposals: tuple[CandidateProposalV2, ...] = ()
+    research_proposals: tuple[CandidateProposalV2 | CandidateProposalV3, ...] = ()
+    producer_session: ProducerSessionResultV1 | None = None
 
 
 @dataclass(slots=True)
@@ -680,7 +698,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         self.broker = broker or ThreeArmFakeBrokerV1.create()
         self.resource_ceilings = resource_ceilings or m4_budget()
         self.guard_context = guard_context or _guard_context()
-        self.fusion = DeterministicHelixFusionV1()
+        self.admission = DeterministicHelixAdmissionV13()
         self.ports: dict[ArmCode, Any] = {
             ArmCode.A: NullEvidencePortV1(),
             ArmCode.B: NullEvidencePortV1(),
@@ -774,15 +792,130 @@ class ThreeArmPreCanaryOrchestratorV1:
     def _planned_guard_protocol(self) -> Mapping[str, Any]:
         return _guard_protocol()
 
+    def _search_utility_event(
+        self,
+        *,
+        selected: CandidateEnvelope,
+        selected_plan: Any,
+        selected_recipe: Mapping[str, Any],
+        helix_raw: RawResultEnvelope,
+        gpu_device_time_ms: int,
+        gpu_cost_microunits: int,
+        execution_wall_time_ms: int,
+    ) -> SearchUtilityEventV2:
+        metrics = helix_raw.to_dict()["normalized_metrics"]
+        return SearchUtilityEventV2(
+            candidate_semantic_digest=str(
+                selected_plan.mechanism_semantics_digest
+            ),
+            candidate_id=selected.candidate_id,
+            mechanism_axis=str(
+                selected_recipe.get("mechanism_axis")
+                or selected_recipe.get("axis")
+                or (
+                    executable_mechanism(
+                        str(selected_recipe["mechanism_id"])
+                    ).mechanism_axis
+                    if selected_recipe.get("mechanism_id")
+                    != "LEGACY_FIXTURE"
+                    else None
+                )
+                or "legacy_fixture"
+            ),
+            common_outcome_class=str(helix_raw.run_status),
+            runnable_observation=(
+                "RUNNABLE"
+                if str(helix_raw.run_status)
+                in {"SUCCESS", "SMOKE_PASS", "COMPLETED"}
+                else "NOT_RUNNABLE"
+            ),
+            comparator_delta=NOT_AVAILABLE,
+            metric_contract_digest=sha256_digest(
+                {
+                    "metric_keys": sorted(metrics),
+                    "observed_protocol": helix_raw.to_dict()[
+                        "observed_protocol"
+                    ],
+                }
+            ),
+            resource_cost_projection={
+                "gpu_cost_microunits": gpu_cost_microunits,
+                "gpu_device_time_ms": gpu_device_time_ms,
+                "wall_time_ms": execution_wall_time_ms,
+            },
+            typed_blocker_class=(
+                "NONE"
+                if str(helix_raw.run_status)
+                in {"SUCCESS", "SMOKE_PASS", "COMPLETED"}
+                else str(helix_raw.run_status)
+            ),
+            observation_seed=str(helix_raw.seed_runs[0]["seed_id"]),
+        )
+
+    def _research_task(
+        self,
+        *,
+        task_type: ResearchTaskTypeV1,
+        round_index: int,
+        selected: CandidateEnvelope,
+        selected_plan: Any,
+        program: Mapping[str, Any],
+    ) -> ResearchTaskV1:
+        required = (
+            "2027"
+            if task_type is ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE
+            else "FROZEN_PROTOCOL_BRANCH_DIAGNOSTIC"
+        )
+        identity = {
+            "candidate_semantic_digest": (
+                selected_plan.mechanism_semantics_digest
+            ),
+            "created_round": round_index,
+            "required_seed_or_control": required,
+            "task_type": task_type.value,
+        }
+        return ResearchTaskV1(
+            task_id=sha256_digest(identity),
+            task_type=task_type,
+            candidate_id=selected.candidate_id,
+            candidate_semantic_digest=str(
+                selected_plan.mechanism_semantics_digest
+            ),
+            mechanism_program_digest=str(
+                selected_plan.mechanism_program_digest
+            ),
+            parent_candidate_id=None,
+            comparator_identity=selected.comparator,
+            protocol_digest=sha256_digest(
+                selected.to_dict()["planned_protocol"]
+            ),
+            required_seed_or_control=required,
+            task_status=ResearchTaskStatusV1.PENDING,
+            created_round=round_index,
+            utility_priority=1.0,
+            missing_seed_count=1,
+            mechanism_program=program,
+        )
+
+    def _common_execution_protocol(self) -> Any:
+        return development_protocol()
+
     def _after_research_close(
         self,
         *,
         arm: ArmCode,
         round_index: int,
         controller: ResearchLineControllerV1,
-        feedback_projection: Mapping[str, Any],
+        feedback: FusedSearchFeedbackV2,
+        source_proposal_candidate_id: str,
     ) -> None:
-        del arm, round_index, controller, feedback_projection
+        del (
+            arm,
+            round_index,
+            controller,
+            feedback,
+            source_proposal_candidate_id,
+        )
 
     def _execute_selected(
         self,
@@ -853,7 +986,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         self,
         *,
         selected: CandidateEnvelope,
-        feedback: Mapping[str, Any],
+        event: SearchUtilityEventV2,
         proposal: CandidateProposalV2,
     ) -> DevelopmentalMechanismBeliefV1:
         return DevelopmentalMechanismBeliefV1(
@@ -864,7 +997,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 f"{proposal.proposal_intent.value}:{proposal.mechanism_axis}:"
                 "synthetic closure"
             ),
-            evidence_for=(str(feedback["raw_search_feedback_digest"]),),
+            evidence_for=(event.digest,),
             evidence_against=(),
             unresolved_confounds=("synthetic_fixture",),
             next_discriminative_test=(
@@ -971,7 +1104,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             plan, action = common_guard.plan_check(
                 program=program,
                 caller_compile_report=compiled,
-                protocol=development_protocol(),
+                protocol=self._common_execution_protocol(),
                 budget=ceilings,
             )
             if action is not None:
@@ -982,6 +1115,18 @@ class ThreeArmPreCanaryOrchestratorV1:
                 )
             else:
                 denials.append((str(compiled.candidate_id), tuple(plan.reason_codes)))
+        finalize_common_route = getattr(
+            self.broker, "finalize_common_route", None
+        )
+        if finalize_common_route is not None:
+            session = finalize_common_route(
+                arm=arm,
+                round_index=round_index,
+                session=session,
+                common_eligible_candidate_ids=tuple(
+                    common_eligible_by_id
+                ),
+            )
         for frozen_program in session.ordered_programs:
             candidate_id = str(compile_program(deep_thaw(frozen_program)).candidate_id)
             item = common_eligible_by_id.get(candidate_id)
@@ -991,33 +1136,142 @@ class ThreeArmPreCanaryOrchestratorV1:
             raise PreCanaryInvariantError(
                 f"M4 fake slate has no COMMON_PASS candidate: {denials}"
             )
-        envelopes = tuple(
-            CandidateEnvelope(
-                candidate_id=str(action.candidate_id),
-                opaque_arm_instance_id=opaque_id,
-                common_status="COMMON_PASS",
-                mechanism_program_digest=str(plan.mechanism_program_digest),
-                common_plan_digest=plan.digest,
-                action_family="RUN_OFFLINE_TOPN",
-                planned_protocol=self._planned_guard_protocol(),
-                target_model="CandidateModel",
-                comparator="LightGCN",
-                seed_ids=("2026",),
-                purpose="development comparison",
-            )
-            for _program, plan, action in eligible
+        envelope_rows = []
+        campaign_profile_digest = str(
+            campaign_runtime_profile()["profile_digest"]
         )
-        selection = SameSlateHelixSelectorV1(self.fusion).select(
+        for program, plan, action in eligible:
+            if action.release_projection_digest == campaign_profile_digest:
+                recipe = execution_recipe_for_program(program)
+            else:
+                recipe = {
+                    "mechanism_id": "LEGACY_FIXTURE",
+                    "model": "CandidateModel",
+                }
+            is_campaign_candidate = (
+                action.release_projection_digest == campaign_profile_digest
+            )
+            envelope_rows.append(
+                CandidateEnvelope(
+                    candidate_id=str(action.candidate_id),
+                    opaque_arm_instance_id=opaque_id,
+                    common_status="COMMON_PASS",
+                    mechanism_program_digest=str(
+                        plan.mechanism_program_digest
+                    ),
+                    common_plan_digest=plan.digest,
+                    action_family="RUN_OFFLINE_TOPN",
+                    planned_protocol=self._planned_guard_protocol(),
+                    target_model=str(recipe["model"]),
+                    comparator=(
+                        root_parent_mechanism_id(recipe["mechanism_id"])
+                        if is_campaign_candidate
+                        else "LightGCN"
+                    ),
+                    seed_ids=("2026",),
+                    purpose=(
+                        "development comparison for exact mechanism "
+                        f"{recipe['mechanism_id']} in round {round_index}"
+                        if is_campaign_candidate
+                        else "development comparison"
+                    ),
+                )
+            )
+        envelopes = tuple(envelope_rows)
+        selection = SameSlateHelixSelectorV1(self.admission).select(
             envelopes, self.ports[arm]
         )
         if selection.selected_candidate is None:
-            raise PreCanaryInvariantError("M4 fixture unexpectedly exhausted the slate")
+            if arm is not ArmCode.C or selection.last_adjudication is None:
+                raise PreCanaryInvariantError(
+                    "non-Guard Arm unexpectedly exhausted the slate"
+                )
+            last_candidate_id = selection.inspected_candidate_ids[-1]
+            plan = session.research_plan
+            if plan is None:
+                raise PreCanaryInvariantError(
+                    "Guard PRE exhaustion lacks its Research plan"
+                )
+            del plan
+            fused_feedback = self.admission.no_search_update(
+                last_candidate_id
+            )
+            closed = self.store.close_round(
+                CloseRoundCommand(
+                    round_id=opened["round_id"],
+                    terminal_class="NO_EXECUTION",
+                    feedback_payload=fused_feedback.to_dict(),
+                    controller_state_after_digest=(
+                        controller_state_before_digest
+                    ),
+                    resource_debits=(
+                        ResourceDebitV1(
+                            "PHYSICAL_LLM_CALL",
+                            session.physical_call_count,
+                        ),
+                        ResourceDebitV1(
+                            "INPUT_TOKEN", session.input_tokens
+                        ),
+                        ResourceDebitV1(
+                            "OUTPUT_TOKEN", session.output_tokens
+                        ),
+                        ResourceDebitV1(
+                            "BILLED_TOKEN_DEBIT",
+                            session.billed_tokens,
+                        ),
+                        ResourceDebitV1(
+                            "PROPOSAL", session.proposal_count
+                        ),
+                        ResourceDebitV1(
+                            "PROPOSAL_ATTEMPT", session.proposal_count
+                        ),
+                        ResourceDebitV1(
+                            "COMMON_VALIDATION",
+                            len(session.validation_programs),
+                        ),
+                    ),
+                    idempotency_key=f"m4:close:{opened['round_id']}",
+                )
+            )
+            return ArmRoundResultV1(
+                opaque_instance_id=opaque_id,
+                round_id=opened["round_id"],
+                candidate_id=last_candidate_id,
+                terminal_class=str(closed["terminal_class"]),
+                physical_call_count=session.physical_call_count,
+                proposal_count=session.proposal_count,
+                input_tokens=session.input_tokens,
+                output_tokens=session.output_tokens,
+                billed_tokens=session.billed_tokens,
+                ordinary_execution_count=0,
+                gpu_device_time_ms=0,
+                gpu_cost_microunits=0,
+                feedback_digest=str(closed["feedback_digest"]),
+                evidence_port_status=(
+                    selection.last_adjudication.status.value
+                ),
+                training_backend_started=False,
+            )
         selected = selection.selected_candidate
         program, selected_plan, action = next(
             item
             for item in eligible
             if str(item[2].candidate_id) == selected.candidate_id
         )
+        try:
+            if (
+                action.release_projection_digest
+                != campaign_profile_digest
+            ):
+                raise CampaignRuntimeError("legacy execution profile")
+            selected_recipe = execution_recipe_for_program(program)
+        except CampaignRuntimeError:
+            selected_recipe = {
+                "mechanism_id": "LEGACY_FIXTURE",
+                "mechanism_semantics_digest": (
+                    selected_plan.mechanism_semantics_digest
+                ),
+            }
         runtime_root = self.layout.arm(opaque_id).namespace("runtime")
         report = DeterministicMaterializerV1().materialize(
             action, program=program, arm_runtime_root=runtime_root
@@ -1084,45 +1338,71 @@ class ThreeArmPreCanaryOrchestratorV1:
             opaque_instance_id=opaque_id,
             common_result=common_result,
         )
+        gpu_device_time_ms, gpu_cost_microunits, execution_wall_time_ms = (
+            self._execution_resource_projection(raw_output)
+        )
         post = self.ports[arm].post_run(helix_raw)
-        fused = self.fusion.fuse(post)
-        raw_search_feedback_digest = sha256_digest(
-            {
-                "candidate_id": selected.candidate_id,
-                "normalized_metrics": helix_raw.to_dict()["normalized_metrics"],
-                "run_status": helix_raw.run_status,
-            }
+        search_utility_event = self._search_utility_event(
+            selected=selected,
+            selected_plan=selected_plan,
+            selected_recipe=selected_recipe,
+            helix_raw=helix_raw,
+            gpu_device_time_ms=gpu_device_time_ms,
+            gpu_cost_microunits=gpu_cost_microunits,
+            execution_wall_time_ms=execution_wall_time_ms,
         )
-        fusion_instruction = (
-            HelixFusionBridgeV1().map(fused.compact_feedback).to_dict()
-            if fused.compact_feedback is not None
-            else None
+        validation_task = self._research_task(
+            task_type=ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE,
+            round_index=round_index,
+            selected=selected,
+            selected_plan=selected_plan,
+            program=program,
         )
-        feedback = {
-            "candidate_id": selected.candidate_id,
-            "common_result_digest": common_result.digest,
-            "evidence_fusion_action": fused.selection_action,
-            "guard_compact_feedback": (
-                fused.compact_feedback.to_dict()
-                if fused.compact_feedback is not None
-                else None
-            ),
-            "raw_search_feedback_digest": raw_search_feedback_digest,
-        }
-        controller_feedback = {
-            "candidate_id": selected.candidate_id,
-            "common_result_digest": common_result.digest,
-            "fusion_instruction": fusion_instruction,
-            "raw_search_feedback_digest": raw_search_feedback_digest,
-            "search_outcome": {
-                "normalized_metrics": helix_raw.to_dict()["normalized_metrics"],
-                "run_status": helix_raw.run_status,
-            },
-        }
-        if arm is ArmCode.A:
-            transition = OriginalControllerV1().close_round(
-                controller_feedback, "NO_WRITE"
+        branch_task = self._research_task(
+            task_type=ResearchTaskTypeV1.PROTOCOL_BRANCH_DIAGNOSTIC,
+            round_index=round_index,
+            selected=selected,
+            selected_plan=selected_plan,
+            program=program,
+        )
+        fused_feedback, _private_compact_feedback = (
+            self.admission.admit_post(
+                adjudication=post,
+                search_utility_event=search_utility_event,
+                validation_task=validation_task,
+                protocol_branch_task=branch_task,
             )
+        )
+        post_result_learning_error: Exception | None = None
+        if arm is ArmCode.A:
+            original_feedback = {
+                "candidate_id": selected.candidate_id,
+                "mechanism_id": selected_recipe["mechanism_id"],
+                "mechanism_semantics_digest": (
+                    selected_plan.mechanism_semantics_digest
+                ),
+                "round_index": round_index,
+                "search_outcome": {
+                    "gpu_cost_microunits": gpu_cost_microunits,
+                    "gpu_device_time_ms": gpu_device_time_ms,
+                    "normalized_metrics": helix_raw.to_dict()[
+                        "normalized_metrics"
+                    ],
+                    "run_status": helix_raw.run_status,
+                    "wall_time_ms": execution_wall_time_ms,
+                },
+            }
+            original_runtime = getattr(
+                self.broker, "original_controller", None
+            )
+            if original_runtime is None:
+                transition = OriginalControllerV1().close_round(
+                    original_feedback, "NO_WRITE"
+                )
+            else:
+                transition = original_runtime.close_round(
+                    original_feedback
+                )
             after_digest = str(transition["transition_digest"])
         else:
             plan = session.research_plan
@@ -1145,31 +1425,62 @@ class ThreeArmPreCanaryOrchestratorV1:
                 raise PreCanaryInvariantError(
                     "Research execution is missing selected proposal lineage"
                 )
-            belief = self._research_belief(
-                selected=selected,
-                feedback=controller_feedback,
-                proposal=actual_proposal,
+            beliefs = (
+                (
+                    self._research_belief(
+                        selected=selected,
+                        event=fused_feedback.search_utility_event,
+                        proposal=actual_proposal,
+                    ),
+                )
+                if (
+                    fused_feedback.controller_update_allowed
+                    and fused_feedback.search_utility_event is not None
+                )
+                else ()
             )
-            transition = self.broker.research_controllers[arm].close_round(
+            transition = self.broker.research_controllers[
+                arm
+            ].close_round_v13(
                 plan=plan,
-                feedback_projection=controller_feedback,
-                beliefs=(belief,),
+                feedback=fused_feedback,
+                beliefs=beliefs,
             )
-            after_digest = str(transition["round_transition_digest"])
+            after_digest = (
+                str(transition["round_transition_digest"])
+                if transition["state_changed"]
+                else controller_state_before_digest
+            )
             record_feedback = getattr(
                 self.broker, "record_search_feedback", None
             )
-            if record_feedback is not None:
-                record_feedback(arm, transition["search_memory_projection"])
-            self._after_research_close(
-                arm=arm,
-                round_index=round_index,
-                controller=self.broker.research_controllers[arm],
-                feedback_projection=controller_feedback,
-            )
-        gpu_device_time_ms, gpu_cost_microunits, execution_wall_time_ms = (
-            self._execution_resource_projection(raw_output)
-        )
+            if record_feedback is not None and transition["state_changed"]:
+                record_feedback(
+                    arm,
+                    transition["search_memory_projection"],
+                    executed_mechanism_id=str(
+                        selected_recipe["mechanism_id"]
+                    ),
+                    execution_succeeded=(
+                        search_utility_event.runnable_observation
+                        == "RUNNABLE"
+                    ),
+                )
+            if fused_feedback.meta_update_allowed:
+                try:
+                    self._after_research_close(
+                        arm=arm,
+                        round_index=round_index,
+                        controller=(
+                            self.broker.research_controllers[arm]
+                        ),
+                        feedback=fused_feedback,
+                        source_proposal_candidate_id=(
+                            actual_proposal.candidate_id
+                        ),
+                    )
+                except Exception as error:
+                    post_result_learning_error = error
         execution_debits = (
             ResourceDebitV1("GPU_DEVICE_TIME_MS", gpu_device_time_ms),
             ResourceDebitV1("GPU_COST_MICROUNITS", gpu_cost_microunits),
@@ -1179,7 +1490,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             CloseRoundCommand(
                 round_id=opened["round_id"],
                 terminal_class="COMPLETED",
-                feedback_payload=feedback,
+                feedback_payload=fused_feedback.to_dict(),
                 controller_state_after_digest=after_digest,
                 resource_debits=(
                     ResourceDebitV1(
@@ -1200,6 +1511,8 @@ class ThreeArmPreCanaryOrchestratorV1:
                 idempotency_key=f"m4:close:{opened['round_id']}",
             )
         )
+        if post_result_learning_error is not None:
+            raise post_result_learning_error
         return ArmRoundResultV1(
             opaque_instance_id=opaque_id,
             round_id=opened["round_id"],
@@ -1242,7 +1555,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         projection = {
             "assignment_commitment": self.assignment.commitment,
             "common_execution_policy_digest": common_release_projection_digest(),
-            "deterministic_fusion_digest": self.fusion.policy_digest,
+            "deterministic_fusion_digest": self.admission.policy_digest,
             "instances": opaque_results,
             "triplet_closed": all(item["round_closed"] for item in opaque_results),
         }

@@ -13,6 +13,16 @@ from recclaw_core.helix.contracts import (
     GuardContext,
     RawResultEnvelope,
 )
+from recclaw_core.helix.scientific_attribution import (
+    FusedSearchFeedbackV2,
+    NOT_AVAILABLE,
+    SearchUtilityEventV2,
+)
+from .campaign_dataset import campaign_development_protocol
+from .campaign_runtime import (
+    campaign_runtime_profile,
+    campaign_training_profile,
+)
 
 from .canonical import canonical_value, sha256_digest
 from .audit_snapshot import (
@@ -39,6 +49,7 @@ from .research_capability import (
 )
 from .research_contracts import (
     CandidateProposalV2,
+    CandidateProposalV3,
     DevelopmentalMechanismBeliefV1,
 )
 from .research_controller import ResearchLineControllerV1
@@ -56,6 +67,8 @@ from .training_runtime_contracts import (
     TrainingRuntimeCompatibilityFixtureV1,
 )
 from .training_runtime_release import (
+    CAMPAIGN_TRAINING_RUNNER_ABI,
+    TRAINING_RUNNER_ABI,
     build_training_runtime_binding,
     training_runtime_compatibility_preflight,
     training_runtime_component_abis,
@@ -106,6 +119,36 @@ def pilot_protocol() -> dict[str, Any]:
         "training_procedure": {
             "optimizer": "adam",
             "max_epochs": int(profile["max_epochs"]),
+        },
+    }
+
+
+def campaign_pilot_protocol() -> dict[str, Any]:
+    profile = campaign_training_profile()
+    protocol = campaign_development_protocol()
+    return {
+        "protocol_id": protocol.protocol_id,
+        "profile_family": protocol.profile_family,
+        "dataset": "ml-1m",
+        "dataset_snapshot": protocol.dataset_snapshot_digest,
+        "split": {
+            "strategy": "sha256_seeded_within_user",
+            "ratio": [0.8, 0.1, 0.1],
+            "online_partition": "DEVELOPMENT_VALIDATION",
+            "heldout_access": "POST_SELECTION_ONLY",
+        },
+        "training_sampling": {"mode": "mechanism_program_defined"},
+        "evaluation_candidate_universe": {"mode": "full_sort"},
+        "candidate_policy": {"seen_items": "exclude"},
+        "metric": {
+            "name": "ndcg",
+            "cutoff": 10,
+            "source": "BEST_VALID_RESULT",
+        },
+        "training_procedure": {
+            "optimizer": str(profile["optimizer"]),
+            "max_epochs": int(profile["max_epochs"]),
+            "early_stopping_patience": int(profile["stopping_step"]),
         },
     }
 
@@ -258,11 +301,16 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         ) = None,
         _assignment_nonce: str | None = None,
         _guard_context: GuardContext | None = None,
+        _training_runner_abi: str = TRAINING_RUNNER_ABI,
     ) -> None:
         contract = _contract or PilotStoreContractV1.create()
         self._training_project_root = project_root.resolve()
         self._training_recbole_root = recbole_root.resolve()
         self._training_data_path = data_path.resolve()
+        self._training_runner_abi = _training_runner_abi
+        self._campaign_training = (
+            _training_runner_abi == CAMPAIGN_TRAINING_RUNNER_ABI
+        )
         super().__init__(
             root,
             assignment_nonce=(
@@ -280,7 +328,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
                 "Pilot store audit capability failed before broker use"
             )
         purpose = TrainingExecutionPurposeV1.PILOT.value
-        protocol_digest = sha256_digest(pilot_protocol())
+        protocol_digest = sha256_digest(self._active_pilot_protocol())
         seed_policy_digest = sha256_digest(
             {
                 "ordinary_execution_seed": self.contract.ordinary_execution_seed,
@@ -290,7 +338,11 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         training_config_budget_digest = sha256_digest(
             {
                 "budget": self.resource_ceilings.to_dict(),
-                "training_profile_digest": pilot_training_profile_digest(),
+                "training_profile_digest": (
+                    sha256_digest(campaign_training_profile())
+                    if self._campaign_training
+                    else pilot_training_profile_digest()
+                ),
             }
         )
         preflight_arm_id = self.assignment.mapping[ArmCode.A]
@@ -306,14 +358,18 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
                         "NOT_ELIGIBLE_FOR_ACCEPTED_EVIDENCE"
                     ),
                     "arm_common_projection_digest": (
-                        common_release_projection_digest()
+                        campaign_runtime_profile()["profile_digest"]
+                        if self._campaign_training
+                        else common_release_projection_digest()
                     ),
                     "budget_digest": sha256_digest(
                         self.resource_ceilings.to_dict()
                     ),
                     "candidate_id": "M6R_PREFLIGHT_PILOT_CANDIDATE",
                     "checkpoint_root": str(preflight_run_root / "checkpoints"),
-                    "component_runner_abis": training_runtime_component_abis(),
+                    "component_runner_abis": training_runtime_component_abis(
+                        runner_abi=self._training_runner_abi
+                    ),
                     "evaluation_purpose": purpose,
                     "execution_purpose": purpose,
                     "experiment_id": self.contract.experiment_id,
@@ -356,6 +412,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             ),
             python_executable=python_executable,
             recbole_root=recbole_root,
+            runner_abi=self._training_runner_abi,
         )
         if (
             self.training_preflight.status
@@ -376,7 +433,21 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         self.initial_research_identity = broker.bc_controller_identity_digest
 
     def _planned_guard_protocol(self) -> Mapping[str, Any]:
-        return pilot_protocol()
+        return self._active_pilot_protocol()
+
+    def _common_execution_protocol(self) -> Any:
+        return (
+            campaign_development_protocol()
+            if self._campaign_training
+            else super()._common_execution_protocol()
+        )
+
+    def _active_pilot_protocol(self) -> Mapping[str, Any]:
+        return (
+            campaign_pilot_protocol()
+            if self._campaign_training
+            else pilot_protocol()
+        )
 
     def _execute_selected(
         self,
@@ -430,7 +501,11 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             accepted_evidence_eligibility=(
                 "NOT_ELIGIBLE_FOR_ACCEPTED_EVIDENCE"
             ),
-            arm_common_projection_digest=common_release_projection_digest(),
+            arm_common_projection_digest=(
+                campaign_runtime_profile()["profile_digest"]
+                if self._campaign_training
+                else common_release_projection_digest()
+            ),
             budget_digest=str(base_binding.budget_digest),
             candidate_id=str(base_binding.candidate_id),
             checkpoint_root=str(checkpoint_root),
@@ -450,8 +525,10 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             ),
             opaque_arm_instance_id=str(base_binding.opaque_arm_instance_id),
             partition_purpose="PILOT_EXCLUDED_FROM_MAIN",
-            protocol_digest=sha256_digest(pilot_protocol()),
-            protocol_profile_ref="PROTO-ML1M-FULL-001",
+            protocol_digest=sha256_digest(self._active_pilot_protocol()),
+            protocol_profile_ref=str(
+                self._active_pilot_protocol()["protocol_id"]
+            ),
             result_root=str(run_root),
             round_id=str(base_binding.round_id),
             run_id=str(base_binding.run_id),
@@ -469,12 +546,17 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             training_config_budget_digest=sha256_digest(
                 {
                     "budget": budget.to_dict(),
-                    "training_profile_digest": pilot_training_profile_digest(),
+                    "training_profile_digest": (
+                        sha256_digest(campaign_training_profile())
+                        if self._campaign_training
+                        else pilot_training_profile_digest()
+                    ),
                 }
             ),
             filesystem_capability_digest=(
                 filesystem_capability.capability_digest
             ),
+            runner_abi=self._training_runner_abi,
         )
         binding = build_training_binding_v3(
             base_binding=base_binding,
@@ -553,9 +635,9 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             common_result_closure_digest=str(
                 common_result.common_result_closure_digest
             ),
-            observed_protocol=pilot_protocol(),
-            target_model="CandidateModel",
-            comparator="LightGCN",
+            observed_protocol=self._active_pilot_protocol(),
+            target_model=selected.target_model,
+            comparator=selected.comparator,
             seed_runs=(
                 {
                     "seed_id": "2026",
@@ -573,37 +655,72 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         self,
         *,
         selected: CandidateEnvelope,
-        feedback: Mapping[str, Any],
-        proposal: CandidateProposalV2,
+        event: SearchUtilityEventV2,
+        proposal: CandidateProposalV2 | CandidateProposalV3,
     ) -> DevelopmentalMechanismBeliefV1:
         payload = deep_thaw(proposal.mechanism_program)["program_payload"]
         failure_modes = tuple(
             str(item) for item in payload.get("failure_modes", ())
         )
         expected_effects = canonical_value(payload.get("expected_effects", {}))
-        outcome = canonical_value(feedback["search_outcome"])
+        comparator_delta = (
+            None
+            if event.comparator_delta == NOT_AVAILABLE
+            else float(event.comparator_delta)
+        )
+        observation = "development_observation:" + event.digest
+        evidence_for = (
+            (observation,)
+            if comparator_delta is not None and comparator_delta > 1e-4
+            else ()
+        )
+        evidence_against = (
+            (observation,)
+            if (
+                event.runnable_observation != "RUNNABLE"
+                or (
+                    comparator_delta is not None
+                    and comparator_delta < -1e-4
+                )
+            )
+            else ()
+        )
+        competing = (
+            (proposal.competing_hypothesis,)
+            if isinstance(proposal, CandidateProposalV3)
+            else failure_modes
+        )
+        predicted = (
+            proposal.predicted_outcome_signature
+            if isinstance(proposal, CandidateProposalV3)
+            else (
+                f"{proposal.proposal_intent.value}:"
+                f"{proposal.mechanism_axis}:"
+                f"{expected_effects}"
+            )
+        )
         return DevelopmentalMechanismBeliefV1(
             hypothesis_id=str(selected.candidate_id),
             mechanism_axis=str(proposal.mechanism_axis),
             competing_hypotheses=(
-                failure_modes
-                or ("runtime_failure", "weak_local_signal", "confounded_anchor_effect")
+                competing
+                or (
+                    "runtime_failure",
+                    "weak_local_signal",
+                    "confounded_anchor_effect",
+                )
             ),
-            predicted_outcome_signature=(
-                f"{proposal.proposal_intent.value}:"
-                f"{proposal.mechanism_axis}:"
-                f"{expected_effects}"
-            ),
-            evidence_for=(
-                "development_observation:"
-                + str(feedback["raw_search_feedback_digest"]),
-            ),
-            evidence_against=(),
+            predicted_outcome_signature=predicted,
+            evidence_for=evidence_for,
+            evidence_against=evidence_against,
             unresolved_confounds=(
-                "three_epoch_budget",
                 "single_training_seed",
-                "no_same-parent_ablation",
-                f"run_status={outcome['run_status']}",
+                (
+                    "matched_comparator_not_available"
+                    if comparator_delta is None
+                    else "matched_comparator_single_seed"
+                ),
+                f"run_status={event.common_outcome_class}",
             ),
             next_discriminative_test=(
                 f"same-protocol {proposal.mechanism_axis} ablation "
@@ -617,10 +734,16 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         arm: ArmCode,
         round_index: int,
         controller: ResearchLineControllerV1,
-        feedback_projection: Mapping[str, Any],
+        feedback: FusedSearchFeedbackV2,
+        source_proposal_candidate_id: str,
     ) -> None:
-        outcome = dict(feedback_projection["search_outcome"])
-        success = outcome["run_status"] == "SUCCESS"
+        del source_proposal_candidate_id
+        event = feedback.search_utility_event
+        if event is None:
+            raise PreCanaryInvariantError(
+                "Meta-authorized feedback lacks SearchUtilityEventV2"
+            )
+        success = event.runnable_observation == "RUNNABLE"
         controller.apply_meta_update(
             updater=VersionedMetaPolicyUpdaterV1(),
             completed_round_index=round_index,
@@ -648,9 +771,17 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             raise PreCanaryInvariantError("Pilot result set is not the opaque triplet")
         for item in results:
             if (
-                item.terminal_class != "COMPLETED"
-                or item.ordinary_execution_count != 1
-                or not item.training_backend_started
+                item.terminal_class
+                not in {"COMPLETED", "NO_EXECUTION"}
+                or item.ordinary_execution_count not in {0, 1}
+                or (
+                    item.ordinary_execution_count == 1
+                    and not item.training_backend_started
+                )
+                or (
+                    item.ordinary_execution_count == 0
+                    and item.training_backend_started
+                )
                 or item.input_tokens > self.resource_ceilings.total_input_tokens
                 or item.output_tokens > self.resource_ceilings.total_output_tokens
                 or item.billed_tokens
@@ -661,6 +792,21 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
                 > self.resource_ceilings.gpu_cost_microunits
             ):
                 raise PreCanaryInvariantError("Pilot triplet fails a frozen ceiling")
+        by_arm = {
+            next(
+                arm
+                for arm, opaque in self.assignment.mapping.items()
+                if opaque == item.opaque_instance_id
+            ): item
+            for item in results
+        }
+        if any(
+            by_arm[arm].ordinary_execution_count != 1
+            for arm in (ArmCode.A, ArmCode.B)
+        ):
+            raise PreCanaryInvariantError(
+                "A/B cannot lose the ordinary execution opportunity"
+            )
 
     def immutable_audit_bundle(self, snapshot_root: Path) -> dict[str, Any]:
         snapshot_root = snapshot_root.resolve()

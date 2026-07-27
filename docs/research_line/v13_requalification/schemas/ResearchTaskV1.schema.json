@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "type": "string"
+    },
+    "candidate_semantic_digest": {
+      "type": "string"
+    },
+    "comparator_identity": {
+      "type": "string"
+    },
+    "created_round": {
+      "type": "integer"
+    },
+    "mechanism_program": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "mechanism_program_digest": {
+      "type": "string"
+    },
+    "missing_seed_count": {
+      "type": "integer"
+    },
+    "parent_candidate_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "protocol_digest": {
+      "type": "string"
+    },
+    "required_seed_or_control": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "task_status": {
+      "enum": [
+        "PENDING",
+        "ACTIVE",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "type": "string"
+    },
+    "task_type": {
+      "enum": [
+        "VALIDATE_SAME_CANDIDATE",
+        "RUN_MATCHED_CONTROL",
+        "RUN_ABLATION",
+        "REPAIR_IMPLEMENTATION",
+        "PROTOCOL_BRANCH_DIAGNOSTIC"
+      ],
+      "type": "string"
+    },
+    "utility_priority": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "task_id",
+    "task_type",
+    "candidate_id",
+    "candidate_semantic_digest",
+    "mechanism_program_digest",
+    "parent_candidate_id",
+    "comparator_identity",
+    "protocol_digest",
+    "required_seed_or_control",
+    "task_status",
+    "created_round",
+    "utility_priority",
+    "missing_seed_count",
+    "mechanism_program"
+  ],
+  "title": "ResearchTaskV1",
+  "type": "object",
+  "x-recclaw-generated-from": "recclaw_core.helix.scientific_attribution.ResearchTaskV1"
+}

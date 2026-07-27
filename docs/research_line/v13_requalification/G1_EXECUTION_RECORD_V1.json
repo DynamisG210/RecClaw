@@ -1,0 +1,61 @@
+{
+  "record_schema": "recclaw.m6g.g1-execution-record.v1",
+  "program": "M6G — V13_SCIENTIFIC_ATTRIBUTION_CLOSURE_AND_PILOT_REQUALIFICATION",
+  "stage": "G1_SINGLE_TYPED_FEEDBACK_ADMISSION_PROMPT_PATH",
+  "status": "PASS",
+  "authority": "DEVELOPMENT_ONLY",
+  "provider_calls": 0,
+  "training_executions": 0,
+  "pilot_started": false,
+  "findings": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 0
+  },
+  "active_path": [
+    "EvidencePortV1.pre_run/post_run",
+    "DeterministicHelixAdmissionV13",
+    "FusedSearchFeedbackV2",
+    "SearchUtilityEventV2 or typed ResearchTaskV1 or NO_SEARCH_UPDATE",
+    "ResearchLineControllerV1.close_round_v13",
+    "Meta hook only when meta_update_allowed",
+    "SearchMemoryWriterV1 only when search_memory_update_allowed",
+    "PromptFeedbackProjectionV2"
+  ],
+  "closed_invariants": {
+    "ordinary_dict_guard_feedback_reachable": false,
+    "all_pre_blocked_state_change": false,
+    "guard_private_prompt_fields_reachable": false,
+    "task_only_feedback_can_write_mechanism_belief": false,
+    "generated_schemas_from_typed_source": true
+  },
+  "audit": {
+    "path": "docs/research_line/v13_requalification/G1_INDEPENDENT_ADVERSARIAL_AUDIT.md",
+    "initial_verdict": "FAIL_P0_0_P1_1_P2_0",
+    "resolved_finding": "PROTOCOL_BRANCH_TASK_BELIEF_BYPASS",
+    "final_audit_cycle_verdict": "PASS_P0_0_P1_0_P2_0"
+  },
+  "verification": [
+    {
+      "scope": "targeted_and_fake_e2e",
+      "result": "28 passed, 3 subtests passed"
+    },
+    {
+      "scope": "affected_campaign_meta_regression",
+      "result": "49 passed, 1 superseded-V12 identity test deselected, 3 subtests passed"
+    },
+    {
+      "scope": "compile_and_diff",
+      "result": "compileall PASS; git diff --check PASS"
+    }
+  ],
+  "schemas": {
+    "FusedSearchFeedbackV2.schema.json": "34988ef6e522ef95776e031f27c041376916bd476a2f505dffb72cc17dba6330",
+    "GuardEvidenceSnapshotV1.schema.json": "a832adcc248e88ee33665d512fc0e3990e2a606a25fc119ab4e47b735db0c08b",
+    "PromptFeedbackProjectionV2.schema.json": "7abbc85fd5e3ecf130b0b22561f0bf75e51a099c98f51b510b9d9fb7d43de88f",
+    "ResearchTaskV1.schema.json": "eeff84343cd5f172c9998baf2940d74f3e587dc0f63294325609aa6b37469a8b",
+    "SearchUtilityEventV2.schema.json": "632dfb17c849e1a77ba0541b8b5b1c90f1f4df81766d44add3614f4003d5e5c3",
+    "ValidationResultBundleV1.schema.json": "9e3d2366aca2d8212b768534e918c5cc88ccff0a1e852ad4ac0f5f91036d87d0"
+  },
+  "next_stage": "G2_EVIDENCE_SNAPSHOT_TASK_QUEUE_FRONTIER_SEMANTICS"
+}

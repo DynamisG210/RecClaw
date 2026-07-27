@@ -8,7 +8,7 @@ import sqlite3
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import jsonschema
 
@@ -20,6 +20,7 @@ from .broker_process import (
     BrokerProcessRunnerV2,
 )
 from .canonical import canonical_json_bytes, sha256_digest
+from .contracts import validate_no_research_evidence_authority_fields
 
 
 class CanaryBrokerError(RuntimeError):
@@ -311,12 +312,14 @@ class CodexCliCanaryBrokerV1:
         logical_call_id: str,
         prompt: str,
         expected_proposal_count: int,
+        max_total_tokens: int | None = None,
     ) -> CanaryBrokerCallV1:
         return self.call_with_session(
             logical_call_id=logical_call_id,
             proposal_generation_session_id=logical_call_id,
             prompt=prompt,
             expected_proposal_count=expected_proposal_count,
+            max_total_tokens=max_total_tokens,
         )
 
     def call_with_session(
@@ -326,9 +329,21 @@ class CodexCliCanaryBrokerV1:
         proposal_generation_session_id: str,
         prompt: str,
         expected_proposal_count: int,
+        max_total_tokens: int | None = None,
     ) -> CanaryBrokerCallV1:
+        effective_token_ceiling = int(
+            max_total_tokens
+            if max_total_tokens is not None
+            else self.max_total_tokens_per_call
+        )
+        if (
+            effective_token_ceiling < 1
+            or effective_token_ceiling > self.max_total_tokens_per_call
+        ):
+            raise CanaryBrokerError("per-call token ceiling is outside the release")
         request = {
             "expected_proposal_count": expected_proposal_count,
+            "max_total_tokens": effective_token_ceiling,
             "model": self.model,
             "prompt": prompt,
             "reasoning_effort": self.reasoning_effort,
@@ -488,7 +503,7 @@ class CodexCliCanaryBrokerV1:
         total_tokens = int(
             usage.get("total_tokens", input_tokens + output_tokens)
         )
-        if total_tokens <= 0 or total_tokens > self.max_total_tokens_per_call:
+        if total_tokens <= 0 or total_tokens > effective_token_ceiling:
             outcome = self._semantic_failure(
                 captured=captured,
                 failure_class=BrokerFailureClassV1.CLI_CONTRACT_ERROR,
@@ -662,27 +677,59 @@ class CodexCliCanaryBrokerV1:
 
 
 def original_canary_prompt(
-    *, round_index: int, search_seed: int, phase_name: str = "Canary"
+    *,
+    round_index: int,
+    search_seed: int,
+    phase_name: str = "Canary",
+    catalog_projection: Mapping[str, Any] | Sequence[Mapping[str, Any]] = (),
+    original_state: Mapping[str, Any] | None = None,
 ) -> str:
+    catalog = json.dumps(
+        (
+            dict(catalog_projection)
+            if isinstance(catalog_projection, Mapping)
+            else list(catalog_projection)
+        ),
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+    state = json.dumps(
+        dict(original_state or {}), ensure_ascii=True, sort_keys=True
+    )
     return f"""You are the Original RecClaw proposal policy in a development-only recommender-system {phase_name}.
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Protocol: ML-1M, frozen full-sort NDCG@10, unchanged protocol, one eventual execution.
 Search seed: {search_seed}. Round: {round_index}.
- Propose exactly four diverse runnable mechanism directions. You may choose only the closed
- backbone/objective/sampler/axis combinations admitted by the schema. Do not describe a
- residual path, degree tempering, alternative sampler, loss term, or other intervention
- not encoded by those fields. Keep each rationale mechanistic, state an expected signal
- and a concrete failure mode. This is proposal generation, not scientific adjudication.
- Stay within search utility only."""
+Propose exactly four diverse candidates from the exact executable catalog below.
+Use each mechanism_id at most once. Preserve the Original policy's preference for
+novel runnable families, avoid recently executed semantics, and use prior outcomes
+without Research roles, Research Router scores, Meta policy, or Evidence authority.
+Set parent_candidate_id only when the supplied Original state contains that exact ID.
+Keep the mechanism hypothesis, competing hypothesis, predicted outcome signature and
+failure mode consistent with the selected catalog entry. This is proposal generation,
+not evidence adjudication.
+Executable catalog: {catalog}
+Original planner state: {state}"""
 
 
 _ROLE_INSTRUCTIONS = {
-    "mechanism_composer": "compose a coherent mechanism intervention",
-    "lineage_refiner": "refine a plausible mechanism lineage without parameter-only tuning",
-    "falsification_designer": "design a discriminative falsification candidate",
-    "frontier_architect": "seek a structurally distinct frontier candidate",
+    "mechanism_composer": (
+        "choose a coherent interaction or representation mechanism whose "
+        "components form one causal story"
+    ),
+    "lineage_refiner": (
+        "choose the smallest mechanism-level change that isolates one causal "
+        "difference from an established lineage, without parameter-only tuning"
+    ),
+    "falsification_designer": (
+        "choose a discriminative candidate whose result would separate two "
+        "competing mechanism explanations"
+    ),
+    "frontier_architect": (
+        "choose an underexplored, structurally distinct mechanism family with "
+        "credible upside under the fixed cost"
+    ),
 }
-
 
 def research_canary_prompt(
     *,
@@ -691,28 +738,70 @@ def research_canary_prompt(
     search_seed: int,
     phase_name: str = "Canary",
     memory_summary: Mapping[str, Any] | None = None,
+    catalog_projection: Mapping[str, Any] | Sequence[Mapping[str, Any]] = (),
+    policy_directive: Mapping[str, Any] | None = None,
+    token_ceiling: int | None = None,
 ) -> str:
     try:
         instruction = _ROLE_INSTRUCTIONS[role]
     except KeyError as error:
         raise CanaryBrokerError("unknown Research Producer role") from error
-    required_intent = "FALSIFICATION" if role == "falsification_designer" else "DISCOVERY"
+    required_intent = str(
+        (policy_directive or {}).get(
+            "proposal_intent",
+            (
+                "FALSIFICATION"
+                if role == "falsification_designer"
+                else "DISCOVERY"
+            ),
+        )
+    )
+    prompt_feedback = dict(
+        memory_summary
+        or {
+            "common_search_utility_slot": "ABSENT",
+            "research_task_slot": "ABSENT",
+        }
+    )
+    if set(prompt_feedback) != {
+        "common_search_utility_slot",
+        "research_task_slot",
+    }:
+        raise CanaryBrokerError(
+            "Producer prompt requires the closed PromptFeedbackProjectionV2"
+        )
+    validate_no_research_evidence_authority_fields(prompt_feedback)
     memory_line = (
         "Prior compact Search Memory feedback: "
-        + json.dumps(memory_summary, ensure_ascii=True, sort_keys=True)
-        if memory_summary
-        else "Prior compact Search Memory feedback: NONE."
+        + json.dumps(prompt_feedback, ensure_ascii=True, sort_keys=True)
+    )
+    catalog = json.dumps(
+        (
+            dict(catalog_projection)
+            if isinstance(catalog_projection, Mapping)
+            else list(catalog_projection)
+        ),
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+    directive = json.dumps(
+        dict(policy_directive or {}), ensure_ascii=True, sort_keys=True
     )
     return f"""You are the {role} independent Producer in a development-only recommender-system {phase_name}.
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Your role is to {instruction}. Protocol: ML-1M, frozen full-sort NDCG@10, unchanged.
 Search seed: {search_seed}. Round: {round_index}. Return exactly one proposal and set
- proposal_intent to {required_intent}. Use only the closed backbone/objective/sampler/axis
- combinations admitted by the schema. Do not describe a residual path, degree tempering,
- alternative sampler, loss term, or other intervention not encoded by those fields.
- Optimize search utility: runnable probability, useful signal, frontier potential,
- information gain, cost and blocker risk. Stay within search utility only.
- {memory_line}"""
+proposal_intent to {required_intent}. Choose exactly one mechanism_id from the
+executable catalog and keep every scientific field consistent with that exact
+mechanism. Use parent_candidate_id only for an exact ID present in your role-scoped
+memory. Do not invent a mechanism that the catalog cannot execute.
+Optimize useful signal, frontier potential and information gain under the frozen
+budget. Executability and mechanical cost are derived by the package runtime, not
+self-reported by you. Stay within search utility only.
+Pre-call policy directive: {directive}
+Per-call total-token ceiling: {token_ceiling if token_ceiling is not None else 'RELEASE_DEFAULT'}
+Executable catalog: {catalog}
+{memory_line}"""
 
 
 __all__ = [
