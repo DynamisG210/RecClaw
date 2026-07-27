@@ -42,6 +42,7 @@ from .contracts import (
     default_experiment_contract,
 )
 from .controllers import OriginalControllerV1, OriginalRuntimeAdapterV1
+from .original_main import PinnedOriginalMainAdapterV1
 from .precanary_orchestration import (
     ArmRoundResultV1,
     FakeProposalSessionV1,
@@ -224,7 +225,7 @@ class RealCanaryProposalBrokerV1:
     _research_calls: dict[tuple[int, int, str], tuple[CanaryBrokerCallV1, ...]]
     _search_feedback: dict[ArmCode, Mapping[str, Any]]
     _campaign_call_scopes: dict[str, tuple[str, ...]]
-    original_controller: OriginalRuntimeAdapterV1
+    original_controller: Any
     campaign_meta_runtime: Any | None = None
     producer_control_enabled: bool = True
     call_prefix: str = ""
@@ -243,6 +244,7 @@ class RealCanaryProposalBrokerV1:
         campaign_meta_runtime: Any | None = None,
         producer_control_enabled: bool = True,
         research_policy_override: Any | None = None,
+        original_controller: Any | None = None,
     ) -> "RealCanaryProposalBrokerV1":
         def controller() -> ResearchLineControllerV1:
             policy = (
@@ -273,12 +275,46 @@ class RealCanaryProposalBrokerV1:
             _research_calls={},
             _search_feedback={},
             _campaign_call_scopes={},
-            original_controller=OriginalRuntimeAdapterV1(),
+            original_controller=(
+                original_controller
+                if original_controller is not None
+                else OriginalRuntimeAdapterV1()
+            ),
             campaign_meta_runtime=campaign_meta_runtime,
             producer_control_enabled=producer_control_enabled,
             call_prefix=call_prefix,
             phase_name=phase_name,
             adaptive_memory=adaptive_memory,
+        )
+
+    @classmethod
+    def create_v13(
+        cls,
+        *,
+        upstream: Any,
+        template_path: Path,
+        repository_root: Path,
+        search_seed: int,
+        call_prefix: str = "",
+        phase_name: str = "V13 Pilot",
+        adaptive_memory: bool = True,
+        campaign_meta_runtime: Any | None = None,
+        producer_control_enabled: bool = True,
+        research_policy_override: Any | None = None,
+    ) -> "RealCanaryProposalBrokerV1":
+        return cls.create(
+            upstream=upstream,
+            template_path=template_path,
+            call_prefix=call_prefix,
+            phase_name=phase_name,
+            adaptive_memory=adaptive_memory,
+            campaign_meta_runtime=campaign_meta_runtime,
+            producer_control_enabled=producer_control_enabled,
+            research_policy_override=research_policy_override,
+            original_controller=PinnedOriginalMainAdapterV1(
+                repository_root=repository_root,
+                search_seed=search_seed,
+            ),
         )
 
     @property
@@ -800,7 +836,13 @@ class RealCanaryProposalBrokerV1:
     ) -> FakeProposalSessionV1:
         del drafts
         templates = _load_templates(self.template_path)
-        if self.campaign_meta_runtime is None:
+        if self.campaign_meta_runtime is None and not (
+            arm is ArmCode.A
+            and isinstance(
+                self.original_controller,
+                PinnedOriginalMainAdapterV1,
+            )
+        ):
             return self._legacy_generate(
                 arm=arm,
                 round_index=round_index,
@@ -1117,7 +1159,13 @@ class RealCanaryProposalBrokerV1:
         session: FakeProposalSessionV1,
         common_eligible_candidate_ids: Sequence[str],
     ) -> FakeProposalSessionV1:
-        if self.campaign_meta_runtime is None:
+        if self.campaign_meta_runtime is None and not (
+            arm is ArmCode.A
+            and isinstance(
+                self.original_controller,
+                PinnedOriginalMainAdapterV1,
+            )
+        ):
             return session
         eligible_runtime_ids = set(common_eligible_candidate_ids)
         if arm is ArmCode.A:
@@ -1130,16 +1178,32 @@ class RealCanaryProposalBrokerV1:
                 if runtime_id not in eligible_runtime_ids:
                     continue
                 mechanism = executable_mechanism(str(proposal["mechanism_id"]))
+                original_priority = proposal.get("original_priority")
+                if (
+                    isinstance(
+                        self.original_controller,
+                        PinnedOriginalMainAdapterV1,
+                    )
+                    and original_priority not in {"high", "medium", "low"}
+                ):
+                    raise PreCanaryInvariantError(
+                        "V13 Original proposal lacks its own priority"
+                    )
                 action = {
+                    "base_model": mechanism.base_model_config,
                     "candidate_id": runtime_id,
+                    "consumes": (),
+                    "entrypoint": mechanism.entrypoint,
                     "family_id": mechanism.parent_mechanism_id
                     or mechanism.mechanism_id,
                     "mechanism_id": mechanism.mechanism_id,
                     "mechanism_semantics_digest": (
                         report.mechanism_semantics_digest
                     ),
-                    "priority": "high",
+                    "priority": original_priority or "high",
+                    "runner_type": "model",
                     "status": "implemented",
+                    "status_source": "COMMON_EXECUTION_GUARD_PASS",
                 }
                 actions.append(action)
                 by_runtime_id[runtime_id] = program

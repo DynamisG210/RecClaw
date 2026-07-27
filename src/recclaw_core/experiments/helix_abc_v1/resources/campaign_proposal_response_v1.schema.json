@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "proposals": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "candidate_label": {"type": "string", "minLength": 1, "maxLength": 160},
+          "mechanism_id": {
+            "type": "string",
+            "enum": [
+              "BPR_MF",
+              "BPR_MARGIN",
+              "BPR_MIXED_NEGATIVE",
+              "BPR_POPULARITY_NEGATIVE",
+              "BPR_MIXED_NEGATIVE_MARGIN",
+              "BPR_POPULARITY_MARGIN",
+              "BPR_NORM_CONSTRAINED",
+              "BPR_POPULARITY_REGULARIZED",
+              "LIGHTGCN",
+              "LIGHTGCN_SHALLOW",
+              "LIGHTGCN_LAYER_WEIGHTED",
+              "LIGHTGCN_RESIDUAL",
+              "LIGHTGCN_RESIDUAL_NORM",
+              "LIGHTGCN_EDGE_DROPOUT_RESIDUAL",
+              "LIGHTGCN_DEBIASED_NEGATIVE",
+              "LIGHTGCN_AUX_ALIGNMENT",
+              "LIGHTGCN_RANK_AWARE",
+              "NGCF",
+              "SGL",
+              "NCL",
+              "SIMPLEX"
+            ]
+          },
+          "mechanism_hypothesis": {"type": "string", "minLength": 1, "maxLength": 800},
+          "competing_hypothesis": {"type": "string", "minLength": 1, "maxLength": 800},
+          "predicted_outcome_signature": {"type": "string", "minLength": 1, "maxLength": 500},
+          "failure_mode": {"type": "string", "minLength": 1, "maxLength": 500},
+          "original_priority": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "parent_candidate_id": {
+            "type": ["string", "null"],
+            "pattern": "^cand-[a-f0-9]{24}$"
+          },
+          "proposal_intent": {
+            "type": "string",
+            "enum": ["DISCOVERY", "FALSIFICATION", "CONTROL"]
+          },
+          "utility_features": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "useful_signal": {"type": "number", "minimum": 0, "maximum": 1},
+              "frontier_potential": {"type": "number", "minimum": 0, "maximum": 1},
+              "information_gain": {"type": "number", "minimum": 0, "maximum": 1}
+            },
+            "required": ["useful_signal", "frontier_potential", "information_gain"]
+          }
+        },
+        "required": [
+          "candidate_label",
+          "mechanism_id",
+          "mechanism_hypothesis",
+          "competing_hypothesis",
+          "predicted_outcome_signature",
+          "failure_mode",
+          "parent_candidate_id",
+          "proposal_intent",
+          "utility_features"
+        ]
+      }
+    }
+  },
+  "required": ["proposals"]
+}

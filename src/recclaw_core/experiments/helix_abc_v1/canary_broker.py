@@ -705,6 +705,8 @@ Use each mechanism_id at most once. Preserve the Original policy's preference fo
 novel runnable families, avoid recently executed semantics, and use prior outcomes
 without Research roles, Research Router scores, Meta policy, or Evidence authority.
 Set parent_candidate_id only when the supplied Original state contains that exact ID.
+Set original_priority to high, medium or low as the Original proposal policy's
+own priority assessment; the pinned Original planner consumes this field unchanged.
 Keep the mechanism hypothesis, competing hypothesis, predicted outcome signature and
 failure mode consistent with the selected catalog entry. This is proposal generation,
 not evidence adjudication.

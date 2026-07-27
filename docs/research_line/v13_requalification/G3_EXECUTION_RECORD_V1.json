@@ -1,0 +1,80 @@
+{
+  "record_schema": "recclaw.m6g.g3-execution-record.v1",
+  "program": "M6G — V13_SCIENTIFIC_ATTRIBUTION_CLOSURE_AND_PILOT_REQUALIFICATION",
+  "stage": "G3_EXACT_ORIGINAL_EQUIVALENCE",
+  "status": "PASS",
+  "authority": "DEVELOPMENT_ONLY",
+  "provider_calls": 0,
+  "training_executions": 0,
+  "pilot_started": false,
+  "base_commit": "a69a491d93ab68eab430762568d96bbd126a9b66",
+  "base_tree": "d962ea5f7cb9a2b1b48eb0ea9f885cfdc70b47c3",
+  "original_subject": {
+    "commit": "2d8c881354e1b536a6c66d7dfbb977e0c5090e50",
+    "agent_blob_sha1": "c40334b72dbb9557eced2bd081915b5333156fdf",
+    "source_release_digest": "e5651684e852a25dfa24af00c41ab8a3b848dc0cfe62c3ea7aa0c1fb3c522027",
+    "working_copy_imported": false,
+    "decision_methods": [
+      "RecClawAgent.refresh_candidate_proposals",
+      "RecClawAgent.plan",
+      "RecClawAgent.reflect",
+      "RecClawAgent.remember"
+    ]
+  },
+  "v13_runtime": {
+    "factory": "RealCanaryProposalBrokerV1.create_v13",
+    "adapter": "PinnedOriginalMainAdapterV1",
+    "handwritten_adapter_reachable": false,
+    "meta_required_for_original_route": false,
+    "priority_source": "ORIGINAL_PROPOSAL_RESPONSE",
+    "status_source": "COMMON_EXECUTION_GUARD_PASS"
+  },
+  "differential_coverage": [
+    "proposal_bonus",
+    "registry_and_accepted_proposal_merge",
+    "pending_implemented_priority",
+    "algorithm_first_adjustment",
+    "plateau_adjustment",
+    "execution_signature_duplicate",
+    "validated_focus",
+    "keep_revise_crash_feedback",
+    "proposal_refresh_schedule",
+    "logical_call_count",
+    "selection_order",
+    "stop_behavior",
+    "budget_debits"
+  ],
+  "findings": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 0
+  },
+  "verification": [
+    {
+      "scope": "v13_original_targeted_and_differential",
+      "result": "10 passed"
+    },
+    {
+      "scope": "affected_original_controller_canary_regression",
+      "result": "43 passed, 1 documented legacy Canary test deselected"
+    },
+    {
+      "scope": "compile_and_diff",
+      "result": "compileall PASS; git diff --check PASS"
+    }
+  ],
+  "audit": {
+    "path": "docs/research_line/v13_requalification/G3_INDEPENDENT_ADVERSARIAL_AUDIT.md",
+    "verdict": "PASS_P0_0_P1_0_P2_0"
+  },
+  "source_sha256": {
+    "src/recclaw_core/experiments/helix_abc_v1/canary_broker.py": "3256a30410d5bec12ee2d179ee797cdee8345215c7f223025137767ec46033f5",
+    "src/recclaw_core/experiments/helix_abc_v1/original_main.py": "a5716ec85ed4f68ea51f698872aa2d738f8fbf4cacb5b606e78e1cfcbae14527",
+    "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py": "b85dd79bb8eb876bb475087f0a6407bf5bf9e9f46b598e5c208180330426261f",
+    "src/recclaw_core/experiments/helix_abc_v1/real_canary.py": "d3341b130d9fb93de3c7a3d802240c2e36cc1351a9a188c6bf2318a1a6337b28",
+    "src/recclaw_core/experiments/helix_abc_v1/resources/campaign_proposal_response_v1.schema.json": "e0889e21d7ec6a737bf553acc9376ed18d88dd4786230e5ea9c2957a01531487"
+  },
+  "report": "docs/research_line/v13_requalification/V13_ORIGINAL_EQUIVALENCE_REPORT.md",
+  "next_stage_dependency": "G4 must supply exact matched comparator values; NOT_AVAILABLE may not reach Pilot freeze",
+  "next_stage": "G4_PRODUCER_LINEAGE_BELIEF_ROUTER_RESOURCE_FIXES"
+}

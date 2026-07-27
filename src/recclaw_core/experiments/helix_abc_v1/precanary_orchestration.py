@@ -937,9 +937,14 @@ class ThreeArmPreCanaryOrchestratorV1:
                 == selected.candidate_semantic_digest
             }
             observed.update(selected.seed_ids)
+            stability_seeds = getattr(
+                self.contract,
+                "post_selection_stability_seeds",
+                (2026, 2027, 2028),
+            )
             remaining = tuple(
                 str(seed)
-                for seed in self.contract.post_selection_stability_seeds
+                for seed in stability_seeds
                 if str(seed) not in observed
             )
             if not remaining:
