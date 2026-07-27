@@ -21,8 +21,8 @@ from recclaw_core.experiments.helix_abc_v1.contracts import (
     ProducerExecutionModeV1,
 )
 from recclaw_core.experiments.helix_abc_v1.meta_vnext_campaign import (
-    MetaV18CampaignRuntimeV1,
-    POLICY_BUNDLE_DIGEST_V18,
+    MetaV19CampaignRuntimeV1,
+    POLICY_BUNDLE_DIGEST_V19,
 )
 from recclaw_core.experiments.helix_abc_v1.original_main import (
     PinnedOriginalMainAdapterV1,
@@ -74,7 +74,7 @@ CHECKPOINT = (
     / "experiments"
     / "helix_abc_v1"
     / "resources"
-    / "meta_vnext_policy_checkpoint_v18.json"
+    / "meta_vnext_policy_checkpoint_v19.json"
 )
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
@@ -362,7 +362,7 @@ class _V13FakeUpstream:
 
 
 class _V13MetaFakeOrchestrator(ThreeArmPreCanaryOrchestratorV1):
-    def __init__(self, *args: Any, meta_runtime: MetaV18CampaignRuntimeV1, **kwargs: Any):
+    def __init__(self, *args: Any, meta_runtime: MetaV19CampaignRuntimeV1, **kwargs: Any):
         self.meta_runtime = meta_runtime
         super().__init__(*args, **kwargs)
         self.meta_runtime.bind_instances(dict(self.assignment.arm_to_instance))
@@ -407,7 +407,7 @@ def _run_gate():
         finally:
             ledger.close()
 
-        runtime = MetaV18CampaignRuntimeV1(
+        runtime = MetaV19CampaignRuntimeV1(
             checkpoint_path=CHECKPOINT,
             experiment_id="v13-g7-fake-e2e",
             search_seed=42,
@@ -492,7 +492,7 @@ def _run_gate():
                     if left != right
                 ),
                 "v18_meta_active_for_b_c": (
-                    runtime.policy_bundle_digest == POLICY_BUNDLE_DIGEST_V18
+                    runtime.policy_bundle_digest == POLICY_BUNDLE_DIGEST_V19
                     and set(runtime._states) == {ArmCode.B, ArmCode.C}
                     and runtime._states[ArmCode.B].fast_state.round_boundary
                     == 1
@@ -524,7 +524,7 @@ def _run_gate():
                     for item in dispositions
                 ),
                 "meta_v18_promoted_and_supported": (
-                    runtime.policy_bundle_digest == POLICY_BUNDLE_DIGEST_V18
+                    runtime.policy_bundle_digest == POLICY_BUNDLE_DIGEST_V19
                 ),
                 "no_search_collapse": True,
             },

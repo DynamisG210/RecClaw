@@ -241,8 +241,18 @@ def _preflight(
     }
 
 
-def execute(contract_path: Path, llm_api_config: Path) -> int:
-    contract = verify_v13_pilot_contract(contract_path)
+def execute_campaign_pilot(
+    contract_path: Path,
+    llm_api_config: Path,
+    *,
+    verify_contract: Any,
+    meta_runtime_class: Any,
+    orchestrator_class: Any,
+    search_seed: int,
+    rounds_per_arm: int,
+    version_label: str,
+) -> int:
+    contract = verify_contract(contract_path)
     output_root = Path(contract["output_root"])
     output_root.mkdir(parents=True)
     _write_json(
@@ -256,11 +266,11 @@ def execute(contract_path: Path, llm_api_config: Path) -> int:
         output_root / "ENVIRONMENT_PREFLIGHT.json",
         _preflight(contract, llm_api_config),
     )
-    meta_runtime = MetaV18CampaignRuntimeV1(
+    meta_runtime = meta_runtime_class(
         checkpoint_path=Path(contract["meta"]["checkpoint_path"]),
         experiment_id=contract["pilot"]["experiment_id"],
-        search_seed=V13_PILOT_SEARCH_SEED,
-        scheduled_rounds=V13_PILOT_ROUNDS_PER_ARM,
+        search_seed=search_seed,
+        scheduled_rounds=rounds_per_arm,
         task_scale=float(contract["meta"]["task_context"]["task_scale"]),
         task_density=float(
             contract["meta"]["task_context"]["task_density"]
@@ -291,14 +301,14 @@ def execute(contract_path: Path, llm_api_config: Path) -> int:
             / "campaign_anchor_programs_v1.json"
         ),
         repository_root=ROOT,
-        search_seed=V13_PILOT_SEARCH_SEED,
-        call_prefix="campaign-v13-",
-        phase_name="Campaign Pilot V13",
+        search_seed=search_seed,
+        call_prefix=f"campaign-{version_label.lower()}-",
+        phase_name=f"Campaign Pilot {version_label}",
         adaptive_memory=True,
         campaign_meta_runtime=meta_runtime,
     )
     try:
-        with V13PilotOrchestratorV1(
+        with orchestrator_class(
             output_root / "runtime",
             broker=broker,
             meta_runtime=meta_runtime,
@@ -336,7 +346,7 @@ def execute(contract_path: Path, llm_api_config: Path) -> int:
                 mode=0o600,
             )
             _write_json(
-                output_root / "sealed" / "META_V18_AUDIT.json",
+                output_root / "sealed" / f"META_{version_label}_AUDIT.json",
                 meta_runtime.audit_projection(),
                 mode=0o600,
             )
@@ -417,8 +427,9 @@ def execute(contract_path: Path, llm_api_config: Path) -> int:
         },
     }
     engineering = {
-        "fifteen_closed_round_rows": len(rows) == 15,
-        "five_rows_per_instance": len(
+        "all_planned_round_rows_closed": len(rows)
+        == rounds_per_arm * 3,
+        "one_row_per_instance_round": len(
             {
                 (
                     row["opaque_instance_id"],
@@ -427,7 +438,7 @@ def execute(contract_path: Path, llm_api_config: Path) -> int:
                 for row in rows
             }
         )
-        == 15,
+        == rounds_per_arm * 3,
         "budget_closed": resource["closed"],
         "source_unchanged": all(
             file_sha256(ROOT / relative) == digest
@@ -463,9 +474,25 @@ def execute(contract_path: Path, llm_api_config: Path) -> int:
         "scientific_readiness": scientific_readiness,
         "treatment_effect": "NOT_AUTHORIZED",
     }
-    _write_json(output_root / "V13_PILOT_READINESS_REPORT.json", report)
+    _write_json(
+        output_root / f"{version_label}_PILOT_READINESS_REPORT.json",
+        report,
+    )
     _write_json(output_root / "IMMUTABLE_AUDIT_BUNDLE.json", audit_bundle)
     return 0 if automated_preconditions_pass else 2
+
+
+def execute(contract_path: Path, llm_api_config: Path) -> int:
+    return execute_campaign_pilot(
+        contract_path,
+        llm_api_config,
+        verify_contract=verify_v13_pilot_contract,
+        meta_runtime_class=MetaV18CampaignRuntimeV1,
+        orchestrator_class=V13PilotOrchestratorV1,
+        search_seed=V13_PILOT_SEARCH_SEED,
+        rounds_per_arm=V13_PILOT_ROUNDS_PER_ARM,
+        version_label="V13",
+    )
 
 
 def main() -> int:

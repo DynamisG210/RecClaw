@@ -42,8 +42,8 @@
           "predicted_outcome_signature": {"type": "string", "minLength": 1, "maxLength": 500},
           "failure_mode": {"type": "string", "minLength": 1, "maxLength": 500},
           "original_priority": {
-            "type": "string",
-            "enum": ["high", "medium", "low"]
+            "type": ["string", "null"],
+            "enum": ["high", "medium", "low", null]
           },
           "parent_candidate_id": {
             "type": ["string", "null"],
@@ -66,11 +66,13 @@
         },
         "required": [
           "candidate_label",
+          "mechanism_id",
           "composition",
           "mechanism_hypothesis",
           "competing_hypothesis",
           "predicted_outcome_signature",
           "failure_mode",
+          "original_priority",
           "parent_candidate_id",
           "proposal_intent",
           "utility_features"

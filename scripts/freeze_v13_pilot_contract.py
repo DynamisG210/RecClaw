@@ -227,14 +227,36 @@ def _dataset_projection() -> dict[str, Any]:
     }
 
 
-def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
-    if DEFAULT_OUTPUT_ROOT.exists():
-        raise RuntimeError("V13 output root already exists")
+def build_contract(
+    *,
+    llm_api_config: Path,
+    output_root: Path = DEFAULT_OUTPUT_ROOT,
+    store_contract_factory: Any = V13PilotStoreContractV1.create,
+    assignment_nonce: str = V13_PILOT_ASSIGNMENT_NONCE,
+    search_seed: int = V13_PILOT_SEARCH_SEED,
+    rounds_per_arm: int = V13_PILOT_ROUNDS_PER_ARM,
+    meta_runtime_class: Any = MetaV18CampaignRuntimeV1,
+    meta_checkpoint: Path = META_CHECKPOINT,
+    meta_promotion: Path = META_PROMOTION,
+    meta_checkpoint_sha256: str = CHECKPOINT_SHA256_V18,
+    meta_policy_bundle_digest: str = POLICY_BUNDLE_DIGEST_V18,
+    meta_promotion_digest: str = PROMOTION_DECISION_DIGEST_V18,
+    broker_release_path: Path = BROKER_RELEASE,
+    training_release_path: Path = TRAINING_RELEASE,
+    scientific_gate_path: Path = G7_GATE,
+    record_schema: str = "recclaw.v13-pilot-contract.v1",
+    source_files: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    version_label = record_schema.split(".")[1].upper()
+    if output_root.exists():
+        raise RuntimeError(f"{version_label} output root already exists")
     if any(
-        (ROOT / "results" / "research_line").glob("*9215*")
+        (ROOT / "results" / "research_line").glob(f"*{search_seed}*")
     ):
-        raise RuntimeError("V13 search seed 9215 already has result artifacts")
-    gate = json.loads(G7_GATE.read_text(encoding="utf-8"))
+        raise RuntimeError(
+            f"{version_label} search seed already has result artifacts"
+        )
+    gate = json.loads(scientific_gate_path.read_text(encoding="utf-8"))
     if (
         gate["verdict"] != "PASS"
         or gate["p0"] != 0
@@ -243,7 +265,7 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
         raise RuntimeError("G7 Scientific Attribution Gate is not PASS")
     base_url, _api_key = load_lab_api_credentials(llm_api_config)
     broker_release = LabApiBrokerReleaseV1(
-        **json.loads(BROKER_RELEASE.read_text(encoding="utf-8"))
+        **json.loads(broker_release_path.read_text(encoding="utf-8"))
     )
     broker_release.verify()
     expected_broker = LabApiBrokerReleaseV1.create(
@@ -254,7 +276,9 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
         timeout_ms=900_000,
     )
     if broker_release != expected_broker:
-        raise RuntimeError("V13 laboratory API release is not exact")
+        raise RuntimeError(
+            f"{version_label} laboratory API release is not exact"
+        )
     runtime_failures = validate_campaign_training_runtime_release(
         data_path=DEFAULT_SEARCH_PARENT,
         python_executable=DEFAULT_PYTHON,
@@ -262,13 +286,13 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
     )
     if runtime_failures:
         raise RuntimeError(
-            "V13 training runtime is not qualified: "
+            f"{version_label} training runtime is not qualified: "
             + ",".join(runtime_failures)
         )
-    store = V13PilotStoreContractV1.create()
+    store = store_contract_factory()
     assignment = PrivateTreatmentAssignmentV1.create(
         store.experiment_id,
-        nonce=V13_PILOT_ASSIGNMENT_NONCE,
+        nonce=assignment_nonce,
     )
     profile = campaign_runtime_profile()
     projection = campaign_projection()
@@ -277,11 +301,11 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
         repository_root=ROOT,
         materialization_root=ROOT / ".v13-identity-only-not-materialized",
     )
-    meta_runtime = MetaV18CampaignRuntimeV1(
-        checkpoint_path=META_CHECKPOINT,
+    meta_runtime = meta_runtime_class(
+        checkpoint_path=meta_checkpoint,
         experiment_id=store.experiment_id,
-        search_seed=V13_PILOT_SEARCH_SEED,
-        scheduled_rounds=V13_PILOT_ROUNDS_PER_ARM,
+        search_seed=search_seed,
+        scheduled_rounds=rounds_per_arm,
         task_scale=1.0,
         task_density=0.2843119865332499,
     )
@@ -307,21 +331,21 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
             "ordinary_execution_opportunity_per_arm": 1,
             "round_index": round_index,
         }
-        for round_index in range(1, V13_PILOT_ROUNDS_PER_ARM + 1)
+        for round_index in range(1, rounds_per_arm + 1)
     ]
     source_files = {
         relative: file_sha256(ROOT / relative)
-        for relative in _source_files()
+        for relative in (source_files or _source_files())
     }
     payload = {
-        "record_schema": "recclaw.v13-pilot-contract.v1",
+        "record_schema": record_schema,
         "status": "FROZEN_PRE_OUTCOME",
         "authority": "NONE",
         "evidence_class": "DEVELOPMENT_ONLY",
         "formal_acceptance": False,
         "main_eligibility": False,
         "pilot_started": False,
-        "output_root": DEFAULT_OUTPUT_ROOT.as_posix(),
+        "output_root": output_root.as_posix(),
         "pilot": {
             "experiment_id": store.experiment_id,
             "ordinary_execution_seed": store.ordinary_execution_seed,
@@ -381,13 +405,13 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
         "dataset": _dataset_projection(),
         "meta": {
             "activation_boundary": "NEXT_CAMPAIGN",
-            "checkpoint_path": META_CHECKPOINT.as_posix(),
-            "checkpoint_sha256": file_sha256(META_CHECKPOINT),
-            "expected_checkpoint_sha256": CHECKPOINT_SHA256_V18,
-            "policy_bundle_digest": POLICY_BUNDLE_DIGEST_V18,
-            "promotion_decision_digest": PROMOTION_DECISION_DIGEST_V18,
-            "promotion_record_path": META_PROMOTION.as_posix(),
-            "promotion_record_sha256": file_sha256(META_PROMOTION),
+            "checkpoint_path": meta_checkpoint.as_posix(),
+            "checkpoint_sha256": file_sha256(meta_checkpoint),
+            "expected_checkpoint_sha256": meta_checkpoint_sha256,
+            "policy_bundle_digest": meta_policy_bundle_digest,
+            "promotion_decision_digest": meta_promotion_digest,
+            "promotion_record_path": meta_promotion.as_posix(),
+            "promotion_record_sha256": file_sha256(meta_promotion),
             "control_policy_digest": meta_runtime.control_policy.digest,
             "fast_residual_use": "ONLY_WHEN_ACTUAL_TASK_CONTEXT_SUPPORTED",
             "task_context": {
@@ -400,15 +424,15 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
             "b_port": "NullEvidencePortV1",
             "c_port": "EvidenceGuardPortV1",
             "admission": "DeterministicHelixAdmissionV13",
-            "gate_path": G7_GATE.relative_to(ROOT).as_posix(),
-            "gate_sha256": file_sha256(G7_GATE),
+            "gate_path": scientific_gate_path.relative_to(ROOT).as_posix(),
+            "gate_sha256": file_sha256(scientific_gate_path),
             "gate_result_digest": gate["gate_result_digest"],
             "guard_controls_search_memory_meta_frontier": True,
         },
         "broker": {
             **broker_release.to_dict(),
-            "release_manifest_path": BROKER_RELEASE.as_posix(),
-            "release_manifest_sha256": file_sha256(BROKER_RELEASE),
+            "release_manifest_path": broker_release_path.as_posix(),
+            "release_manifest_sha256": file_sha256(broker_release_path),
             "response_schema_path": PROPOSAL_SCHEMA.as_posix(),
             "response_schema_sha256": file_sha256(PROPOSAL_SCHEMA),
             "credential_source_external": True,
@@ -417,8 +441,8 @@ def build_contract(*, llm_api_config: Path) -> dict[str, Any]:
         "training": {
             "release_digest": release.digest,
             "release_id": release.release_id,
-            "release_manifest_path": TRAINING_RELEASE.as_posix(),
-            "release_manifest_sha256": file_sha256(TRAINING_RELEASE),
+            "release_manifest_path": training_release_path.as_posix(),
+            "release_manifest_sha256": file_sha256(training_release_path),
             "runner_abi": CAMPAIGN_TRAINING_RUNNER_ABI,
             "profile": campaign_training_profile(),
             "python": DEFAULT_PYTHON.as_posix(),

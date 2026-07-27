@@ -1,0 +1,27 @@
+{
+  "record_schema": "recclaw.continuous-program.v14-schema-conformance.v1",
+  "status": "PASS",
+  "scope": "TREATMENT_FREE_ORIGINAL_AND_RESEARCH_RESPONSE_SHAPES",
+  "provider": "LABORATORY_API",
+  "model": "gpt-5.4",
+  "broker_release_digest": "8b5adda11f94cdac4495b0587058df9fdd9afb79e05a048b8d857abd0548ee31",
+  "response_schema_digest": "37ff8e0e69ea33da13a0b6e1d45ff1707ab2a18731a58f376a30a39a9190e802",
+  "probe_root": "/root/projects/RecClaw_v14_schema_conformance_v1",
+  "physical_calls": 2,
+  "retry_count": 0,
+  "original": {
+    "proposal_count": 4,
+    "response_digest": "218b3cade49e3d640cfe33d0fd84e93ed5306963a84a7c7fd12180a9dd07a45b",
+    "all_compositions_resolved": true,
+    "all_priorities_valid": true
+  },
+  "research": {
+    "proposal_count": 1,
+    "response_digest": "f12d16fa5b9d48ccb7889f39e1269ca41f67705d401efd46fe0de5c93cdc6e92",
+    "all_compositions_resolved": true,
+    "original_priority_null": true
+  },
+  "pilot_state_created": false,
+  "training_executions": 0,
+  "pilot_outcomes_used": false
+}

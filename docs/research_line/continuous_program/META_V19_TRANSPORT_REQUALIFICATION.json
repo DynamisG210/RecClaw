@@ -1,0 +1,11 @@
+{
+  "record_schema": "recclaw.meta-vnext-transport-requalification.v1",
+  "checkpoint_id": "META_VNEXT_V19_PROVIDER_STRICT_SCHEMA_REBIND",
+  "parent_checkpoint_sha256": "0ef232905cb07abada89322f631908743b31b74527f36c59efc4c00f7b56fd9c",
+  "policy_bundle_digest": "95923b800e89c4c4bfb994b5aa8a16069ac8429af056b456f01b42af4ab33744",
+  "activation_boundary": "NEXT_CAMPAIGN",
+  "coefficient_change": false,
+  "pilot_outcomes_used": false,
+  "reason": "PROVIDER_STRICT_SCHEMA_REQUIRED_ALL_OBJECT_PROPERTIES",
+  "promotion_decision_digest": "5eff2259198fda7bac4e722451e1c3f2ea34e3c591e125d001cf45691ced5bf4"
+}

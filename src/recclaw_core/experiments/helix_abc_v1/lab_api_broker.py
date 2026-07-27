@@ -28,6 +28,57 @@ from .canonical import canonical_json_bytes, sha256_digest, validate_sha256
 from .canary_broker import CanaryBrokerCallV1, CanaryBrokerError
 
 
+def validate_provider_strict_schema(
+    schema: Mapping[str, Any],
+    *,
+    path: tuple[str, ...] = (),
+) -> None:
+    """Validate the strict object rule required by the laboratory Provider."""
+
+    properties = schema.get("properties")
+    if isinstance(properties, Mapping):
+        required = schema.get("required")
+        property_names = set(str(item) for item in properties)
+        required_names = (
+            set(str(item) for item in required)
+            if isinstance(required, list)
+            else set()
+        )
+        if required_names != property_names:
+            missing = sorted(property_names - required_names)
+            extra = sorted(required_names - property_names)
+            location = ".".join(path) or "$"
+            raise CanaryBrokerError(
+                "provider strict schema object is not closed at "
+                f"{location}: missing_required={missing}, "
+                f"unknown_required={extra}"
+            )
+        if schema.get("additionalProperties") is not False:
+            location = ".".join(path) or "$"
+            raise CanaryBrokerError(
+                "provider strict schema object allows extra properties at "
+                f"{location}"
+            )
+        for name, subschema in properties.items():
+            if isinstance(subschema, Mapping):
+                validate_provider_strict_schema(
+                    subschema,
+                    path=(*path, "properties", str(name)),
+                )
+    items = schema.get("items")
+    if isinstance(items, Mapping):
+        validate_provider_strict_schema(items, path=(*path, "items"))
+    for keyword in ("allOf", "anyOf", "oneOf"):
+        branches = schema.get(keyword)
+        if isinstance(branches, list):
+            for index, branch in enumerate(branches):
+                if isinstance(branch, Mapping):
+                    validate_provider_strict_schema(
+                        branch,
+                        path=(*path, keyword, str(index)),
+                    )
+
+
 @dataclass(frozen=True, slots=True)
 class LabApiBrokerReleaseV1:
     transport: str
@@ -214,6 +265,7 @@ class LabApiCanaryBrokerV1:
         jsonschema.validators.validator_for(self.schema).check_schema(
             self.schema
         )
+        validate_provider_strict_schema(self.schema)
         self.schema_file_sha256 = hashlib.sha256(
             self.schema_bytes
         ).hexdigest()

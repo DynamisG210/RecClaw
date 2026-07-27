@@ -26,6 +26,9 @@ from recclaw_core.experiments.helix_abc_v1.campaign_dataset import (
 from recclaw_core.experiments.helix_abc_v1.common_execution_guard import (
     CommonExecutionGuardV1,
 )
+from recclaw_core.experiments.helix_abc_v1.lab_api_broker import (
+    validate_provider_strict_schema,
+)
 from recclaw_core.experiments.helix_abc_v1.materialization import (
     DeterministicMaterializerV1,
 )
@@ -162,9 +165,12 @@ def test_typed_composition_resolves_without_recipe_selection() -> None:
 
 
 def test_provider_schema_requires_typed_composition_not_recipe_id() -> None:
-    validator = Draft202012Validator(campaign_proposal_schema())
+    schema = campaign_proposal_schema()
+    validate_provider_strict_schema(schema)
+    validator = Draft202012Validator(schema)
     proposal = {
         "candidate_label": "typed composition",
+        "mechanism_id": "BPR_MF__BPR_MIXED_NEGATIVE__BPR_MARGIN",
         "composition": {
             "base_mechanism_id": "BPR_MF",
             "primary_operator_id": "BPR_MIXED_NEGATIVE",
@@ -174,6 +180,7 @@ def test_provider_schema_requires_typed_composition_not_recipe_id() -> None:
         "competing_hypothesis": "the interaction is neutral",
         "predicted_outcome_signature": "positive matched delta",
         "failure_mode": "no matched improvement",
+        "original_priority": None,
         "parent_candidate_id": None,
         "proposal_intent": "DISCOVERY",
         "utility_features": {
@@ -185,8 +192,26 @@ def test_provider_schema_requires_typed_composition_not_recipe_id() -> None:
     assert list(validator.iter_errors({"proposals": [proposal]})) == []
     legacy = dict(proposal)
     legacy.pop("composition")
-    legacy["mechanism_id"] = "BPR_MIXED_NEGATIVE_MARGIN"
     assert list(validator.iter_errors({"proposals": [legacy]}))
+
+
+def test_provider_strict_schema_rejects_optional_object_properties() -> None:
+    schema = campaign_proposal_schema()
+    broken = dict(schema)
+    broken["properties"] = dict(schema["properties"])
+    proposals = dict(broken["properties"]["proposals"])
+    broken["properties"]["proposals"] = proposals
+    items = dict(proposals["items"])
+    proposals["items"] = items
+    items["required"] = [
+        item for item in items["required"] if item != "mechanism_id"
+    ]
+    try:
+        validate_provider_strict_schema(broken)
+    except RuntimeError as error:
+        assert "mechanism_id" in str(error)
+    else:
+        raise AssertionError("provider-optional property was accepted")
 
 
 def test_bpr_operator_families_execute_loss_and_backward() -> None:

@@ -1,0 +1,24 @@
+{
+  "record_schema": "recclaw.continuous-program.state.v1",
+  "active_stage": "V14_PROVIDER_SCHEMA_RECOVERY",
+  "active_processes": [],
+  "last_completed_checkpoint": "V13_FAILED_AND_PERMANENTLY_SEALED",
+  "next_automatic_action": "FIX_STRICT_SCHEMA_AND_REQUALIFY_CONTENT_IDENTITIES",
+  "current_source_commit": "c4be6c4e8c5a1fe064f24f0571792644cde48f76",
+  "current_contract_digest": "f9c16d06604b1789222a48e5af11c004d6a2bad5aa8cd7512d3a609b5dbb029f",
+  "current_profile_digest": "d483faa471c3f26d321daa89c6946ab67a11a95d459d2d5c095c9da419ee5da1",
+  "current_meta_checkpoint": "META_VNEXT_V18_SUPPORT_AWARE",
+  "current_backend_release": "LOCAL_M6E_TRAINING_RUNTIME_V2_PLUS_LAB_API_GPT_5_4",
+  "pilot_or_main_version": "V13_SEALED_RECOVERING_TO_V14",
+  "search_seed": 9215,
+  "round_progress": {
+    "closed": 1,
+    "planned_per_arm": 5,
+    "successful_broker_calls": 0,
+    "ordinary_executions": 0
+  },
+  "P0": 0,
+  "P1": 1,
+  "P2": 3,
+  "hard_stop": false
+}

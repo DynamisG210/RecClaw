@@ -1,0 +1,19 @@
+{
+  "record_schema": "recclaw.continuous-program.backend-selection.v1",
+  "stage": "V13_AND_SUCCESSOR_CHAIN_PILOT",
+  "selected_backend": "LOCAL_FROZEN_V13_ENVIRONMENT",
+  "research_llm": {
+    "provider": "LABORATORY_API",
+    "model": "gpt-5.4",
+    "contract_equivalent_fallback": false
+  },
+  "training": {
+    "python": "/root/projects/RecClaw_m6_training_runtime_v2/bin/python",
+    "recbole_root": "/root/projects/RecBole_m6_runtime",
+    "dataset_root": "/root/projects/RecClaw_campaign_dataset_v1/search",
+    "hardware_class": "LOCAL_SINGLE_GPU_SHARED_SEQUENTIAL_ARMS"
+  },
+  "selection_reason": "The chain Pilot must preserve the frozen local runtime, dataset and sequential balanced A/B/C schedule. Longer Effect/Main backend selection remains pending after chain qualification.",
+  "authority": "NONE",
+  "formal_acceptance": false
+}

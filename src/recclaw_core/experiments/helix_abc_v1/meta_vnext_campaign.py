@@ -88,6 +88,15 @@ POLICY_BUNDLE_DIGEST_V18 = (
 CHECKPOINT_SHA256_V18 = (
     "0ef232905cb07abada89322f631908743b31b74527f36c59efc4c00f7b56fd9c"
 )
+PROMOTION_DECISION_DIGEST_V19 = (
+    "5eff2259198fda7bac4e722451e1c3f2ea34e3c591e125d001cf45691ced5bf4"
+)
+POLICY_BUNDLE_DIGEST_V19 = (
+    "95923b800e89c4c4bfb994b5aa8a16069ac8429af056b456f01b42af4ab33744"
+)
+CHECKPOINT_SHA256_V19 = (
+    "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173"
+)
 
 
 class MetaV17CampaignError(ValueError):
@@ -208,6 +217,23 @@ def meta_v18_research_control_policy() -> VersionedResearchPolicyV1:
         promotion_decision_digest=PROMOTION_DECISION_DIGEST_V18,
         activation_boundary="NEXT_CAMPAIGN",
         control_mode="PROMOTED_META_V18_SUPPORT_AWARE_CONTROL",
+    )
+
+
+def meta_v19_research_control_policy() -> VersionedResearchPolicyV1:
+    """Rebind V18 unchanged to the Provider-strict proposal schema."""
+
+    parent = meta_v18_research_control_policy()
+    return replace(
+        parent,
+        version=20,
+        predecessor_digest=parent.digest,
+        meta_router_policy_digest=POLICY_BUNDLE_DIGEST_V19,
+        meta_router_promotion_decision_digest=(
+            PROMOTION_DECISION_DIGEST_V19
+        ),
+        promotion_decision_digest=PROMOTION_DECISION_DIGEST_V19,
+        control_mode="PROMOTED_META_V19_PROVIDER_STRICT_SCHEMA_REBIND",
     )
 
 
@@ -1245,6 +1271,8 @@ class MetaV18CampaignRuntimeV1(MetaV17CampaignRuntimeV1):
     """Use the V17 learned coefficients through the V18 support contract."""
 
     version_label = "V18"
+    expected_checkpoint_id = "META_VNEXT_V18_SUPPORT_AWARE"
+    expected_checkpoint_sha256 = CHECKPOINT_SHA256_V18
     expected_policy_bundle_digest = POLICY_BUNDLE_DIGEST_V18
     promotion_decision_digest = PROMOTION_DECISION_DIGEST_V18
     source_manifest_digest = sha256_digest(
@@ -1276,9 +1304,11 @@ class MetaV18CampaignRuntimeV1(MetaV17CampaignRuntimeV1):
         checkpoint_path: Path,
     ) -> tuple[dict[str, Any], PairwiseSlowPolicyV1, MetaVNextRouterV1]:
         if hashlib.sha256(checkpoint_path.read_bytes()).hexdigest() != (
-            CHECKPOINT_SHA256_V18
+            self.expected_checkpoint_sha256
         ):
-            raise MetaV17CampaignError("V18 checkpoint bytes are not exact")
+            raise MetaV17CampaignError(
+                f"{self.version_label} checkpoint bytes are not exact"
+            )
         checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
         parent_path = checkpoint_path.parent / str(
             checkpoint["parent_checkpoint_resource"]
@@ -1286,7 +1316,9 @@ class MetaV18CampaignRuntimeV1(MetaV17CampaignRuntimeV1):
         if hashlib.sha256(parent_path.read_bytes()).hexdigest() != checkpoint[
             "parent_checkpoint_sha256"
         ]:
-            raise MetaV17CampaignError("V18 parent checkpoint bytes drifted")
+            raise MetaV17CampaignError(
+                f"{self.version_label} parent checkpoint bytes drifted"
+            )
         parent = json.loads(parent_path.read_text(encoding="utf-8"))
         policy = PairwiseSlowPolicyV1.from_dict(parent["policy"])
         router = MetaVNextRouterV1(**parent["router"])
@@ -1315,7 +1347,7 @@ class MetaV18CampaignRuntimeV1(MetaV17CampaignRuntimeV1):
             checkpoint.get("schema")
             != "recclaw.meta-vnext-policy-checkpoint.v2"
             or checkpoint.get("checkpoint_id")
-            != "META_VNEXT_V18_SUPPORT_AWARE"
+            != self.expected_checkpoint_id
             or checkpoint.get("candidate_contract") != "CandidateProposalV4"
             or checkpoint.get("executable_profile_digest") != profile_digest
             or checkpoint.get("feature_support_sha256")
@@ -1329,12 +1361,14 @@ class MetaV18CampaignRuntimeV1(MetaV17CampaignRuntimeV1):
             or checkpoint.get("router_configuration_digest")
             != router.configuration_digest
             or checkpoint.get("policy_bundle_digest") != bundle
-            or bundle != POLICY_BUNDLE_DIGEST_V18
+            or bundle != self.expected_policy_bundle_digest
             or checkpoint.get("shadow_only") is not False
             or checkpoint.get("activation_boundary") != "NEXT_CAMPAIGN"
             or checkpoint.get("pilot_outcomes_used") is not False
         ):
-            raise MetaV17CampaignError("V18 checkpoint identity is not exact")
+            raise MetaV17CampaignError(
+                f"{self.version_label} checkpoint identity is not exact"
+            )
         return checkpoint, policy, router
 
     def _research_control_policy(self) -> VersionedResearchPolicyV1:
@@ -1465,19 +1499,65 @@ class MetaV18CampaignRuntimeV1(MetaV17CampaignRuntimeV1):
         return canonical_value(result)
 
 
+class MetaV19CampaignRuntimeV1(MetaV18CampaignRuntimeV1):
+    """V18 policy with only its Provider-strict transport identity rebound."""
+
+    version_label = "V19"
+    expected_checkpoint_id = (
+        "META_VNEXT_V19_PROVIDER_STRICT_SCHEMA_REBIND"
+    )
+    expected_checkpoint_sha256 = CHECKPOINT_SHA256_V19
+    expected_policy_bundle_digest = POLICY_BUNDLE_DIGEST_V19
+    promotion_decision_digest = PROMOTION_DECISION_DIGEST_V19
+    source_manifest_digest = sha256_digest(
+        {
+            "parent_source_manifest_digest": (
+                MetaV18CampaignRuntimeV1.source_manifest_digest
+            ),
+            "candidate_contract": "CandidateProposalV4",
+            "executable_profile_digest": (
+                "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536"
+            ),
+            "transport_rebind": (
+                "PROVIDER_STRICT_SCHEMA_REQUIRED_ALL_OBJECT_PROPERTIES"
+            ),
+        }
+    )
+    runtime_repair_digest = sha256_digest(
+        {
+            "parent_runtime_repair_digest": (
+                MetaV18CampaignRuntimeV1.runtime_repair_digest
+            ),
+            "transport_rebind": (
+                "PROVIDER_STRICT_SCHEMA_REQUIRED_ALL_OBJECT_PROPERTIES"
+            ),
+        }
+    )
+    activation_mode = (
+        "META_VNEXT_V19_PROVIDER_STRICT_SCHEMA_REBIND_V18_POLICY"
+    )
+
+    def _research_control_policy(self) -> VersionedResearchPolicyV1:
+        return meta_v19_research_control_policy()
+
+
 __all__ = [
     "MetaV17CampaignError",
     "MetaV17CampaignRuntimeV1",
     "MetaV18CampaignRuntimeV1",
+    "MetaV19CampaignRuntimeV1",
     "MetaProducerDirectiveV1",
     "MetaV17RouteResultV1",
     "META_V17_RUNTIME_REPAIR_DIGEST_V1",
     "POLICY_BUNDLE_DIGEST_V17",
     "POLICY_BUNDLE_DIGEST_V18",
+    "POLICY_BUNDLE_DIGEST_V19",
     "PROMOTION_DECISION_DIGEST_V17",
     "PROMOTION_DECISION_DIGEST_V18",
+    "PROMOTION_DECISION_DIGEST_V19",
     "SOURCE_MANIFEST_DIGEST_V17",
     "meta_v17_research_control_policy",
     "meta_v17_static_producer_policy",
     "meta_v18_research_control_policy",
+    "meta_v19_research_control_policy",
 ]

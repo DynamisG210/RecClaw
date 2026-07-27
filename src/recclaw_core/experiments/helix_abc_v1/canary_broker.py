@@ -702,7 +702,8 @@ Protocol: ML-1M, frozen full-sort NDCG@10, unchanged protocol, one eventual exec
 Search seed: {search_seed}. Round: {round_index}.
 Propose exactly four diverse candidates from the exact executable profile below.
 Choose a base plus zero, one or two compatible typed operators and return the
-composition object. Do not repeat a resolved composition. Preserve the Original policy's preference for
+composition object and its exact resolved mechanism_id. Do not repeat a
+resolved composition. Preserve the Original policy's preference for
 novel runnable families, avoid recently executed semantics, and use prior outcomes
 without Research roles, Research Router scores, Meta policy, or Evidence authority.
 Set parent_candidate_id only when the supplied Original state contains that exact ID.
@@ -796,8 +797,10 @@ Your role is to {instruction}. Protocol: ML-1M, frozen full-sort NDCG@10, unchan
 Search seed: {search_seed}. Round: {round_index}. Return exactly one proposal and set
 proposal_intent to {required_intent}. Choose one base plus one primary operator and
 at most one compatible secondary operator from the executable profile, and return
-the exact composition object. Keep every scientific field consistent with that
-composition. Use parent_candidate_id only for an exact ID present in your role-scoped
+the exact composition object and its exact resolved mechanism_id. Set the
+Original-only transport field original_priority to null; Research routing ignores
+that field. Keep every scientific field consistent with the composition. Use
+parent_candidate_id only for an exact ID present in your role-scoped
 memory or the exact_parent_candidate_id in the policy directive. When parent_policy
 is REQUIRE_EXACT_PRIOR_PARENT, copy that exact ID; when it is
 EXPLICIT_ROOT_REQUEST, return null. Do not invent an operator or composition
