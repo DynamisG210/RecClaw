@@ -8,6 +8,7 @@ import json
 import sqlite3
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -20,6 +21,7 @@ from recclaw_core.helix.scientific_attribution import FusedSearchFeedbackV2
 
 from .campaign_runtime import (
     campaign_projection,
+    campaign_runtime_profile,
     executable_mechanism,
     executable_mechanisms,
     execution_recipe_for_program,
@@ -60,11 +62,19 @@ from .research_capability import (
 )
 from .research_contracts import (
     CandidateProposalV3,
+    CandidateProposalV4,
+    DiscriminativeExperimentPlanV1,
     DiscoveryCreditV1,
     ProducerCallRecordV1,
     ProducerSessionResultV1,
     ProposalIntentV1,
     SearchUtilityFeaturesV1,
+)
+from .research_science import (
+    DeterministicRouterFeatureBuilderV1,
+    LineageIndexV1,
+    LineageRecordV1,
+    matched_control_plan,
 )
 from .research_controller import ResearchLineControllerV1, ResearchRoundPlanV1
 
@@ -225,12 +235,15 @@ class RealCanaryProposalBrokerV1:
     _research_calls: dict[tuple[int, int, str], tuple[CanaryBrokerCallV1, ...]]
     _search_feedback: dict[ArmCode, Mapping[str, Any]]
     _campaign_call_scopes: dict[str, tuple[str, ...]]
+    _research_session_wall_ms: dict[tuple[int, int, str], int]
+    lineage_indexes: dict[ArmCode, LineageIndexV1]
     original_controller: Any
     campaign_meta_runtime: Any | None = None
     producer_control_enabled: bool = True
     call_prefix: str = ""
     phase_name: str = "Canary"
     adaptive_memory: bool = False
+    v13_mode: bool = False
 
     @classmethod
     def create(
@@ -245,6 +258,7 @@ class RealCanaryProposalBrokerV1:
         producer_control_enabled: bool = True,
         research_policy_override: Any | None = None,
         original_controller: Any | None = None,
+        v13_mode: bool = False,
     ) -> "RealCanaryProposalBrokerV1":
         def controller() -> ResearchLineControllerV1:
             policy = (
@@ -275,6 +289,12 @@ class RealCanaryProposalBrokerV1:
             _research_calls={},
             _search_feedback={},
             _campaign_call_scopes={},
+            _research_session_wall_ms={},
+            lineage_indexes={
+                ArmCode.A: LineageIndexV1(),
+                ArmCode.B: LineageIndexV1(),
+                ArmCode.C: LineageIndexV1(),
+            },
             original_controller=(
                 original_controller
                 if original_controller is not None
@@ -285,6 +305,7 @@ class RealCanaryProposalBrokerV1:
             call_prefix=call_prefix,
             phase_name=phase_name,
             adaptive_memory=adaptive_memory,
+            v13_mode=v13_mode,
         )
 
     @classmethod
@@ -315,6 +336,7 @@ class RealCanaryProposalBrokerV1:
                 repository_root=repository_root,
                 search_seed=search_seed,
             ),
+            v13_mode=True,
         )
 
     @property
@@ -373,6 +395,7 @@ class RealCanaryProposalBrokerV1:
         )
         key = (search_seed, round_index, memory_policy_digest)
         if key not in self._research_calls:
+            session_started_ns = time.monotonic_ns()
             memory_component = (
                 f"-m{memory_policy_digest[:12]}"
                 if self.adaptive_memory
@@ -380,8 +403,11 @@ class RealCanaryProposalBrokerV1:
             )
             calls: list[CanaryBrokerCallV1] = []
             allocations = dict(controller.policy.producer_token_allocation)
+            latest_lineage = self.lineage_indexes[arm].latest_success()
             default_lineage_root = (
-                "LIGHTGCN" if round_index % 2 else "BPR_MF"
+                root_parent_mechanism_id(latest_lineage.mechanism_id)
+                if latest_lineage is not None
+                else ("LIGHTGCN" if round_index % 2 else "BPR_MF")
             )
             prioritized_axes: tuple[str, ...] = ()
             if not meta_directives:
@@ -418,10 +444,19 @@ class RealCanaryProposalBrokerV1:
             }
             for role_index, role in enumerate(DISCOVERY_PRODUCERS):
                 meta_directive = meta_by_role.get(role)
+                exact_parent = (
+                    latest_lineage
+                    if role == "lineage_refiner"
+                    else None
+                )
                 lineage_root = (
-                    meta_directive.lineage_root
-                    if meta_directive is not None
-                    else default_lineage_root
+                    root_parent_mechanism_id(exact_parent.mechanism_id)
+                    if exact_parent is not None
+                    else (
+                        meta_directive.lineage_root
+                        if meta_directive is not None
+                        else default_lineage_root
+                    )
                 )
                 primary_axis = (
                     meta_directive.primary_axis
@@ -449,15 +484,20 @@ class RealCanaryProposalBrokerV1:
                     "lineage_root": lineage_root,
                     "memory_query": memory_query,
                     "parent_policy": (
-                        "PREFER_EXACT_EXECUTED_PARENT"
-                        if role
-                        in {"lineage_refiner", "falsification_designer"}
+                        "REQUIRE_EXACT_PRIOR_PARENT"
+                        if exact_parent is not None
+                        else "EXPLICIT_ROOT_REQUEST"
+                        if role == "lineage_refiner"
                         else "OPTIONAL"
                     ),
                     "primary_axis": primary_axis,
                     "producer_role": role,
                     "versioned_policy_digest": controller.policy.digest,
                 }
+                if exact_parent is not None:
+                    directive["exact_parent_candidate_id"] = (
+                        exact_parent.proposal_candidate_id
+                    )
                 if meta_directive is not None:
                     directive["learned_axis_score"] = (
                         meta_directive.learned_axis_score
@@ -466,10 +506,23 @@ class RealCanaryProposalBrokerV1:
                         meta_directive.digest
                     )
                 is_control_slot = (
-                    meta_directive.proposal_intent == "CONTROL"
-                    if meta_directive is not None
-                    else role == "falsification_designer"
+                    not self.v13_mode
+                    and (
+                        meta_directive.proposal_intent == "CONTROL"
+                        if meta_directive is not None
+                        else role == "falsification_designer"
+                    )
                 )
+                if self.v13_mode and role == "falsification_designer":
+                    directive.update(
+                        {
+                            "proposal_intent": "FALSIFICATION",
+                            "scientific_role": (
+                                "discriminative competing-hypothesis "
+                                "experiment"
+                            ),
+                        }
+                    )
                 if is_control_slot:
                     primary_axis = executable_mechanism(
                         lineage_root
@@ -561,6 +614,10 @@ class RealCanaryProposalBrokerV1:
                     raise
                 calls.append(call)
             self._research_calls[key] = tuple(calls)
+            self._research_session_wall_ms[key] = max(
+                0,
+                int((time.monotonic_ns() - session_started_ns) / 1_000_000),
+            )
         return self._research_calls[key]
 
     def _legacy_research_upstream_calls(
@@ -680,14 +737,138 @@ class RealCanaryProposalBrokerV1:
         projection["executed_mechanism_ids"] = executed[-32:]
         self._search_feedback[arm] = canonical_value(projection)
 
-    @staticmethod
-    def _proposal_from_call(
+    def matched_comparator_for(
+        self,
         *,
+        arm: ArmCode,
+        proposal: CandidateProposalV4,
+        protocol_digest: str,
+    ) -> Any | None:
+        return self.lineage_indexes[arm].matched_comparator(
+            proposal,
+            protocol_digest=protocol_digest,
+        )
+
+    def lineage_record_for(
+        self,
+        *,
+        arm: ArmCode,
+        proposal_candidate_id: str,
+        protocol_digest: str,
+    ) -> LineageRecordV1 | None:
+        return self.lineage_indexes[arm].latest_for_candidate(
+            proposal_candidate_id,
+            protocol_digest=protocol_digest,
+        )
+
+    def record_lineage_outcome(
+        self,
+        *,
+        arm: ArmCode,
+        proposal: CandidateProposalV4,
+        runtime_candidate_id: str,
+        mechanism_program_digest: str,
+        mechanism_semantics_digest: str,
+        protocol_digest: str,
+        observation_seed: str,
+        run_status: str,
+        normalized_metrics: Mapping[str, Any],
+        result_digest: str,
+        round_index: int,
+    ) -> None:
+        metric_name = next(
+            (
+                name
+                for name in ("ndcg@10", "ndcg")
+                if isinstance(normalized_metrics.get(name), (int, float))
+            ),
+            "ndcg@10",
+        )
+        metric = normalized_metrics.get(metric_name)
+        self.lineage_indexes[arm].record(
+            LineageRecordV1(
+                proposal_candidate_id=proposal.candidate_id,
+                runtime_candidate_id=runtime_candidate_id,
+                mechanism_id=proposal.mechanism_id,
+                mechanism_axis=proposal.mechanism_axis,
+                mechanism_program_digest=mechanism_program_digest,
+                mechanism_semantics_digest=mechanism_semantics_digest,
+                parent_candidate_id=proposal.parent_candidate_id,
+                protocol_digest=protocol_digest,
+                observation_seed=observation_seed,
+                run_status=run_status,
+                metric_name=metric_name,
+                metric_value=(
+                    float(metric)
+                    if isinstance(metric, (int, float))
+                    else None
+                ),
+                result_digest=result_digest,
+                round_index=round_index,
+                mechanism_program=proposal.mechanism_program,
+            )
+        )
+
+    def record_support_outcome(
+        self,
+        *,
+        arm: ArmCode,
+        proposal_candidate_id: str,
+        runtime_candidate_id: str,
+        mechanism_id: str,
+        mechanism_axis: str,
+        mechanism_program_digest: str,
+        mechanism_semantics_digest: str,
+        protocol_digest: str,
+        observation_seed: str,
+        run_status: str,
+        normalized_metrics: Mapping[str, Any],
+        result_digest: str,
+        round_index: int,
+        mechanism_program: Mapping[str, Any],
+    ) -> None:
+        metric_name = next(
+            (
+                name
+                for name in ("ndcg@10", "ndcg")
+                if isinstance(normalized_metrics.get(name), (int, float))
+            ),
+            "ndcg@10",
+        )
+        metric = normalized_metrics.get(metric_name)
+        self.lineage_indexes[arm].record(
+            LineageRecordV1(
+                proposal_candidate_id=proposal_candidate_id,
+                runtime_candidate_id=runtime_candidate_id,
+                mechanism_id=mechanism_id,
+                mechanism_axis=mechanism_axis,
+                mechanism_program_digest=mechanism_program_digest,
+                mechanism_semantics_digest=mechanism_semantics_digest,
+                parent_candidate_id=None,
+                protocol_digest=protocol_digest,
+                observation_seed=observation_seed,
+                run_status=run_status,
+                metric_name=metric_name,
+                metric_value=(
+                    float(metric)
+                    if isinstance(metric, (int, float))
+                    else None
+                ),
+                result_digest=result_digest,
+                round_index=round_index,
+                mechanism_program=mechanism_program,
+            )
+        )
+
+    def _proposal_from_call(
+        self,
+        *,
+        arm: ArmCode,
         session_id: str,
         role: str,
         call: CanaryBrokerCallV1,
         proposal: Mapping[str, Any],
-    ) -> CandidateProposalV3:
+    ) -> CandidateProposalV3 | CandidateProposalV4:
         program = campaign_program_from_proposal(proposal)
         compiled = compile_program(program)
         mechanism = executable_mechanism(str(proposal["mechanism_id"]))
@@ -699,9 +880,13 @@ class RealCanaryProposalBrokerV1:
         )
         intent = ProposalIntentV1(str(proposal["proposal_intent"]))
         discovery_credit = (
-            DiscoveryCreditV1.NON_DISCOVERY_CONTROL
-            if intent is ProposalIntentV1.CONTROL
-            else DiscoveryCreditV1.DISCOVERY
+            DiscoveryCreditV1.DISCOVERY
+            if self.v13_mode
+            else (
+                DiscoveryCreditV1.NON_DISCOVERY_CONTROL
+                if intent is ProposalIntentV1.CONTROL
+                else DiscoveryCreditV1.DISCOVERY
+            )
         )
         proposal_identity = sha256_digest(
             {
@@ -712,7 +897,150 @@ class RealCanaryProposalBrokerV1:
             }
         )
         proposal_candidate_id = f"cand-{proposal_identity[:24]}"
-        return CandidateProposalV3(
+        if not self.v13_mode:
+            return CandidateProposalV3(
+                candidate_id=proposal_candidate_id,
+                producer_id=f"producer-{role}",
+                producer_role=role,
+                proposal_intent=intent,
+                discovery_credit=discovery_credit,
+                mechanism_id=mechanism.mechanism_id,
+                mechanism_axis=mechanism.mechanism_axis,
+                mechanism_program=program,
+                candidate_label=str(proposal["candidate_label"]),
+                mechanism_hypothesis=str(
+                    proposal["mechanism_hypothesis"]
+                ),
+                competing_hypothesis=str(
+                    proposal["competing_hypothesis"]
+                ),
+                predicted_outcome_signature=str(
+                    proposal["predicted_outcome_signature"]
+                ),
+                failure_mode=str(proposal["failure_mode"]),
+                utility_features=SearchUtilityFeaturesV1(
+                    runnable_probability=1.0,
+                    useful_signal=float(utility["useful_signal"]),
+                    frontier_potential=float(
+                        utility["frontier_potential"]
+                    ),
+                    information_gain=float(utility["information_gain"]),
+                    cost=cost,
+                    blocker_risk=0.05,
+                ),
+                parent_candidate_id=proposal.get(
+                    "parent_candidate_id"
+                ),
+                assigned_before_call=True,
+                post_hoc_relabel=False,
+            )
+        lineage = self.lineage_indexes[arm]
+        parent_candidate_id = proposal.get("parent_candidate_id")
+        parent = (
+            lineage.latest_for_candidate(str(parent_candidate_id))
+            if parent_candidate_id is not None
+            else None
+        )
+        if parent_candidate_id is not None and parent is None:
+            raise PreCanaryInvariantError(
+                "declared Research parent is absent from exact lineage"
+            )
+        if role == "lineage_refiner":
+            expected_parent = lineage.latest_success()
+            if expected_parent is None and parent_candidate_id is not None:
+                raise PreCanaryInvariantError(
+                    "root lineage request cannot declare a missing parent"
+                )
+            if expected_parent is not None and str(parent_candidate_id) != (
+                expected_parent.proposal_candidate_id
+            ):
+                raise PreCanaryInvariantError(
+                    "lineage_refiner did not use its exact prior parent"
+                )
+        diagnostic = SearchUtilityFeaturesV1(
+            runnable_probability=float(
+                utility.get("runnable_probability", 0.5)
+            ),
+            useful_signal=float(utility["useful_signal"]),
+            frontier_potential=float(utility["frontier_potential"]),
+            information_gain=float(utility["information_gain"]),
+            cost=float(utility.get("cost", cost)),
+            blocker_risk=float(utility.get("blocker_risk", 0.5)),
+        )
+        derived_features, feature_evidence = (
+            DeterministicRouterFeatureBuilderV1().build(
+                compile_valid=bool(compiled.is_valid),
+                handler_available=bool(mechanism.entrypoint),
+                materializer_available=True,
+                mechanism_id=mechanism.mechanism_id,
+                mechanism_depth=(
+                    lineage.mechanism_depth(
+                        str(parent_candidate_id)
+                        if parent_candidate_id is not None
+                        else None
+                    )
+                    + int(parent_candidate_id is not None)
+                ),
+                estimated_cost=cost,
+                semantics_digest=str(
+                    compiled.mechanism_semantics_digest
+                ),
+                parent_available=(
+                    parent is not None
+                    or parent_candidate_id is None
+                ),
+                lineage=lineage,
+                llm_diagnostic=diagnostic,
+            )
+        )
+        protocol_digest = str(
+            campaign_runtime_profile()["development_protocol_digest"]
+        )
+        root_program = campaign_program_from_proposal(
+            {
+                "mechanism_id": root_parent_mechanism_id(
+                    mechanism.mechanism_id
+                )
+            }
+        )
+        root_report = compile_program(root_program)
+        control_plan = matched_control_plan(
+            lineage=lineage,
+            primary_candidate_id=proposal_candidate_id,
+            parent_candidate_id=(
+                str(parent_candidate_id)
+                if parent_candidate_id is not None
+                else None
+            ),
+            changed_axis=mechanism.mechanism_axis,
+            mechanism_hypothesis=str(proposal["mechanism_hypothesis"]),
+            protocol_digest=protocol_digest,
+            queued_comparator_candidate_id=str(root_report.candidate_id),
+            queued_comparator_program_digest=str(
+                root_report.mechanism_program_digest
+            ),
+        )
+        discriminative_plan = (
+            DiscriminativeExperimentPlanV1(
+                competing_hypotheses=(
+                    str(proposal["mechanism_hypothesis"]),
+                    str(proposal["competing_hypothesis"]),
+                ),
+                predicted_outcome_signature=str(
+                    proposal["predicted_outcome_signature"]
+                ),
+                primary_candidate=proposal_candidate_id,
+                matched_control_plan=control_plan,
+                falsifier=str(proposal["failure_mode"]),
+                next_decision_rule=(
+                    "retain the mechanism explanation only if the exact "
+                    "matched comparison has the predicted sign"
+                ),
+            )
+            if role == "falsification_designer"
+            else None
+        )
+        return CandidateProposalV4(
             candidate_id=proposal_candidate_id,
             producer_id=f"producer-{role}",
             producer_role=role,
@@ -728,15 +1056,15 @@ class RealCanaryProposalBrokerV1:
                 proposal["predicted_outcome_signature"]
             ),
             failure_mode=str(proposal["failure_mode"]),
-            utility_features=SearchUtilityFeaturesV1(
-                runnable_probability=1.0,
-                useful_signal=float(utility["useful_signal"]),
-                frontier_potential=float(utility["frontier_potential"]),
-                information_gain=float(utility["information_gain"]),
-                cost=cost,
-                blocker_risk=0.05,
+            utility_features=derived_features,
+            feature_evidence=feature_evidence,
+            matched_control_plan=control_plan,
+            discriminative_plan=discriminative_plan,
+            parent_candidate_id=(
+                str(parent_candidate_id)
+                if parent_candidate_id is not None
+                else None
             ),
-            parent_candidate_id=proposal.get("parent_candidate_id"),
             assigned_before_call=True,
             post_hoc_relabel=False,
         )
@@ -754,14 +1082,18 @@ class RealCanaryProposalBrokerV1:
             f"{self.call_prefix or 'campaign-'}research-"
             f"{search_seed}-{round_index}"
         )
-        proposals: list[CandidateProposalV3] = []
+        proposals: list[CandidateProposalV3 | CandidateProposalV4] = []
         call_records: list[ProducerCallRecordV1] = []
         for role, call in zip(DISCOVERY_PRODUCERS, calls, strict=True):
             raw = dict(call.response["proposals"][0])
             expected_intent = (
-                ProposalIntentV1.CONTROL
-                if role == "falsification_designer"
-                else ProposalIntentV1.DISCOVERY
+                ProposalIntentV1.FALSIFICATION
+                if self.v13_mode and role == "falsification_designer"
+                else (
+                    ProposalIntentV1.CONTROL
+                    if role == "falsification_designer"
+                    else ProposalIntentV1.DISCOVERY
+                )
             )
             if ProposalIntentV1(str(raw["proposal_intent"])) is not expected_intent:
                 raise PreCanaryInvariantError(
@@ -774,6 +1106,7 @@ class RealCanaryProposalBrokerV1:
                     "Producer response is outside its preassigned mechanism scope"
                 )
             typed = self._proposal_from_call(
+                arm=arm,
                 session_id=session_id,
                 role=role,
                 call=call,
@@ -806,6 +1139,19 @@ class RealCanaryProposalBrokerV1:
                     latency_ms=call.latency_ms,
                 )
             )
+        session_wall_time_ms = next(
+            (
+                self._research_session_wall_ms[key]
+                for key, value in self._research_calls.items()
+                if value == tuple(calls)
+                and key in self._research_session_wall_ms
+            ),
+            sum(item.latency_ms for item in calls),
+        )
+        session_wall_time_ms = max(
+            session_wall_time_ms,
+            max((item.latency_ms for item in calls), default=0),
+        )
         return ProducerSessionResultV1(
             session_id=session_id,
             mode=ProducerExecutionModeV1.BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1,
@@ -816,13 +1162,17 @@ class RealCanaryProposalBrokerV1:
                 getattr(self.upstream, "model", "TEST_UPSTREAM")
             ),
             bl_projection_digest=str(campaign_projection()["projection_digest"]),
-            candidate_schema_ref="CandidateProposalV3",
+            candidate_schema_ref=(
+                "CandidateProposalV4"
+                if self.v13_mode
+                else "CandidateProposalV3"
+            ),
             proposal_count=len(proposals),
             physical_call_count=len(call_records),
             input_tokens=sum(item.input_tokens for item in calls),
             output_tokens=sum(item.output_tokens for item in calls),
             billed_tokens=sum(item.total_tokens for item in calls),
-            session_latency_ms=sum(item.latency_ms for item in calls),
+            session_latency_ms=session_wall_time_ms,
         )
 
     def generate(
@@ -836,13 +1186,7 @@ class RealCanaryProposalBrokerV1:
     ) -> FakeProposalSessionV1:
         del drafts
         templates = _load_templates(self.template_path)
-        if self.campaign_meta_runtime is None and not (
-            arm is ArmCode.A
-            and isinstance(
-                self.original_controller,
-                PinnedOriginalMainAdapterV1,
-            )
-        ):
+        if self.campaign_meta_runtime is None and not self.v13_mode:
             return self._legacy_generate(
                 arm=arm,
                 round_index=round_index,
@@ -928,6 +1272,12 @@ class RealCanaryProposalBrokerV1:
                 ),
                 route_trace_digest=None,
                 research_plan=None,
+                broker_call_latencies_ms=(
+                    (call.latency_ms,) if call is not None else ()
+                ),
+                proposal_session_wall_time_ms=(
+                    call.latency_ms if call is not None else 0
+                ),
             )
         calls = self._research_upstream_calls(
             arm=arm,
@@ -972,6 +1322,10 @@ class RealCanaryProposalBrokerV1:
             research_plan=None,
             research_proposals=session.proposals,
             producer_session=session,
+            broker_call_latencies_ms=tuple(
+                item.latency_ms for item in session.calls
+            ),
+            proposal_session_wall_time_ms=session.session_latency_ms,
         )
 
     def _legacy_generate(
@@ -1159,13 +1513,7 @@ class RealCanaryProposalBrokerV1:
         session: FakeProposalSessionV1,
         common_eligible_candidate_ids: Sequence[str],
     ) -> FakeProposalSessionV1:
-        if self.campaign_meta_runtime is None and not (
-            arm is ArmCode.A
-            and isinstance(
-                self.original_controller,
-                PinnedOriginalMainAdapterV1,
-            )
-        ):
+        if self.campaign_meta_runtime is None and not self.v13_mode:
             return session
         eligible_runtime_ids = set(common_eligible_candidate_ids)
         if arm is ArmCode.A:
@@ -1249,11 +1597,32 @@ class RealCanaryProposalBrokerV1:
             proposal_order = tuple(route.ranked_candidate_ids)
             route_trace_digest = route.digest
         else:
+            protocol_digest = str(
+                campaign_runtime_profile()["development_protocol_digest"]
+            )
+            exact_parent_programs = {}
+            for proposal in filtered:
+                if (
+                    isinstance(proposal, CandidateProposalV4)
+                    and proposal.parent_candidate_id is not None
+                ):
+                    parent = self.lineage_indexes[arm].exact_parent(
+                        proposal,
+                        protocol_digest=protocol_digest,
+                    )
+                    if parent is None:
+                        raise PreCanaryInvariantError(
+                            "V13 route lost its exact prior-round parent"
+                        )
+                    exact_parent_programs[proposal.candidate_id] = (
+                        parent.mechanism_program
+                    )
             meta_route = self.campaign_meta_runtime.route_session(
                 arm=arm,
                 round_index=round_index,
                 session=producer_session,
                 proposals=filtered,
+                exact_parent_programs=exact_parent_programs,
                 static_router=controller.router,
                 research_policy=controller.policy,
                 search_memory_head_digest=(

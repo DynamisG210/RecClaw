@@ -12,6 +12,7 @@ import os
 import sqlite3
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
@@ -30,12 +31,14 @@ from recclaw_core.helix.ledger import EvidenceGuardLedgerWriterV1
 from recclaw_core.helix.ports import NullEvidencePortV1
 from recclaw_core.helix.scientific_attribution import (
     DeterministicHelixAdmissionV13,
+    FrontierEligibilityV2,
     FusedSearchFeedbackV2,
     NOT_AVAILABLE,
     ResearchTaskQueueV1,
     ResearchTaskStatusV1,
     ResearchTaskTypeV1,
     ResearchTaskV1,
+    SearchFeedbackClassV2,
     SearchUtilityEventV2,
 )
 
@@ -50,6 +53,7 @@ from .campaign_runtime import (
     campaign_runtime_profile,
     executable_mechanism,
     execution_recipe_for_program,
+    program_from_proposal as campaign_program_from_proposal,
     root_parent_mechanism_id,
 )
 from .common_execution_guard import CommonExecutionGuardV1
@@ -80,8 +84,11 @@ from .research_capability import (
 from .research_contracts import (
     CandidateProposalV2,
     CandidateProposalV3,
+    CandidateProposalV4,
     DevelopmentalMechanismBeliefV1,
+    DevelopmentalMechanismBeliefV2,
     ProducerSessionResultV1,
+    ResearchTaskRefV1,
 )
 from .research_controller import (
     ResearchLineControllerV1,
@@ -406,9 +413,14 @@ class FakeProposalSessionV1:
     proposal_session_digest: str
     route_trace_digest: str | None
     research_plan: ResearchRoundPlanV1 | None
-    research_proposals: tuple[CandidateProposalV2 | CandidateProposalV3, ...] = ()
+    research_proposals: tuple[
+        CandidateProposalV2 | CandidateProposalV3 | CandidateProposalV4,
+        ...,
+    ] = ()
     producer_session: ProducerSessionResultV1 | None = None
     research_task: ResearchTaskV1 | None = None
+    broker_call_latencies_ms: tuple[int, ...] = ()
+    proposal_session_wall_time_ms: int = 0
 
 
 @dataclass(slots=True)
@@ -505,6 +517,7 @@ class ThreeArmFakeBrokerV1:
                 proposal_session_digest=session_digest,
                 route_trace_digest=None,
                 research_plan=None,
+                broker_call_latencies_ms=(0,),
             )
         controller = self.research_controllers[arm]
         role_memory = {
@@ -555,6 +568,11 @@ class ThreeArmFakeBrokerV1:
             route_trace_digest=route.digest,
             research_plan=plan,
             research_proposals=session.proposals,
+            producer_session=session,
+            broker_call_latencies_ms=tuple(
+                item.latency_ms for item in session.calls
+            ),
+            proposal_session_wall_time_ms=session.session_latency_ms,
         )
 
 
@@ -667,6 +685,10 @@ class ArmRoundResultV1:
     feedback_digest: str
     evidence_port_status: str
     training_backend_started: bool
+    broker_call_latencies_ms: tuple[int, ...]
+    proposal_session_wall_time_ms: int
+    training_wall_time_ms: int
+    round_total_wall_time_ms: int
 
     def to_dict(self) -> dict[str, Any]:
         return canonical_value(self)
@@ -720,6 +742,12 @@ class ThreeArmPreCanaryOrchestratorV1:
         self.research_task_queues = {
             ArmCode.B: ResearchTaskQueueV1(),
             ArmCode.C: ResearchTaskQueueV1(),
+        }
+        self._matched_control_sources: dict[
+            ArmCode, dict[str, CandidateProposalV4]
+        ] = {
+            ArmCode.B: {},
+            ArmCode.C: {},
         }
         self._completed: dict[tuple[int, int], tuple[ArmRoundResultV1, ...]] = {}
 
@@ -869,6 +897,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         gpu_device_time_ms: int,
         gpu_cost_microunits: int,
         execution_wall_time_ms: int,
+        comparator_delta: float | str = NOT_AVAILABLE,
     ) -> SearchUtilityEventV2:
         metrics = helix_raw.to_dict()["normalized_metrics"]
         return SearchUtilityEventV2(
@@ -896,7 +925,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 in {"SUCCESS", "SMOKE_PASS", "COMPLETED"}
                 else "NOT_RUNNABLE"
             ),
-            comparator_delta=NOT_AVAILABLE,
+            comparator_delta=comparator_delta,
             metric_contract_digest=sha256_digest(
                 {
                     "metric_keys": sorted(metrics),
@@ -982,6 +1011,124 @@ class ThreeArmPreCanaryOrchestratorV1:
             utility_priority=1.0,
             missing_seed_count=missing_seed_count,
             mechanism_program=program,
+        )
+
+    def _matched_control_task(
+        self,
+        *,
+        proposal: CandidateProposalV4,
+        round_index: int,
+        execution_seed: int,
+    ) -> ResearchTaskV1 | None:
+        plan = proposal.matched_control_plan
+        if plan.plan_status != "QUEUE_MATCHED_CONTROL":
+            return None
+        root_mechanism_id = root_parent_mechanism_id(
+            proposal.mechanism_id
+        )
+        program = campaign_program_from_proposal(
+            {"mechanism_id": root_mechanism_id}
+        )
+        compiled = compile_program(program)
+        if (
+            plan.comparator_candidate_id != str(compiled.candidate_id)
+            or plan.comparator_program_digest
+            != str(compiled.mechanism_program_digest)
+        ):
+            raise PreCanaryInvariantError(
+                "matched-control task does not bind the planned comparator"
+            )
+        identity = {
+            "mechanism_question_digest": plan.mechanism_question_digest,
+            "primary_candidate_id": proposal.candidate_id,
+            "required_seed": str(execution_seed),
+            "task_type": ResearchTaskTypeV1.RUN_MATCHED_CONTROL.value,
+        }
+        return ResearchTaskV1(
+            task_id=sha256_digest(identity),
+            task_type=ResearchTaskTypeV1.RUN_MATCHED_CONTROL,
+            candidate_id=str(compiled.candidate_id),
+            candidate_semantic_digest=str(
+                compiled.mechanism_semantics_digest
+            ),
+            mechanism_program_digest=str(
+                compiled.mechanism_program_digest
+            ),
+            parent_candidate_id=proposal.candidate_id,
+            comparator_identity=root_mechanism_id,
+            protocol_digest=plan.protocol_digest,
+            required_seed_or_control=str(execution_seed),
+            task_status=ResearchTaskStatusV1.PENDING,
+            created_round=round_index,
+            utility_priority=float(
+                proposal.utility_features.information_gain
+            ),
+            missing_seed_count=1,
+            mechanism_program=program,
+        )
+
+    def _matched_control_belief(
+        self,
+        *,
+        arm: ArmCode,
+        source: CandidateProposalV4,
+        task: ResearchTaskV1,
+        control_result: RawResultEnvelope,
+    ) -> DevelopmentalMechanismBeliefV2:
+        lookup = getattr(self.broker, "lineage_record_for", None)
+        primary = (
+            lookup(
+                arm=arm,
+                proposal_candidate_id=source.candidate_id,
+                protocol_digest=task.protocol_digest,
+            )
+            if lookup is not None
+            else None
+        )
+        metrics = control_result.to_dict()["normalized_metrics"]
+        control_metric = next(
+            (
+                float(metrics[name])
+                for name in ("ndcg@10", "ndcg")
+                if isinstance(metrics.get(name), (int, float))
+            ),
+            None,
+        )
+        if (
+            primary is None
+            or primary.metric_value is None
+            or control_metric is None
+            or primary.observation_seed
+            != str(task.required_seed_or_control)
+        ):
+            raise PreCanaryInvariantError(
+                "matched-control completion lacks the exact primary result"
+            )
+        delta = float(primary.metric_value) - control_metric
+        observation = (
+            "development_matched_comparison:"
+            + sha256_digest(
+                {
+                    "control_result": control_result.raw_result_digest,
+                    "primary_result": primary.result_digest,
+                    "task": task.digest,
+                }
+            )
+        )
+        return DevelopmentalMechanismBeliefV2(
+            hypothesis_id=source.candidate_id,
+            mechanism_axis=source.mechanism_axis,
+            mechanism_question_digest=(
+                source.matched_control_plan.mechanism_question_digest
+            ),
+            exact_parent_candidate_id=task.candidate_id,
+            exact_comparator_candidate_id=task.candidate_id,
+            protocol_digest=task.protocol_digest,
+            comparator_delta=delta,
+            evidence_for=(observation,) if delta > 1e-4 else (),
+            evidence_against=(observation,) if delta < -1e-4 else (),
+            unresolved_confounds=("single_training_seed",),
+            next_discriminative_task=None,
         )
 
     def _common_execution_protocol(self) -> Any:
@@ -1074,8 +1221,80 @@ class ThreeArmPreCanaryOrchestratorV1:
         *,
         selected: CandidateEnvelope,
         event: SearchUtilityEventV2,
-        proposal: CandidateProposalV2,
-    ) -> DevelopmentalMechanismBeliefV1:
+        proposal: CandidateProposalV2 | CandidateProposalV3 | CandidateProposalV4,
+        next_task: ResearchTaskV1 | None = None,
+    ) -> DevelopmentalMechanismBeliefV1 | DevelopmentalMechanismBeliefV2:
+        if isinstance(proposal, CandidateProposalV4):
+            comparator_delta = event.comparator_delta
+            matched_plan = proposal.matched_control_plan
+            matched = (
+                comparator_delta != NOT_AVAILABLE
+                and proposal.parent_candidate_id is not None
+                and matched_plan.comparator_candidate_id is not None
+            )
+            observation = "development_observation:" + event.digest
+            return DevelopmentalMechanismBeliefV2(
+                hypothesis_id=str(selected.candidate_id),
+                mechanism_axis=proposal.mechanism_axis,
+                mechanism_question_digest=(
+                    matched_plan.mechanism_question_digest
+                ),
+                exact_parent_candidate_id=(
+                    proposal.parent_candidate_id if matched else None
+                ),
+                exact_comparator_candidate_id=(
+                    matched_plan.comparator_candidate_id
+                    if matched
+                    else None
+                ),
+                protocol_digest=(
+                    matched_plan.protocol_digest
+                ),
+                comparator_delta=(
+                    float(comparator_delta)
+                    if matched
+                    else NOT_AVAILABLE
+                ),
+                evidence_for=(
+                    (observation,)
+                    if matched and float(comparator_delta) > 1e-4
+                    else ()
+                ),
+                evidence_against=(
+                    (observation,)
+                    if matched and float(comparator_delta) < -1e-4
+                    else ()
+                ),
+                unresolved_confounds=(
+                    ("single_training_seed",)
+                    if matched
+                    else ("matched_comparator_not_available",)
+                ),
+                next_discriminative_task=(
+                    ResearchTaskRefV1(
+                        task_id=next_task.task_id,
+                        task_type=next_task.task_type.value,
+                        task_status=next_task.task_status.value,
+                    )
+                    if next_task is not None
+                    else (
+                        ResearchTaskRefV1(
+                            task_id=sha256_digest(
+                                {
+                                    "candidate_id": proposal.candidate_id,
+                                    "task_type": "RUN_MATCHED_CONTROL",
+                                }
+                            ),
+                            task_type="RUN_MATCHED_CONTROL",
+                            task_status=(
+                                "UNEXECUTED_NO_EXACT_CONTROL"
+                            ),
+                        )
+                        if not matched
+                        else None
+                    )
+                ),
+            )
         return DevelopmentalMechanismBeliefV1(
             hypothesis_id=str(selected.candidate_id),
             mechanism_axis=proposal.mechanism_axis,
@@ -1136,6 +1355,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         drafts: Sequence[Mapping[str, Any]],
         ceilings: ResourceCeilingsV1,
     ) -> ArmRoundResultV1:
+        round_started_ns = time.monotonic_ns()
         opaque_id = self.assignment.mapping[arm]
         controller_state_before_digest = self._controller_state_before(
             opaque_instance_id=opaque_id,
@@ -1157,7 +1377,10 @@ class ThreeArmPreCanaryOrchestratorV1:
         if arm in self.research_task_queues:
             pending_task = self.research_task_queues[arm].select_next(
                 allowed_types=frozenset(
-                    {ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE}
+                    {
+                        ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE,
+                        ResearchTaskTypeV1.RUN_MATCHED_CONTROL,
+                    }
                 )
             )
             if pending_task is not None:
@@ -1311,6 +1534,18 @@ class ThreeArmPreCanaryOrchestratorV1:
             fused_feedback = self.admission.no_search_update(
                 last_candidate_id
             )
+            round_total_wall_time_ms = max(
+                session.proposal_session_wall_time_ms,
+                int(
+                    (time.monotonic_ns() - round_started_ns)
+                    / 1_000_000
+                ),
+            )
+            accounted_wall_time_ms = (
+                round_total_wall_time_ms
+                if bool(getattr(self.broker, "v13_mode", False))
+                else 0
+            )
             closed = self.store.close_round(
                 CloseRoundCommand(
                     round_id=opened["round_id"],
@@ -1344,6 +1579,10 @@ class ThreeArmPreCanaryOrchestratorV1:
                             "COMMON_VALIDATION",
                             len(session.validation_programs),
                         ),
+                        ResourceDebitV1(
+                            "WALL_TIME_MS",
+                            accounted_wall_time_ms,
+                        ),
                     ),
                     idempotency_key=f"m4:close:{opened['round_id']}",
                 )
@@ -1366,6 +1605,14 @@ class ThreeArmPreCanaryOrchestratorV1:
                     selection.last_adjudication.status.value
                 ),
                 training_backend_started=False,
+                broker_call_latencies_ms=(
+                    session.broker_call_latencies_ms
+                ),
+                proposal_session_wall_time_ms=(
+                    session.proposal_session_wall_time_ms
+                ),
+                training_wall_time_ms=0,
+                round_total_wall_time_ms=round_total_wall_time_ms,
             )
         selected = selection.selected_candidate
         program, selected_plan, action = next(
@@ -1457,6 +1704,64 @@ class ThreeArmPreCanaryOrchestratorV1:
         gpu_device_time_ms, gpu_cost_microunits, execution_wall_time_ms = (
             self._execution_resource_projection(raw_output)
         )
+        actual_proposal = (
+            next(
+                (
+                    proposal
+                    for proposal in session.research_proposals
+                    if str(
+                        compile_program(
+                            deep_thaw(proposal.mechanism_program)
+                        ).candidate_id
+                    )
+                    == selected.candidate_id
+                ),
+                None,
+            )
+            if arm in {ArmCode.B, ArmCode.C} and active_task is None
+            else None
+        )
+        comparator_delta: float | str = NOT_AVAILABLE
+        if isinstance(actual_proposal, CandidateProposalV4):
+            protocol_digest = str(
+                campaign_runtime_profile()["development_protocol_digest"]
+            )
+            matched_comparator_for = getattr(
+                self.broker,
+                "matched_comparator_for",
+                None,
+            )
+            matched = (
+                matched_comparator_for(
+                    arm=arm,
+                    proposal=actual_proposal,
+                    protocol_digest=protocol_digest,
+                )
+                if matched_comparator_for is not None
+                else None
+            )
+            metrics = helix_raw.to_dict()["normalized_metrics"]
+            metric = next(
+                (
+                    float(metrics[name])
+                    for name in ("ndcg@10", "ndcg")
+                    if isinstance(metrics.get(name), (int, float))
+                ),
+                None,
+            )
+            if matched is not None and metric is not None:
+                comparator_delta = metric - float(
+                    matched.comparator_metric
+                )
+        matched_control_task = (
+            self._matched_control_task(
+                proposal=actual_proposal,
+                round_index=round_index,
+                execution_seed=execution_seed,
+            )
+            if isinstance(actual_proposal, CandidateProposalV4)
+            else None
+        )
         post = self.ports[arm].post_run(helix_raw)
         search_utility_event = self._search_utility_event(
             selected=selected,
@@ -1466,6 +1771,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             gpu_device_time_ms=gpu_device_time_ms,
             gpu_cost_microunits=gpu_cost_microunits,
             execution_wall_time_ms=execution_wall_time_ms,
+            comparator_delta=comparator_delta,
         )
         validation_task = self._research_task(
             task_type=ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE,
@@ -1489,6 +1795,24 @@ class ThreeArmPreCanaryOrchestratorV1:
                 protocol_branch_task=branch_task,
             )
         )
+        if (
+            active_task is not None
+            and active_task.task_type
+            is ResearchTaskTypeV1.RUN_MATCHED_CONTROL
+            and fused_feedback.controller_update_allowed
+        ):
+            fused_feedback = FusedSearchFeedbackV2(
+                candidate_id=selected.candidate_id,
+                search_feedback_class=(
+                    SearchFeedbackClassV2.DIAGNOSTIC_ONLY
+                ),
+                search_utility_event=search_utility_event,
+                frontier_eligibility=FrontierEligibilityV2.EXCLUDED,
+                research_task=None,
+                controller_update_allowed=True,
+                meta_update_allowed=False,
+                search_memory_update_allowed=True,
+            )
         if active_task is not None:
             self.research_task_queues[arm].complete(
                 active_task.task_id
@@ -1499,6 +1823,98 @@ class ThreeArmPreCanaryOrchestratorV1:
         ):
             self.research_task_queues[arm].enqueue(
                 fused_feedback.research_task
+            )
+        if (
+            matched_control_task is not None
+            and fused_feedback.controller_update_allowed
+        ):
+            self.research_task_queues[arm].enqueue(
+                matched_control_task
+            )
+            self._matched_control_sources[arm][
+                matched_control_task.task_id
+            ] = actual_proposal
+        if (
+            isinstance(actual_proposal, CandidateProposalV4)
+            and fused_feedback.controller_update_allowed
+        ):
+            record_lineage_outcome = getattr(
+                self.broker,
+                "record_lineage_outcome",
+                None,
+            )
+            if record_lineage_outcome is not None:
+                record_lineage_outcome(
+                    arm=arm,
+                    proposal=actual_proposal,
+                    runtime_candidate_id=selected.candidate_id,
+                    mechanism_program_digest=str(
+                        selected_plan.mechanism_program_digest
+                    ),
+                    mechanism_semantics_digest=str(
+                        selected_plan.mechanism_semantics_digest
+                    ),
+                    protocol_digest=str(
+                        campaign_runtime_profile()[
+                            "development_protocol_digest"
+                        ]
+                    ),
+                    observation_seed=str(execution_seed),
+                    run_status=helix_raw.run_status,
+                    normalized_metrics=helix_raw.to_dict()[
+                        "normalized_metrics"
+                    ],
+                    result_digest=helix_raw.raw_result_digest,
+                    round_index=round_index,
+                )
+        matched_control_belief: DevelopmentalMechanismBeliefV2 | None = None
+        if (
+            active_task is not None
+            and active_task.task_type
+            is ResearchTaskTypeV1.RUN_MATCHED_CONTROL
+            and fused_feedback.controller_update_allowed
+        ):
+            source = self._matched_control_sources[arm].get(
+                active_task.task_id
+            )
+            if source is None:
+                raise PreCanaryInvariantError(
+                    "matched-control task lost its source proposal"
+                )
+            record_support_outcome = getattr(
+                self.broker, "record_support_outcome", None
+            )
+            if record_support_outcome is None:
+                raise PreCanaryInvariantError(
+                    "V13 broker cannot record matched-control lineage"
+                )
+            record_support_outcome(
+                arm=arm,
+                proposal_candidate_id=active_task.candidate_id,
+                runtime_candidate_id=selected.candidate_id,
+                mechanism_id=str(selected_recipe["mechanism_id"]),
+                mechanism_axis="control",
+                mechanism_program_digest=str(
+                    selected_plan.mechanism_program_digest
+                ),
+                mechanism_semantics_digest=str(
+                    selected_plan.mechanism_semantics_digest
+                ),
+                protocol_digest=active_task.protocol_digest,
+                observation_seed=str(execution_seed),
+                run_status=helix_raw.run_status,
+                normalized_metrics=helix_raw.to_dict()[
+                    "normalized_metrics"
+                ],
+                result_digest=helix_raw.raw_result_digest,
+                round_index=round_index,
+                mechanism_program=program,
+            )
+            matched_control_belief = self._matched_control_belief(
+                arm=arm,
+                source=source,
+                task=active_task,
+                control_result=helix_raw,
             )
         post_result_learning_error: Exception | None = None
         if arm is ArmCode.A:
@@ -1535,23 +1951,6 @@ class ThreeArmPreCanaryOrchestratorV1:
             plan = session.research_plan
             if plan is None:
                 raise PreCanaryInvariantError("Research Arm is missing its plan")
-            actual_proposal = (
-                next(
-                    (
-                        proposal
-                        for proposal in session.research_proposals
-                        if str(
-                            compile_program(
-                                deep_thaw(proposal.mechanism_program)
-                            ).candidate_id
-                        )
-                        == selected.candidate_id
-                    ),
-                    None,
-                )
-                if active_task is None
-                else None
-            )
             if actual_proposal is None and active_task is None:
                 raise PreCanaryInvariantError(
                     "Research execution is missing selected proposal lineage"
@@ -1562,6 +1961,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                         selected=selected,
                         event=fused_feedback.search_utility_event,
                         proposal=actual_proposal,
+                        next_task=matched_control_task,
                     ),
                 )
                 if (
@@ -1571,6 +1971,8 @@ class ThreeArmPreCanaryOrchestratorV1:
                 )
                 else ()
             )
+            if matched_control_belief is not None:
+                beliefs = (matched_control_belief,)
             transition = self.broker.research_controllers[
                 arm
             ].close_round_v13(
@@ -1592,7 +1994,9 @@ class ThreeArmPreCanaryOrchestratorV1:
                     transition["search_memory_projection"],
                     executed_mechanism_id=str(
                         selected_recipe["mechanism_id"]
-                    ),
+                    )
+                    if active_task is None
+                    else None,
                     execution_succeeded=(
                         search_utility_event.runnable_observation
                         == "RUNNABLE"
@@ -1618,10 +2022,25 @@ class ThreeArmPreCanaryOrchestratorV1:
                     )
                 except Exception as error:
                     post_result_learning_error = error
+        round_total_wall_time_ms = max(
+            session.proposal_session_wall_time_ms
+            + execution_wall_time_ms,
+            int(
+                (time.monotonic_ns() - round_started_ns)
+                / 1_000_000
+            ),
+        )
+        accounted_wall_time_ms = (
+            round_total_wall_time_ms
+            if bool(getattr(self.broker, "v13_mode", False))
+            else execution_wall_time_ms
+        )
         execution_debits = (
             ResourceDebitV1("GPU_DEVICE_TIME_MS", gpu_device_time_ms),
             ResourceDebitV1("GPU_COST_MICROUNITS", gpu_cost_microunits),
-            ResourceDebitV1("WALL_TIME_MS", execution_wall_time_ms),
+            ResourceDebitV1(
+                "WALL_TIME_MS", accounted_wall_time_ms
+            ),
         )
         closed = self.store.close_round(
             CloseRoundCommand(
@@ -1650,6 +2069,14 @@ class ThreeArmPreCanaryOrchestratorV1:
         )
         if post_result_learning_error is not None:
             raise post_result_learning_error
+        if (
+            active_task is not None
+            and active_task.task_type
+            is ResearchTaskTypeV1.RUN_MATCHED_CONTROL
+        ):
+            self._matched_control_sources[arm].pop(
+                active_task.task_id, None
+            )
         return ArmRoundResultV1(
             opaque_instance_id=opaque_id,
             round_id=opened["round_id"],
@@ -1666,6 +2093,12 @@ class ThreeArmPreCanaryOrchestratorV1:
             feedback_digest=str(closed["feedback_digest"]),
             evidence_port_status=post.status.value,
             training_backend_started=bool(raw_output.training_backend_started),
+            broker_call_latencies_ms=session.broker_call_latencies_ms,
+            proposal_session_wall_time_ms=(
+                session.proposal_session_wall_time_ms
+            ),
+            training_wall_time_ms=execution_wall_time_ms,
+            round_total_wall_time_ms=round_total_wall_time_ms,
         )
 
     def neutral_audit_projection(

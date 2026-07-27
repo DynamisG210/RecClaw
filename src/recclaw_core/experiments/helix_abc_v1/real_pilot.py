@@ -658,7 +658,17 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         selected: CandidateEnvelope,
         event: SearchUtilityEventV2,
         proposal: CandidateProposalV2 | CandidateProposalV3,
-    ) -> DevelopmentalMechanismBeliefV1:
+        next_task: Any | None = None,
+    ) -> Any:
+        from .research_contracts import CandidateProposalV4
+
+        if isinstance(proposal, CandidateProposalV4):
+            return super()._research_belief(
+                selected=selected,
+                event=event,
+                proposal=proposal,
+                next_task=next_task,
+            )
         payload = deep_thaw(proposal.mechanism_program)["program_payload"]
         failure_modes = tuple(
             str(item) for item in payload.get("failure_modes", ())

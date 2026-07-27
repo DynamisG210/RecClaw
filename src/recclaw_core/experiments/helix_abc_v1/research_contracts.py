@@ -83,6 +83,97 @@ class SearchUtilityFeaturesV1:
 
 
 @dataclass(frozen=True, slots=True)
+class RouterFeatureEvidenceV1:
+    compile_valid: bool
+    handler_available: bool
+    materializer_available: bool
+    blocker_rate: float
+    semantic_duplicate: bool
+    parent_available: bool
+    mechanism_depth: int
+    estimated_cost: float
+    llm_diagnostic: SearchUtilityFeaturesV1
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= float(self.blocker_rate) <= 1.0:
+            raise ValueError("blocker_rate must be in [0,1]")
+        if not 0.0 <= float(self.estimated_cost) <= 1.0:
+            raise ValueError("estimated_cost must be in [0,1]")
+        if self.mechanism_depth < 0:
+            raise ValueError("mechanism_depth must be non-negative")
+
+    @property
+    def digest(self) -> str:
+        return sha256_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(self)
+
+
+@dataclass(frozen=True, slots=True)
+class MatchedControlPlanV1:
+    mechanism_question_digest: str
+    primary_candidate_id: str
+    comparator_candidate_id: str | None
+    comparator_program_digest: str | None
+    protocol_digest: str
+    changed_axis: str
+    plan_status: str
+
+    def __post_init__(self) -> None:
+        if self.plan_status not in {
+            "MATCHED_COMPARATOR_AVAILABLE",
+            "QUEUE_MATCHED_CONTROL",
+        }:
+            raise ValueError("unknown matched-control plan status")
+        if self.plan_status == "MATCHED_COMPARATOR_AVAILABLE" and (
+            self.comparator_candidate_id is None
+            or self.comparator_program_digest is None
+        ):
+            raise ValueError("available matched control requires exact identities")
+
+    @property
+    def digest(self) -> str:
+        return sha256_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(self)
+
+
+@dataclass(frozen=True, slots=True)
+class DiscriminativeExperimentPlanV1:
+    competing_hypotheses: tuple[str, ...]
+    predicted_outcome_signature: str
+    primary_candidate: str
+    matched_control_plan: MatchedControlPlanV1
+    falsifier: str
+    next_decision_rule: str
+
+    def __post_init__(self) -> None:
+        if len(self.competing_hypotheses) < 2:
+            raise ValueError(
+                "discriminative plan requires competing hypotheses"
+            )
+        if not all(
+            str(value).strip()
+            for value in (
+                self.predicted_outcome_signature,
+                self.primary_candidate,
+                self.falsifier,
+                self.next_decision_rule,
+            )
+        ):
+            raise ValueError("discriminative plan fields must be non-empty")
+
+    @property
+    def digest(self) -> str:
+        return sha256_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(self)
+
+
+@dataclass(frozen=True, slots=True)
 class CandidateProposalV2:
     candidate_id: str
     producer_id: str
@@ -146,6 +237,189 @@ class CandidateProposalV2:
 
 
 @dataclass(frozen=True, slots=True)
+class CandidateProposalV3:
+    """Main-equivalent typed proposal preserving scientific and runtime lineage."""
+
+    candidate_id: str
+    producer_id: str
+    producer_role: str
+    proposal_intent: ProposalIntentV1
+    discovery_credit: DiscoveryCreditV1
+    mechanism_id: str
+    mechanism_axis: str
+    mechanism_program: Mapping[str, Any]
+    candidate_label: str
+    mechanism_hypothesis: str
+    competing_hypothesis: str
+    predicted_outcome_signature: str
+    failure_mode: str
+    utility_features: SearchUtilityFeaturesV1
+    parent_candidate_id: str | None
+    assigned_before_call: bool
+    post_hoc_relabel: bool
+
+    def __post_init__(self) -> None:
+        if not self.candidate_id.startswith("cand-"):
+            raise ValueError("candidate_id must use the closed cand- namespace")
+        if not self.assigned_before_call or self.post_hoc_relabel:
+            raise ValueError("Producer identity and role must be assigned before the call")
+        if self.proposal_intent in {
+            ProposalIntentV1.CONTROL,
+            ProposalIntentV1.REPAIR,
+        } and self.discovery_credit is DiscoveryCreditV1.DISCOVERY:
+            raise ValueError("control/repair proposals cannot receive discovery credit")
+        if self.proposal_intent is ProposalIntentV1.FALSIFICATION:
+            if self.producer_role not in {"falsification_designer", "neutral"}:
+                raise ValueError("falsification proposals require a preassigned slot")
+        for name in (
+            "mechanism_id",
+            "candidate_label",
+            "mechanism_hypothesis",
+            "competing_hypothesis",
+            "predicted_outcome_signature",
+            "failure_mode",
+        ):
+            if not str(getattr(self, name)).strip():
+                raise ValueError(f"{name} must be non-empty")
+        object.__setattr__(
+            self,
+            "mechanism_program",
+            deep_freeze(snapshot_json(dict(self.mechanism_program))),
+        )
+        validate_no_research_evidence_authority_fields(self.search_owned_projection())
+
+    @property
+    def digest(self) -> str:
+        return sha256_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(
+            {
+                "assigned_before_call": self.assigned_before_call,
+                "candidate_id": self.candidate_id,
+                "candidate_label": self.candidate_label,
+                "competing_hypothesis": self.competing_hypothesis,
+                "discovery_credit": self.discovery_credit,
+                "failure_mode": self.failure_mode,
+                "mechanism_axis": self.mechanism_axis,
+                "mechanism_hypothesis": self.mechanism_hypothesis,
+                "mechanism_id": self.mechanism_id,
+                "mechanism_program": deep_thaw(self.mechanism_program),
+                "parent_candidate_id": self.parent_candidate_id,
+                "post_hoc_relabel": self.post_hoc_relabel,
+                "predicted_outcome_signature": self.predicted_outcome_signature,
+                "producer_id": self.producer_id,
+                "producer_role": self.producer_role,
+                "proposal_intent": self.proposal_intent,
+                "utility_features": self.utility_features,
+            }
+        )
+
+    def search_owned_projection(self) -> dict[str, Any]:
+        value = self.to_dict()
+        value.pop("mechanism_program")
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateProposalV4:
+    """V13 scientific proposal with real Router and falsification contracts."""
+
+    candidate_id: str
+    producer_id: str
+    producer_role: str
+    proposal_intent: ProposalIntentV1
+    discovery_credit: DiscoveryCreditV1
+    mechanism_id: str
+    mechanism_axis: str
+    mechanism_program: Mapping[str, Any]
+    candidate_label: str
+    mechanism_hypothesis: str
+    competing_hypothesis: str
+    predicted_outcome_signature: str
+    failure_mode: str
+    utility_features: SearchUtilityFeaturesV1
+    feature_evidence: RouterFeatureEvidenceV1
+    matched_control_plan: MatchedControlPlanV1
+    discriminative_plan: DiscriminativeExperimentPlanV1 | None
+    parent_candidate_id: str | None
+    assigned_before_call: bool
+    post_hoc_relabel: bool
+
+    def __post_init__(self) -> None:
+        if not self.candidate_id.startswith("cand-"):
+            raise ValueError("candidate_id must use the closed cand- namespace")
+        if not self.assigned_before_call or self.post_hoc_relabel:
+            raise ValueError("Producer role must be assigned before the call")
+        if self.discovery_credit is not DiscoveryCreditV1.DISCOVERY:
+            raise ValueError("all four V13 Producers are discovery Producers")
+        if self.producer_role == "falsification_designer":
+            if (
+                self.proposal_intent is not ProposalIntentV1.FALSIFICATION
+                or self.discriminative_plan is None
+            ):
+                raise ValueError(
+                    "falsification_designer requires a discriminative plan"
+                )
+        elif (
+            self.proposal_intent is not ProposalIntentV1.DISCOVERY
+            or self.discriminative_plan is not None
+        ):
+            raise ValueError(
+                "non-falsification discovery Producer has invalid intent"
+            )
+        object.__setattr__(
+            self,
+            "mechanism_program",
+            deep_freeze(snapshot_json(dict(self.mechanism_program))),
+        )
+        validate_no_research_evidence_authority_fields(
+            self.search_owned_projection()
+        )
+
+    @property
+    def digest(self) -> str:
+        return sha256_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(
+            {
+                "assigned_before_call": self.assigned_before_call,
+                "candidate_id": self.candidate_id,
+                "candidate_label": self.candidate_label,
+                "competing_hypothesis": self.competing_hypothesis,
+                "discovery_credit": self.discovery_credit,
+                "discriminative_plan": (
+                    self.discriminative_plan.to_dict()
+                    if self.discriminative_plan is not None
+                    else None
+                ),
+                "failure_mode": self.failure_mode,
+                "feature_evidence": self.feature_evidence.to_dict(),
+                "matched_control_plan": self.matched_control_plan.to_dict(),
+                "mechanism_axis": self.mechanism_axis,
+                "mechanism_hypothesis": self.mechanism_hypothesis,
+                "mechanism_id": self.mechanism_id,
+                "mechanism_program": deep_thaw(self.mechanism_program),
+                "parent_candidate_id": self.parent_candidate_id,
+                "post_hoc_relabel": self.post_hoc_relabel,
+                "predicted_outcome_signature": (
+                    self.predicted_outcome_signature
+                ),
+                "producer_id": self.producer_id,
+                "producer_role": self.producer_role,
+                "proposal_intent": self.proposal_intent,
+                "utility_features": self.utility_features,
+            }
+        )
+
+    def search_owned_projection(self) -> dict[str, Any]:
+        value = self.to_dict()
+        value.pop("mechanism_program")
+        return value
+
+
+@dataclass(frozen=True, slots=True)
 class ProducerCallRecordV1:
     session_id: str
     mode: ProducerExecutionModeV1
@@ -177,7 +451,10 @@ class ProducerSessionResultV1:
     session_id: str
     mode: ProducerExecutionModeV1
     calls: tuple[ProducerCallRecordV1, ...]
-    proposals: tuple[CandidateProposalV2, ...]
+    proposals: tuple[
+        CandidateProposalV2 | CandidateProposalV3 | CandidateProposalV4,
+        ...,
+    ]
     total_resource_envelope_digest: str
     base_model_ref: str
     bl_projection_digest: str
@@ -313,3 +590,79 @@ class DevelopmentalMechanismBeliefV1:
 
     def to_dict(self) -> dict[str, Any]:
         return canonical_value(self)
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchTaskRefV1:
+    task_id: str
+    task_type: str
+    task_status: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(self)
+
+
+@dataclass(frozen=True, slots=True)
+class DevelopmentalMechanismBeliefV2:
+    hypothesis_id: str
+    mechanism_axis: str
+    mechanism_question_digest: str
+    exact_parent_candidate_id: str | None
+    exact_comparator_candidate_id: str | None
+    protocol_digest: str
+    comparator_delta: float | str
+    evidence_for: tuple[str, ...]
+    evidence_against: tuple[str, ...]
+    unresolved_confounds: tuple[str, ...]
+    next_discriminative_task: ResearchTaskRefV1 | None
+
+    authority = AUTHORITY
+    evidence_class = EVIDENCE_CLASS
+
+    def __post_init__(self) -> None:
+        if self.comparator_delta != "NOT_AVAILABLE" and (
+            isinstance(self.comparator_delta, bool)
+            or not isinstance(self.comparator_delta, (int, float))
+        ):
+            raise ValueError(
+                "belief comparator_delta must be numeric or NOT_AVAILABLE"
+            )
+        matched = (
+            self.exact_parent_candidate_id is not None
+            and self.exact_comparator_candidate_id is not None
+            and self.comparator_delta != "NOT_AVAILABLE"
+        )
+        if not matched and (self.evidence_for or self.evidence_against):
+            raise ValueError(
+                "mechanism evidence requires an exact matched comparator"
+            )
+        validate_no_research_evidence_authority_fields(self.to_dict())
+
+    @property
+    def digest(self) -> str:
+        return sha256_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(
+            {
+                "comparator_delta": self.comparator_delta,
+                "evidence_against": self.evidence_against,
+                "evidence_for": self.evidence_for,
+                "exact_comparator_candidate_id": (
+                    self.exact_comparator_candidate_id
+                ),
+                "exact_parent_candidate_id": self.exact_parent_candidate_id,
+                "hypothesis_id": self.hypothesis_id,
+                "mechanism_axis": self.mechanism_axis,
+                "mechanism_question_digest": (
+                    self.mechanism_question_digest
+                ),
+                "next_discriminative_task": (
+                    self.next_discriminative_task.to_dict()
+                    if self.next_discriminative_task is not None
+                    else None
+                ),
+                "protocol_digest": self.protocol_digest,
+                "unresolved_confounds": self.unresolved_confounds,
+            }
+        )

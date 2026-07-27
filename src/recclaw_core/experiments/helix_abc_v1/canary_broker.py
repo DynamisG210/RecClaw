@@ -796,7 +796,9 @@ Search seed: {search_seed}. Round: {round_index}. Return exactly one proposal an
 proposal_intent to {required_intent}. Choose exactly one mechanism_id from the
 executable catalog and keep every scientific field consistent with that exact
 mechanism. Use parent_candidate_id only for an exact ID present in your role-scoped
-memory. Do not invent a mechanism that the catalog cannot execute.
+memory or the exact_parent_candidate_id in the policy directive. When parent_policy
+is REQUIRE_EXACT_PRIOR_PARENT, copy that exact ID; when it is
+EXPLICIT_ROOT_REQUEST, return null. Do not invent a mechanism that the catalog cannot execute.
 Optimize useful signal, frontier potential and information gain under the frozen
 budget. Executability and mechanical cost are derived by the package runtime, not
 self-reported by you. Stay within search utility only.

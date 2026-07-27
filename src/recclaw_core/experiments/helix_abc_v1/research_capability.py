@@ -17,7 +17,10 @@ from .contracts import (
 from .research_contracts import (
     DISCOVERY_PRODUCERS,
     CandidateProposalV2,
+    CandidateProposalV3,
+    CandidateProposalV4,
     DevelopmentalMechanismBeliefV1,
+    DevelopmentalMechanismBeliefV2,
     DiscoveryCreditV1,
     ProducerCallRecordV1,
     ProducerSessionResultV1,
@@ -322,7 +325,9 @@ class StrongStaticRouterV1:
 
     def route(
         self,
-        proposals: Sequence[CandidateProposalV2],
+        proposals: Sequence[
+            CandidateProposalV2 | CandidateProposalV3 | CandidateProposalV4
+        ],
         policy_projection: Mapping[str, Any] | None = None,
     ) -> RouteTraceV1:
         effective_policy_digest = sha256_digest(
@@ -336,7 +341,7 @@ class StrongStaticRouterV1:
             tuple[
                 float,
                 int,
-                CandidateProposalV2,
+                CandidateProposalV2 | CandidateProposalV3 | CandidateProposalV4,
                 str,
                 str,
             ]
@@ -357,12 +362,16 @@ class StrongStaticRouterV1:
             feature = proposal.utility_features
             if reason is RouterHardGateReasonV1.ALLOW and feature.runnable_probability < self.runnable_floor:
                 reason = RouterHardGateReasonV1.RUNNABLE_BELOW_FLOOR
-            elif reason is RouterHardGateReasonV1.ALLOW and feature.useful_signal < self.utility_floor:
-                reason = RouterHardGateReasonV1.UTILITY_BELOW_FLOOR
             elif reason is RouterHardGateReasonV1.ALLOW and feature.blocker_risk > self.blocker_ceiling:
                 reason = RouterHardGateReasonV1.BLOCKER_RISK_ABOVE_CEILING
             elif reason is RouterHardGateReasonV1.ALLOW and feature.cost > self.cost_ceiling:
                 reason = RouterHardGateReasonV1.COST_ABOVE_CEILING
+            score = self.score(feature, policy_projection)
+            if (
+                reason is RouterHardGateReasonV1.ALLOW
+                and score < self.utility_floor
+            ):
+                reason = RouterHardGateReasonV1.UTILITY_BELOW_FLOOR
             allowed = reason is RouterHardGateReasonV1.ALLOW
             decisions.append(
                 RouterHardGateDecisionV1(
@@ -378,7 +387,7 @@ class StrongStaticRouterV1:
             if allowed and semantics_digest is not None and compile_digest is not None:
                 eligible.append(
                     (
-                        self.score(feature, policy_projection),
+                        score,
                         index,
                         proposal,
                         semantics_digest,
@@ -390,7 +399,13 @@ class StrongStaticRouterV1:
         # program. Producer call order must not decide which duplicate survives.
         eligible.sort(key=lambda item: (-item[0], item[1]))
         ranked_unique: list[
-            tuple[float, int, CandidateProposalV2, str, str]
+            tuple[
+                float,
+                int,
+                CandidateProposalV2 | CandidateProposalV3 | CandidateProposalV4,
+                str,
+                str,
+            ]
         ] = []
         seen_semantics: set[str] = set()
         duplicate_ids: set[str] = set()
@@ -441,6 +456,11 @@ class VersionedResearchPolicyV1:
     router_priors: tuple[tuple[str, float], ...]
     acquisition_parameters: tuple[tuple[str, float], ...]
     predecessor_digest: str | None
+    meta_router_policy_digest: str | None = None
+    meta_router_promotion_decision_digest: str | None = None
+    promotion_decision_digest: str | None = None
+    activation_boundary: str = "NONE"
+    control_mode: str = "STATIC_INITIAL_V1"
 
     @property
     def digest(self) -> str:
@@ -454,7 +474,15 @@ def initial_research_policy() -> VersionedResearchPolicyV1:
     return VersionedResearchPolicyV1(
         version=1,
         producer_token_allocation=tuple((role, 0.25) for role in DISCOVERY_PRODUCERS),
-        mechanism_axis_targeting=("objective", "propagation", "regularization", "self_supervision"),
+        mechanism_axis_targeting=(
+            "architecture",
+            "geometry",
+            "message_transform",
+            "objective",
+            "propagation",
+            "sampling",
+            "self_supervision",
+        ),
         memory_retrieval_policy="ROLE_SCOPED_PRIOR_ROUND_V1",
         router_priors=(("runnable_probability", 0.5), ("useful_signal", 0.5)),
         acquisition_parameters=(("exploration_weight", 0.5), ("cost_weight", 0.5)),
@@ -496,6 +524,13 @@ class VersionedMetaPolicyUpdaterV1:
             ),
             acquisition_parameters=policy.acquisition_parameters,
             predecessor_digest=policy.digest,
+            meta_router_policy_digest=policy.meta_router_policy_digest,
+            meta_router_promotion_decision_digest=(
+                policy.meta_router_promotion_decision_digest
+            ),
+            promotion_decision_digest=policy.promotion_decision_digest,
+            activation_boundary=policy.activation_boundary,
+            control_mode=policy.control_mode,
         )
 
 
@@ -504,7 +539,10 @@ class SearchMemorySnapshotV1:
     namespace: str
     round_index: int
     predecessor_digest: str | None
-    beliefs: tuple[DevelopmentalMechanismBeliefV1, ...]
+    beliefs: tuple[
+        DevelopmentalMechanismBeliefV1 | DevelopmentalMechanismBeliefV2,
+        ...,
+    ]
     route_trace_digest: str
     feedback_projection_digest: str
 
@@ -532,7 +570,9 @@ class SearchMemoryWriterV1:
         *,
         round_index: int,
         expected_predecessor_digest: str | None,
-        beliefs: Sequence[DevelopmentalMechanismBeliefV1],
+        beliefs: Sequence[
+            DevelopmentalMechanismBeliefV1 | DevelopmentalMechanismBeliefV2
+        ],
         route_trace_digest: str,
         feedback_projection: Mapping[str, Any],
     ) -> SearchMemorySnapshotV1:
@@ -540,11 +580,21 @@ class SearchMemoryWriterV1:
         if actual != expected_predecessor_digest:
             raise ResearchCapabilityError("Search Memory predecessor mismatch")
         validate_no_research_evidence_authority_fields(feedback_projection)
+        prior_beliefs = self._head.beliefs if self._head is not None else ()
+        merged: dict[
+            str,
+            DevelopmentalMechanismBeliefV1
+            | DevelopmentalMechanismBeliefV2,
+        ] = {
+            item.hypothesis_id: item for item in prior_beliefs
+        }
+        for belief in beliefs:
+            merged[belief.hypothesis_id] = belief
         snapshot = SearchMemorySnapshotV1(
             namespace=self._namespace,
             round_index=round_index,
             predecessor_digest=actual,
-            beliefs=tuple(beliefs),
+            beliefs=tuple(merged.values())[-32:],
             route_trace_digest=route_trace_digest,
             feedback_projection_digest=sha256_digest(feedback_projection),
         )

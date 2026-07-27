@@ -18,7 +18,10 @@ from .research_capability import (
     VersionedResearchPolicyV1,
     VersionedMetaPolicyUpdaterV1,
 )
-from .research_contracts import DevelopmentalMechanismBeliefV1
+from .research_contracts import (
+    DevelopmentalMechanismBeliefV1,
+    DevelopmentalMechanismBeliefV2,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +103,9 @@ class ResearchLineControllerV1:
         *,
         plan: ResearchRoundPlanV1,
         feedback_projection: Mapping[str, Any],
-        beliefs: Sequence[DevelopmentalMechanismBeliefV1],
+        beliefs: Sequence[
+            DevelopmentalMechanismBeliefV1 | DevelopmentalMechanismBeliefV2
+        ],
     ) -> Mapping[str, Any]:
         predecessor = self.memory_writer.head.digest if self.memory_writer.head else None
         snapshot = self.memory_writer.commit(
@@ -137,7 +142,9 @@ class ResearchLineControllerV1:
         *,
         plan: ResearchRoundPlanV1,
         feedback: FusedSearchFeedbackV2,
-        beliefs: Sequence[DevelopmentalMechanismBeliefV1],
+        beliefs: Sequence[
+            DevelopmentalMechanismBeliefV1 | DevelopmentalMechanismBeliefV2
+        ],
     ) -> Mapping[str, Any]:
         """Consume only the closed V13 search projection.
 

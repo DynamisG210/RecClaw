@@ -1,0 +1,92 @@
+{
+  "record_schema": "recclaw.m6g.g4-execution-record.v1",
+  "program": "M6G - V13_SCIENTIFIC_ATTRIBUTION_CLOSURE_AND_PILOT_REQUALIFICATION",
+  "stage": "G4_PRODUCER_LINEAGE_BELIEF_ROUTER_RESOURCE_FIXES",
+  "status": "PASS",
+  "authority": "DEVELOPMENT_ONLY",
+  "provider_calls": 0,
+  "training_executions": 0,
+  "pilot_started": false,
+  "base_commit": "2d9056a7255c6fefa6861f140b0c79281dce6139",
+  "base_tree": "8c7613173917f1caa72ba8af8f2f97c164e40b25",
+  "runtime_closures": {
+    "discovery_producers": [
+      "mechanism_composer",
+      "lineage_refiner",
+      "falsification_designer",
+      "frontier_architect"
+    ],
+    "falsification_intent": "FALSIFICATION",
+    "support_services": [
+      "control_ablation_builder.v2",
+      "repair_engineer.v2"
+    ],
+    "lineage": "ARM_PRIVATE_EXACT_CROSS_ROUND",
+    "missing_parent": "REJECT_OR_EXPLICIT_ROOT_REQUEST",
+    "missing_comparator": "FUTURE_NORMAL_RUN_MATCHED_CONTROL",
+    "control_frontier_eligibility": "EXCLUDED",
+    "control_meta_update": false,
+    "belief_credit": "EXACT_MATCHED_COMPARISON_ONLY",
+    "router_feature_source": "RUNTIME_FACTS_PLUS_LLM_DIAGNOSTIC",
+    "utility_floor": "ENFORCED",
+    "meta_optional_for_static_research_route": true
+  },
+  "resource_accounting": {
+    "broker_physical_call_count": true,
+    "broker_input_output_tokens": true,
+    "broker_latency_per_call": true,
+    "proposal_session_wall_time": true,
+    "training_wall_time": true,
+    "round_total_wall_time": true,
+    "gpu_lease_or_cost": true,
+    "successful_llm_latency_in_v13_wall_debit": true
+  },
+  "verification": [
+    {
+      "scope": "v13_g4_targeted_adversarial",
+      "result": "8 passed"
+    },
+    {
+      "scope": "affected_research_helix_original_frontier_queue_canary",
+      "result": "87 passed, 2 documented historical tests deselected, 3 subtests passed"
+    },
+    {
+      "scope": "meta_control_plane_regression",
+      "result": "29 passed"
+    },
+    {
+      "scope": "compile_and_diff",
+      "result": "compileall PASS; git diff --check PASS"
+    }
+  ],
+  "historical_exclusions": [
+    "legacy metric-free third Canary validation outside V13",
+    "M3 current-source-equals-superseded-V12 identity assertion"
+  ],
+  "findings": {
+    "P0": 0,
+    "P1": 0,
+    "P2": 0
+  },
+  "audit": {
+    "path": "docs/research_line/v13_requalification/G4_INDEPENDENT_ADVERSARIAL_AUDIT.md",
+    "verdict": "PASS_P0_0_P1_0_P2_0"
+  },
+  "source_sha256": {
+    "src/recclaw_core/experiments/helix_abc_v1/canary_broker.py": "287e769989706b983c63fb432c975943687b0c682042a960ebc519d50321cc30",
+    "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py": "59c9d6832dcfea84bdf046ab7f9578d296949c99be494ae25c875f6ac94a28a0",
+    "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py": "9299f247b2d03a4ad1cff71127f2eafdd03d3d7d8d14cca2662cd3d9860da80a",
+    "src/recclaw_core/experiments/helix_abc_v1/real_canary.py": "71aa0271caf2750498bba5e1727ffdaa2ec49de4e85a04e14f63359e0984fe2e",
+    "src/recclaw_core/experiments/helix_abc_v1/real_pilot.py": "6273f5a2136e70430f4ded7f829f0e835dab2307566b463b3b6a70c467ec16e2",
+    "src/recclaw_core/experiments/helix_abc_v1/research_capability.py": "cfb9def6af2db6eb6a833330e99385dec591ee191c08331618fcbb59cbe123db",
+    "src/recclaw_core/experiments/helix_abc_v1/research_contracts.py": "df892c31f402280cc965f665a33113fcc3ef82967266b3671523fdd5f24aead0",
+    "src/recclaw_core/experiments/helix_abc_v1/research_controller.py": "693a562edf97cd34215a555388d6f1d35457891ee9dcca059397e07621407f5d",
+    "src/recclaw_core/experiments/helix_abc_v1/research_science.py": "f7f2b83032eb59028c8082ead0e7c61738756f2609b403bfc37c0bd96fa6d6a6",
+    "tests/experiments/helix_abc_v1/test_v13_research_science.py": "638fbe888789f7b22318c530a5b68ae8a528c64b6fc6acb352b096ed6617af3e"
+  },
+  "working_tree_boundary": {
+    "meta_vnext_campaign_and_meta_package": "PREEXISTING_UNTRACKED_META_INTEGRATION_BOUNDARY_REQUALIFIED_IN_G6",
+    "unrelated_m6_results_and_runtime_files": "PRESERVED_UNCHANGED"
+  },
+  "next_stage": "G5_MAIN_GRADE_EXECUTABLE_PROFILE_V2"
+}
