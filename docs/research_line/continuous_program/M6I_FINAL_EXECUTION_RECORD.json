@@ -7,7 +7,7 @@
   "worktree": "/root/projects/RecClaw_m6i",
   "branch": "feat/research-line-m6i-isolation-closure",
   "source_parent_commit": "e638a0d46e64da1ac4952ddc74395792a0aca467",
-  "implementation_checkpoint_commit": "PENDING_LOCAL_CHECKPOINT_COMMIT",
+  "implementation_checkpoint_commit": "bb62c138b964d6145e117baf2c84288e3f112996",
   "source_projection_digest": "5c9eee4fc464f02b4897f76b42dbf697dee2bf94e74cb669551d248fbdd46c6a",
   "source_projection_unchanged_during_exact_qualification": true,
   "sealed_meta_v19_checkpoint_sha256": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
