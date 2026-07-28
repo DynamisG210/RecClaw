@@ -1,24 +1,35 @@
 {
-  "active_stage": "GPU35_RUNTIME_V13_FREEZE",
-  "active_version": "M6I",
+  "active_stage": "V22_FIVE_ROUND_PILOT_FROZEN_PRE_OUTCOME",
+  "active_version": "V22",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "bb62c138b964d6145e117baf2c84288e3f112996",
-  "active_contract_digest": null,
+  "active_commit": "4777807224fe8f6d02fcf27fb385fa8e6dc8f076",
+  "active_contract_digest": "9cb254db5a23656223b8c7092b0443fea5e067ac64d486aae6e942491d187aad",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
-  "active_backend_release": "TRAINING_RUNTIME_RELEASE_V13_PENDING_FREEZE",
+  "active_backend_release": "TRAINING_RUNTIME_RELEASE_V14:e540c5934cca0b811400de5f83a5f7ca5e7e4fc691ced9a04ec1fa2fdd8e2431",
   "active_processes": [],
-  "last_completed_checkpoint": "M6I_FINAL_PASS_AND_LOCAL_CHECKPOINT_COMMIT",
-  "next_automatic_action": "FREEZE_CURRENT_SOURCE_BOUND_GPU35_RUNTIME_V13",
+  "last_completed_checkpoint": "V22_BACKEND_RUNTIME_SCIENTIFIC_GATES_PASS_AND_CONTRACT_FROZEN",
+  "next_automatic_action": "VERIFY_FROZEN_V22_AND_LAUNCH_FRESH_FIVE_ROUND_PILOT",
   "round_progress": {
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
       "rounds_per_arm": 50,
       "terminal_arm_rounds": 15000
+    },
+    "V22_gpu35_runtime_v14_qualification": {
+      "fixed_canaries_passed": 3,
+      "profile_and_isolation": "PASS",
+      "runtime_validation": "PASS"
+    },
+    "V22_five_round_pilot": {
+      "rounds_per_arm": 5,
+      "search_seed": 9224,
+      "started": false,
+      "terminal_arm_rounds": 0
     }
   },
   "provider_calls": 12,
-  "training_executions": 0,
+  "training_executions": 6,
   "P0": 0,
   "P1": 0,
   "P2": 1,
