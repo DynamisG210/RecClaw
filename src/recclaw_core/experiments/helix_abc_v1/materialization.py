@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
-from recclaw_core.mechanism_space import compile_program
+from .compilation_cache import compile_campaign_program as compile_program
 
 from .campaign_runtime import (
     CampaignRuntimeError,

@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from recclaw_core.mechanism_space import compile_program
+from .compilation_cache import compile_campaign_program as compile_program
 from recclaw_core.mechanism_space.canonical import deep_thaw
 
 from .canonical import bytes_sha256, canonical_value, sha256_digest

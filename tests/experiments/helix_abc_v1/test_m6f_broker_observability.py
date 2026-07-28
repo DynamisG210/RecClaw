@@ -55,7 +55,6 @@ from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
     RealCanaryProposalBrokerV1,
 )
 from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (  # noqa: E402
-    BrokerRoundFailureError,
     ThreeArmPreCanaryOrchestratorV1,
 )
 
@@ -863,13 +862,12 @@ class BrokerFailureClosureAndAuditTests(unittest.TestCase):
         with ThreeArmPreCanaryOrchestratorV1(
             self.root / "orchestrator", broker=FailingBroker()
         ) as orchestrator:
-            with self.assertRaises(BrokerRoundFailureError) as raised:
-                orchestrator.run_fake_triplet(
-                    search_seed=42, round_index=1, drafts=()
-                )
+            results = orchestrator.run_fake_triplet(
+                search_seed=42, round_index=1, drafts=()
+            )
             self.assertEqual(
-                raised.exception.closure.round_terminal_class,
-                "BROKER_PROCESS_FAILURE",
+                [item.terminal_class for item in results],
+                ["BROKER_PROCESS_FAILURE"] * 3,
             )
             self.assertEqual(orchestrator.guard_ledger.count(), 0)
             connection = sqlite3.connect(orchestrator.store.db_path)
@@ -898,11 +896,11 @@ class BrokerFailureClosureAndAuditTests(unittest.TestCase):
             finally:
                 connection.close()
             self.assertEqual(
-                terminal_rows, [("BROKER_PROCESS_FAILURE", 1)]
+                terminal_rows, [("BROKER_PROCESS_FAILURE", 3)]
             )
             self.assertEqual(execution_claim_count, 0)
-            self.assertEqual(session_debit, 1)
-            self.assertGreater(stopped_slots, 0)
+            self.assertEqual(session_debit, 3)
+            self.assertEqual(stopped_slots, 0)
 
     def test_immutable_snapshots_create_no_sidecars_and_neutralize_association(self):
         state_snapshot = self.root / "snapshots" / "state.sqlite3"

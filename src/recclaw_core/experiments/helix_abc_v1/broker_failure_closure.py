@@ -122,6 +122,7 @@ def close_broker_failure(
     output_tokens: int,
     billed_tokens: int,
     wall_time_ms: int,
+    stop_campaign: bool = True,
 ) -> BrokerFailureClosureV1:
     """Persist and replay one fail-closed Broker terminal transaction."""
 
@@ -150,15 +151,18 @@ def close_broker_failure(
         ),
         canonical_json_bytes(closure.to_dict()) + b"\n",
     )
-    store.stop_and_fill_remaining(
-        StopAndFillCommand(
-            experiment_id=experiment_id,
-            search_seed=search_seed,
-            current_round_index=round_index,
-            reason="BROKER_PROCESS_FAILURE",
-            idempotency_key=f"m6f:broker-failure-stop:{search_seed}:{round_index}",
+    if stop_campaign:
+        store.stop_and_fill_remaining(
+            StopAndFillCommand(
+                experiment_id=experiment_id,
+                search_seed=search_seed,
+                current_round_index=round_index,
+                reason="BROKER_PROCESS_FAILURE",
+                idempotency_key=(
+                    f"m6f:broker-failure-stop:{search_seed}:{round_index}"
+                ),
+            )
         )
-    )
     _commit_broker_failure_terminal(
         store=store,
         round_id=round_id,
@@ -184,6 +188,7 @@ def close_broker_failure(
             ResourceDebitV1("RETRY", 0),
         ),
         idempotency_key=f"m6f:broker-failure-close:{round_id}",
+        stop_campaign=stop_campaign,
     )
     return closure
 
@@ -196,6 +201,7 @@ def _commit_broker_failure_terminal(
     feedback_payload: dict[str, Any],
     resource_debits: tuple[ResourceDebitV1, ...],
     idempotency_key: str,
+    stop_campaign: bool,
 ) -> dict[str, Any]:
     """M6F additive terminal transaction without changing the frozen M0 store."""
 
@@ -289,14 +295,18 @@ def _commit_broker_failure_terminal(
         if barrier is None:
             raise InvariantViolation("missing triplet barrier")
         bitmap = int(barrier["closed_bitmap"]) | bit
+        authorized = int(
+            bitmap == 7 and int(barrier["stop_requested"]) == 0
+        )
         cursor.execute(
             """
             UPDATE triplet_barrier
-            SET closed_bitmap = ?, next_index_authorized = 0
+            SET closed_bitmap = ?, next_index_authorized = ?
             WHERE experiment_id = ? AND search_seed = ? AND round_index = ?
             """,
             (
                 bitmap,
+                authorized,
                 round_row["experiment_id"],
                 round_row["search_seed"],
                 round_row["round_index"],
@@ -326,7 +336,7 @@ def _commit_broker_failure_terminal(
                 (round_row["experiment_id"], round_row["search_seed"]),
             ).fetchone()[0]
         )
-        if open_count == 0:
+        if stop_campaign and open_count == 0:
             cursor.execute(
                 """
                 UPDATE arm_state SET state = 'STOPPED', revision = revision + 1

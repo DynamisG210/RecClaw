@@ -9,7 +9,9 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
-from recclaw_core.mechanism_space import CompileReportV1, CompileStatus, compile_program
+from recclaw_core.mechanism_space import CompileReportV1, CompileStatus
+
+from .compilation_cache import compile_campaign_program as compile_program
 
 from .campaign_runtime import (
     CampaignRuntimeError,

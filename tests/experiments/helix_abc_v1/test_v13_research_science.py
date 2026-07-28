@@ -8,6 +8,9 @@ from pathlib import Path
 from recclaw_core.helix.contracts import CandidateEnvelope
 from recclaw_core.helix.scientific_attribution import (
     NOT_AVAILABLE,
+    ResearchTaskStatusV1,
+    ResearchTaskTypeV1,
+    ResearchTaskV1,
     SearchUtilityEventV2,
 )
 from recclaw_core.mechanism_space import compile_program
@@ -199,17 +202,27 @@ def lineage_record(
         result_digest=sha256_digest({"result": proposal_candidate_id}),
         round_index=1,
         mechanism_program=mechanism.mechanism_program,
+        owner_arm_instance_id="opaque-b",
     )
 
 
 class V13ResearchScienceTest(unittest.TestCase):
     def broker(self) -> RealCanaryProposalBrokerV1:
-        return RealCanaryProposalBrokerV1.create_v13(
+        broker = RealCanaryProposalBrokerV1.create_v13(
             upstream=_UnusedUpstream(),
             template_path=TEMPLATES,
             repository_root=ROOT,
             search_seed=9301,
         )
+        broker.bind_arm_instances(
+            experiment_id="V13-RESEARCH-SCIENCE-UNIT",
+            arm_to_instance={
+                ArmCode.A: "opaque-a",
+                ArmCode.B: "opaque-b",
+                ArmCode.C: "opaque-c",
+            },
+        )
+        return broker
 
     def test_all_four_producers_are_genuine_discovery_roles(self) -> None:
         broker = self.broker()
@@ -364,7 +377,99 @@ class V13ResearchScienceTest(unittest.TestCase):
                     and item.comparator_delta != NOT_AVAILABLE
                 ]
                 self.assertEqual(len(matched), 1)
-                self.assertTrue(matched[0].exact_comparator_candidate_id)
+                self.assertEqual(
+                    matched[0].exact_parent_candidate_id,
+                    queued.parent_candidate_id,
+                )
+                self.assertNotEqual(
+                    matched[0].exact_comparator_candidate_id,
+                    queued.candidate_id,
+                )
+                self.assertTrue(
+                    matched[0].exact_comparator_candidate_id.startswith(
+                        "cand-"
+                    )
+                )
+
+    def test_every_non_matched_task_type_consumes_one_normal_round(self) -> None:
+        task_cases = (
+            (ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE, "2027"),
+            (ResearchTaskTypeV1.RUN_ABLATION, "2026"),
+            (ResearchTaskTypeV1.REPAIR_IMPLEMENTATION, "repair"),
+            (
+                ResearchTaskTypeV1.PROTOCOL_BRANCH_DIAGNOSTIC,
+                "protocol-branch",
+            ),
+        )
+        for task_type, required in task_cases:
+            with self.subTest(task_type=task_type.value):
+                upstream = _ScopedFakeUpstream()
+                broker = RealCanaryProposalBrokerV1.create_v13(
+                    upstream=upstream,
+                    template_path=TEMPLATES,
+                    repository_root=ROOT,
+                    search_seed=9302,
+                )
+                upstream.broker = broker
+                with tempfile.TemporaryDirectory() as raw:
+                    with _V13NoTrainingOrchestrator(
+                        Path(raw) / task_type.value.lower(),
+                        broker=broker,
+                        resource_ceilings=canary_budget(),
+                    ) as orchestrator:
+                        program = program_from_proposal(
+                            {"mechanism_id": "LIGHTGCN_RESIDUAL"}
+                        )
+                        compiled = compile_program(program)
+                        owner = orchestrator.assignment.mapping[ArmCode.B]
+                        task = ResearchTaskV1(
+                            task_id=sha256_digest(
+                                {
+                                    "owner": owner,
+                                    "task_type": task_type.value,
+                                }
+                            ),
+                            task_type=task_type,
+                            candidate_id=str(compiled.candidate_id),
+                            candidate_semantic_digest=str(
+                                compiled.mechanism_semantics_digest
+                            ),
+                            mechanism_program_digest=str(
+                                compiled.mechanism_program_digest
+                            ),
+                            parent_candidate_id=None,
+                            comparator_identity="LIGHTGCN",
+                            protocol_digest=PROTOCOL_DIGEST,
+                            required_seed_or_control=required,
+                            task_status=ResearchTaskStatusV1.PENDING,
+                            created_round=1,
+                            utility_priority=0.5,
+                            missing_seed_count=1,
+                            mechanism_program=program,
+                            owner_arm_instance_id=owner,
+                        )
+                        orchestrator.research_task_queues[
+                            ArmCode.B
+                        ].enqueue(task)
+                        triplet = orchestrator.run_fake_triplet(
+                            search_seed=42,
+                            round_index=1,
+                            drafts=(),
+                        )
+                        self.assertEqual(
+                            triplet[1].physical_call_count, 0
+                        )
+                        completed = next(
+                            item
+                            for item in orchestrator.research_task_queues[
+                                ArmCode.B
+                            ].tasks
+                            if item.task_id == task.task_id
+                        )
+                        self.assertIs(
+                            completed.task_status,
+                            ResearchTaskStatusV1.COMPLETED,
+                        )
 
     def test_lineage_refiner_requires_exact_prior_parent(self) -> None:
         broker = self.broker()

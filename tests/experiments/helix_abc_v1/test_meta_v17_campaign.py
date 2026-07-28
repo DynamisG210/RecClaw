@@ -668,6 +668,106 @@ class MetaV17CampaignTest(unittest.TestCase):
             ),
         )
 
+    def test_v19_withheld_route_advances_exact_meta_boundary(self):
+        runtime = self.runtime()
+        broker = RealCanaryProposalBrokerV1.create(
+            upstream=RecipeUpstream(),
+            template_path=FIXTURES,
+            adaptive_memory=True,
+            campaign_meta_runtime=runtime,
+        )
+        broker.bind_arm_instances(
+            experiment_id=META_V17_PILOT_EXPERIMENT_ID,
+            arm_to_instance={
+                ArmCode.A: "opaque-a",
+                ArmCode.B: "opaque-b",
+                ArmCode.C: "opaque-c",
+            },
+        )
+        generated = broker.generate(
+            arm=ArmCode.B,
+            round_index=1,
+            search_seed=META_V17_PILOT_SEARCH_SEED,
+            drafts=(),
+            ceilings=ceilings(),
+        )
+        eligible = tuple(
+            str(compile_program(deep_thaw(program)).candidate_id)
+            for program in generated.validation_programs
+        )
+        routed = broker.finalize_common_route(
+            arm=ArmCode.B,
+            round_index=1,
+            session=generated,
+            common_eligible_candidate_ids=eligible,
+        )
+        runtime.record_round_boundary(
+            arm=ArmCode.B,
+            round_index=1,
+            proposal_source="NORMAL_ROUTED_PROPOSAL",
+            observation_path="WITHHELD_OBSERVATION",
+            candidate_id=routed.research_plan.selected_candidate_id,
+            runtime_candidate_id=routed.selected_candidate_id,
+            run_status="REQUIRES_CONFIRMATION",
+            ndcg=None,
+            wall_time_ms=1,
+            source_search_utility_event_digest=sha256_digest(
+                {"fixture": "V19_WITHHELD"}
+            ),
+        )
+        projection = runtime.audit_projection()
+        record = projection["observations"][0]
+        self.assertEqual(record["observation_path"], "WITHHELD_OBSERVATION")
+        self.assertIsNone(record["observation_digest"])
+        self.assertEqual(
+            runtime.initial_semantic_state_projection(ArmCode.B)[
+                "round_boundary"
+            ],
+            1,
+        )
+
+    def test_v20_active_task_without_route_advances_exact_meta_boundary(self):
+        runtime = self.runtime()
+        runtime.record_round_boundary(
+            arm=ArmCode.C,
+            round_index=1,
+            proposal_source="ACTIVE_BOUND_TASK",
+            observation_path="NO_OBSERVATION",
+            candidate_id="cand-task-instance",
+            runtime_candidate_id=None,
+            run_status="NO_EXECUTION",
+            ndcg=None,
+            wall_time_ms=0,
+            source_search_utility_event_digest=sha256_digest(
+                {"fixture": "V20_ACTIVE_TASK"}
+            ),
+        )
+        projection = runtime.audit_projection()
+        record = projection["observations"][0]
+        self.assertEqual(record["mode"], "NO_ROUTE")
+        self.assertEqual(record["proposal_source"], "ACTIVE_BOUND_TASK")
+        self.assertEqual(
+            runtime.initial_semantic_state_projection(ArmCode.C)[
+                "round_boundary"
+            ],
+            1,
+        )
+        with self.assertRaisesRegex(Exception, "create-once"):
+            runtime.record_round_boundary(
+                arm=ArmCode.C,
+                round_index=1,
+                proposal_source="ACTIVE_BOUND_TASK",
+                observation_path="NO_OBSERVATION",
+                candidate_id="cand-task-instance",
+                runtime_candidate_id=None,
+                run_status="NO_EXECUTION",
+                ndcg=None,
+                wall_time_ms=0,
+                source_search_utility_event_digest=sha256_digest(
+                    {"fixture": "V20_DUPLICATE"}
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

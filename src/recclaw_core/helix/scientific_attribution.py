@@ -148,10 +148,13 @@ class ResearchTaskV1:
     utility_priority: float
     missing_seed_count: int
     mechanism_program: Mapping[str, Any]
+    owner_arm_instance_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.task_id or not self.candidate_id:
             raise ValueError("ResearchTaskV1 requires task and candidate identities")
+        if self.owner_arm_instance_id == "":
+            raise ValueError("Research task owner cannot be empty")
         for name in (
             "candidate_semantic_digest",
             "mechanism_program_digest",
@@ -189,6 +192,7 @@ class ResearchTaskV1:
                 "utility_priority": float(self.utility_priority),
                 "missing_seed_count": self.missing_seed_count,
                 "mechanism_program": deep_thaw(self.mechanism_program),
+                "owner_arm_instance_id": self.owner_arm_instance_id,
             }
         )
 
@@ -214,7 +218,10 @@ class ResearchTaskQueueV1:
         ResearchTaskTypeV1.PROTOCOL_BRANCH_DIAGNOSTIC: 4,
     }
 
-    def __init__(self) -> None:
+    def __init__(self, owner_arm_instance_id: str | None = None) -> None:
+        if owner_arm_instance_id == "":
+            raise ValueError("Research task queue owner cannot be empty")
+        self.owner_arm_instance_id = owner_arm_instance_id
         self._tasks: dict[str, ResearchTaskV1] = {}
 
     @property
@@ -228,6 +235,12 @@ class ResearchTaskQueueV1:
         return sha256_digest([item.to_dict() for item in self.tasks])
 
     def enqueue(self, task: ResearchTaskV1) -> ResearchTaskV1:
+        if (
+            self.owner_arm_instance_id is not None
+            and task.owner_arm_instance_id
+            != self.owner_arm_instance_id
+        ):
+            raise ValueError("Research task crossed its Arm owner boundary")
         prior = self._tasks.get(task.task_id)
         if prior is not None and (
             prior.candidate_semantic_digest != task.candidate_semantic_digest
@@ -296,6 +309,19 @@ class ResearchTaskQueueV1:
         completed = replace(task, task_status=ResearchTaskStatusV1.COMPLETED)
         self._tasks[task_id] = completed
         return completed
+
+    def cancel(self, task_id: str) -> ResearchTaskV1:
+        task = self._tasks[task_id]
+        if task.task_status is not ResearchTaskStatusV1.ACTIVE:
+            raise ValueError("Only an active Research task can be cancelled")
+        cancelled = replace(
+            task, task_status=ResearchTaskStatusV1.CANCELLED
+        )
+        self._tasks[task_id] = cancelled
+        return cancelled
+
+    def cancel_without_execution(self, task_id: str) -> ResearchTaskV1:
+        return self.cancel(task_id)
 
 
 @dataclass(frozen=True, slots=True)

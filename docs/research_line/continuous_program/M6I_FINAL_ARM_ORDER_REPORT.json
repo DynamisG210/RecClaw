@@ -1,0 +1,91 @@
+{
+  "authority": "NONE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "failures": [],
+  "formal_acceptance": false,
+  "full_scheduler": {
+    "fake_broker": true,
+    "fake_training": true,
+    "invariant": true,
+    "orders_executed": 6,
+    "results": {
+      "ABC": {
+        "integrated_state_digest": "6f4ae29dea8bf11e2446861408dabfdde84afe2354210b5896475c375115b22b",
+        "open_rounds": 0,
+        "projection_digest": "895b38a14563071f7bd856ea1424a6b2983f5e66373fbc6ba0bc2f32838c8fef",
+        "terminal_classes": {
+          "A": "COMPLETED",
+          "B": "COMPLETED",
+          "C": "COMPLETED"
+        }
+      },
+      "ACB": {
+        "integrated_state_digest": "7193236675b508e2d5c064793e99767ce6d4e400a0361dab883146ae1c02dc70",
+        "open_rounds": 0,
+        "projection_digest": "895b38a14563071f7bd856ea1424a6b2983f5e66373fbc6ba0bc2f32838c8fef",
+        "terminal_classes": {
+          "A": "COMPLETED",
+          "B": "COMPLETED",
+          "C": "COMPLETED"
+        }
+      },
+      "BAC": {
+        "integrated_state_digest": "3f76b5209ecef0fbc06fb7a816bcad54b58c811c628264616a176987c639b374",
+        "open_rounds": 0,
+        "projection_digest": "895b38a14563071f7bd856ea1424a6b2983f5e66373fbc6ba0bc2f32838c8fef",
+        "terminal_classes": {
+          "A": "COMPLETED",
+          "B": "COMPLETED",
+          "C": "COMPLETED"
+        }
+      },
+      "BCA": {
+        "integrated_state_digest": "1b64fa9dd13d2a68d1266ce986b8a0eebd8e26b8fde3eb20cf13f63562dc1d7e",
+        "open_rounds": 0,
+        "projection_digest": "895b38a14563071f7bd856ea1424a6b2983f5e66373fbc6ba0bc2f32838c8fef",
+        "terminal_classes": {
+          "A": "COMPLETED",
+          "B": "COMPLETED",
+          "C": "COMPLETED"
+        }
+      },
+      "CAB": {
+        "integrated_state_digest": "e82870e4cb9224c142440449e2b5b9f36568295017dcab472f934c5ae266e525",
+        "open_rounds": 0,
+        "projection_digest": "895b38a14563071f7bd856ea1424a6b2983f5e66373fbc6ba0bc2f32838c8fef",
+        "terminal_classes": {
+          "A": "COMPLETED",
+          "B": "COMPLETED",
+          "C": "COMPLETED"
+        }
+      },
+      "CBA": {
+        "integrated_state_digest": "14e7a39f144a993bdb65f716a5231addfedbe8e4b6c1326dedf5161044ea6143",
+        "open_rounds": 0,
+        "projection_digest": "895b38a14563071f7bd856ea1424a6b2983f5e66373fbc6ba0bc2f32838c8fef",
+        "terminal_classes": {
+          "A": "COMPLETED",
+          "B": "COMPLETED",
+          "C": "COMPLETED"
+        }
+      }
+    }
+  },
+  "p0": 0,
+  "p1": 0,
+  "randomized_canonical_core": {
+    "failures": [],
+    "order_counts": {
+      "ABC": 653,
+      "ACB": 660,
+      "BAC": 671,
+      "BCA": 678,
+      "CAB": 676,
+      "CBA": 662
+    },
+    "rounds_per_schedule": 8,
+    "schedule_seeds": 500
+  },
+  "schema": "recclaw.m6i.arm-order-invariance.v1",
+  "status": "PASS"
+}

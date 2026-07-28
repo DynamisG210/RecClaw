@@ -37,6 +37,7 @@ class LineageRecordV1:
     result_digest: str
     round_index: int
     mechanism_program: Mapping[str, Any]
+    owner_arm_instance_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -44,6 +45,8 @@ class LineageRecordV1:
             "mechanism_program",
             deep_freeze(snapshot_json(deep_thaw(self.mechanism_program))),
         )
+        if self.owner_arm_instance_id == "":
+            raise ResearchScienceError("lineage owner cannot be empty")
 
     @property
     def digest(self) -> str:
@@ -62,6 +65,7 @@ class LineageRecordV1:
                 "metric_name": self.metric_name,
                 "metric_value": self.metric_value,
                 "observation_seed": self.observation_seed,
+                "owner_arm_instance_id": self.owner_arm_instance_id,
                 "parent_candidate_id": self.parent_candidate_id,
                 "proposal_candidate_id": self.proposal_candidate_id,
                 "protocol_digest": self.protocol_digest,
@@ -94,8 +98,25 @@ class MatchedComparatorV1:
 class LineageIndexV1:
     """Arm-private content-addressed lineage spanning prior SearchRounds."""
 
-    def __init__(self) -> None:
+    def __init__(self, owner_arm_instance_id: str | None = None) -> None:
+        if owner_arm_instance_id == "":
+            raise ResearchScienceError("lineage index owner cannot be empty")
+        self.owner_arm_instance_id = owner_arm_instance_id
         self._records: dict[str, LineageRecordV1] = {}
+
+    def bind_owner(self, opaque_arm_instance_id: str) -> None:
+        if not opaque_arm_instance_id:
+            raise ResearchScienceError("lineage owner cannot be empty")
+        if self._records:
+            raise ResearchScienceError(
+                "lineage owner must be bound before the first record"
+            )
+        if (
+            self.owner_arm_instance_id is not None
+            and self.owner_arm_instance_id != opaque_arm_instance_id
+        ):
+            raise ResearchScienceError("lineage owner cannot be rebound")
+        self.owner_arm_instance_id = opaque_arm_instance_id
 
     @property
     def records(self) -> tuple[LineageRecordV1, ...]:
@@ -115,6 +136,14 @@ class LineageIndexV1:
         return sha256_digest([item.to_dict() for item in self.records])
 
     def record(self, item: LineageRecordV1) -> None:
+        if (
+            self.owner_arm_instance_id is not None
+            and item.owner_arm_instance_id
+            != self.owner_arm_instance_id
+        ):
+            raise ResearchScienceError(
+                "lineage record crossed its Arm owner boundary"
+            )
         key = sha256_digest(
             {
                 "observation_seed": item.observation_seed,

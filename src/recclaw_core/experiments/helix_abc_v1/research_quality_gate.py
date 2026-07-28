@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from recclaw_core.mechanism_space import compile_program
+from .compilation_cache import compile_campaign_program as compile_program
 from recclaw_core.mechanism_space.canonical import deep_thaw
 
 from .canonical import canonical_value, sha256_digest

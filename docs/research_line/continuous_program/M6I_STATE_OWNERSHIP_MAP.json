@@ -1,0 +1,264 @@
+{
+  "allowed_scopes": [
+    "ARM_PRIVATE",
+    "COMMON_IMMUTABLE",
+    "EXPERIMENT_SHARED_APPEND_ONLY",
+    "EXPLICIT_PAIRED_CALL",
+    "FORBIDDEN_GLOBAL_MUTABLE",
+    "ROUND_LOCAL"
+  ],
+  "authority": "NONE",
+  "default_treatment_dependent_scope": "ARM_PRIVATE",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "objects": [
+    {
+      "object": "experiment contract, dataset/profile/catalog and policy bytes",
+      "owner": "experiment contract identity",
+      "readers": [
+        "A",
+        "B",
+        "C",
+        "neutral scheduler"
+      ],
+      "scope": "COMMON_IMMUTABLE",
+      "write_rule": "no runtime writes"
+    },
+    {
+      "object": "campaign canonical-program compilation memoization",
+      "owner": "exact canonical program bytes",
+      "readers": [
+        "common compiler callers",
+        "A",
+        "B",
+        "C"
+      ],
+      "scope": "COMMON_IMMUTABLE",
+      "write_rule": "first exact compiler report only; no Arm, round, result, treatment or policy input"
+    },
+    {
+      "object": "SingleWriterExperimentStoreV1 SQLite connection and ledgers",
+      "owner": "neutral scheduler sole writer",
+      "readers": [
+        "neutral scheduler",
+        "read-only audit"
+      ],
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "write_rule": "typed create-once commands and terminal closure"
+    },
+    {
+      "object": "TrainingStateStoreV1 SQLite connection, claims and receipts",
+      "owner": "neutral training closure sole writer",
+      "readers": [
+        "common execution guard",
+        "read-only audit"
+      ],
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "write_rule": "typed claim/start/finish/terminal commands"
+    },
+    {
+      "object": "LabApiCanaryBrokerV1 SQLite response records",
+      "owner": "neutral broker process",
+      "readers": [
+        "owning consumer",
+        "read-only audit"
+      ],
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "write_rule": "one immutable record per consumer logical identity"
+    },
+    {
+      "object": "IntegratedCampaignStateCoreV1._rounds",
+      "owner": "ArmOwnerTokenV1 partition",
+      "readers": [
+        "owning Arm adapter",
+        "neutral audit"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "canonical state transitions with owner assertion"
+    },
+    {
+      "object": "IntegratedCampaignStateCoreV1._access_audit",
+      "owner": "neutral integrated core",
+      "readers": [
+        "independent audit"
+      ],
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "write_rule": "append only"
+    },
+    {
+      "object": "RealCanaryProposalBrokerV1._call_registry",
+      "owner": "neutral broker identity layer",
+      "readers": [
+        "broker",
+        "independent audit"
+      ],
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "write_rule": "append-only physical/consumer/candidate decisions"
+    },
+    {
+      "object": "Provider response/cache entries under active ARM_PRIVATE policy",
+      "owner": "opaque Arm owner bound into lookup identity",
+      "readers": [
+        "owning Arm consumer"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "same-owner exact-context replay only"
+    },
+    {
+      "object": "optional exact B/C physical Provider response",
+      "owner": "paired-call registry",
+      "readers": [
+        "separate B consumer",
+        "separate C consumer"
+      ],
+      "scope": "EXPLICIT_PAIRED_CALL",
+      "write_rule": "exact canonical context and arm-neutral response only"
+    },
+    {
+      "object": "Provider consumer logical records",
+      "owner": "experiment plus opaque Arm instance",
+      "readers": [
+        "owning Arm",
+        "neutral accounting audit"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "create once per full consumer context"
+    },
+    {
+      "object": "candidate instances and local parent/task references",
+      "owner": "opaque Arm instance",
+      "readers": [
+        "owning Arm lineage/router/task queue"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "owner-bound identity; foreign parent rejected"
+    },
+    {
+      "object": "ResearchLineControllerV1 and SearchMemoryWriterV1",
+      "owner": "B or C opaque Arm instance",
+      "readers": [
+        "owning Arm broker/controller"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "owning Arm round transition only"
+    },
+    {
+      "object": "LineageIndexV1._records",
+      "owner": "B or C opaque Arm instance",
+      "readers": [
+        "owning Arm producer/router/task resolution"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "owning Arm result closure only"
+    },
+    {
+      "object": "ResearchTaskQueueV1._tasks and matched-control source map",
+      "owner": "B or C opaque Arm instance",
+      "readers": [
+        "owning Arm scheduler/controller"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "owner-bound task identity and lifecycle"
+    },
+    {
+      "object": "MetaV17CampaignRuntimeV1._states/_bound_rounds/directives",
+      "owner": "B or C opaque Arm instance",
+      "readers": [
+        "owning Arm producer/router",
+        "neutral audit"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "one canonical terminal boundary per B/C round"
+    },
+    {
+      "object": "MetaV17CampaignRuntimeV1._observation_records",
+      "owner": "Meta runtime with Arm partition field",
+      "readers": [
+        "Meta runtime",
+        "independent audit"
+      ],
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "write_rule": "one append per terminal B/C round"
+    },
+    {
+      "object": "EvidenceGuardLedgerWriterV1 and C evidence snapshots",
+      "owner": "opaque Arm C instance",
+      "readers": [
+        "Evidence Guard",
+        "neutral read-only audit"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "Guard ledger append only; never Research/Meta input"
+    },
+    {
+      "object": "A/B NullEvidencePort instances and C EvidenceGuardPort binding",
+      "owner": "neutral assignment",
+      "readers": [
+        "owning Arm selector"
+      ],
+      "scope": "COMMON_IMMUTABLE",
+      "write_rule": "port binding cannot change after construction"
+    },
+    {
+      "object": "Arm-private filesystem roots and candidate artifacts",
+      "owner": "opaque Arm capability",
+      "readers": [
+        "owning Arm runtime",
+        "neutral audit"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "own-root path capability only"
+    },
+    {
+      "object": "training materialization, binding, execution and result objects",
+      "owner": "opaque Arm plus round execution claim",
+      "readers": [
+        "common training worker",
+        "neutral closure audit"
+      ],
+      "scope": "ROUND_LOCAL",
+      "write_rule": "private-root materialize then exactly-once terminal close"
+    },
+    {
+      "object": "broker subprocess registry and failure closure receipts",
+      "owner": "neutral broker supervisor",
+      "readers": [
+        "broker failure closure",
+        "read-only audit"
+      ],
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "write_rule": "append-only process start/exit/closure evidence"
+    },
+    {
+      "object": "round proposal slate, execution objects, result and feedback",
+      "owner": "opaque Arm plus search seed plus round index",
+      "readers": [
+        "owning round",
+        "neutral closure"
+      ],
+      "scope": "ROUND_LOCAL",
+      "write_rule": "ephemeral then content-addressed terminal projection"
+    },
+    {
+      "object": "frontier projections",
+      "owner": "opaque Arm state partition",
+      "readers": [
+        "owning Arm analysis",
+        "neutral aggregate audit"
+      ],
+      "scope": "ARM_PRIVATE",
+      "write_rule": "typed Observed/SearchEligible only; Confirmed unavailable"
+    },
+    {
+      "object": "module-level or process-global treatment-dependent mutable",
+      "owner": "none",
+      "readers": [],
+      "scope": "FORBIDDEN_GLOBAL_MUTABLE",
+      "write_rule": "must not exist"
+    }
+  ],
+  "p0": 0,
+  "p1": 0,
+  "schema": "recclaw.m6i.state-ownership-map.v1",
+  "unowned_treatment_dependent_objects": 0,
+  "verdict": "PASS"
+}

@@ -296,7 +296,7 @@ class PilotTrainingProfileTests(unittest.TestCase):
                 ]
             )
 
-    def test_adaptive_broker_shares_equal_memory_then_separates(self):
+    def test_adaptive_broker_keeps_all_research_calls_arm_private(self):
         upstream = FakeUpstream()
         broker = RealCanaryProposalBrokerV1.create(
             upstream=upstream,
@@ -311,13 +311,18 @@ class PilotTrainingProfileTests(unittest.TestCase):
         broker._research_upstream_calls(
             arm=ArmCode.C, round_index=1, search_seed=9201
         )
-        self.assertEqual(len(upstream.calls), 4)
+        self.assertEqual(len(upstream.calls), 8)
         broker.record_search_feedback(
-            ArmCode.B, {"search_outcome": {"run_status": "SUCCESS"}}
+            ArmCode.B,
+            {"search_outcome": {"run_status": "SUCCESS"}},
+            executed_mechanism_id="LIGHTGCN",
+            execution_succeeded=True,
         )
         broker.record_search_feedback(
             ArmCode.C,
             {"fusion_instruction": {"memory_target": "VALIDATION_ROUTER"}},
+            executed_mechanism_id=None,
+            execution_succeeded=False,
         )
         broker._research_upstream_calls(
             arm=ArmCode.B, round_index=2, search_seed=9201
@@ -325,7 +330,7 @@ class PilotTrainingProfileTests(unittest.TestCase):
         broker._research_upstream_calls(
             arm=ArmCode.C, round_index=2, search_seed=9201
         )
-        self.assertEqual(len(upstream.calls), 12)
+        self.assertEqual(len(upstream.calls), 16)
         self.assertTrue(
             all(call_id.rsplit("-", 1)[-1] for call_id in upstream.calls)
         )

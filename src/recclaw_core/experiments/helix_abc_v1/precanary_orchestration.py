@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
-from recclaw_core.mechanism_space import compile_program
 from recclaw_core.mechanism_space.canonical import deep_thaw
 
 from recclaw_core.helix.composition import SameSlateHelixSelectorV1
@@ -42,7 +41,7 @@ from recclaw_core.helix.scientific_attribution import (
     SearchUtilityEventV2,
 )
 
-from .canonical import canonical_json_bytes, canonical_value, sha256_digest
+from .canonical import canonical_json_bytes, canonical_value, content_id, sha256_digest
 from .broker_failure_closure import (
     BrokerFailureClosureV1,
     close_broker_failure,
@@ -57,6 +56,7 @@ from .campaign_runtime import (
     root_parent_mechanism_id,
 )
 from .common_execution_guard import CommonExecutionGuardV1
+from .compilation_cache import compile_campaign_program as compile_program
 from .contracts import (
     ArmCode,
     ProducerExecutionModeV1,
@@ -64,6 +64,13 @@ from .contracts import (
     default_experiment_contract,
 )
 from .controllers import OriginalControllerV1
+from .integrated_state_core import (
+    IntegratedCampaignStateCoreV1,
+    ObservationPathV1,
+    ProposalSourceV1,
+    RoundBoundaryEventV1,
+    canonical_observation_path,
+)
 from .fake_runner import (
     PackageOwnedLauncherV1,
     register_raw_result_envelope,
@@ -440,6 +447,7 @@ class FakeProposalSessionV1:
     proposal_session_digest: str
     route_trace_digest: str | None
     research_plan: ResearchRoundPlanV1 | None
+    ordered_proposal_candidate_ids: tuple[str, ...] = ()
     research_proposals: tuple[
         CandidateProposalV2 | CandidateProposalV3 | CandidateProposalV4,
         ...,
@@ -594,6 +602,7 @@ class ThreeArmFakeBrokerV1:
             proposal_session_digest=session.digest,
             route_trace_digest=route.digest,
             research_plan=plan,
+            ordered_proposal_candidate_ids=tuple(ordered_ids),
             research_proposals=session.proposals,
             producer_session=session,
             broker_call_latencies_ms=tuple(
@@ -747,6 +756,16 @@ class ThreeArmPreCanaryOrchestratorV1:
             self.contract, arm_instance_ids=self.assignment.mapping
         )
         self.broker = broker or ThreeArmFakeBrokerV1.create()
+        self.integrated_state = IntegratedCampaignStateCoreV1(
+            experiment_id=self.contract.experiment_id
+        )
+        self.integrated_state.bind_arms(self.assignment.mapping)
+        bind_arm_instances = getattr(self.broker, "bind_arm_instances", None)
+        if bind_arm_instances is not None:
+            bind_arm_instances(
+                experiment_id=self.contract.experiment_id,
+                arm_to_instance=self.assignment.mapping,
+            )
         self.resource_ceilings = resource_ceilings or m4_budget()
         self.guard_context = guard_context or _guard_context()
         self.admission = DeterministicHelixAdmissionV13()
@@ -767,8 +786,12 @@ class ThreeArmPreCanaryOrchestratorV1:
             opaque_arm_instance_id=c_id,
         )
         self.research_task_queues = {
-            ArmCode.B: ResearchTaskQueueV1(),
-            ArmCode.C: ResearchTaskQueueV1(),
+            ArmCode.B: ResearchTaskQueueV1(
+                self.assignment.mapping[ArmCode.B]
+            ),
+            ArmCode.C: ResearchTaskQueueV1(
+                self.assignment.mapping[ArmCode.C]
+            ),
         }
         self._matched_control_sources: dict[
             ArmCode, dict[str, CandidateProposalV4]
@@ -777,6 +800,16 @@ class ThreeArmPreCanaryOrchestratorV1:
             ArmCode.C: {},
         }
         self._completed: dict[tuple[int, int], tuple[ArmRoundResultV1, ...]] = {}
+        private_containers = (
+            self.research_task_queues[ArmCode.B],
+            self.research_task_queues[ArmCode.C],
+        )
+        if len({id(item) for item in private_containers}) != len(
+            private_containers
+        ):
+            raise PreCanaryInvariantError(
+                "Research task queues must be Arm-private objects"
+            )
 
     def _create_store(
         self, db_path: Path, artifact_root: Path
@@ -1014,6 +1047,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 selected_plan.mechanism_semantics_digest
             ),
             "created_round": round_index,
+            "opaque_arm_instance_id": selected.opaque_arm_instance_id,
             "required_seed_or_control": required,
             "task_type": task_type.value,
         }
@@ -1038,11 +1072,13 @@ class ThreeArmPreCanaryOrchestratorV1:
             utility_priority=1.0,
             missing_seed_count=missing_seed_count,
             mechanism_program=program,
+            owner_arm_instance_id=selected.opaque_arm_instance_id,
         )
 
     def _matched_control_task(
         self,
         *,
+        arm: ArmCode,
         proposal: CandidateProposalV4,
         round_index: int,
         execution_seed: int,
@@ -1066,6 +1102,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 "matched-control task does not bind the planned comparator"
             )
         identity = {
+            "opaque_arm_instance_id": self.assignment.mapping[arm],
             "mechanism_question_digest": plan.mechanism_question_digest,
             "primary_candidate_id": proposal.candidate_id,
             "required_seed": str(execution_seed),
@@ -1092,6 +1129,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             ),
             missing_seed_count=1,
             mechanism_program=program,
+            owner_arm_instance_id=self.assignment.mapping[arm],
         )
 
     def _matched_control_belief(
@@ -1101,6 +1139,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         source: CandidateProposalV4,
         task: ResearchTaskV1,
         control_result: RawResultEnvelope,
+        control_candidate_instance_id: str,
     ) -> DevelopmentalMechanismBeliefV2:
         lookup = getattr(self.broker, "lineage_record_for", None)
         primary = (
@@ -1148,8 +1187,8 @@ class ThreeArmPreCanaryOrchestratorV1:
             mechanism_question_digest=(
                 source.matched_control_plan.mechanism_question_digest
             ),
-            exact_parent_candidate_id=task.candidate_id,
-            exact_comparator_candidate_id=task.candidate_id,
+            exact_parent_candidate_id=source.candidate_id,
+            exact_comparator_candidate_id=control_candidate_instance_id,
             protocol_digest=task.protocol_digest,
             comparator_delta=delta,
             evidence_for=(observation,) if delta > 1e-4 else (),
@@ -1176,6 +1215,124 @@ class ThreeArmPreCanaryOrchestratorV1:
             controller,
             feedback,
             source_proposal_candidate_id,
+        )
+
+    def _observation_path(
+        self, feedback: FusedSearchFeedbackV2
+    ) -> ObservationPathV1:
+        return canonical_observation_path(
+            meta_update_allowed=feedback.meta_update_allowed,
+            search_feedback_class=feedback.search_feedback_class.value,
+        )
+
+    def _apply_integrated_meta_boundary(
+        self,
+        *,
+        boundary: RoundBoundaryEventV1,
+        controller: ResearchLineControllerV1 | None,
+        feedback: FusedSearchFeedbackV2 | None,
+        source_proposal_candidate_id: str | None,
+    ) -> None:
+        """Apply every B/C terminal boundary through one canonical adapter."""
+
+        arm = boundary.owner.arm
+        if arm not in {ArmCode.B, ArmCode.C}:
+            raise PreCanaryInvariantError(
+                "integrated Meta boundary escaped Research Arms"
+            )
+        runtime = getattr(self.broker, "campaign_meta_runtime", None)
+        record_boundary = getattr(runtime, "record_round_boundary", None)
+        if record_boundary is not None:
+            utility_event = (
+                feedback.search_utility_event
+                if feedback is not None
+                else None
+            )
+            utility_value = (
+                None
+                if utility_event is None
+                or utility_event.comparator_delta == NOT_AVAILABLE
+                else float(utility_event.comparator_delta)
+            )
+            record_boundary(
+                arm=arm,
+                round_index=boundary.round_index,
+                proposal_source=boundary.proposal_source.value,
+                observation_path=boundary.observation_path.value,
+                candidate_id=source_proposal_candidate_id,
+                runtime_candidate_id=(
+                    str(utility_event.candidate_id)
+                    if utility_event is not None
+                    else None
+                ),
+                run_status=(
+                    str(utility_event.common_outcome_class)
+                    if utility_event is not None
+                    else boundary.terminal_class
+                ),
+                ndcg=utility_value,
+                wall_time_ms=(
+                    int(
+                        utility_event.resource_cost_projection[
+                            "wall_time_ms"
+                        ]
+                    )
+                    if utility_event is not None
+                    else 0
+                ),
+                source_search_utility_event_digest=(
+                    utility_event.digest
+                    if utility_event is not None
+                    else boundary.digest
+                ),
+            )
+            return
+        if (
+            controller is not None
+            and feedback is not None
+            and feedback.meta_update_allowed
+            and source_proposal_candidate_id is not None
+        ):
+            self._after_research_close(
+                arm=arm,
+                round_index=boundary.round_index,
+                controller=controller,
+                feedback=feedback,
+                source_proposal_candidate_id=(
+                    source_proposal_candidate_id
+                ),
+            )
+
+    def _terminalize_integrated_round(
+        self,
+        *,
+        arm: ArmCode,
+        search_seed: int,
+        round_index: int,
+        terminal_class: str,
+        controller: ResearchLineControllerV1 | None = None,
+        feedback: FusedSearchFeedbackV2 | None = None,
+        source_proposal_candidate_id: str | None = None,
+    ) -> RoundBoundaryEventV1:
+        return self.integrated_state.terminalize(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+            terminal_class=terminal_class,
+            meta_boundary=(
+                (
+                    lambda boundary: self._apply_integrated_meta_boundary(
+                        boundary=boundary,
+                        controller=controller,
+                        feedback=feedback,
+                        source_proposal_candidate_id=(
+                            source_proposal_candidate_id
+                        ),
+                    )
+                )
+                if arm in {ArmCode.B, ArmCode.C}
+                else None
+            ),
         )
 
     def _execute_selected(
@@ -1344,18 +1501,33 @@ class ThreeArmPreCanaryOrchestratorV1:
         search_seed: int,
         round_index: int,
         drafts: Sequence[Mapping[str, Any]],
+        execution_order: Sequence[ArmCode] | None = None,
     ) -> tuple[ArmRoundResultV1, ...]:
         key = (search_seed, round_index)
         if key in self._completed:
             return self._completed[key]
         ceilings = self.resource_ceilings
         results: list[ArmRoundResultV1] = []
-        order = sorted(
-            ArmCode,
-            key=lambda arm: sha256_digest(
-                {"arm": arm.value, "round": round_index, "seed": search_seed}
-            ),
+        order = (
+            tuple(execution_order)
+            if execution_order is not None
+            else tuple(
+                sorted(
+                    ArmCode,
+                    key=lambda arm: sha256_digest(
+                        {
+                            "arm": arm.value,
+                            "round": round_index,
+                            "seed": search_seed,
+                        }
+                    ),
+                )
+            )
         )
+        if len(order) != 3 or set(order) != set(ArmCode):
+            raise PreCanaryInvariantError(
+                "execution order must be one exact A/B/C permutation"
+            )
         for arm in order:
             results.append(
                 self._run_arm(
@@ -1369,6 +1541,10 @@ class ThreeArmPreCanaryOrchestratorV1:
         ordered_results = tuple(
             next(item for item in results if item.opaque_instance_id == self.assignment.mapping[arm])
             for arm in ArmCode
+        )
+        self.integrated_state.close_triplet(
+            search_seed=search_seed,
+            round_index=round_index,
         )
         self._completed[key] = ordered_results
         return ordered_results
@@ -1400,27 +1576,58 @@ class ThreeArmPreCanaryOrchestratorV1:
                 idempotency_key=f"m4:open:{search_seed}:{round_index}:{opaque_id}",
             )
         )
+        self.integrated_state.open_round(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+        )
         active_task: ResearchTaskV1 | None = None
         if arm in self.research_task_queues:
             pending_task = self.research_task_queues[arm].select_next(
-                allowed_types=frozenset(
-                    {
-                        ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE,
-                        ResearchTaskTypeV1.RUN_MATCHED_CONTROL,
-                    }
-                )
+                allowed_types=frozenset(ResearchTaskTypeV1)
             )
             if pending_task is not None:
                 active_task = self.research_task_queues[arm].activate(
                     pending_task.task_id
                 )
+        prepare_consumer_context = getattr(
+            self.broker, "prepare_round_consumer_context", None
+        )
+        if prepare_consumer_context is not None:
+            prepare_consumer_context(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                active_task_digest=(
+                    active_task.digest if active_task is not None else None
+                ),
+                research_task_queue_digest=(
+                    self.research_task_queues[arm].digest
+                    if arm in self.research_task_queues
+                    else None
+                ),
+            )
         if active_task is not None:
+            self.integrated_state.bind_proposal_source(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                source=ProposalSourceV1.ACTIVE_BOUND_TASK,
+                active_task_digest=active_task.digest,
+            )
             session = self._session_for_research_task(
                 arm=arm,
                 round_index=round_index,
                 task=active_task,
             )
         else:
+            if arm is ArmCode.A:
+                self.integrated_state.bind_proposal_source(
+                    arm=arm,
+                    search_seed=search_seed,
+                    round_index=round_index,
+                    source=ProposalSourceV1.ORIGINAL_CONTROLLER_PATH,
+                )
             try:
                 session = self.broker.generate(
                     arm=arm,
@@ -1432,6 +1639,18 @@ class ThreeArmPreCanaryOrchestratorV1:
             except CanaryBrokerError as error:
                 if error.outcome is None or error.receipt is None:
                     raise
+                if arm is not ArmCode.A:
+                    self.integrated_state.bind_proposal_source(
+                        arm=arm,
+                        search_seed=search_seed,
+                        round_index=round_index,
+                        source=ProposalSourceV1.NO_PROPOSAL_TERMINAL,
+                    )
+                self.integrated_state.close_no_execution(
+                    arm=arm,
+                    search_seed=search_seed,
+                    round_index=round_index,
+                )
                 closure = close_broker_failure(
                     store=self.store,
                     experiment_id=self.contract.experiment_id,
@@ -1449,8 +1668,36 @@ class ThreeArmPreCanaryOrchestratorV1:
                     output_tokens=error.output_tokens,
                     billed_tokens=error.billed_tokens,
                     wall_time_ms=error.wall_time_ms,
+                    stop_campaign=False,
                 )
-                raise BrokerRoundFailureError(closure) from error
+                self._terminalize_integrated_round(
+                    arm=arm,
+                    search_seed=search_seed,
+                    round_index=round_index,
+                    terminal_class=str(closure.round_terminal_class),
+                )
+                round_row = self.store.get_round(str(opened["round_id"]))
+                return ArmRoundResultV1(
+                    opaque_instance_id=opaque_id,
+                    round_id=str(opened["round_id"]),
+                    candidate_id="NO_CANDIDATE_BROKER_FAILURE",
+                    terminal_class=str(closure.round_terminal_class),
+                    physical_call_count=closure.physical_call_count,
+                    proposal_count=0,
+                    input_tokens=closure.input_token_debit,
+                    output_tokens=closure.output_token_debit,
+                    billed_tokens=closure.billed_token_debit,
+                    ordinary_execution_count=0,
+                    gpu_device_time_ms=0,
+                    gpu_cost_microunits=0,
+                    feedback_digest=str(round_row["feedback_digest"]),
+                    evidence_port_status="NOT_CALLED_BROKER_FAILURE",
+                    training_backend_started=False,
+                    broker_call_latencies_ms=(closure.wall_time_ms,),
+                    proposal_session_wall_time_ms=closure.wall_time_ms,
+                    training_wall_time_ms=0,
+                    round_total_wall_time_ms=closure.wall_time_ms,
+                )
         common_guard = CommonExecutionGuardV1()
         eligible: list[tuple[Mapping[str, Any], Any, Any]] = []
         denials: list[tuple[str, tuple[str, ...]]] = []
@@ -1484,6 +1731,21 @@ class ThreeArmPreCanaryOrchestratorV1:
                     common_eligible_by_id
                 ),
             )
+        if arm in {ArmCode.B, ArmCode.C} and active_task is None:
+            if session.research_plan is None:
+                raise PreCanaryInvariantError(
+                    "Research proposal path lacks its canonical route"
+                )
+            self.integrated_state.bind_proposal_source(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                source=ProposalSourceV1.NORMAL_ROUTED_PROPOSAL,
+                route_digest=(
+                    session.route_trace_digest
+                    or session.research_plan.route_trace_digest
+                ),
+            )
         for frozen_program in session.ordered_programs:
             candidate_id = str(compile_program(deep_thaw(frozen_program)).candidate_id)
             item = common_eligible_by_id.get(candidate_id)
@@ -1497,11 +1759,17 @@ class ThreeArmPreCanaryOrchestratorV1:
         campaign_profile_digest = str(
             campaign_runtime_profile()["profile_digest"]
         )
-        execution_seed = (
-            int(active_task.required_seed_or_control)
-            if active_task is not None
-            else int(self.contract.ordinary_execution_seed)
-        )
+        if active_task is None:
+            execution_seed = int(self.contract.ordinary_execution_seed)
+        else:
+            try:
+                execution_seed = int(
+                    active_task.required_seed_or_control
+                )
+            except ValueError:
+                execution_seed = int(
+                    self.contract.ordinary_execution_seed
+                )
         for program, plan, action in eligible:
             if action.release_projection_digest == campaign_profile_digest:
                 recipe = execution_recipe_for_program(program)
@@ -1557,7 +1825,6 @@ class ThreeArmPreCanaryOrchestratorV1:
                 raise PreCanaryInvariantError(
                     "Guard PRE exhaustion lacks its Research plan"
                 )
-            del plan
             fused_feedback = self.admission.no_search_update(
                 last_candidate_id
             )
@@ -1573,6 +1840,22 @@ class ThreeArmPreCanaryOrchestratorV1:
                 if bool(getattr(self.broker, "v13_mode", False))
                 else 0
             )
+            self.integrated_state.close_no_execution(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+            )
+            if active_task is not None:
+                self.research_task_queues[
+                    arm
+                ].cancel_without_execution(active_task.task_id)
+                if (
+                    active_task.task_type
+                    is ResearchTaskTypeV1.RUN_MATCHED_CONTROL
+                ):
+                    self._matched_control_sources[arm].pop(
+                        active_task.task_id, None
+                    )
             closed = self.store.close_round(
                 CloseRoundCommand(
                     round_id=opened["round_id"],
@@ -1614,6 +1897,21 @@ class ThreeArmPreCanaryOrchestratorV1:
                     idempotency_key=f"m4:close:{opened['round_id']}",
                 )
             )
+            self._terminalize_integrated_round(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                terminal_class=str(closed["terminal_class"]),
+                controller=getattr(
+                    self.broker, "research_controllers", {}
+                ).get(arm),
+                feedback=fused_feedback,
+                source_proposal_candidate_id=(
+                    plan.selected_candidate_id
+                    if arm in {ArmCode.B, ArmCode.C}
+                    else None
+                ),
+            )
             return ArmRoundResultV1(
                 opaque_instance_id=opaque_id,
                 round_id=opened["round_id"],
@@ -1642,10 +1940,121 @@ class ThreeArmPreCanaryOrchestratorV1:
                 round_total_wall_time_ms=round_total_wall_time_ms,
             )
         selected = selection.selected_candidate
+        selected_slate_index = (
+            len(selection.inspected_candidate_ids) - 1
+        )
         program, selected_plan, action = next(
             item
-            for item in eligible
-            if str(item[2].candidate_id) == selected.candidate_id
+            for index, item in enumerate(eligible)
+            if index == selected_slate_index
+        )
+        if str(action.candidate_id) != selected.candidate_id:
+            raise PreCanaryInvariantError(
+                "selected slate position changed during execution binding"
+            )
+        if (
+            session.ordered_proposal_candidate_ids
+            and len(session.ordered_proposal_candidate_ids)
+            != len(eligible)
+        ):
+            raise PreCanaryInvariantError(
+                "ordered proposal instances do not align with the executable slate"
+            )
+        selected_proposal_candidate_id = (
+            session.ordered_proposal_candidate_ids[selected_slate_index]
+            if session.ordered_proposal_candidate_ids
+            else None
+        )
+        selected_research_proposal = (
+            next(
+                (
+                    proposal
+                    for proposal in session.research_proposals
+                    if proposal.candidate_id
+                    == selected_proposal_candidate_id
+                ),
+                None,
+            )
+            if (
+                arm in {ArmCode.B, ArmCode.C}
+                and active_task is None
+                and selected_proposal_candidate_id is not None
+            )
+            else None
+        )
+        if (
+            selected_proposal_candidate_id is not None
+            and selected_research_proposal is None
+        ):
+            raise PreCanaryInvariantError(
+                "selected proposal instance is absent from its typed session"
+            )
+        if selected_research_proposal is not None:
+            candidate_instance_id = str(
+                selected_research_proposal.candidate_id
+            )
+        else:
+            register_candidate_instance = getattr(
+                self.broker,
+                "register_execution_candidate_instance",
+                None,
+            )
+            producer_role = (
+                f"research_task:{active_task.task_type.value}"
+                if active_task is not None
+                else "original_controller_execution"
+            )
+            local_identity = (
+                active_task.task_id
+                if active_task is not None
+                else sha256_digest(
+                    {
+                        "arm": arm.value,
+                        "round_index": round_index,
+                        "search_seed": search_seed,
+                        "source": "ORIGINAL_CONTROLLER_PATH",
+                    }
+                )
+            )
+            candidate_instance_id = (
+                str(
+                    register_candidate_instance(
+                        arm=arm,
+                        round_index=round_index,
+                        producer_role=producer_role,
+                        semantic_program_digest=str(
+                            selected_plan.mechanism_semantics_digest
+                        ),
+                        local_parent_or_task_identity=local_identity,
+                    )
+                )
+                if register_candidate_instance is not None
+                else content_id(
+                    "candidate-instance-v1",
+                    {
+                        "active_task_digest": (
+                            active_task.digest
+                            if active_task is not None
+                            else None
+                        ),
+                        "opaque_arm_instance_id": opaque_id,
+                        "round_index": round_index,
+                        "semantic_program_digest": str(
+                            selected_plan.mechanism_semantics_digest
+                        ),
+                        "source": (
+                            "ACTIVE_BOUND_TASK"
+                            if active_task is not None
+                            else "ORIGINAL_CONTROLLER_PATH"
+                        ),
+                    },
+                )
+            )
+        self.integrated_state.select_candidate(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+            candidate_instance_id=candidate_instance_id,
         )
         try:
             if (
@@ -1713,6 +2122,11 @@ class ThreeArmPreCanaryOrchestratorV1:
             binding=binding,
             runtime_context=runtime_context,
         )
+        self.integrated_state.start_execution(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+        )
         raw_output, common_result = self._execute_selected(
             permit=permit,
             binding=binding,
@@ -1731,23 +2145,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         gpu_device_time_ms, gpu_cost_microunits, execution_wall_time_ms = (
             self._execution_resource_projection(raw_output)
         )
-        actual_proposal = (
-            next(
-                (
-                    proposal
-                    for proposal in session.research_proposals
-                    if str(
-                        compile_program(
-                            deep_thaw(proposal.mechanism_program)
-                        ).candidate_id
-                    )
-                    == selected.candidate_id
-                ),
-                None,
-            )
-            if arm in {ArmCode.B, ArmCode.C} and active_task is None
-            else None
-        )
+        actual_proposal = selected_research_proposal
         comparator_delta: float | str = NOT_AVAILABLE
         if isinstance(actual_proposal, CandidateProposalV4):
             protocol_digest = str(
@@ -1782,6 +2180,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 )
         matched_control_task = (
             self._matched_control_task(
+                arm=arm,
                 proposal=actual_proposal,
                 round_index=round_index,
                 execution_seed=execution_seed,
@@ -1814,15 +2213,44 @@ class ThreeArmPreCanaryOrchestratorV1:
             selected_plan=selected_plan,
             program=program,
         )
-        fused_feedback, _private_compact_feedback = (
-            self.admission.admit_post(
-                adjudication=post,
-                search_utility_event=search_utility_event,
-                validation_task=validation_task,
-                protocol_branch_task=branch_task,
-            )
-        )
         if (
+            post.recommended_validation == "REQUIRES_CONFIRMATION"
+            and validation_task is None
+        ):
+            # The frozen validation schedule is exhausted.  This is a typed
+            # withheld/no-observation terminal, not a missing-object error.
+            fused_feedback = self.admission.no_search_update(
+                post.candidate_id
+            )
+            _private_compact_feedback = None
+        else:
+            fused_feedback, _private_compact_feedback = (
+                self.admission.admit_post(
+                    adjudication=post,
+                    search_utility_event=search_utility_event,
+                    validation_task=validation_task,
+                    protocol_branch_task=branch_task,
+                )
+            )
+        successful_result = str(helix_raw.run_status) in {
+            "SUCCESS",
+            "SMOKE_PASS",
+            "COMPLETED",
+        }
+        if not successful_result:
+            fused_feedback = FusedSearchFeedbackV2(
+                candidate_id=selected.candidate_id,
+                search_feedback_class=(
+                    SearchFeedbackClassV2.COMMON_FAILED_EXECUTION
+                ),
+                search_utility_event=search_utility_event,
+                frontier_eligibility=FrontierEligibilityV2.EXCLUDED,
+                research_task=None,
+                controller_update_allowed=True,
+                meta_update_allowed=False,
+                search_memory_update_allowed=True,
+            )
+        elif (
             active_task is not None
             and active_task.task_type
             is ResearchTaskTypeV1.RUN_MATCHED_CONTROL
@@ -1840,10 +2268,44 @@ class ThreeArmPreCanaryOrchestratorV1:
                 meta_update_allowed=False,
                 search_memory_update_allowed=True,
             )
-        if active_task is not None:
-            self.research_task_queues[arm].complete(
-                active_task.task_id
+        elif (
+            active_task is not None
+            and active_task.task_type
+            in {
+                ResearchTaskTypeV1.PROTOCOL_BRANCH_DIAGNOSTIC,
+                ResearchTaskTypeV1.REPAIR_IMPLEMENTATION,
+            }
+        ):
+            fused_feedback = FusedSearchFeedbackV2(
+                candidate_id=selected.candidate_id,
+                search_feedback_class=(
+                    SearchFeedbackClassV2.PROTOCOL_BRANCH_TASK
+                    if active_task.task_type
+                    is ResearchTaskTypeV1.PROTOCOL_BRANCH_DIAGNOSTIC
+                    else SearchFeedbackClassV2.ENGINEERING_ONLY
+                ),
+                search_utility_event=search_utility_event,
+                frontier_eligibility=FrontierEligibilityV2.EXCLUDED,
+                research_task=None,
+                controller_update_allowed=True,
+                meta_update_allowed=False,
+                search_memory_update_allowed=True,
             )
+        self.integrated_state.close_result(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+            observation_path=self._observation_path(fused_feedback),
+        )
+        if active_task is not None:
+            if successful_result:
+                self.research_task_queues[arm].complete(
+                    active_task.task_id
+                )
+            else:
+                self.research_task_queues[arm].cancel(
+                    active_task.task_id
+                )
         if (
             arm in self.research_task_queues
             and fused_feedback.research_task is not None
@@ -1853,6 +2315,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             )
         if (
             matched_control_task is not None
+            and successful_result
             and fused_feedback.controller_update_allowed
         ):
             self.research_task_queues[arm].enqueue(
@@ -1863,6 +2326,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             ] = actual_proposal
         if (
             isinstance(actual_proposal, CandidateProposalV4)
+            and successful_result
             and fused_feedback.controller_update_allowed
         ):
             record_lineage_outcome = getattr(
@@ -1899,6 +2363,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             active_task is not None
             and active_task.task_type
             is ResearchTaskTypeV1.RUN_MATCHED_CONTROL
+            and successful_result
             and fused_feedback.controller_update_allowed
         ):
             source = self._matched_control_sources[arm].get(
@@ -1917,7 +2382,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 )
             record_support_outcome(
                 arm=arm,
-                proposal_candidate_id=active_task.candidate_id,
+                proposal_candidate_id=candidate_instance_id,
                 runtime_candidate_id=selected.candidate_id,
                 mechanism_id=str(selected_recipe["mechanism_id"]),
                 mechanism_axis="control",
@@ -1936,14 +2401,18 @@ class ThreeArmPreCanaryOrchestratorV1:
                 result_digest=helix_raw.raw_result_digest,
                 round_index=round_index,
                 mechanism_program=program,
+                parent_candidate_id=active_task.parent_candidate_id,
             )
             matched_control_belief = self._matched_control_belief(
                 arm=arm,
                 source=source,
                 task=active_task,
                 control_result=helix_raw,
+                control_candidate_instance_id=candidate_instance_id,
             )
         post_result_learning_error: Exception | None = None
+        boundary_controller: ResearchLineControllerV1 | None = None
+        boundary_source_candidate_id: str | None = None
         if arm is ArmCode.A:
             original_feedback = {
                 "candidate_id": selected.candidate_id,
@@ -1992,7 +2461,8 @@ class ThreeArmPreCanaryOrchestratorV1:
                     ),
                 )
                 if (
-                    fused_feedback.controller_update_allowed
+                    successful_result
+                    and fused_feedback.controller_update_allowed
                     and fused_feedback.search_utility_event is not None
                     and actual_proposal is not None
                 )
@@ -2000,9 +2470,8 @@ class ThreeArmPreCanaryOrchestratorV1:
             )
             if matched_control_belief is not None:
                 beliefs = (matched_control_belief,)
-            transition = self.broker.research_controllers[
-                arm
-            ].close_round_v13(
+            boundary_controller = self.broker.research_controllers[arm]
+            transition = boundary_controller.close_round_v13(
                 plan=plan,
                 feedback=fused_feedback,
                 beliefs=beliefs,
@@ -2029,26 +2498,25 @@ class ThreeArmPreCanaryOrchestratorV1:
                         == "RUNNABLE"
                     ),
                 )
-            if (
-                fused_feedback.meta_update_allowed
-                and active_task is None
-            ):
-                try:
-                    self._after_research_close(
-                        arm=arm,
-                        round_index=round_index,
-                        controller=(
-                            self.broker.research_controllers[arm]
-                        ),
-                        feedback=fused_feedback,
-                        source_proposal_candidate_id=(
-                            actual_proposal.candidate_id
-                            if actual_proposal is not None
-                            else active_task.candidate_id
-                        ),
-                    )
-                except Exception as error:
-                    post_result_learning_error = error
+            boundary_source_candidate_id = (
+                actual_proposal.candidate_id
+                if actual_proposal is not None
+                else active_task.candidate_id
+            )
+        try:
+            self._terminalize_integrated_round(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                terminal_class="COMPLETED",
+                controller=boundary_controller,
+                feedback=fused_feedback,
+                source_proposal_candidate_id=(
+                    boundary_source_candidate_id
+                ),
+            )
+        except Exception as error:
+            post_result_learning_error = error
         round_total_wall_time_ms = max(
             session.proposal_session_wall_time_ms
             + execution_wall_time_ms,

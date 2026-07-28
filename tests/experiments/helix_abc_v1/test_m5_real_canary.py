@@ -110,15 +110,21 @@ class FakeUpstream:
                 )
                 if logical_call_id.endswith(item)
             )
+            role_index = (
+                "mechanism_composer",
+                "lineage_refiner",
+                "falsification_designer",
+                "frontier_architect",
+            ).index(role)
             proposals = [
                 proposal(
-                    logical_call_id,
+                    role,
                     intent=(
                         "FALSIFICATION"
                         if role == "falsification_designer"
                         else "DISCOVERY"
                     ),
-                    index=len(self.calls),
+                    index=role_index,
                 )
             ]
         self.assert_prompt(prompt)
@@ -187,7 +193,7 @@ class M5RealCanaryTest(unittest.TestCase):
         for prompt in prompts:
             FakeUpstream.assert_prompt(prompt)
 
-    def test_b_and_c_replay_same_real_research_calls_and_route(self) -> None:
+    def test_b_and_c_use_arm_private_calls_and_candidate_instances(self) -> None:
         upstream = FakeUpstream()
         broker = RealCanaryProposalBrokerV1.create(
             upstream=upstream,
@@ -207,13 +213,17 @@ class M5RealCanaryTest(unittest.TestCase):
             drafts=(),
             ceilings=canary_budget(),
         )
-        self.assertEqual(upstream.call_count(), 4)
+        self.assertEqual(upstream.call_count(), 8)
         self.assertEqual(b.proposal_session_digest, c.proposal_session_digest)
-        self.assertEqual(b.route_trace_digest, c.route_trace_digest)
         self.assertEqual(b.ordered_programs, c.ordered_programs)
         self.assertEqual(b.input_tokens, c.input_tokens)
         self.assertEqual(b.output_tokens, c.output_tokens)
         self.assertEqual(b.billed_tokens, c.billed_tokens)
+        sharing = broker.call_sharing_audit()
+        self.assertEqual(sharing["policy"], "ARM_PRIVATE")
+        self.assertEqual(sharing["physical_call_identities"], 8)
+        self.assertEqual(sharing["consumer_logical_identities"], 8)
+        self.assertEqual(sharing["cross_arm_physical_identities"], 0)
         self.assertEqual(broker.bc_controller_identity_digest, broker.bc_controller_identity_digest)
         first_primitives = {
             component["primitive_id"]
@@ -246,16 +256,15 @@ class M5RealCanaryTest(unittest.TestCase):
             self.assertEqual(audit["feedback_count"], 9)
             self.assertEqual(audit["execution_count"], 9)
             self.assertEqual(audit["guard_call_count"], 6)
-            self.assertEqual(audit["broker_successful_upstream_calls"], 15)
+            self.assertEqual(audit["broker_successful_upstream_calls"], 19)
             self.assertEqual(
                 audit["barriers"], [[1, 7, 1], [2, 7, 1], [3, 7, 1]]
             )
-            self.assertTrue(audit["bc_controller_identity_equal"])
             self.assertEqual(
                 broker.research_controllers[ArmCode.B].policy.version, 4
             )
             self.assertEqual(
-                broker.research_controllers[ArmCode.C].policy.version, 4
+                broker.research_controllers[ArmCode.C].policy.version, 3
             )
             self.assertEqual(
                 audit["state_store_integrity"]["integrity_check"], "ok"

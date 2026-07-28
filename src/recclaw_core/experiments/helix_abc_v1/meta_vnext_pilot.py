@@ -21,10 +21,6 @@ from .meta_vnext_campaign import (
 )
 from .precanary_orchestration import ArmRoundResultV1, PreCanaryInvariantError
 from .real_canary import RealCanaryProposalBrokerV1
-from recclaw_core.helix.scientific_attribution import (
-    FusedSearchFeedbackV2,
-    NOT_AVAILABLE,
-)
 from .real_pilot import (
     RealPilotOrchestratorV1,
     pilot_guard_context,
@@ -147,41 +143,6 @@ class MetaV17PilotOrchestratorV1(RealPilotOrchestratorV1):
         )
         meta_runtime.bind_instances(
             dict(self.assignment.arm_to_instance)
-        )
-
-    def _after_research_close(
-        self,
-        *,
-        arm: ArmCode,
-        round_index: int,
-        controller: Any,
-        feedback: FusedSearchFeedbackV2,
-        source_proposal_candidate_id: str,
-    ) -> None:
-        del controller
-        if arm not in {ArmCode.B, ArmCode.C}:
-            raise PreCanaryInvariantError("V17 update escaped Research Arms")
-        event = feedback.search_utility_event
-        if event is None:
-            raise PreCanaryInvariantError(
-                "V17 update requires SearchUtilityEventV2"
-            )
-        utility_value = (
-            None
-            if event.comparator_delta == NOT_AVAILABLE
-            else float(event.comparator_delta)
-        )
-        self.meta_runtime.record_observation(
-            arm=arm,
-            round_index=round_index,
-            candidate_id=source_proposal_candidate_id,
-            runtime_candidate_id=str(event.candidate_id),
-            run_status=str(event.common_outcome_class),
-            ndcg=utility_value,
-            wall_time_ms=int(
-                event.resource_cost_projection["wall_time_ms"]
-            ),
-            source_search_utility_event_digest=event.digest,
         )
 
     def run_pilot(

@@ -479,6 +479,60 @@ class MetaV17CampaignRuntimeV1:
             ),
         }
 
+    def arm_private_context_digest(self, arm: ArmCode) -> str:
+        """Digest only the selected Arm's mutable Meta context."""
+
+        if arm not in {ArmCode.B, ArmCode.C} or arm not in self._states:
+            raise MetaV17CampaignError(
+                "Meta context is available only for a bound Research Arm"
+            )
+        state = self._states[arm]
+        return sha256_digest(
+            {
+                "arm_instance_digest": self._arm_instance_digests[arm],
+                "bound_rounds": [
+                    {
+                        "round_index": round_index,
+                        "route": bound.route.to_dict(),
+                    }
+                    for (bound_arm, round_index), bound in sorted(
+                        self._bound_rounds.items(),
+                        key=lambda item: item[0][1],
+                    )
+                    if bound_arm is arm
+                ],
+                "fast_state_digest": state.fast_state.digest,
+                "observation_records": [
+                    item
+                    for item in self._observation_records
+                    if item["arm"] == arm.value
+                ],
+                "producer_directives": [
+                    {
+                        "round_index": round_index,
+                        "directives": [
+                            item.to_dict() for item in directives
+                        ],
+                    }
+                    for (directive_arm, round_index), directives in sorted(
+                        self._producer_directives.items(),
+                        key=lambda item: item[0][1],
+                    )
+                    if directive_arm is arm
+                ],
+                "slow_state": {
+                    "best_metric": state.best_metric,
+                    "blocker_count": state.blocker_count,
+                    "executed_axes": state.executed_axes,
+                    "recent_gain": state.recent_gain,
+                    "semantic_collision_count": (
+                        state.semantic_collision_count
+                    ),
+                    "starting_metric": state.starting_metric,
+                },
+            }
+        )
+
     def _research_context(
         self,
         arm: ArmCode,
@@ -1071,6 +1125,169 @@ class MetaV17CampaignRuntimeV1:
         wall_time_ms: int,
         source_search_utility_event_digest: str,
     ) -> None:
+        self.record_round_boundary(
+            arm=arm,
+            round_index=round_index,
+            proposal_source="NORMAL_ROUTED_PROPOSAL",
+            observation_path="ADMITTED_OBSERVATION",
+            candidate_id=candidate_id,
+            runtime_candidate_id=runtime_candidate_id,
+            run_status=run_status,
+            ndcg=ndcg,
+            wall_time_ms=wall_time_ms,
+            source_search_utility_event_digest=(
+                source_search_utility_event_digest
+            ),
+        )
+
+    def record_round_boundary(
+        self,
+        *,
+        arm: ArmCode,
+        round_index: int,
+        proposal_source: str,
+        observation_path: str,
+        candidate_id: str | None,
+        runtime_candidate_id: str | None,
+        run_status: str,
+        ndcg: float | None,
+        wall_time_ms: int,
+        source_search_utility_event_digest: str,
+    ) -> None:
+        """Advance the Meta boundary exactly once for every terminal B/C round."""
+
+        validate_sha256(
+            source_search_utility_event_digest,
+            field_name="source_search_utility_event_digest",
+        )
+        valid_sources = {
+            "NORMAL_ROUTED_PROPOSAL",
+            "ACTIVE_BOUND_TASK",
+            "NO_PROPOSAL_TERMINAL",
+        }
+        valid_observations = {
+            "ADMITTED_OBSERVATION",
+            "WITHHELD_OBSERVATION",
+            "DIAGNOSTIC_OR_ENGINEERING_ONLY",
+            "NO_OBSERVATION",
+        }
+        if proposal_source not in valid_sources:
+            raise MetaV17CampaignError(
+                "Meta boundary has an invalid Research proposal source"
+            )
+        if observation_path not in valid_observations:
+            raise MetaV17CampaignError(
+                "Meta boundary has an invalid observation path"
+            )
+        if any(
+            record["arm"] == arm.value
+            and record["round_index"] == round_index
+            for record in self._observation_records
+        ):
+            raise MetaV17CampaignError("Meta boundary is create-once")
+        bound = self._bound_rounds.get((arm, round_index))
+        if (
+            proposal_source == "NORMAL_ROUTED_PROPOSAL"
+            and bound is None
+        ):
+            raise MetaV17CampaignError(
+                "normal Research boundary lacks its frozen route"
+            )
+        if (
+            proposal_source
+            in {"ACTIVE_BOUND_TASK", "NO_PROPOSAL_TERMINAL"}
+            and bound is not None
+        ):
+            raise MetaV17CampaignError(
+                "task/no-proposal boundary cannot consume a Meta route"
+            )
+        if (
+            observation_path == "ADMITTED_OBSERVATION"
+            and proposal_source == "NORMAL_ROUTED_PROPOSAL"
+        ):
+            if candidate_id is None:
+                raise MetaV17CampaignError(
+                    "admitted observation requires a candidate"
+                )
+            if bound is None:
+                raise MetaV17CampaignError(
+                    "routed admitted observation lacks its frozen route"
+                )
+            self._record_admitted_observation(
+                arm=arm,
+                round_index=round_index,
+                candidate_id=candidate_id,
+                runtime_candidate_id=runtime_candidate_id,
+                run_status=run_status,
+                ndcg=ndcg,
+                wall_time_ms=wall_time_ms,
+                source_search_utility_event_digest=(
+                    source_search_utility_event_digest
+                ),
+                proposal_source=proposal_source,
+                observation_path=observation_path,
+            )
+            return
+        state = self._states[arm]
+        state.fast_state = advance_fast_without_observation(
+            state.fast_state,
+            opaque_arm_instance_digest=self._arm_instance_digests[arm],
+            search_seed_digest=self._search_seed_digest,
+            slow_policy_digest=self.policy.digest,
+            round_boundary=round_index,
+        )
+        if run_status not in {"SUCCESS", "COMPLETED", "SMOKE_PASS"}:
+            state.blocker_count += 1
+        state.recent_gain = 0.0
+        self._observation_records.append(
+            canonical_value(
+                {
+                    "arm": arm.value,
+                    "candidate_id": candidate_id,
+                    "decision_digest": (
+                        bound.route.decision_digest
+                        if bound is not None
+                        else None
+                    ),
+                    "fast_state_after_digest": state.fast_state.digest,
+                    "frontier_value": 0.0,
+                    "mode": (
+                        bound.route.mode if bound is not None else "NO_ROUTE"
+                    ),
+                    "observation_digest": None,
+                    "observation_path": observation_path,
+                    "pool_digest": (
+                        bound.route.pool_digest
+                        if bound is not None
+                        else None
+                    ),
+                    "proposal_source": proposal_source,
+                    "round_index": round_index,
+                    "run_status": run_status,
+                    "runtime_candidate_id": runtime_candidate_id,
+                    "selected_axis": "none",
+                    "source_boundary_digest": (
+                        source_search_utility_event_digest
+                    ),
+                    "wall_time_ms": int(wall_time_ms),
+                }
+            )
+        )
+
+    def _record_admitted_observation(
+        self,
+        *,
+        arm: ArmCode,
+        round_index: int,
+        candidate_id: str,
+        runtime_candidate_id: str | None = None,
+        run_status: str,
+        ndcg: float | None,
+        wall_time_ms: int,
+        source_search_utility_event_digest: str,
+        proposal_source: str,
+        observation_path: str,
+    ) -> None:
         validate_sha256(
             source_search_utility_event_digest,
             field_name="source_search_utility_event_digest",
@@ -1172,7 +1389,9 @@ class MetaV17CampaignRuntimeV1:
                     "frontier_value": frontier,
                     "mode": bound.route.mode,
                     "observation_digest": observation_digest,
+                    "observation_path": observation_path,
                     "pool_digest": bound.route.pool_digest,
+                    "proposal_source": proposal_source,
                     "round_index": round_index,
                     "run_status": run_status,
                     "runtime_candidate_id": runtime_candidate_id,

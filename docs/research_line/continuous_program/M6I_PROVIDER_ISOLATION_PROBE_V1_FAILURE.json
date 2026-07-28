@@ -1,0 +1,28 @@
+{
+  "authority": "NONE",
+  "broker_calls_attempted": 1,
+  "broker_calls_succeeded": 0,
+  "broker_release_digest": "7d63d59fff6549f5880f5e4a8c93acb552892a55632958d7c0d697903941775d",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "failure_class": "PROVIDER_STRICT_SCHEMA_MISSING_EXPLICIT_TYPE",
+  "failure_stage": "PROVIDER_PRE_RESPONSE_SCHEMA_VALIDATION",
+  "formal_acceptance": false,
+  "main_eligibility": false,
+  "pilot_result": false,
+  "p0": 0,
+  "p1": 1,
+  "provider_error_type": "HTTP_400",
+  "root_reuse_allowed": false,
+  "root_sealed": true,
+  "schema": "recclaw.m6i.provider-isolation-probe-failure.v1",
+  "schema_sha256": "356b7ffa399f363ff5fc111e2533f0f6d96fc7823b824147d54f05e1829c10fc",
+  "scientific_state_updates": 0,
+  "status": "FAILED_PRE_OUTCOME",
+  "training_executions": 0,
+  "treatment_changed": false,
+  "v1_artifacts": {
+    "broker_db_sha256_after_close": "c0a2b7efb5442de48cb7e41fb6f3f4e2d7371d77bfab53bbf0b350bb798659b7",
+    "release_manifest_sha256": "7141d426b28ed31b82e058522ca17cdef8371b624ea2061aeddca8b56847ae80",
+    "root": "/root/projects/RecClaw_m6i/results/research_line/m6i_provider_isolation_probe_v1"
+  }
+}

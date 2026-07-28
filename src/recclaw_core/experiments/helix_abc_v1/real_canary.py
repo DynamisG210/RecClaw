@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import inspect
 import json
 import sqlite3
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from recclaw_core.mechanism_space import compile_program
+from .compilation_cache import compile_campaign_program as compile_program
 from recclaw_core.mechanism_space.canonical import deep_thaw
 
 from recclaw_core.helix.contracts import CandidateEnvelope, RawResultEnvelope
@@ -44,6 +45,12 @@ from .contracts import (
     default_experiment_contract,
 )
 from .controllers import OriginalControllerV1, OriginalRuntimeAdapterV1
+from .integrated_state_core import (
+    ArmOwnerTokenV1,
+    CallSharingPolicyV1,
+    CallSharingRegistryV1,
+    ProviderRequestContextV1,
+)
 from .original_main import PinnedOriginalMainAdapterV1
 from .precanary_orchestration import (
     ArmRoundResultV1,
@@ -232,12 +239,17 @@ class RealCanaryProposalBrokerV1:
     upstream: CodexCliCanaryBrokerV1
     template_path: Path
     research_controllers: dict[ArmCode, ResearchLineControllerV1]
-    _research_calls: dict[tuple[int, int, str], tuple[CanaryBrokerCallV1, ...]]
+    _research_calls: dict[str, tuple[CanaryBrokerCallV1, ...]]
     _search_feedback: dict[ArmCode, Mapping[str, Any]]
     _campaign_call_scopes: dict[str, tuple[str, ...]]
-    _research_session_wall_ms: dict[tuple[int, int, str], int]
+    _research_session_wall_ms: dict[str, int]
     lineage_indexes: dict[ArmCode, LineageIndexV1]
     original_controller: Any
+    _call_registry: CallSharingRegistryV1
+    _arm_owners: dict[ArmCode, ArmOwnerTokenV1]
+    _round_consumer_contexts: dict[tuple[ArmCode, int, int], dict[str, str]]
+    _provider_by_consumer: dict[str, str]
+    _context_by_consumer: dict[str, str]
     campaign_meta_runtime: Any | None = None
     producer_control_enabled: bool = True
     call_prefix: str = ""
@@ -259,6 +271,9 @@ class RealCanaryProposalBrokerV1:
         research_policy_override: Any | None = None,
         original_controller: Any | None = None,
         v13_mode: bool = False,
+        call_sharing_policy: CallSharingPolicyV1 = (
+            CallSharingPolicyV1.ARM_PRIVATE
+        ),
     ) -> "RealCanaryProposalBrokerV1":
         def controller() -> ResearchLineControllerV1:
             policy = (
@@ -300,6 +315,13 @@ class RealCanaryProposalBrokerV1:
                 if original_controller is not None
                 else OriginalRuntimeAdapterV1()
             ),
+            _call_registry=CallSharingRegistryV1(
+                policy=call_sharing_policy
+            ),
+            _arm_owners={},
+            _round_consumer_contexts={},
+            _provider_by_consumer={},
+            _context_by_consumer={},
             campaign_meta_runtime=campaign_meta_runtime,
             producer_control_enabled=producer_control_enabled,
             call_prefix=call_prefix,
@@ -307,6 +329,250 @@ class RealCanaryProposalBrokerV1:
             adaptive_memory=adaptive_memory,
             v13_mode=v13_mode,
         )
+
+    def bind_arm_instances(
+        self,
+        *,
+        experiment_id: str,
+        arm_to_instance: Mapping[ArmCode, str],
+    ) -> None:
+        """Bind Provider consumers to the scheduler's opaque Arm identities."""
+
+        proposed = {
+            arm: ArmOwnerTokenV1(
+                experiment_id=str(experiment_id),
+                arm=arm,
+                opaque_arm_instance_id=str(arm_to_instance[arm]),
+            )
+            for arm in ArmCode
+        }
+        if len({item.opaque_arm_instance_id for item in proposed.values()}) != 3:
+            raise PreCanaryInvariantError(
+                "Broker requires three distinct opaque Arm instances"
+            )
+        if self._arm_owners and self._arm_owners != proposed:
+            raise PreCanaryInvariantError(
+                "Broker Arm ownership cannot be rebound"
+            )
+        for arm, owner in proposed.items():
+            self.lineage_indexes[arm].bind_owner(
+                owner.opaque_arm_instance_id
+            )
+        self._arm_owners = proposed
+
+    def prepare_round_consumer_context(
+        self,
+        *,
+        arm: ArmCode,
+        search_seed: int,
+        round_index: int,
+        active_task_digest: str | None,
+        research_task_queue_digest: str | None,
+    ) -> None:
+        """Freeze the scheduler-owned context before any Provider call."""
+
+        self._round_consumer_contexts[
+            (arm, int(search_seed), int(round_index))
+        ] = {
+            "active_task_digest": active_task_digest or "ABSENT",
+            "research_task_queue_digest": (
+                research_task_queue_digest or "ABSENT"
+            ),
+        }
+
+    def _owner(self, arm: ArmCode) -> ArmOwnerTokenV1:
+        owner = self._arm_owners.get(arm)
+        if owner is None:
+            # Direct unit-level broker exercises predate the neutral scheduler.
+            # They remain isolated by a deterministic private owner, while every
+            # campaign/Pilot path is rebound to its real opaque assignment.
+            owner = ArmOwnerTokenV1(
+                experiment_id="DIRECT_BROKER_EXERCISE",
+                arm=arm,
+                opaque_arm_instance_id=f"DIRECT-{arm.value}",
+            )
+            self._arm_owners[arm] = owner
+            self.lineage_indexes[arm].bind_owner(
+                owner.opaque_arm_instance_id
+            )
+        return owner
+
+    def _model_release_digest(self) -> str:
+        release = getattr(self.upstream, "release", None)
+        digest = getattr(release, "release_digest", None)
+        if isinstance(digest, str) and len(digest) == 64:
+            return digest
+        return sha256_digest(
+            {
+                "broker_class": type(self.upstream).__name__,
+                "model": str(getattr(self.upstream, "model", "TEST_UPSTREAM")),
+                "reasoning_effort": str(
+                    getattr(self.upstream, "reasoning_effort", "UNSPECIFIED")
+                ),
+                "service_tier": str(
+                    getattr(self.upstream, "service_tier", "UNSPECIFIED")
+                ),
+            }
+        )
+
+    def _response_schema_digest(self) -> str:
+        for name in ("schema_file_sha256", "response_schema_digest"):
+            value = getattr(self.upstream, name, None)
+            if isinstance(value, str) and len(value) == 64:
+                return value
+        return sha256_digest(
+            {
+                "broker_class": type(self.upstream).__name__,
+                "schema": "TEST_OR_LEGACY_SCHEMA",
+            }
+        )
+
+    def _meta_fast_state_digest(self, arm: ArmCode) -> str:
+        if arm is ArmCode.A:
+            # Original control has no Research-Line Meta state.  Keep that
+            # absence explicit instead of asking a B/C-only runtime to project A.
+            return "ABSENT"
+        if self.campaign_meta_runtime is None:
+            return "ABSENT"
+        projection = getattr(
+            self.campaign_meta_runtime,
+            "arm_private_context_digest",
+            None,
+        )
+        if projection is None:
+            return sha256_digest(
+                {
+                    "arm": arm.value,
+                    "policy_bundle_digest": (
+                        self.campaign_meta_runtime.policy_bundle_digest
+                    ),
+                }
+            )
+        return str(projection(arm))
+
+    def _provider_context(
+        self,
+        *,
+        arm: ArmCode,
+        round_index: int,
+        search_seed: int,
+        producer_role: str,
+        prompt: str,
+        ceilings: ResourceCeilingsV1,
+        memory_view_digest: str,
+        directive_set_digest: str | None,
+    ) -> ProviderRequestContextV1:
+        prepared = self._round_consumer_contexts.get(
+            (arm, int(search_seed), int(round_index)),
+            {
+                "active_task_digest": "ABSENT",
+                "research_task_queue_digest": "ABSENT",
+            },
+        )
+        lineage_view_digest = self.lineage_indexes[arm].digest
+        meta_fast_state_digest = self._meta_fast_state_digest(arm)
+        prompt_bytes_digest = hashlib.sha256(
+            prompt.encode("utf-8")
+        ).hexdigest()
+        complete_context_digest = sha256_digest(
+            {
+                "adaptive_memory": self.adaptive_memory,
+                "arm_owner_digest": self._owner(arm).digest,
+                "call_prefix": self.call_prefix,
+                "ceilings": ceilings.to_dict(),
+                "controller_policy_digest": (
+                    self.research_controllers[arm].policy.digest
+                    if arm in self.research_controllers
+                    else "ORIGINAL_CONTROLLER"
+                ),
+                "directive_set_digest": directive_set_digest,
+                "lineage_view_digest": lineage_view_digest,
+                "memory_view_digest": memory_view_digest,
+                "meta_fast_state_digest": meta_fast_state_digest,
+                "phase_name": self.phase_name,
+                "prepared_scheduler_context": prepared,
+                "producer_role": producer_role,
+                "round_index": round_index,
+                "search_seed": search_seed,
+                "v13_mode": self.v13_mode,
+            }
+        )
+        return ProviderRequestContextV1(
+            model_release_digest=self._model_release_digest(),
+            response_schema_digest=self._response_schema_digest(),
+            temperature=float(getattr(self.upstream, "temperature", 0.0)),
+            timeout_policy_digest=sha256_digest(
+                {
+                    "retry_count": int(
+                        getattr(self.upstream, "retry_count", 0)
+                    ),
+                    "timeout_ms": int(
+                        getattr(self.upstream, "timeout_ms", 900_000)
+                    ),
+                }
+            ),
+            producer_role=producer_role,
+            prompt_bytes_digest=prompt_bytes_digest,
+            complete_context_digest=complete_context_digest,
+            memory_view_digest=memory_view_digest,
+            meta_fast_state_digest=meta_fast_state_digest,
+            lineage_view_digest=lineage_view_digest,
+            active_task_digest=prepared["active_task_digest"],
+            research_task_queue_digest=prepared[
+                "research_task_queue_digest"
+            ],
+            round_index=round_index,
+            search_seed=search_seed,
+            response_arm_neutral=True,
+        )
+
+    def _consumer_identity(
+        self,
+        *,
+        arm: ArmCode,
+        context: ProviderRequestContextV1,
+        logical_prefix: str,
+        logical_suffix: str = "",
+    ) -> tuple[str, str]:
+        physical, consumer, _decision = self._call_registry.register_request(
+            owner=self._owner(arm),
+            context=context,
+        )
+        logical_call_id = (
+            f"{logical_prefix}{consumer.value}{logical_suffix}"
+        )
+        self._provider_by_consumer[logical_call_id] = physical.value
+        self._context_by_consumer[
+            logical_call_id
+        ] = context.exact_request_digest
+        return physical.value, logical_call_id
+
+    def call_sharing_audit(self) -> dict[str, Any]:
+        return self._call_registry.audit_projection()
+
+    def register_execution_candidate_instance(
+        self,
+        *,
+        arm: ArmCode,
+        round_index: int,
+        producer_role: str,
+        semantic_program_digest: str,
+        local_parent_or_task_identity: str | None,
+    ) -> str:
+        """Bind a selected execution to one Arm/round-local instance.
+
+        Compiled candidate ids describe semantic content and may legitimately
+        repeat.  Execution, task, lineage, and result identities must not use
+        that content id as the mutable candidate instance.
+        """
+
+        return self._call_registry.register_candidate(
+            owner=self._owner(arm),
+            round_index=round_index,
+            producer_role=producer_role,
+            semantic_program_digest=semantic_program_digest,
+            local_parent_or_task_identity=local_parent_or_task_identity,
+        ).value
 
     @classmethod
     def create_v13(
@@ -393,7 +659,27 @@ class RealCanaryProposalBrokerV1:
                 "policy": policy_projection,
             }
         )
-        key = (search_seed, round_index, memory_policy_digest)
+        prepared_context = self._round_consumer_contexts.get(
+            (arm, int(search_seed), int(round_index)),
+            {
+                "active_task_digest": "ABSENT",
+                "research_task_queue_digest": "ABSENT",
+            },
+        )
+        key = sha256_digest(
+            {
+                "arm_owner_digest": self._owner(arm).digest,
+                "ceilings": ceilings.to_dict(),
+                "lineage_view_digest": self.lineage_indexes[arm].digest,
+                "memory_policy_digest": memory_policy_digest,
+                "meta_fast_state_digest": self._meta_fast_state_digest(arm),
+                "prepared_scheduler_context": prepared_context,
+                "round_index": round_index,
+                "search_seed": search_seed,
+                "session_identity": "RESEARCH_PROVIDER_SESSION_M6I_V1",
+                "sharing_policy": self._call_registry.policy.value,
+            }
+        )
         if key not in self._research_calls:
             session_started_ns = time.monotonic_ns()
             memory_component = (
@@ -578,9 +864,23 @@ class RealCanaryProposalBrokerV1:
                     policy_directive=directive,
                     token_ceiling=per_call_ceiling,
                 )
-                logical_call_id = (
-                    f"{self.call_prefix}research-"
-                    f"{search_seed}-{round_index}{memory_component}-{role}"
+                provider_context = self._provider_context(
+                    arm=arm,
+                    round_index=round_index,
+                    search_seed=search_seed,
+                    producer_role=role,
+                    prompt=prompt,
+                    ceilings=ceilings,
+                    memory_view_digest=sha256_digest(memory_summary),
+                    directive_set_digest=directive_set_digest,
+                )
+                _physical_call_id, logical_call_id = (
+                    self._consumer_identity(
+                        arm=arm,
+                        context=provider_context,
+                        logical_prefix=f"{self.call_prefix}research-",
+                        logical_suffix=f"-{role}",
+                    )
                 )
                 self._campaign_call_scopes[logical_call_id] = tuple(
                     str(item["mechanism_id"])
@@ -590,8 +890,15 @@ class RealCanaryProposalBrokerV1:
                     call = self._upstream_call(
                         logical_call_id=logical_call_id,
                         proposal_generation_session_id=(
-                            f"{self.call_prefix}research-session-"
-                            f"{search_seed}-{round_index}{memory_component}"
+                            "research-consumer-session-v1:"
+                            + sha256_digest(
+                                {
+                                    "arm_owner_digest": self._owner(arm).digest,
+                                    "memory_component": memory_component,
+                                    "round_index": round_index,
+                                    "search_seed": search_seed,
+                                }
+                            )
                         ),
                         prompt=prompt,
                         expected_proposal_count=1,
@@ -632,33 +939,74 @@ class RealCanaryProposalBrokerV1:
             if self.adaptive_memory
             else {}
         )
-        memory_digest = (
-            sha256_digest(memory_summary) if self.adaptive_memory else "shared"
+        memory_digest = sha256_digest(
+            memory_summary if self.adaptive_memory else {}
         )
-        key = (search_seed, round_index, memory_digest)
+        key = sha256_digest(
+            {
+                "arm_owner_digest": self._owner(arm).digest,
+                "lineage_view_digest": self.lineage_indexes[arm].digest,
+                "memory_digest": memory_digest,
+                "round_index": round_index,
+                "search_seed": search_seed,
+                "session_identity": "LEGACY_RESEARCH_PROVIDER_SESSION_M6I_V1",
+            }
+        )
         if key not in self._research_calls:
             memory_component = (
                 f"-m{memory_digest[:12]}" if self.adaptive_memory else ""
             )
             calls: list[CanaryBrokerCallV1] = []
+            prompt_memory = dict(
+                memory_summary.get(
+                    "prompt_feedback_projection",
+                    {
+                        "common_search_utility_slot": "ABSENT",
+                        "research_task_slot": "ABSENT",
+                    },
+                )
+            )
             for role in DISCOVERY_PRODUCERS:
+                prompt = research_canary_prompt(
+                    role=role,
+                    round_index=round_index,
+                    search_seed=search_seed,
+                    phase_name=self.phase_name,
+                    memory_summary=prompt_memory,
+                )
+                provider_context = self._provider_context(
+                    arm=arm,
+                    round_index=round_index,
+                    search_seed=search_seed,
+                    producer_role=role,
+                    prompt=prompt,
+                    ceilings=canary_budget(),
+                    memory_view_digest=memory_digest,
+                    directive_set_digest=None,
+                )
+                _physical_call_id, logical_call_id = (
+                    self._consumer_identity(
+                        arm=arm,
+                        context=provider_context,
+                        logical_prefix=f"{self.call_prefix}research-",
+                        logical_suffix=f"-{role}",
+                    )
+                )
                 try:
                     call = self._upstream_call(
-                        logical_call_id=(
-                            f"{self.call_prefix}research-"
-                            f"{search_seed}-{round_index}{memory_component}-{role}"
-                        ),
+                        logical_call_id=logical_call_id,
                         proposal_generation_session_id=(
-                            f"{self.call_prefix}research-session-"
-                            f"{search_seed}-{round_index}{memory_component}"
+                            "legacy-research-consumer-session-v1:"
+                            + sha256_digest(
+                                {
+                                    "arm_owner_digest": self._owner(arm).digest,
+                                    "memory_component": memory_component,
+                                    "round_index": round_index,
+                                    "search_seed": search_seed,
+                                }
+                            )
                         ),
-                        prompt=research_canary_prompt(
-                            role=role,
-                            round_index=round_index,
-                            search_seed=search_seed,
-                            phase_name=self.phase_name,
-                            memory_summary=memory_summary,
-                        ),
+                        prompt=prompt,
                         expected_proposal_count=1,
                     )
                 except CanaryBrokerError as error:
@@ -806,6 +1154,9 @@ class RealCanaryProposalBrokerV1:
                 result_digest=result_digest,
                 round_index=round_index,
                 mechanism_program=proposal.mechanism_program,
+                owner_arm_instance_id=(
+                    self._owner(arm).opaque_arm_instance_id
+                ),
             )
         )
 
@@ -826,6 +1177,7 @@ class RealCanaryProposalBrokerV1:
         result_digest: str,
         round_index: int,
         mechanism_program: Mapping[str, Any],
+        parent_candidate_id: str | None = None,
     ) -> None:
         metric_name = next(
             (
@@ -844,7 +1196,7 @@ class RealCanaryProposalBrokerV1:
                 mechanism_axis=mechanism_axis,
                 mechanism_program_digest=mechanism_program_digest,
                 mechanism_semantics_digest=mechanism_semantics_digest,
-                parent_candidate_id=None,
+                parent_candidate_id=parent_candidate_id,
                 protocol_digest=protocol_digest,
                 observation_seed=observation_seed,
                 run_status=run_status,
@@ -857,6 +1209,9 @@ class RealCanaryProposalBrokerV1:
                 result_digest=result_digest,
                 round_index=round_index,
                 mechanism_program=mechanism_program,
+                owner_arm_instance_id=(
+                    self._owner(arm).opaque_arm_instance_id
+                ),
             )
         )
 
@@ -864,6 +1219,7 @@ class RealCanaryProposalBrokerV1:
         self,
         *,
         arm: ArmCode,
+        round_index: int = 1,
         session_id: str,
         role: str,
         call: CanaryBrokerCallV1,
@@ -899,15 +1255,18 @@ class RealCanaryProposalBrokerV1:
                 else DiscoveryCreditV1.DISCOVERY
             )
         )
-        proposal_identity = sha256_digest(
-            {
-                "session_id": session_id,
-                "role": role,
-                "response_digest": call.response_digest,
-                "runtime_candidate_id": compiled.candidate_id,
-            }
+        candidate_instance = self._call_registry.register_candidate(
+            owner=self._owner(arm),
+            round_index=round_index,
+            producer_role=role,
+            semantic_program_digest=str(
+                compiled.mechanism_semantics_digest
+            ),
+            local_parent_or_task_identity=proposal.get(
+                "parent_candidate_id"
+            ),
         )
-        proposal_candidate_id = f"cand-{proposal_identity[:24]}"
+        proposal_candidate_id = candidate_instance.value
         if not self.v13_mode:
             return CandidateProposalV3(
                 candidate_id=proposal_candidate_id,
@@ -1090,8 +1449,15 @@ class RealCanaryProposalBrokerV1:
         calls: Sequence[CanaryBrokerCallV1],
     ) -> ProducerSessionResultV1:
         session_id = (
-            f"{self.call_prefix or 'campaign-'}research-"
-            f"{search_seed}-{round_index}"
+            "producer-session-v1:"
+            + sha256_digest(
+                {
+                    "arm_owner_digest": self._owner(arm).digest,
+                    "call_prefix": self.call_prefix,
+                    "round_index": round_index,
+                    "search_seed": search_seed,
+                }
+            )
         )
         proposals: list[CandidateProposalV3 | CandidateProposalV4] = []
         call_records: list[ProducerCallRecordV1] = []
@@ -1122,6 +1488,7 @@ class RealCanaryProposalBrokerV1:
                 )
             typed = self._proposal_from_call(
                 arm=arm,
+                round_index=round_index,
                 session_id=session_id,
                 role=role,
                 call=call,
@@ -1132,14 +1499,16 @@ class RealCanaryProposalBrokerV1:
                 ProducerCallRecordV1(
                     session_id=session_id,
                     mode=ProducerExecutionModeV1.BOUNDED_INDEPENDENT_PRODUCER_AGENTS_V1,
-                    physical_call_id=call.logical_call_id,
+                    physical_call_id=self._provider_by_consumer[
+                        call.logical_call_id
+                    ],
                     producer_id=typed.producer_id,
                     producer_role=role,
                     request_digest=call.request_digest,
                     response_digest=call.response_digest,
-                    context_digest=sha256_digest(
-                        {"round_index": round_index, "search_seed": search_seed}
-                    ),
+                    context_digest=self._context_by_consumer[
+                        call.logical_call_id
+                    ],
                     memory_digest=sha256_digest(
                         self._search_feedback.get(arm, {})
                     ),
@@ -1212,21 +1581,48 @@ class RealCanaryProposalBrokerV1:
         if arm is ArmCode.A:
             call: CanaryBrokerCallV1 | None = None
             if self.original_controller.refresh_required(round_index):
-                call = self._upstream_call(
-                    logical_call_id=(
-                        f"{self.call_prefix}original-{search_seed}-{round_index}"
-                    ),
-                    proposal_generation_session_id=(
-                        f"{self.call_prefix}original-session-"
-                        f"{search_seed}-{round_index}"
-                    ),
-                    prompt=original_canary_prompt(
+                prompt = original_canary_prompt(
+                    round_index=round_index,
+                    search_seed=search_seed,
+                    phase_name=self.phase_name,
+                    catalog_projection=campaign_projection(),
+                    original_state=self.original_controller.state_projection(),
+                )
+                provider_context = replace(
+                    self._provider_context(
+                        arm=arm,
                         round_index=round_index,
                         search_seed=search_seed,
-                        phase_name=self.phase_name,
-                        catalog_projection=campaign_projection(),
-                        original_state=self.original_controller.state_projection(),
+                        producer_role="original_controller",
+                        prompt=prompt,
+                        ceilings=ceilings,
+                        memory_view_digest=sha256_digest(
+                            self.original_controller.state_projection()
+                        ),
+                        directive_set_digest=None,
                     ),
+                    response_arm_neutral=False,
+                )
+                _physical_call_id, logical_call_id = (
+                    self._consumer_identity(
+                        arm=arm,
+                        context=provider_context,
+                        logical_prefix=f"{self.call_prefix}original-",
+                    )
+                )
+                call = self._upstream_call(
+                    logical_call_id=logical_call_id,
+                    proposal_generation_session_id=(
+                        "original-consumer-session-v1:"
+                        + sha256_digest(
+                            {
+                                "arm_owner_digest": self._owner(arm).digest,
+                                "round_index": round_index,
+                                "search_seed": search_seed,
+                            }
+                        )
+                    ),
+                    prompt=prompt,
                     expected_proposal_count=4,
                     max_total_tokens=min(
                         ceilings.total_billed_token_debit,
@@ -1527,6 +1923,9 @@ class RealCanaryProposalBrokerV1:
             ),
             route_trace_digest=route.digest,
             research_plan=plan,
+            ordered_proposal_candidate_ids=tuple(
+                route.ranked_candidate_ids
+            ),
             research_proposals=typed_session.proposals,
         )
 
@@ -1681,6 +2080,7 @@ class RealCanaryProposalBrokerV1:
         return replace(
             session,
             ordered_programs=ordered_programs,
+            ordered_proposal_candidate_ids=proposal_order,
             selected_candidate_id=selected_runtime_id,
             route_trace_digest=route_trace_digest,
             research_plan=plan,
@@ -1829,6 +2229,9 @@ class RealCanaryOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         return {
             "barriers": [list(item) for item in barriers],
             "bc_controller_identity_equal": b.identity_digest == c.identity_digest,
+            "bc_controller_policy_identity_equal": (
+                b.policy.digest == c.policy.digest
+            ),
             "broker_successful_upstream_calls": self.broker.upstream.call_count(),
             "budget_rows_digest": sha256_digest([list(item) for item in budgets]),
             "execution_count": execution_count,
