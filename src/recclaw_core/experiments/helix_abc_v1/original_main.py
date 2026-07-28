@@ -98,10 +98,19 @@ class OriginalMainSourceReleaseV1:
         )
 
     def materialize(self) -> None:
+        git_dir = self.repository_root / ".git"
+        if not git_dir.is_dir():
+            raise OriginalMainSourceError(
+                f"pinned Original Git object database unavailable: {git_dir}"
+            )
         for relative, (blob_sha1, expected_sha256) in ORIGINAL_MAIN_FILES.items():
             bound = subprocess.run(
-                ["git", "rev-parse", f"{ORIGINAL_MAIN_COMMIT}:{relative}"],
-                cwd=self.repository_root,
+                [
+                    "git",
+                    f"--git-dir={git_dir}",
+                    "rev-parse",
+                    f"{ORIGINAL_MAIN_COMMIT}:{relative}",
+                ],
                 check=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -115,8 +124,13 @@ class OriginalMainSourceReleaseV1:
                     f"pinned Main path/blob mismatch: {relative}"
                 )
             completed = subprocess.run(
-                ["git", "cat-file", "blob", blob_sha1],
-                cwd=self.repository_root,
+                [
+                    "git",
+                    f"--git-dir={git_dir}",
+                    "cat-file",
+                    "blob",
+                    blob_sha1,
+                ],
                 check=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

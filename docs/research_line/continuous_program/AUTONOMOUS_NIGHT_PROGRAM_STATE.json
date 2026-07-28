@@ -1,6 +1,6 @@
 {
-  "active_stage": "V22_FIVE_ROUND_PILOT_FROZEN_PRE_OUTCOME",
-  "active_version": "V22",
+  "active_stage": "V22_SEALED_PRE_OUTCOME_FAILURE_V23_VERSIONED_RECOVERY",
+  "active_version": "V23",
   "active_worktree": "/root/projects/RecClaw_m6i",
   "active_commit": "4777807224fe8f6d02fcf27fb385fa8e6dc8f076",
   "active_contract_digest": "9cb254db5a23656223b8c7092b0443fea5e067ac64d486aae6e942491d187aad",
@@ -8,8 +8,8 @@
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
   "active_backend_release": "TRAINING_RUNTIME_RELEASE_V14:e540c5934cca0b811400de5f83a5f7ca5e7e4fc691ced9a04ec1fa2fdd8e2431",
   "active_processes": [],
-  "last_completed_checkpoint": "V22_BACKEND_RUNTIME_SCIENTIFIC_GATES_PASS_AND_CONTRACT_FROZEN",
-  "next_automatic_action": "VERIFY_FROZEN_V22_AND_LAUNCH_FRESH_FIVE_ROUND_PILOT",
+  "last_completed_checkpoint": "V22_PRE_OUTCOME_FAILURE_SEALED_NO_PROVIDER_NO_TRAINING",
+  "next_automatic_action": "VERSION_EXPLICIT_GIT_OBJECT_DATABASE_FIX_AND_FREEZE_FRESH_V23_CLOSURE",
   "round_progress": {
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
@@ -24,14 +24,15 @@
     "V22_five_round_pilot": {
       "rounds_per_arm": 5,
       "search_seed": 9224,
-      "started": false,
+      "started": true,
+      "status": "SEALED_PRE_OUTCOME_FAILURE",
       "terminal_arm_rounds": 0
     }
   },
   "provider_calls": 12,
   "training_executions": 6,
   "P0": 0,
-  "P1": 0,
+  "P1": 1,
   "P2": 1,
   "hard_stop": false
 }

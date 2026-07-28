@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from recclaw_core.mechanism_space import compile_program
 from recclaw_core.experiments.helix_abc_v1.campaign_runtime import (
@@ -14,6 +15,7 @@ from recclaw_core.experiments.helix_abc_v1.canonical import sha256_digest
 from recclaw_core.experiments.helix_abc_v1.contracts import ArmCode
 from recclaw_core.experiments.helix_abc_v1.original_main import (
     ORIGINAL_MAIN_FILES,
+    OriginalMainSourceError,
     OriginalMainSourceReleaseV1,
     PinnedOriginalMainAdapterV1,
 )
@@ -93,6 +95,29 @@ class V13PinnedOriginalMainTest(unittest.TestCase):
             module = release.load_agent_module()
             self.assertTrue(hasattr(module, "RecClawAgent"))
             self.assertTrue(hasattr(module, "AgentConfig"))
+
+    def test_source_release_addresses_explicit_git_object_database(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            release = OriginalMainSourceReleaseV1(
+                repository_root=ROOT,
+                materialization_root=Path(raw),
+            )
+            with patch(
+                "recclaw_core.experiments.helix_abc_v1.original_main."
+                "subprocess.run"
+            ) as run:
+                run.return_value = subprocess.CompletedProcess(
+                    args=(),
+                    returncode=1,
+                    stdout="",
+                    stderr="expected test stop",
+                )
+                with self.assertRaises(OriginalMainSourceError):
+                    release.materialize()
+            command = run.call_args.args[0]
+            self.assertEqual(command[0], "git")
+            self.assertEqual(command[1], f"--git-dir={ROOT / '.git'}")
+            self.assertNotIn("cwd", run.call_args.kwargs)
 
     def test_exact_original_refresh_schedule_and_force_refresh(self) -> None:
         adapter = self.adapter()
