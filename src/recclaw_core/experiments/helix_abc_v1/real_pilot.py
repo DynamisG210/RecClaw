@@ -302,6 +302,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
         _assignment_nonce: str | None = None,
         _guard_context: GuardContext | None = None,
         _training_runner_abi: str = TRAINING_RUNNER_ABI,
+        _resource_ceilings: ResourceCeilingsV1 | None = None,
     ) -> None:
         contract = _contract or PilotStoreContractV1.create()
         self._training_project_root = project_root.resolve()
@@ -318,7 +319,7 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             ),
             broker=broker,
             contract=contract,
-            resource_ceilings=pilot_budget(),
+            resource_ceilings=_resource_ceilings or pilot_budget(),
             guard_context=_guard_context or pilot_guard_context(),
         )
         self.store_audit_port = experiment_store_audit_port(self.store)

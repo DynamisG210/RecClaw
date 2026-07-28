@@ -13,6 +13,7 @@ from .contracts import (
     ArmCode,
     ArmPolicyV1,
     MetaPolicyModeV1,
+    ResourceCeilingsV1,
     default_experiment_contract,
 )
 from .meta_vnext_campaign import (
@@ -121,6 +122,7 @@ class MetaV17PilotOrchestratorV1(RealPilotOrchestratorV1):
         _assignment_nonce: str | None = None,
         _guard_context: GuardContext | None = None,
         _training_runner_abi: str = TRAINING_RUNNER_ABI,
+        _resource_ceilings: ResourceCeilingsV1 | None = None,
     ) -> None:
         if broker.campaign_meta_runtime is not meta_runtime:
             raise PreCanaryInvariantError(
@@ -140,6 +142,7 @@ class MetaV17PilotOrchestratorV1(RealPilotOrchestratorV1):
             ),
             _guard_context=_guard_context or meta_v17_pilot_guard_context(),
             _training_runner_abi=_training_runner_abi,
+            _resource_ceilings=_resource_ceilings,
         )
         meta_runtime.bind_instances(
             dict(self.assignment.arm_to_instance)
