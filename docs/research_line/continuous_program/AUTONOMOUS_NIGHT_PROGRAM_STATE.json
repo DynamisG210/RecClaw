@@ -1,15 +1,15 @@
 {
-  "active_stage": "V22_SEALED_PRE_OUTCOME_FAILURE_V23_VERSIONED_RECOVERY",
+  "active_stage": "V23_FIVE_ROUND_PILOT_FROZEN_PRE_OUTCOME",
   "active_version": "V23",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "4777807224fe8f6d02fcf27fb385fa8e6dc8f076",
-  "active_contract_digest": "9cb254db5a23656223b8c7092b0443fea5e067ac64d486aae6e942491d187aad",
+  "active_commit": "d658a2eb5880d455a2b36a2b9ef8d4cd08994e57",
+  "active_contract_digest": "d96259271fff6cf8380d0816dff44a2f583d6fc88ef914991dab1a983aa8b08c",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
-  "active_backend_release": "TRAINING_RUNTIME_RELEASE_V14:e540c5934cca0b811400de5f83a5f7ca5e7e4fc691ced9a04ec1fa2fdd8e2431",
+  "active_backend_release": "TRAINING_RUNTIME_RELEASE_V15:58895ab819cbb63f3918ec6830bb60b8ea4ed1e90ec8dd5144da51f410799b0c",
   "active_processes": [],
-  "last_completed_checkpoint": "V22_PRE_OUTCOME_FAILURE_SEALED_NO_PROVIDER_NO_TRAINING",
-  "next_automatic_action": "VERSION_EXPLICIT_GIT_OBJECT_DATABASE_FIX_AND_FREEZE_FRESH_V23_CLOSURE",
+  "last_completed_checkpoint": "V23_RUNTIME_BACKEND_SCIENTIFIC_GATES_PASS_AND_CONTRACT_FROZEN",
+  "next_automatic_action": "VERIFY_FROZEN_V23_AND_LAUNCH_FRESH_FIVE_ROUND_PILOT",
   "round_progress": {
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
@@ -27,12 +27,24 @@
       "started": true,
       "status": "SEALED_PRE_OUTCOME_FAILURE",
       "terminal_arm_rounds": 0
+    },
+    "V23_gpu35_runtime_v15_qualification": {
+      "fixed_canaries_passed": 3,
+      "pinned_original_materialization": "PASS",
+      "profile_and_isolation": "PASS",
+      "runtime_validation": "PASS"
+    },
+    "V23_five_round_pilot": {
+      "rounds_per_arm": 5,
+      "search_seed": 9225,
+      "started": false,
+      "terminal_arm_rounds": 0
     }
   },
   "provider_calls": 12,
-  "training_executions": 6,
+  "training_executions": 9,
   "P0": 0,
-  "P1": 1,
+  "P1": 0,
   "P2": 1,
   "hard_stop": false
 }
