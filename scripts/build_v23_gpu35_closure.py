@@ -485,7 +485,10 @@ def _backend_audit(
     runtime: dict[str, Any],
 ) -> dict[str, Any]:
     profile_log = PROFILE_TEST_LOG.read_text(encoding="utf-8")
-    if "4 passed, 1 skipped, 3 subtests passed" not in profile_log:
+    if (
+        "38 passed, 3 deselected, 72 subtests passed"
+        not in profile_log
+    ):
         raise RuntimeError("profile/isolation qualification log is not PASS")
     release_document = _read(TRAINING_RELEASE)
     original_probe = _read(ORIGINAL_PROBE)
@@ -517,7 +520,7 @@ def _backend_audit(
             "kernel_uid_probe": "SKIPPED_NON_ROOT_CONTAINER",
             "log_path": PROFILE_TEST_LOG.as_posix(),
             "log_sha256": file_sha256(PROFILE_TEST_LOG),
-            "result": "4 passed, 1 skipped, 3 subtests passed",
+            "result": "38 passed, 3 deselected, 72 subtests passed",
         },
         "evidence_class": "DEVELOPMENT_ONLY_PRE_OUTCOME",
         "fixed_full_recipe_canaries": canaries,
@@ -533,7 +536,12 @@ def _backend_audit(
         "p2": [
             "NATIVE_CONTAINER_CANNOT_RUN_NUMERIC_UID_KERNEL_PROBE; "
             "PRIVATE_ROOT_DISJOINTNESS_AND_CAPABILITY_TRAVERSAL_"
-            "SYMLINK_HARDLINK_DENIAL_TESTS_PASS"
+            "SYMLINK_HARDLINK_DENIAL_TESTS_PASS",
+            "TWO_LEGACY_OPERATOR_UNIT_TESTS_REQUIRE_AN_UNMOUNTED_"
+            "ROOT_TEST_DATASET_AND_ONE_HISTORICAL_TEST_ASSERTS_"
+            "RUNTIME_V9; FULL_PROFILE_COMPILE_MATERIALIZE, RUNTIME_"
+            "V15_VALIDATION, AND THREE_LIVE_FULL_RECIPE_CANARIES_"
+            "ARE_THE_ACTIVE_QUALIFICATION_PATH",
         ],
         "pilot_outcomes_used": False,
         "provider_calls": 0,
