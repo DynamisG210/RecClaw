@@ -1,5 +1,5 @@
 {
-  "active_stage": "V23_FIVE_ROUND_PILOT_RUNNING",
+  "active_stage": "V23_REMOTE_TERMINAL_STATE_PENDING_NETWORK_RESTORE",
   "active_version": "V23",
   "active_worktree": "/root/projects/RecClaw_m6i",
   "active_commit": "d658a2eb5880d455a2b36a2b9ef8d4cd08994e57",
@@ -11,11 +11,12 @@
     {
       "host": "gpu35",
       "kind": "run_v23_pilot",
-      "pid_at_start": 79306
+      "pid_at_start": 79306,
+      "status": "UNKNOWN_AFTER_EXPERIMENT_NETWORK_ROUTE_RESET"
     }
   ],
-  "last_completed_checkpoint": "V23_RUNTIME_BACKEND_SCIENTIFIC_GATES_PASS_AND_CONTRACT_FROZEN",
-  "next_automatic_action": "MONITOR_V23_TO_NATURAL_COMPLETION_THEN_RUN_INDEPENDENT_BEHAVIORAL_AUDIT",
+  "last_completed_checkpoint": "V23_LAST_OBSERVED_REMOTE_SNAPSHOT_7_CLOSED_1_OPEN_8_EXECUTION_CLAIMS",
+  "next_automatic_action": "RESTORE_EXISTING_EXPERIMENT_VPN_THEN_READ_ONLY_AUDIT_V23_TERMINAL_STATE_CREDENTIAL_RESIDUE_AND_PROCESSES",
   "round_progress": {
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
@@ -44,7 +45,11 @@
       "rounds_per_arm": 5,
       "search_seed": 9225,
       "started": true,
-      "terminal_arm_rounds": 0
+      "last_observed_closed_rounds": 7,
+      "last_observed_execution_claims": 8,
+      "last_observed_open_rounds": 1,
+      "remote_terminal_state_confirmed": false,
+      "terminal_arm_rounds": 7
     }
   },
   "provider_calls": 12,
