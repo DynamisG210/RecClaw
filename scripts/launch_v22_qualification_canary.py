@@ -80,7 +80,7 @@ def main() -> int:
         raise RuntimeError(f"gpu35 is not idle: {initial}")
 
     result_filename = (
-        f"GPU35_V13_{args.name.upper()}_{args.search_seed}_RESULT.json"
+        f"GPU35_V14_{args.name.upper()}_{args.search_seed}_RESULT.json"
     )
     command = [
         str(python),

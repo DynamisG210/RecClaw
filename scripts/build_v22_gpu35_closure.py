@@ -37,7 +37,7 @@ RESOURCES = (
 V16_REFERENCE = DOCS / "V16_FROZEN_CHAIN_PILOT_CONTRACT.json"
 M6I_EXACT_REPORT = DOCS / "M6I_FINAL_EXACT_100X50_REPORT.json"
 M6I_EXECUTION_RECORD = DOCS / "M6I_FINAL_EXECUTION_RECORD.json"
-MARGIN_POLICY = DOCS / "V22_GPU35_RESOURCE_MARGIN_POLICY.json"
+MARGIN_POLICY = DOCS / "V22_GPU35_RESOURCE_MARGIN_POLICY_V2.json"
 RESOURCE_ENVELOPE = RESOURCES / "pilot_v22_gpu35_resource_envelope.json"
 SOURCE_PROJECTION = (
     DOCS / "V22_V16_SCIENTIFIC_SOURCE_PROJECTION.json"
@@ -61,8 +61,8 @@ DATA_PATH = Path(
     "/NAS2020/Workspaces/DMGroup/tingrangan/"
     "recclaw_v15_backend_v1/search_dataset"
 )
-TRAINING_RELEASE = RESOURCES / "training_runtime_release_v13.json"
-TRAINING_LOCK = RESOURCES / "training_runtime_v13_lock.json"
+TRAINING_RELEASE = RESOURCES / "training_runtime_release_v14.json"
+TRAINING_LOCK = RESOURCES / "training_runtime_v14_lock.json"
 PROFILE_TEST_LOG = BACKEND_ROOT.parent / "V22_PROFILE_AND_ISOLATION_TEST.log"
 GIT_EXECUTABLE = Path(
     "/NAS2020/Workspaces/DMGroup/tingrangan/"
@@ -79,48 +79,45 @@ GIT_CONFIG_HOME = Path(
 GIT_CONFIG = GIT_CONFIG_HOME / "git/config"
 V16_SOURCE_HEAD = "8f7f84a03f3b7ad0fae7444493b8deffc9318671"
 RECORD_SCHEMA = "recclaw.v22-pilot-contract.v1"
-RUNTIME_RELEASE_ID = "TRAINING_RUNTIME_RELEASE_V13"
-RUNTIME_RELEASE_DIGEST = (
-    "331d4d4f99a7594065f174b6cb95af5d930e75fdcd8641de2bd6cad9134d9847"
-)
+RUNTIME_RELEASE_ID = "TRAINING_RUNTIME_RELEASE_V14"
 CANARY_SPECS = (
     (
         "bpr",
         "BPR_MF",
-        9364,
-        "GPU35_V13_BPR_9364_RESULT.json",
+        9367,
+        "GPU35_V14_BPR_9367_RESULT.json",
     ),
     (
         "lightgcn",
         "LIGHTGCN",
-        9365,
-        "GPU35_V13_LIGHTGCN_9365_RESULT.json",
+        9368,
+        "GPU35_V14_LIGHTGCN_9368_RESULT.json",
     ),
     (
         "compositional",
         "LIGHTGCN__LGCN_AUX_ALIGNMENT__LGCN_DUAL_PATH",
-        9366,
-        "GPU35_V13_COMPOSITIONAL_9366_RESULT.json",
+        9369,
+        "GPU35_V14_COMPOSITIONAL_9369_RESULT.json",
     ),
 )
 V22_OVERLAY_FILES = (
     "docs/research_line/continuous_program/"
-    "V22_GPU35_RESOURCE_MARGIN_POLICY.json",
+    "V22_GPU35_RESOURCE_MARGIN_POLICY_V2.json",
     "scripts/build_v22_gpu35_closure.py",
-    "scripts/freeze_campaign_training_runtime_release_v13.py",
+    "scripts/freeze_campaign_training_runtime_release_v14.py",
     "scripts/launch_v22_qualification_canary.py",
     "scripts/run_v22_full_recipe_canary.py",
     "scripts/run_v22_pilot.py",
-    "scripts/validate_campaign_training_runtime_v13.py",
+    "scripts/validate_campaign_training_runtime_v14.py",
     "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v22.py",
     "src/recclaw_core/experiments/helix_abc_v1/real_pilot.py",
     "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_pilot.py",
     "src/recclaw_core/experiments/helix_abc_v1/resources/"
     "pilot_v22_gpu35_resource_envelope.json",
     "src/recclaw_core/experiments/helix_abc_v1/resources/"
-    "training_runtime_release_v13.json",
+    "training_runtime_release_v14.json",
     "src/recclaw_core/experiments/helix_abc_v1/resources/"
-    "training_runtime_v13_lock.json",
+    "training_runtime_v14_lock.json",
 )
 
 
@@ -133,6 +130,14 @@ def _read(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RuntimeError(f"expected JSON object: {path}")
     return value
+
+
+def _runtime_release_digest() -> str:
+    from recclaw_core.experiments.helix_abc_v1.training_runtime_contracts import (
+        TrainingRuntimeReleaseV3,
+    )
+
+    return TrainingRuntimeReleaseV3(_read(TRAINING_RELEASE)).digest
 
 
 def _write(path: Path, value: dict[str, Any]) -> None:
@@ -222,7 +227,7 @@ def _canary_records() -> list[dict[str, Any]]:
             or result["campaign_mechanism_id"] != mechanism_id
             or int(result["search_seed"]) != seed
             or result["runtime_release_digest"]
-            != RUNTIME_RELEASE_DIGEST
+            != _runtime_release_digest()
         ):
             raise RuntimeError(f"qualification canary failed: {name}")
         records.append(
@@ -380,7 +385,7 @@ def _source_projection(
     projection = {
         "allowed_v16_byte_difference": {
             runtime_binding: (
-                "active Campaign runtime resource binding V9 -> V13"
+                "active Campaign runtime resource binding V9 -> V14"
             ),
             "M6I_QUALIFIED_SOURCE_PROJECTION": (
                 "canonical integrated state, call identity, ownership, "
@@ -438,11 +443,11 @@ def _runtime_audit(
     )
     if (
         release.release_id != RUNTIME_RELEASE_ID
-        or release.digest != RUNTIME_RELEASE_DIGEST
+        or release.digest != _runtime_release_digest()
         or failures
     ):
         raise RuntimeError(
-            f"Runtime V13 validation failed: {tuple(failures)}"
+            f"Runtime V14 validation failed: {tuple(failures)}"
         )
     audit = {
         "authority": "NONE",
@@ -719,7 +724,7 @@ def _build_contract(
         "scientific_source_projection_digest": source_projection[
             "projection_digest"
         ],
-        "to_backend": "gpu35 RTX 3080 Runtime V13",
+        "to_backend": "gpu35 RTX 3080 Runtime V14",
     }
     source_head = _git_head()
     payload["source"] = {
@@ -766,7 +771,7 @@ def verify_v22_pilot_contract(path: Path) -> dict[str, Any]:
         or gate["p1"] != 0
         or projection["scientific_treatment_bytes_preserved"]
         is not True
-        or runtime["release_digest"] != RUNTIME_RELEASE_DIGEST
+        or runtime["release_digest"] != _runtime_release_digest()
         or backend["resource_envelope_digest"]
         != envelope["resource_envelope_digest"]
     ):
