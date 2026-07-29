@@ -34,6 +34,7 @@ from .canary_broker import (
     CanaryBrokerCallV1,
     CanaryBrokerError,
     CodexCliCanaryBrokerV1,
+    PostProviderSemanticRejectionV1,
     original_canary_prompt,
     research_canary_prompt,
 )
@@ -47,8 +48,11 @@ from .contracts import (
 from .controllers import OriginalControllerV1, OriginalRuntimeAdapterV1
 from .integrated_state_core import (
     ArmOwnerTokenV1,
+    CanonicalParentBindingV1,
     CallSharingPolicyV1,
     CallSharingRegistryV1,
+    CallSharingViolation,
+    ParentBindingPolicyV1,
     ProviderRequestContextV1,
 )
 from .original_main import PinnedOriginalMainAdapterV1
@@ -242,7 +246,12 @@ class RealCanaryProposalBrokerV1:
     _research_calls: dict[str, tuple[CanaryBrokerCallV1, ...]]
     _search_feedback: dict[ArmCode, Mapping[str, Any]]
     _campaign_call_scopes: dict[str, tuple[str, ...]]
+    _parent_binding_by_consumer: dict[str, CanonicalParentBindingV1]
     _research_session_wall_ms: dict[str, int]
+    _provider_calls_by_round: dict[
+        tuple[ArmCode, int, int], tuple[CanaryBrokerCallV1, ...]
+    ]
+    _provider_wall_time_by_round: dict[tuple[ArmCode, int, int], int]
     lineage_indexes: dict[ArmCode, LineageIndexV1]
     original_controller: Any
     _call_registry: CallSharingRegistryV1
@@ -304,7 +313,10 @@ class RealCanaryProposalBrokerV1:
             _research_calls={},
             _search_feedback={},
             _campaign_call_scopes={},
+            _parent_binding_by_consumer={},
             _research_session_wall_ms={},
+            _provider_calls_by_round={},
+            _provider_wall_time_by_round={},
             lineage_indexes={
                 ArmCode.A: LineageIndexV1(),
                 ArmCode.B: LineageIndexV1(),
@@ -550,6 +562,51 @@ class RealCanaryProposalBrokerV1:
     def call_sharing_audit(self) -> dict[str, Any]:
         return self._call_registry.audit_projection()
 
+    def _record_provider_usage(
+        self,
+        *,
+        arm: ArmCode,
+        search_seed: int,
+        round_index: int,
+        calls: Sequence[CanaryBrokerCallV1],
+        wall_time_ms: int,
+    ) -> None:
+        key = (arm, int(search_seed), int(round_index))
+        self._provider_calls_by_round[key] = tuple(calls)
+        self._provider_wall_time_by_round[key] = max(
+            int(wall_time_ms),
+            max((item.latency_ms for item in calls), default=0),
+        )
+
+    def provider_usage_for_round(
+        self,
+        *,
+        arm: ArmCode,
+        search_seed: int,
+        round_index: int,
+    ) -> dict[str, Any]:
+        key = (arm, int(search_seed), int(round_index))
+        calls = self._provider_calls_by_round.get(key, ())
+        return canonical_value(
+            {
+                "billed_tokens": sum(item.total_tokens for item in calls),
+                "call_latencies_ms": [item.latency_ms for item in calls],
+                "input_tokens": sum(item.input_tokens for item in calls),
+                "output_tokens": sum(item.output_tokens for item in calls),
+                "physical_call_count": len(calls),
+                "proposal_count": sum(
+                    len(tuple(item.response.get("proposals", ())))
+                    for item in calls
+                ),
+                "response_digests": [
+                    item.response_digest for item in calls
+                ],
+                "wall_time_ms": self._provider_wall_time_by_round.get(
+                    key, 0
+                ),
+            }
+        )
+
     def register_execution_candidate_instance(
         self,
         *,
@@ -780,10 +837,6 @@ class RealCanaryProposalBrokerV1:
                     "producer_role": role,
                     "versioned_policy_digest": controller.policy.digest,
                 }
-                if exact_parent is not None:
-                    directive["exact_parent_candidate_id"] = (
-                        exact_parent.proposal_candidate_id
-                    )
                 if meta_directive is not None:
                     directive["learned_axis_score"] = (
                         meta_directive.learned_axis_score
@@ -886,6 +939,18 @@ class RealCanaryProposalBrokerV1:
                     str(item["mechanism_id"])
                     for item in catalog["mechanisms"]
                 )
+                self._parent_binding_by_consumer[logical_call_id] = (
+                    CanonicalParentBindingV1(
+                        policy=ParentBindingPolicyV1(
+                            str(directive["parent_policy"])
+                        ),
+                        runtime_parent_candidate_id=(
+                            exact_parent.proposal_candidate_id
+                            if exact_parent is not None
+                            else None
+                        ),
+                    )
+                )
                 try:
                     call = self._upstream_call(
                         logical_call_id=logical_call_id,
@@ -920,10 +985,33 @@ class RealCanaryProposalBrokerV1:
                     )
                     raise
                 calls.append(call)
+                self._record_provider_usage(
+                    arm=arm,
+                    search_seed=search_seed,
+                    round_index=round_index,
+                    calls=calls,
+                    wall_time_ms=max(
+                        0,
+                        int(
+                            (
+                                time.monotonic_ns()
+                                - session_started_ns
+                            )
+                            / 1_000_000
+                        ),
+                    ),
+                )
             self._research_calls[key] = tuple(calls)
             self._research_session_wall_ms[key] = max(
                 0,
                 int((time.monotonic_ns() - session_started_ns) / 1_000_000),
+            )
+            self._record_provider_usage(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                calls=calls,
+                wall_time_ms=self._research_session_wall_ms[key],
             )
         return self._research_calls[key]
 
@@ -1255,6 +1343,64 @@ class RealCanaryProposalBrokerV1:
                 else DiscoveryCreditV1.DISCOVERY
             )
         )
+        lineage = self.lineage_indexes[arm]
+        if self.v13_mode:
+            binding = self._parent_binding_by_consumer.get(
+                call.logical_call_id
+            )
+            if binding is None:
+                expected_parent = (
+                    lineage.latest_success()
+                    if role == "lineage_refiner"
+                    else None
+                )
+                binding = CanonicalParentBindingV1(
+                    policy=(
+                        ParentBindingPolicyV1.REQUIRE_EXACT_PRIOR_PARENT
+                        if expected_parent is not None
+                        else ParentBindingPolicyV1.EXPLICIT_ROOT_REQUEST
+                        if role == "lineage_refiner"
+                        else ParentBindingPolicyV1.OPTIONAL
+                    ),
+                    runtime_parent_candidate_id=(
+                        expected_parent.proposal_candidate_id
+                        if expected_parent is not None
+                        else None
+                    ),
+                )
+        else:
+            binding = CanonicalParentBindingV1(
+                policy=ParentBindingPolicyV1.OPTIONAL,
+                runtime_parent_candidate_id=None,
+            )
+        parent_candidate_id = self._call_registry.resolve_candidate_parent(
+            owner=self._owner(arm),
+            binding=binding,
+            provider_parent_candidate_id=proposal.get(
+                "parent_candidate_id"
+            ),
+        )
+        parent = (
+            lineage.latest_for_candidate(str(parent_candidate_id))
+            if parent_candidate_id is not None
+            else None
+        )
+        if self.v13_mode and parent_candidate_id is not None and parent is None:
+            raise PreCanaryInvariantError(
+                "runtime-bound Research parent is absent from exact lineage"
+            )
+        if self.v13_mode and role == "lineage_refiner":
+            expected_parent = lineage.latest_success()
+            if expected_parent is None and parent_candidate_id is not None:
+                raise PreCanaryInvariantError(
+                    "root lineage request cannot bind a parent"
+                )
+            if expected_parent is not None and str(parent_candidate_id) != (
+                expected_parent.proposal_candidate_id
+            ):
+                raise PreCanaryInvariantError(
+                    "lineage_refiner did not bind its exact prior parent"
+                )
         candidate_instance = self._call_registry.register_candidate(
             owner=self._owner(arm),
             round_index=round_index,
@@ -1262,9 +1408,7 @@ class RealCanaryProposalBrokerV1:
             semantic_program_digest=str(
                 compiled.mechanism_semantics_digest
             ),
-            local_parent_or_task_identity=proposal.get(
-                "parent_candidate_id"
-            ),
+            local_parent_or_task_identity=parent_candidate_id,
         )
         proposal_candidate_id = candidate_instance.value
         if not self.v13_mode:
@@ -1298,35 +1442,10 @@ class RealCanaryProposalBrokerV1:
                     cost=cost,
                     blocker_risk=0.05,
                 ),
-                parent_candidate_id=proposal.get(
-                    "parent_candidate_id"
-                ),
+                parent_candidate_id=parent_candidate_id,
                 assigned_before_call=True,
                 post_hoc_relabel=False,
             )
-        lineage = self.lineage_indexes[arm]
-        parent_candidate_id = proposal.get("parent_candidate_id")
-        parent = (
-            lineage.latest_for_candidate(str(parent_candidate_id))
-            if parent_candidate_id is not None
-            else None
-        )
-        if parent_candidate_id is not None and parent is None:
-            raise PreCanaryInvariantError(
-                "declared Research parent is absent from exact lineage"
-            )
-        if role == "lineage_refiner":
-            expected_parent = lineage.latest_success()
-            if expected_parent is None and parent_candidate_id is not None:
-                raise PreCanaryInvariantError(
-                    "root lineage request cannot declare a missing parent"
-                )
-            if expected_parent is not None and str(parent_candidate_id) != (
-                expected_parent.proposal_candidate_id
-            ):
-                raise PreCanaryInvariantError(
-                    "lineage_refiner did not use its exact prior parent"
-                )
         diagnostic = SearchUtilityFeaturesV1(
             runnable_probability=float(
                 utility.get("runnable_probability", 0.5)
@@ -1635,36 +1754,58 @@ class RealCanaryProposalBrokerV1:
                         ),
                     ),
                 )
-                raw_proposals = tuple(
-                    {
-                        **dict(item),
-                        "mechanism_id": str(
-                            execution_recipe_for_program(
-                                campaign_program_from_proposal(item)
-                            )["mechanism_id"]
-                        ),
-                    }
-                    for item in call.response["proposals"]
-                )
-                if len(
-                    {
-                        str(item["mechanism_id"])
-                        for item in raw_proposals
-                    }
-                ) != len(raw_proposals):
-                    raise PreCanaryInvariantError(
-                        "Original refresh contains duplicate mechanisms"
-                    )
-                self.original_controller.install_proposals(
+                self._record_provider_usage(
+                    arm=arm,
+                    search_seed=search_seed,
                     round_index=round_index,
-                    proposals=tuple(
+                    calls=(call,),
+                    wall_time_ms=call.latency_ms,
+                )
+                try:
+                    raw_proposals = tuple(
                         {
                             **dict(item),
-                            "mechanism_program": campaign_program_from_proposal(item),
+                            "mechanism_id": str(
+                                execution_recipe_for_program(
+                                    campaign_program_from_proposal(item)
+                                )["mechanism_id"]
+                            ),
                         }
-                        for item in raw_proposals
-                    ),
-                )
+                        for item in call.response["proposals"]
+                    )
+                    if len(
+                        {
+                            str(item["mechanism_id"])
+                            for item in raw_proposals
+                        }
+                    ) != len(raw_proposals):
+                        raise PreCanaryInvariantError(
+                            "Original refresh contains duplicate mechanisms"
+                        )
+                    self.original_controller.install_proposals(
+                        round_index=round_index,
+                        proposals=tuple(
+                            {
+                                **dict(item),
+                                "mechanism_program": (
+                                    campaign_program_from_proposal(item)
+                                ),
+                            }
+                            for item in raw_proposals
+                        ),
+                    )
+                except (
+                    CallSharingViolation,
+                    CampaignRuntimeError,
+                    PreCanaryInvariantError,
+                    ValueError,
+                ) as error:
+                    raise PostProviderSemanticRejectionV1(
+                        failure_class=(
+                            "ORIGINAL_RESPONSE_SEMANTIC_REJECTION"
+                        ),
+                        cause=error,
+                    ) from error
             cached = self.original_controller.cached_proposals
             programs = tuple(
                 dict(item["mechanism_program"]) for item in cached
@@ -1706,13 +1847,24 @@ class RealCanaryProposalBrokerV1:
             search_seed=search_seed,
             ceilings=ceilings,
         )
-        session = self._typed_research_session(
-            arm=arm,
-            round_index=round_index,
-            search_seed=search_seed,
-            ceilings=ceilings,
-            calls=calls,
-        )
+        try:
+            session = self._typed_research_session(
+                arm=arm,
+                round_index=round_index,
+                search_seed=search_seed,
+                ceilings=ceilings,
+                calls=calls,
+            )
+        except (
+            CallSharingViolation,
+            CampaignRuntimeError,
+            PreCanaryInvariantError,
+            ValueError,
+        ) as error:
+            raise PostProviderSemanticRejectionV1(
+                failure_class="RESEARCH_RESPONSE_SEMANTIC_REJECTION",
+                cause=error,
+            ) from error
         return FakeProposalSessionV1(
             validation_programs=tuple(
                 item.mechanism_program for item in session.proposals

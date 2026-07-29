@@ -1,0 +1,30 @@
+{
+  "fixture_schema": "recclaw.v23-provider-response-regression.v1",
+  "logical_call_id": "campaign-v23-research-consumer-logical-v1:9ac1d6abe40d79a89cd5c7a3bfcf8cfe34cc0d4cb3e1172c073ce1c8685afecb-lineage_refiner",
+  "response_digest": "e29d1c221ae3affa4d49a5966b36d0db274d11ea503d371e0240b77d43a3f2aa",
+  "response": {
+    "proposals": [
+      {
+        "candidate_label": "bpr_mf_soft_norm_constraint",
+        "competing_hypothesis": "If BPR_MF ranking quality is limited by uncontrolled embedding magnitude rather than by popularity-biased score geometry, then adding a soft norm constraint should improve or stabilize NDCG@10 more cleanly than popularity-sensitive regularization.",
+        "composition": {
+          "base_mechanism_id": "BPR_MF",
+          "primary_operator_id": "BPR_NORM_CONSTRAINT",
+          "secondary_operator_id": null
+        },
+        "failure_mode": "The soft norm constraint may over-compress user/item embeddings, reducing score separation and hurting top-rank discrimination if baseline capacity was already well-calibrated.",
+        "mechanism_hypothesis": "Applying a soft embedding norm constraint to BPR_MF changes only representation geometry, testing whether tighter control of latent vector scale improves generalization under full-sort evaluation without altering the pairwise objective itself.",
+        "mechanism_id": "BPR_MF__BPR_NORM_CONSTRAINT",
+        "original_priority": null,
+        "parent_candidate_id": "cand-1b8e552d7879c18ef420544c",
+        "predicted_outcome_signature": "Relative to BPR_MF, expect modest but consistent movement in NDCG@10 with reduced variance across runs; gains should appear as cleaner top-10 ordering rather than popularity-skewed shifts in item exposure.",
+        "proposal_intent": "DISCOVERY",
+        "utility_features": {
+          "frontier_potential": 0.62,
+          "information_gain": 0.79,
+          "useful_signal": 0.76
+        }
+      }
+    ]
+  }
+}

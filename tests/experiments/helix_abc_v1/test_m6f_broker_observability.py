@@ -846,6 +846,77 @@ class BrokerFailureClosureAndAuditTests(unittest.TestCase):
         with self.assertRaises(IdempotencyConflict):
             close_broker_failure(**{**args, "outcome": changed})
 
+    def test_failure_closure_preserves_overage_but_caps_allocation_ledger(
+        self,
+    ):
+        opened = self.store.open_round(
+            OpenRoundCommand(
+                experiment_id=self.contract.experiment_id,
+                arm_instance_id=self.arm_ids[ArmCode.A],
+                arm_code=ArmCode.A,
+                search_seed=42,
+                round_index=1,
+                budget_snapshot=self.budget,
+                controller_state_before_digest=self.genesis,
+                idempotency_key="m6f:overage:open",
+            )
+        )
+        receipt, outcome = self.failure_records()
+        closure = close_broker_failure(
+            store=self.store,
+            experiment_id=self.contract.experiment_id,
+            search_seed=42,
+            round_index=1,
+            round_id=opened["round_id"],
+            controller_state_digest=self.genesis,
+            ceilings=self.budget,
+            receipt=receipt,
+            outcome=outcome,
+            physical_call_count=1,
+            input_tokens=120,
+            output_tokens=130,
+            billed_tokens=250,
+            wall_time_ms=11_000,
+            stop_campaign=False,
+        )
+        self.assertEqual(closure.input_token_debit, 120)
+        self.assertEqual(closure.output_token_debit, 130)
+        self.assertEqual(closure.billed_token_debit, 250)
+        self.assertEqual(closure.wall_time_ms, 11_000)
+        self.assertEqual(closure.input_token_allocation_debit, 100)
+        self.assertEqual(closure.output_token_allocation_debit, 100)
+        self.assertEqual(closure.billed_token_allocation_debit, 200)
+        self.assertEqual(
+            closure.wall_time_allocation_debit_ms, 10_000
+        )
+        self.assertEqual(
+            closure.allocation_ceiling_exceeded,
+            (
+                "BILLED_TOKEN_DEBIT",
+                "INPUT_TOKEN",
+                "OUTPUT_TOKEN",
+                "WALL_TIME_MS",
+            ),
+        )
+        ledger = dict(
+            self.store._connection.execute(
+                """
+                SELECT dimension, SUM(quantity)
+                FROM resource_ledger
+                WHERE round_id = ?
+                GROUP BY dimension
+                """,
+                (opened["round_id"],),
+            ).fetchall()
+        )
+        self.assertEqual(ledger["INPUT_TOKEN"], 100)
+        self.assertEqual(ledger["OUTPUT_TOKEN"], 100)
+        self.assertEqual(ledger["BILLED_TOKEN_DEBIT"], 200)
+        self.assertEqual(ledger["WALL_TIME_MS"], 10_000)
+        self.assertEqual(
+            self.store.get_round(opened["round_id"])["status"], "CLOSED"
+        )
+
     def test_orchestrator_process_failure_closes_before_guard_or_execution(self):
         receipt, outcome = self.failure_records()
 

@@ -14,12 +14,14 @@ from recclaw_core.experiments.helix_abc_v1.compilation_cache import (
 )
 from recclaw_core.experiments.helix_abc_v1.contracts import ArmCode
 from recclaw_core.experiments.helix_abc_v1.integrated_state_core import (
+    CanonicalParentBindingV1,
     CallSharingPolicyV1,
     CallSharingRegistryV1,
     CallSharingViolation,
     IntegratedCampaignStateCoreV1,
     ObservationPathV1,
     OwnershipViolation,
+    ParentBindingPolicyV1,
     ProposalSourceV1,
     ProviderRequestContextV1,
     RoundStateV1,
@@ -352,6 +354,113 @@ class M6IIdentityAndSharingTest(unittest.TestCase):
                 semantic_program_digest=digest("child"),
                 local_parent_or_task_identity=parent.value,
             )
+
+    def test_runtime_owned_parent_binding_covers_all_policies(self) -> None:
+        registry = CallSharingRegistryV1()
+        parent = registry.register_candidate(
+            owner=self.b,
+            round_index=1,
+            producer_role="mechanism_composer",
+            semantic_program_digest=digest("local-parent"),
+            local_parent_or_task_identity=None,
+        )
+        root = registry.resolve_candidate_parent(
+            owner=self.b,
+            binding=CanonicalParentBindingV1(
+                policy=ParentBindingPolicyV1.EXPLICIT_ROOT_REQUEST,
+                runtime_parent_candidate_id=None,
+            ),
+            provider_parent_candidate_id=None,
+        )
+        optional = registry.resolve_candidate_parent(
+            owner=self.b,
+            binding=CanonicalParentBindingV1(
+                policy=ParentBindingPolicyV1.OPTIONAL,
+                runtime_parent_candidate_id=parent.value,
+            ),
+            provider_parent_candidate_id=None,
+        )
+        exact = registry.resolve_candidate_parent(
+            owner=self.b,
+            binding=CanonicalParentBindingV1(
+                policy=ParentBindingPolicyV1.REQUIRE_EXACT_PRIOR_PARENT,
+                runtime_parent_candidate_id=parent.value,
+            ),
+            provider_parent_candidate_id=None,
+        )
+        self.assertIsNone(root)
+        self.assertEqual(optional, parent.value)
+        self.assertEqual(exact, parent.value)
+
+    def test_parent_binding_rejections_do_not_mutate_identity_registry(self) -> None:
+        registry = CallSharingRegistryV1()
+        foreign = registry.register_candidate(
+            owner=self.c,
+            round_index=1,
+            producer_role="mechanism_composer",
+            semantic_program_digest=digest("foreign-parent"),
+            local_parent_or_task_identity=None,
+        )
+        before = registry.audit_projection()
+        cases = (
+            (
+                CanonicalParentBindingV1(
+                    policy=ParentBindingPolicyV1.REQUIRE_EXACT_PRIOR_PARENT,
+                    runtime_parent_candidate_id=None,
+                ),
+                None,
+                "requires a runtime parent",
+            ),
+            (
+                CanonicalParentBindingV1(
+                    policy=ParentBindingPolicyV1.OPTIONAL,
+                    runtime_parent_candidate_id="cand-" + "0" * 64,
+                ),
+                None,
+                "absent from the candidate registry",
+            ),
+            (
+                CanonicalParentBindingV1(
+                    policy=ParentBindingPolicyV1.OPTIONAL,
+                    runtime_parent_candidate_id=foreign.value,
+                ),
+                None,
+                "foreign Arm",
+            ),
+            (
+                CanonicalParentBindingV1(
+                    policy=ParentBindingPolicyV1.REQUIRE_EXACT_PRIOR_PARENT,
+                    runtime_parent_candidate_id=foreign.value,
+                ),
+                "cand-1b8e552d7879c18ef420544c",
+                "Provider-authored",
+            ),
+        )
+        for binding, provider_parent, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(CallSharingViolation, message):
+                    registry.resolve_candidate_parent(
+                        owner=self.b,
+                        binding=binding,
+                        provider_parent_candidate_id=provider_parent,
+                    )
+                self.assertEqual(registry.audit_projection(), before)
+
+    def test_absent_candidate_parent_cannot_register_a_child(self) -> None:
+        registry = CallSharingRegistryV1()
+        before = registry.audit_projection()
+        with self.assertRaisesRegex(
+            CallSharingViolation,
+            "absent candidate parent",
+        ):
+            registry.register_candidate(
+                owner=self.b,
+                round_index=2,
+                producer_role="lineage_refiner",
+                semantic_program_digest=digest("child"),
+                local_parent_or_task_identity="cand-" + "0" * 64,
+            )
+        self.assertEqual(registry.audit_projection(), before)
 
 
 class M6ICommonImmutableCompilationTest(unittest.TestCase):

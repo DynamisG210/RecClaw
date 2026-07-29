@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import copy
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
+
+import jsonschema
 
 from recclaw_core.helix.contracts import CandidateEnvelope
 from recclaw_core.helix.scientific_attribution import (
@@ -28,6 +32,11 @@ from recclaw_core.experiments.helix_abc_v1.canary_broker import (
 )
 from recclaw_core.experiments.helix_abc_v1.canonical import sha256_digest
 from recclaw_core.experiments.helix_abc_v1.contracts import ArmCode
+from recclaw_core.experiments.helix_abc_v1.integrated_state_core import (
+    CanonicalParentBindingV1,
+    CallSharingViolation,
+    ParentBindingPolicyV1,
+)
 from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (
     ThreeArmPreCanaryOrchestratorV1,
 )
@@ -58,6 +67,21 @@ ROOT = Path(__file__).resolve().parents[3]
 TEMPLATES = (
     ROOT / "tests" / "fixtures" / "bl_icf_anchor_programs_v1.json"
 )
+V23_TRUNCATED_PARENT = (
+    ROOT
+    / "tests"
+    / "fixtures"
+    / "v23_lineage_refiner_truncated_parent_response.json"
+)
+PROVIDER_SCHEMA_V2 = (
+    ROOT
+    / "src"
+    / "recclaw_core"
+    / "experiments"
+    / "helix_abc_v1"
+    / "resources"
+    / "campaign_proposal_response_v2.schema.json"
+)
 PROTOCOL_DIGEST = str(
     campaign_runtime_profile()["development_protocol_digest"]
 )
@@ -76,6 +100,7 @@ class _ScopedFakeUpstream:
 
     def __init__(self) -> None:
         self.broker: RealCanaryProposalBrokerV1 | None = None
+        self.prompts: dict[str, str] = {}
 
     def call(
         self,
@@ -86,6 +111,7 @@ class _ScopedFakeUpstream:
         **_kwargs,
     ) -> CanaryBrokerCallV1:
         assert self.broker is not None
+        self.prompts[logical_call_id] = prompt
         if "original-" in logical_call_id:
             proposals = [
                 {
@@ -473,12 +499,21 @@ class V13ResearchScienceTest(unittest.TestCase):
 
     def test_lineage_refiner_requires_exact_prior_parent(self) -> None:
         broker = self.broker()
-        parent = lineage_record()
+        mechanism = executable_mechanism("LIGHTGCN")
+        parent_instance = broker._call_registry.register_candidate(
+            owner=broker._owner(ArmCode.B),
+            round_index=1,
+            producer_role="mechanism_composer",
+            semantic_program_digest=mechanism.mechanism_semantics_digest,
+            local_parent_or_task_identity=None,
+        )
+        parent = lineage_record(
+            proposal_candidate_id=parent_instance.value,
+        )
         broker.lineage_indexes[ArmCode.B].record(parent)
         raw = raw_proposal(
             mechanism_id="LIGHTGCN_RESIDUAL",
             intent="DISCOVERY",
-            parent_candidate_id=parent.proposal_candidate_id,
         )
         proposal = broker._proposal_from_call(
             arm=ArmCode.B,
@@ -491,22 +526,124 @@ class V13ResearchScienceTest(unittest.TestCase):
             proposal.parent_candidate_id,
             parent.proposal_candidate_id,
         )
-        missing = raw_proposal(
+        child = next(
+            item
+            for item in broker.call_sharing_audit()["records"]
+            if item.get("candidate", {}).get("value")
+            == proposal.candidate_id
+        )
+        self.assertEqual(
+            child["candidate"]["local_parent_or_task_identity"],
+            parent.proposal_candidate_id,
+        )
+
+    def test_root_lineage_refiner_binds_no_parent(self) -> None:
+        broker = self.broker()
+        raw = raw_proposal(
             mechanism_id="LIGHTGCN_RESIDUAL",
             intent="DISCOVERY",
-            parent_candidate_id="cand-missing000000000000000",
         )
+        proposal = broker._proposal_from_call(
+            arm=ArmCode.B,
+            session_id="session",
+            role="lineage_refiner",
+            call=call(raw, "root-parent"),
+            proposal=raw,
+        )
+        self.assertIsNone(proposal.parent_candidate_id)
+
+    def test_v23_truncated_provider_parent_is_rejected_without_mutation(
+        self,
+    ) -> None:
+        broker = self.broker()
+        fixture = json.loads(
+            V23_TRUNCATED_PARENT.read_text(encoding="utf-8")
+        )
+        raw = fixture["response"]["proposals"][0]
+        before = broker.call_sharing_audit()
         with self.assertRaisesRegex(
-            Exception,
-            "absent from exact lineage",
+            CallSharingViolation,
+            "Provider-authored",
         ):
             broker._proposal_from_call(
                 arm=ArmCode.B,
                 session_id="session",
                 role="lineage_refiner",
-                call=call(missing, "missing-parent"),
-                proposal=missing,
+                call=call(raw, "v23-truncated-parent"),
+                proposal=raw,
             )
+        self.assertEqual(broker.call_sharing_audit(), before)
+
+    def test_provider_schema_v2_accepts_only_runtime_unbound_parent(self) -> None:
+        fixture = json.loads(
+            V23_TRUNCATED_PARENT.read_text(encoding="utf-8")
+        )
+        response = fixture["response"]
+        schema = json.loads(PROVIDER_SCHEMA_V2.read_text(encoding="utf-8"))
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.validate(response, schema)
+        valid = copy.deepcopy(response)
+        valid["proposals"][0]["parent_candidate_id"] = None
+        jsonschema.validate(valid, schema)
+
+    def test_exact_parent_is_absent_from_provider_prompt_and_bound_context(
+        self,
+    ) -> None:
+        upstream = _ScopedFakeUpstream()
+        broker = RealCanaryProposalBrokerV1.create_v13(
+            upstream=upstream,
+            template_path=TEMPLATES,
+            repository_root=ROOT,
+            search_seed=9303,
+        )
+        upstream.broker = broker
+        broker.bind_arm_instances(
+            experiment_id="V24-PARENT-PROMPT-UNIT",
+            arm_to_instance={
+                ArmCode.A: "opaque-a",
+                ArmCode.B: "opaque-b",
+                ArmCode.C: "opaque-c",
+            },
+        )
+        parent_mechanism = executable_mechanism("LIGHTGCN")
+        parent_instance = broker._call_registry.register_candidate(
+            owner=broker._owner(ArmCode.B),
+            round_index=1,
+            producer_role="mechanism_composer",
+            semantic_program_digest=(
+                parent_mechanism.mechanism_semantics_digest
+            ),
+            local_parent_or_task_identity=None,
+        )
+        parent = lineage_record(
+            proposal_candidate_id=parent_instance.value,
+        )
+        broker.lineage_indexes[ArmCode.B].record(parent)
+        calls = broker._research_upstream_calls(
+            arm=ArmCode.B,
+            round_index=2,
+            search_seed=9303,
+            ceilings=canary_budget(),
+        )
+        lineage_call = next(
+            item
+            for item in calls
+            if item.logical_call_id.endswith("-lineage_refiner")
+        )
+        prompt = upstream.prompts[lineage_call.logical_call_id]
+        binding = broker._parent_binding_by_consumer[
+            lineage_call.logical_call_id
+        ]
+        self.assertNotIn(parent.proposal_candidate_id, prompt)
+        self.assertNotIn("exact_parent_candidate_id", prompt)
+        self.assertEqual(
+            binding.policy,
+            ParentBindingPolicyV1.REQUIRE_EXACT_PRIOR_PARENT,
+        )
+        self.assertEqual(
+            binding.runtime_parent_candidate_id,
+            parent.proposal_candidate_id,
+        )
 
     def test_router_utility_floor_is_an_enforced_hard_gate(self) -> None:
         program = program_from_proposal({"mechanism_id": "LIGHTGCN"})
@@ -563,18 +700,36 @@ class V13ResearchScienceTest(unittest.TestCase):
 
     def test_belief_credit_requires_exact_matched_comparator(self) -> None:
         broker = self.broker()
-        parent = lineage_record()
+        parent_mechanism = executable_mechanism("LIGHTGCN")
+        parent_instance = broker._call_registry.register_candidate(
+            owner=broker._owner(ArmCode.B),
+            round_index=1,
+            producer_role="mechanism_composer",
+            semantic_program_digest=(
+                parent_mechanism.mechanism_semantics_digest
+            ),
+            local_parent_or_task_identity=None,
+        )
+        parent = lineage_record(
+            proposal_candidate_id=parent_instance.value,
+        )
         broker.lineage_indexes[ArmCode.B].record(parent)
         raw = raw_proposal(
             mechanism_id="LIGHTGCN_AUX_ALIGNMENT",
             intent="FALSIFICATION",
-            parent_candidate_id=parent.proposal_candidate_id,
+        )
+        matched_call = call(raw, "matched")
+        broker._parent_binding_by_consumer[matched_call.logical_call_id] = (
+            CanonicalParentBindingV1(
+                policy=ParentBindingPolicyV1.OPTIONAL,
+                runtime_parent_candidate_id=parent.proposal_candidate_id,
+            )
         )
         proposal = broker._proposal_from_call(
             arm=ArmCode.B,
             session_id="session",
             role="falsification_designer",
-            call=call(raw, "matched"),
+            call=matched_call,
             proposal=raw,
         )
         program = program_from_proposal(raw)

@@ -40,6 +40,11 @@ class BrokerFailureClosureV1:
     output_token_debit: int
     billed_token_debit: int
     wall_time_ms: int
+    input_token_allocation_debit: int
+    output_token_allocation_debit: int
+    billed_token_allocation_debit: int
+    wall_time_allocation_debit_ms: int
+    allocation_ceiling_exceeded: tuple[str, ...]
     round_terminal_class: str
     feedback_class: str
     stdout_sha256: str
@@ -63,10 +68,62 @@ class BrokerFailureClosureV1:
         output_tokens: int,
         billed_tokens: int,
         wall_time_ms: int,
+        ceilings: ResourceCeilingsV1,
     ) -> "BrokerFailureClosureV1":
         if outcome.status != "PROCESS_FAILURE":
             raise ValueError("Broker failure closure requires a process failure")
+        usage = {
+            "billed_tokens": billed_tokens,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "physical_call_count": physical_call_count,
+            "wall_time_ms": wall_time_ms,
+        }
+        if any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+            for value in usage.values()
+        ):
+            raise ValueError(
+                "Broker failure resource usage must be non-negative integers"
+            )
+        allocation_ceiling_exceeded = tuple(
+            sorted(
+                dimension
+                for dimension, actual, ceiling in (
+                    (
+                        "BILLED_TOKEN_DEBIT",
+                        billed_tokens,
+                        ceilings.total_billed_token_debit,
+                    ),
+                    (
+                        "INPUT_TOKEN",
+                        input_tokens,
+                        ceilings.total_input_tokens,
+                    ),
+                    (
+                        "OUTPUT_TOKEN",
+                        output_tokens,
+                        ceilings.total_output_tokens,
+                    ),
+                    (
+                        "WALL_TIME_MS",
+                        wall_time_ms,
+                        ceilings.wall_time_ms,
+                    ),
+                )
+                if actual > ceiling
+            )
+        )
         payload = {
+            "allocation_ceiling_exceeded": (
+                allocation_ceiling_exceeded
+            ),
+            "billed_token_allocation_debit": min(
+                billed_tokens,
+                ceilings.total_billed_token_debit,
+            ),
             "broker_outcome_digest": outcome.outcome_digest,
             "classifier_rule_id": outcome.classifier_rule_id,
             "execution_claim_present": False,
@@ -79,9 +136,21 @@ class BrokerFailureClosureV1:
             "proposal_response_present": False,
             "physical_call_count": physical_call_count,
             "input_token_debit": input_tokens,
+            "input_token_allocation_debit": min(
+                input_tokens,
+                ceilings.total_input_tokens,
+            ),
             "output_token_debit": output_tokens,
+            "output_token_allocation_debit": min(
+                output_tokens,
+                ceilings.total_output_tokens,
+            ),
             "billed_token_debit": billed_tokens,
             "wall_time_ms": wall_time_ms,
+            "wall_time_allocation_debit_ms": min(
+                wall_time_ms,
+                ceilings.wall_time_ms,
+            ),
             "receipt_digest": receipt.receipt_digest,
             "redacted_excerpt": outcome.redacted_excerpt,
             "refund_applied": False,
@@ -135,6 +204,7 @@ def close_broker_failure(
         output_tokens=output_tokens,
         billed_tokens=billed_tokens,
         wall_time_ms=wall_time_ms,
+        ceilings=ceilings,
     )
     artifact_path = (
         "broker_failures/"
@@ -178,13 +248,25 @@ def close_broker_failure(
             ResourceDebitV1(
                 "PROPOSAL_ATTEMPT", ceilings.proposal_attempt_debit
             ),
-            ResourceDebitV1("INPUT_TOKEN", input_tokens),
-            ResourceDebitV1("OUTPUT_TOKEN", output_tokens),
-            ResourceDebitV1("BILLED_TOKEN_DEBIT", billed_tokens),
+            ResourceDebitV1(
+                "INPUT_TOKEN",
+                closure.input_token_allocation_debit,
+            ),
+            ResourceDebitV1(
+                "OUTPUT_TOKEN",
+                closure.output_token_allocation_debit,
+            ),
+            ResourceDebitV1(
+                "BILLED_TOKEN_DEBIT",
+                closure.billed_token_allocation_debit,
+            ),
             ResourceDebitV1("ORDINARY_EXECUTION", 0),
             ResourceDebitV1("GPU_DEVICE_TIME_MS", 0),
             ResourceDebitV1("GPU_COST_MICROUNITS", 0),
-            ResourceDebitV1("WALL_TIME_MS", wall_time_ms),
+            ResourceDebitV1(
+                "WALL_TIME_MS",
+                closure.wall_time_allocation_debit_ms,
+            ),
             ResourceDebitV1("RETRY", 0),
         ),
         idempotency_key=f"m6f:broker-failure-close:{round_id}",

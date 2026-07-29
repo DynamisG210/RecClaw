@@ -46,6 +46,12 @@ class CallSharingPolicyV1(str, Enum):
     COMMON_IMMUTABLE = "COMMON_IMMUTABLE"
 
 
+class ParentBindingPolicyV1(str, Enum):
+    EXPLICIT_ROOT_REQUEST = "EXPLICIT_ROOT_REQUEST"
+    REQUIRE_EXACT_PRIOR_PARENT = "REQUIRE_EXACT_PRIOR_PARENT"
+    OPTIONAL = "OPTIONAL"
+
+
 class RoundStateV1(str, Enum):
     ROUND_READY = "ROUND_READY"
     PROPOSAL_PENDING = "PROPOSAL_PENDING"
@@ -222,6 +228,17 @@ class CandidateInstanceIdV1:
         return canonical_value(self)
 
 
+@dataclass(frozen=True, slots=True)
+class CanonicalParentBindingV1:
+    """Runtime-owned candidate-parent binding for one logical call."""
+
+    policy: ParentBindingPolicyV1
+    runtime_parent_candidate_id: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(self)
+
+
 @dataclass(slots=True)
 class CallSharingRegistryV1:
     """Append-only physical/consumer/candidate identity registry."""
@@ -334,6 +351,10 @@ class CallSharingRegistryV1:
         )
         local_parent = local_parent_or_task_identity or "ROOT"
         known_parent_owner = self._candidate_owners.get(local_parent)
+        if local_parent.startswith("cand-") and known_parent_owner is None:
+            raise CallSharingViolation(
+                "candidate instance references an absent candidate parent"
+            )
         if known_parent_owner is not None and known_parent_owner != owner.digest:
             raise CallSharingViolation(
                 "candidate instance references a foreign Arm parent"
@@ -365,6 +386,48 @@ class CallSharingRegistryV1:
             )
         )
         return candidate
+
+    def resolve_candidate_parent(
+        self,
+        *,
+        owner: ArmOwnerTokenV1,
+        binding: CanonicalParentBindingV1,
+        provider_parent_candidate_id: str | None,
+    ) -> str | None:
+        """Resolve a parent without letting Provider output author identity."""
+
+        if provider_parent_candidate_id is not None:
+            raise CallSharingViolation(
+                "Provider-authored candidate parent identity is forbidden"
+            )
+        runtime_parent = binding.runtime_parent_candidate_id
+        if (
+            binding.policy is ParentBindingPolicyV1.EXPLICIT_ROOT_REQUEST
+            and runtime_parent is not None
+        ):
+            raise CallSharingViolation(
+                "explicit-root binding cannot carry a runtime parent"
+            )
+        if (
+            binding.policy
+            is ParentBindingPolicyV1.REQUIRE_EXACT_PRIOR_PARENT
+            and runtime_parent is None
+        ):
+            raise CallSharingViolation(
+                "exact-prior-parent binding requires a runtime parent"
+            )
+        if runtime_parent is None:
+            return None
+        known_parent_owner = self._candidate_owners.get(runtime_parent)
+        if known_parent_owner is None:
+            raise CallSharingViolation(
+                "runtime parent is absent from the candidate registry"
+            )
+        if known_parent_owner != owner.digest:
+            raise CallSharingViolation(
+                "runtime parent belongs to a foreign Arm"
+            )
+        return runtime_parent
 
     @property
     def audit_records(self) -> tuple[dict[str, Any], ...]:
@@ -792,6 +855,7 @@ __all__ = [
     "CallSharingPolicyV1",
     "CallSharingRegistryV1",
     "CallSharingViolation",
+    "CanonicalParentBindingV1",
     "CandidateInstanceIdV1",
     "canonical_observation_path",
     "ConsumerLogicalCallIdV1",
@@ -800,6 +864,7 @@ __all__ = [
     "ObservationPathV1",
     "OwnershipScopeV1",
     "OwnershipViolation",
+    "ParentBindingPolicyV1",
     "ProposalSourceV1",
     "ProviderPhysicalCallIdV1",
     "ProviderRequestContextV1",

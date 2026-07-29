@@ -46,6 +46,30 @@ class CanaryBrokerError(RuntimeError):
         self.wall_time_ms = wall_time_ms
 
 
+class PostProviderSemanticRejectionV1(RuntimeError):
+    """A successful Provider response rejected before any execution claim."""
+
+    def __init__(
+        self,
+        *,
+        failure_class: str,
+        cause: Exception,
+    ) -> None:
+        if not failure_class:
+            raise ValueError("semantic rejection requires a failure class")
+        detail = str(cause)
+        super().__init__(detail)
+        self.failure_class = failure_class
+        self.cause_type = type(cause).__name__
+        self.detail_digest = sha256_digest(
+            {
+                "cause_type": self.cause_type,
+                "detail": detail,
+                "failure_class": failure_class,
+            }
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CanaryBrokerCallV1:
     logical_call_id: str
@@ -800,11 +824,12 @@ at most one compatible secondary operator from the executable profile, and retur
 the exact composition object and its exact resolved mechanism_id. Set the
 Original-only transport field original_priority to null; Research routing ignores
 that field. Keep every scientific field consistent with the composition. Use
-parent_candidate_id only for an exact ID present in your role-scoped
-memory or the exact_parent_candidate_id in the policy directive. When parent_policy
-is REQUIRE_EXACT_PRIOR_PARENT, copy that exact ID; when it is
-EXPLICIT_ROOT_REQUEST, return null. Do not invent an operator or composition
-that the profile cannot execute.
+parent_candidate_id to null. Candidate-instance parent identities are opaque
+runtime-owned values: when parent_policy is REQUIRE_EXACT_PRIOR_PARENT, the
+runtime binds the exact Arm-private prior parent after schema validation; when
+it is EXPLICIT_ROOT_REQUEST or OPTIONAL, no model-authored identity is
+accepted. Do not invent an operator or composition that the profile cannot
+execute.
 Optimize useful signal, frontier potential and information gain under the frozen
 budget. Executability and mechanical cost are derived by the package runtime, not
 self-reported by you. Stay within search utility only.
@@ -818,6 +843,7 @@ __all__ = [
     "CanaryBrokerCallV1",
     "CanaryBrokerError",
     "CodexCliCanaryBrokerV1",
+    "PostProviderSemanticRejectionV1",
     "original_canary_prompt",
     "research_canary_prompt",
 ]

@@ -46,7 +46,10 @@ from .broker_failure_closure import (
     BrokerFailureClosureV1,
     close_broker_failure,
 )
-from .canary_broker import CanaryBrokerError
+from .canary_broker import (
+    CanaryBrokerError,
+    PostProviderSemanticRejectionV1,
+)
 from .campaign_runtime import (
     CampaignRuntimeError,
     campaign_runtime_profile,
@@ -725,6 +728,172 @@ class ArmRoundResultV1:
     proposal_session_wall_time_ms: int
     training_wall_time_ms: int
     round_total_wall_time_ms: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(self)
+
+
+@dataclass(frozen=True, slots=True)
+class PreExecutionRejectionClosureV1:
+    schema: str
+    round_id: str
+    failure_class: str
+    cause_type: str
+    detail_digest: str
+    known_semantic_rejection: bool
+    proposal_generation_session_consumed: bool
+    proposal_response_present: bool
+    execution_claim_present: bool
+    training_started: bool
+    guard_called: bool
+    search_memory_updated: bool
+    meta_observation_updated: bool
+    frontier_updated: bool
+    retry_count: int
+    physical_call_count: int
+    proposal_count: int
+    input_tokens_actual: int
+    output_tokens_actual: int
+    billed_tokens_actual: int
+    wall_time_ms_actual: int
+    call_latencies_ms: tuple[int, ...]
+    response_digests: tuple[str, ...]
+    allocated_resource_debits: tuple[tuple[str, int], ...]
+    allocation_ceiling_exceeded: tuple[str, ...]
+    round_terminal_class: str
+    feedback_class: str
+    closure_digest: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        round_id: str,
+        failure_class: str,
+        cause_type: str,
+        detail_digest: str,
+        known_semantic_rejection: bool,
+        usage: Mapping[str, Any],
+        ceilings: ResourceCeilingsV1,
+    ) -> "PreExecutionRejectionClosureV1":
+        actual = {
+            "INPUT_TOKEN": max(0, int(usage.get("input_tokens", 0))),
+            "OUTPUT_TOKEN": max(0, int(usage.get("output_tokens", 0))),
+            "BILLED_TOKEN_DEBIT": max(
+                0, int(usage.get("billed_tokens", 0))
+            ),
+            "PROPOSAL": max(0, int(usage.get("proposal_count", 0))),
+            "WALL_TIME_MS": max(0, int(usage.get("wall_time_ms", 0))),
+        }
+        allocation_ceilings = {
+            "INPUT_TOKEN": ceilings.total_input_tokens,
+            "OUTPUT_TOKEN": ceilings.total_output_tokens,
+            "BILLED_TOKEN_DEBIT": ceilings.total_billed_token_debit,
+            "PROPOSAL": ceilings.total_proposal_count,
+            "WALL_TIME_MS": ceilings.wall_time_ms,
+        }
+        physical_call_count = max(
+            0, int(usage.get("physical_call_count", 0))
+        )
+        proposal_attempt_actual = (
+            actual["PROPOSAL"]
+            if actual["PROPOSAL"] > 0
+            else physical_call_count
+        )
+        allocated = (
+            ("PHYSICAL_LLM_CALL", physical_call_count),
+            (
+                "INPUT_TOKEN",
+                min(actual["INPUT_TOKEN"], allocation_ceilings["INPUT_TOKEN"]),
+            ),
+            (
+                "OUTPUT_TOKEN",
+                min(
+                    actual["OUTPUT_TOKEN"],
+                    allocation_ceilings["OUTPUT_TOKEN"],
+                ),
+            ),
+            (
+                "BILLED_TOKEN_DEBIT",
+                min(
+                    actual["BILLED_TOKEN_DEBIT"],
+                    allocation_ceilings["BILLED_TOKEN_DEBIT"],
+                ),
+            ),
+            (
+                "PROPOSAL",
+                min(actual["PROPOSAL"], allocation_ceilings["PROPOSAL"]),
+            ),
+            (
+                "PROPOSAL_ATTEMPT",
+                min(
+                    proposal_attempt_actual,
+                    ceilings.proposal_attempt_debit,
+                ),
+            ),
+            (
+                "WALL_TIME_MS",
+                min(
+                    actual["WALL_TIME_MS"],
+                    allocation_ceilings["WALL_TIME_MS"],
+                ),
+            ),
+            ("RETRY", 0),
+            ("ORDINARY_EXECUTION", 0),
+            ("COMMON_VALIDATION", 0),
+            ("GPU_DEVICE_TIME_MS", 0),
+            ("GPU_COST_MICROUNITS", 0),
+        )
+        exceeded = tuple(
+            sorted(
+                dimension
+                for dimension, quantity in actual.items()
+                if quantity > allocation_ceilings[dimension]
+            )
+        )
+        if proposal_attempt_actual > ceilings.proposal_attempt_debit:
+            exceeded = tuple(
+                sorted((*exceeded, "PROPOSAL_ATTEMPT"))
+            )
+        call_latencies = tuple(
+            max(0, int(item))
+            for item in usage.get("call_latencies_ms", ())
+        )
+        response_digests = tuple(
+            str(item) for item in usage.get("response_digests", ())
+        )
+        payload = {
+            "allocated_resource_debits": allocated,
+            "allocation_ceiling_exceeded": exceeded,
+            "billed_tokens_actual": actual["BILLED_TOKEN_DEBIT"],
+            "call_latencies_ms": call_latencies,
+            "cause_type": cause_type,
+            "detail_digest": detail_digest,
+            "execution_claim_present": False,
+            "failure_class": failure_class,
+            "feedback_class": "ENGINEERING_ONLY",
+            "frontier_updated": False,
+            "guard_called": False,
+            "input_tokens_actual": actual["INPUT_TOKEN"],
+            "known_semantic_rejection": known_semantic_rejection,
+            "meta_observation_updated": False,
+            "output_tokens_actual": actual["OUTPUT_TOKEN"],
+            "physical_call_count": physical_call_count,
+            "proposal_count": actual["PROPOSAL"],
+            "proposal_generation_session_consumed": physical_call_count > 0,
+            "proposal_response_present": bool(response_digests),
+            "response_digests": response_digests,
+            "retry_count": 0,
+            "round_id": round_id,
+            "round_terminal_class": "NO_EXECUTION",
+            "schema": (
+                "recclaw.m6i.pre-execution-rejection-closure.v1"
+            ),
+            "search_memory_updated": False,
+            "training_started": False,
+            "wall_time_ms_actual": actual["WALL_TIME_MS"],
+        }
+        return cls(**payload, closure_digest=sha256_digest(payload))
 
     def to_dict(self) -> dict[str, Any]:
         return canonical_value(self)
@@ -1549,7 +1718,293 @@ class ThreeArmPreCanaryOrchestratorV1:
         self._completed[key] = ordered_results
         return ordered_results
 
+    def _provider_usage_for_round(
+        self,
+        *,
+        arm: ArmCode,
+        search_seed: int,
+        round_index: int,
+        error: Exception,
+    ) -> dict[str, Any]:
+        usage_reader = getattr(
+            self.broker, "provider_usage_for_round", None
+        )
+        raw = (
+            usage_reader(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+            )
+            if usage_reader is not None
+            else {}
+        )
+        usage = {
+            "billed_tokens": max(
+                0, int(raw.get("billed_tokens", 0))
+            ),
+            "call_latencies_ms": tuple(
+                max(0, int(item))
+                for item in raw.get("call_latencies_ms", ())
+            ),
+            "input_tokens": max(
+                0, int(raw.get("input_tokens", 0))
+            ),
+            "output_tokens": max(
+                0, int(raw.get("output_tokens", 0))
+            ),
+            "physical_call_count": max(
+                0, int(raw.get("physical_call_count", 0))
+            ),
+            "proposal_count": max(
+                0, int(raw.get("proposal_count", 0))
+            ),
+            "response_digests": tuple(
+                str(item)
+                for item in raw.get("response_digests", ())
+            ),
+            "wall_time_ms": max(
+                0, int(raw.get("wall_time_ms", 0))
+            ),
+        }
+        if isinstance(error, CanaryBrokerError):
+            usage["physical_call_count"] = max(
+                usage["physical_call_count"],
+                max(0, int(error.physical_call_count)),
+            )
+            usage["input_tokens"] = max(
+                usage["input_tokens"],
+                max(0, int(error.input_tokens)),
+            )
+            usage["output_tokens"] = max(
+                usage["output_tokens"],
+                max(0, int(error.output_tokens)),
+            )
+            usage["billed_tokens"] = max(
+                usage["billed_tokens"],
+                max(0, int(error.billed_tokens)),
+            )
+            usage["wall_time_ms"] = max(
+                usage["wall_time_ms"],
+                max(0, int(error.wall_time_ms)),
+            )
+        return canonical_value(usage)
+
+    def _close_pre_execution_rejection(
+        self,
+        *,
+        arm: ArmCode,
+        search_seed: int,
+        round_index: int,
+        round_row: Mapping[str, Any],
+        ceilings: ResourceCeilingsV1,
+        error: Exception,
+        known_semantic_rejection: bool,
+    ) -> ArmRoundResultV1:
+        round_id = str(round_row["round_id"])
+        usage = self._provider_usage_for_round(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+            error=error,
+        )
+        failure_class = (
+            error.failure_class
+            if isinstance(error, PostProviderSemanticRejectionV1)
+            else "BROKER_ERROR_WITHOUT_PROCESS_RECEIPT"
+            if isinstance(error, CanaryBrokerError)
+            else "PRE_EXECUTION_IMPLEMENTATION_FAILURE"
+        )
+        cause_type = (
+            error.cause_type
+            if isinstance(error, PostProviderSemanticRejectionV1)
+            else type(error).__name__
+        )
+        detail_digest = (
+            error.detail_digest
+            if isinstance(error, PostProviderSemanticRejectionV1)
+            else sha256_digest(
+                {
+                    "cause_type": cause_type,
+                    "detail": str(error),
+                    "failure_class": failure_class,
+                }
+            )
+        )
+        closure = PreExecutionRejectionClosureV1.create(
+            round_id=round_id,
+            failure_class=str(failure_class),
+            cause_type=str(cause_type),
+            detail_digest=str(detail_digest),
+            known_semantic_rejection=known_semantic_rejection,
+            usage=usage,
+            ceilings=ceilings,
+        )
+        integrated = self.integrated_state.round_projection(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+        )
+        if integrated["proposal_source"] is None:
+            self.integrated_state.bind_proposal_source(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                source=ProposalSourceV1.NO_PROPOSAL_TERMINAL,
+            )
+        self.integrated_state.close_no_execution(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+        )
+        if arm in self.research_task_queues:
+            active_tasks = tuple(
+                task
+                for task in self.research_task_queues[arm].tasks
+                if task.task_status is ResearchTaskStatusV1.ACTIVE
+            )
+            for task in active_tasks:
+                self.research_task_queues[arm].cancel_without_execution(
+                    task.task_id
+                )
+                if (
+                    task.task_type
+                    is ResearchTaskTypeV1.RUN_MATCHED_CONTROL
+                ):
+                    self._matched_control_sources[arm].pop(
+                        task.task_id, None
+                    )
+        artifact_path = (
+            "pre_execution_rejections/"
+            + sha256_digest({"round_id": round_id})
+            + "/PRE_EXECUTION_REJECTION_V1.json"
+        )
+        self.store.register_artifact(
+            RegisterArtifactCommand(
+                round_id=round_id,
+                artifact_type="PRE_EXECUTION_REJECTION_V1",
+                relative_path=artifact_path,
+                producer="M6I_PRE_EXECUTION_REJECTION_CLOSER_V1",
+                idempotency_key=(
+                    f"m6i:pre-execution-rejection-artifact:{round_id}"
+                ),
+            ),
+            canonical_json_bytes(closure.to_dict()) + b"\n",
+        )
+        closed = self.store.close_round(
+            CloseRoundCommand(
+                round_id=round_id,
+                terminal_class="NO_EXECUTION",
+                feedback_payload={
+                    "closure_digest": closure.closure_digest,
+                    "failure_class": closure.failure_class,
+                    "feedback_class": closure.feedback_class,
+                    "frontier_updated": False,
+                    "guard_called": False,
+                    "meta_update_allowed": False,
+                    "search_memory_updated": False,
+                },
+                controller_state_after_digest=str(
+                    round_row["controller_state_before_digest"]
+                ),
+                resource_debits=tuple(
+                    ResourceDebitV1(dimension, quantity)
+                    for dimension, quantity in (
+                        closure.allocated_resource_debits
+                    )
+                ),
+                idempotency_key=(
+                    f"m6i:pre-execution-rejection-close:{round_id}"
+                ),
+            )
+        )
+        self._terminalize_integrated_round(
+            arm=arm,
+            search_seed=search_seed,
+            round_index=round_index,
+            terminal_class="NO_EXECUTION",
+        )
+        return ArmRoundResultV1(
+            opaque_instance_id=str(round_row["arm_instance_id"]),
+            round_id=round_id,
+            candidate_id="NO_CANDIDATE_PRE_EXECUTION_REJECTION",
+            terminal_class=str(closed["terminal_class"]),
+            physical_call_count=closure.physical_call_count,
+            proposal_count=closure.proposal_count,
+            input_tokens=closure.input_tokens_actual,
+            output_tokens=closure.output_tokens_actual,
+            billed_tokens=closure.billed_tokens_actual,
+            ordinary_execution_count=0,
+            gpu_device_time_ms=0,
+            gpu_cost_microunits=0,
+            feedback_digest=str(closed["feedback_digest"]),
+            evidence_port_status="NOT_CALLED_PRE_EXECUTION_REJECTION",
+            training_backend_started=False,
+            broker_call_latencies_ms=closure.call_latencies_ms,
+            proposal_session_wall_time_ms=closure.wall_time_ms_actual,
+            training_wall_time_ms=0,
+            round_total_wall_time_ms=closure.wall_time_ms_actual,
+        )
+
     def _run_arm(
+        self,
+        *,
+        arm: ArmCode,
+        search_seed: int,
+        round_index: int,
+        drafts: Sequence[Mapping[str, Any]],
+        ceilings: ResourceCeilingsV1,
+    ) -> ArmRoundResultV1:
+        try:
+            return self._run_arm_body(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                drafts=drafts,
+                ceilings=ceilings,
+            )
+        except Exception as error:
+            row = self.store._connection.execute(
+                """
+                SELECT * FROM rounds
+                WHERE experiment_id = ? AND arm_instance_id = ?
+                  AND search_seed = ? AND round_index = ?
+                """,
+                (
+                    self.contract.experiment_id,
+                    self.assignment.mapping[arm],
+                    search_seed,
+                    round_index,
+                ),
+            ).fetchone()
+            if row is None or str(row["status"]) != "OPEN":
+                raise
+            claim_count = int(
+                self.store._connection.execute(
+                    """
+                    SELECT COUNT(*) FROM execution_claims
+                    WHERE round_id = ?
+                    """,
+                    (str(row["round_id"]),),
+                ).fetchone()[0]
+            )
+            if claim_count:
+                raise
+            result = self._close_pre_execution_rejection(
+                arm=arm,
+                search_seed=search_seed,
+                round_index=round_index,
+                round_row=dict(row),
+                ceilings=ceilings,
+                error=error,
+                known_semantic_rejection=isinstance(
+                    error, PostProviderSemanticRejectionV1
+                ),
+            )
+            if isinstance(error, PostProviderSemanticRejectionV1):
+                return result
+            raise
+
+    def _run_arm_body(
         self,
         *,
         arm: ArmCode,
