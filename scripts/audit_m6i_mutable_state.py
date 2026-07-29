@@ -28,6 +28,7 @@ ACTIVE_PATH_GLOBS = (
 ACTIVE_ENTRYPOINTS = (
     "recclaw_ext/models/composable_v2.py",
     "scripts/campaign_train_worker.py",
+    "scripts/audit_v25_m6i_prelaunch.py",
     "scripts/build_v25_gpu35_closure.py",
     "scripts/run_m6i_provider_isolation_probe.py",
     "scripts/run_v25_effect_pilot.py",

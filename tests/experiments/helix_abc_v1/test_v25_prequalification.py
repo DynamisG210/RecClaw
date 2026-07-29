@@ -64,6 +64,16 @@ def test_v25_runtime_binds_meta_v20_and_resource_envelope() -> None:
     assert "_resource_ceilings=expected_ceilings" in source
     assert "v25_resource_ceilings()" in source
     assert "pilot_budget =" not in source
+    builder = (ROOT / "scripts/build_v25_gpu35_closure.py").read_text(
+        encoding="utf-8"
+    )
+    independent_audit = (
+        ROOT / "scripts/audit_v25_m6i_prelaunch.py"
+    ).read_text(encoding="utf-8")
+    assert "M6I_V25_FINAL_INDEPENDENT_AUDIT.json" in builder
+    assert "M6I V25 independent audit is not PASS" in builder
+    assert "LabApiCanaryBrokerV1" not in independent_audit
+    assert "campaign_train_worker" not in independent_audit
 
 
 def test_v25_checkpoints_are_barrier_complete_and_read_only() -> None:

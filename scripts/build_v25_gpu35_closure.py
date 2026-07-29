@@ -70,6 +70,7 @@ SOURCE_PROJECTION = (
 RUNTIME_AUDIT = DOCS / "V25_GPU35_RUNTIME_AUDIT.json"
 BACKEND_AUDIT = DOCS / "V25_GPU35_BACKEND_CONFORMANCE_AUDIT.json"
 SCIENTIFIC_GATE = DOCS / "V25_SCIENTIFIC_ATTRIBUTION_GATE.json"
+M6I_FINAL_AUDIT = DOCS / "M6I_V25_FINAL_INDEPENDENT_AUDIT.json"
 DEFAULT_OUTPUT = DOCS / "V25_FROZEN_EFFECT_PILOT_CONTRACT.json"
 DEFAULT_OUTPUT_ROOT = BACKEND_ROOT / "pilot_9227_v25"
 TRAINING_RELEASE = RESOURCES / "training_runtime_release_v17.json"
@@ -126,6 +127,7 @@ CANARY_SPECS = (
 )
 SELECTED_SCRIPTS = {
     "scripts/build_v25_gpu35_closure.py",
+    "scripts/audit_v25_m6i_prelaunch.py",
     "scripts/campaign_train_worker.py",
     "scripts/freeze_campaign_training_runtime_release_v17.py",
     "scripts/launch_v24_qualification_canary.py",
@@ -633,6 +635,7 @@ def _scientific_gate(
 ) -> dict[str, Any]:
     exact = _read(M6I_EXACT_REPORT)
     synthetic = _read(M6I_SYNTHETIC_REPORT)
+    independent = _read(M6I_FINAL_AUDIT)
     if any(
         report.get("status") != "PASS"
         or report.get("p0") != 0
@@ -640,6 +643,18 @@ def _scientific_gate(
         for report in (exact, synthetic)
     ):
         raise RuntimeError("current-byte M6I qualification is not PASS")
+    _verify_record_digest(
+        independent,
+        "audit_digest",
+        "M6I V25 independent audit",
+    )
+    if (
+        independent.get("status") != "PASS"
+        or independent.get("p0") != 0
+        or independent.get("p1") != 0
+        or independent.get("source_head") != _git("rev-parse", "HEAD")
+    ):
+        raise RuntimeError("M6I V25 independent audit is not PASS")
     if (
         exact.get("schema")
         != "recclaw.m6i.exact-scheduler-stress.v1"
@@ -684,6 +699,9 @@ def _scientific_gate(
         "evidence_class": "DEVELOPMENT_ONLY_PRE_OUTCOME",
         "formal_acceptance": False,
         "m6i_exact_report_sha256": file_sha256(M6I_EXACT_REPORT),
+        "m6i_independent_audit_digest": independent["audit_digest"],
+        "m6i_independent_audit_path": M6I_FINAL_AUDIT.as_posix(),
+        "m6i_independent_audit_sha256": file_sha256(M6I_FINAL_AUDIT),
         "m6i_synthetic_report_sha256": file_sha256(
             M6I_SYNTHETIC_REPORT
         ),
@@ -1034,6 +1052,9 @@ def verify_v25_pilot_contract(path: Path) -> dict[str, Any]:
             ]
         ): contract["backend_migration"][
             "scientific_source_projection_sha256"
+        ],
+        Path(gate["m6i_independent_audit_path"]): gate[
+            "m6i_independent_audit_sha256"
         ],
     }
     gate_path = Path(contract["guard_and_fusion"]["gate_path"])
