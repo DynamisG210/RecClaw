@@ -48,7 +48,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 51860,
+      "duration_ms": 62297,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -155,7 +155,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "24d56da97ede2b70823c664b9fac0bd35cb8fca5cff4c844efaa5bc178473d47",
+      "meta_audit_digest": "938f2719508924d7fe31e3426e58e737e28cbbdc15145866d742aa9fd274b618",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -182,7 +182,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "8e437bcb17bc306cfbc01c46fbd5c735e811f2f3fb76f3f590692c84f8d8bf08",
+      "state_audit_digest": "51a1a1c55a57b19d0a5ccf63befea71d52450639b25048b6e4e9054b79bc3cc4",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -220,7 +220,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 50983,
+      "duration_ms": 62037,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -327,7 +327,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "fcb12a800e3cc5a22637e8a5b35bbddce5ec84ef0c7ce82c94b8cc99c0aa64ba",
+      "meta_audit_digest": "07def81437fe1946d97bf08dbe5c86efc9f1253ceb0b9e75bb208ce13a4839ea",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 12,
@@ -354,7 +354,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "da09ccda915b61e49ba3e14f2ebfbeecd7b6cf4de2408563b2dc870f52ed47aa",
+      "state_audit_digest": "d67aa92bc264e4e75f890b7a02c74df20ac0c22266c84a42214a74ae17566427",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -392,7 +392,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 51532,
+      "duration_ms": 62309,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -499,7 +499,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "7ebcb60394050b2e230f05408b3a76783b76b7ea90737f52347e1ccb0b23b413",
+      "meta_audit_digest": "d51f65141fe58095d12b05e3138063fa496e0367573236f8bc9f375048ba8739",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -526,7 +526,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "62c94f7d7e876c9b444d48e2444158e0a9f1ebaa481d950e4798fefdcabb974d",
+      "state_audit_digest": "f30f61f72dd7d126afbffc774c9ce340243e9e4ad1ac409c7abd8b59ae2e0804",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -564,7 +564,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 51258,
+      "duration_ms": 62138,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -671,7 +671,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9e2dff7e89cc85dd89cc899424fc92ae6f6d64b8082cdabaa3b30794fcaabd4b",
+      "meta_audit_digest": "2d3b7449bcae6e4090d2391c0c0675f5d715faf8a0eeb4b32dbe75945b049863",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -698,7 +698,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "4c14f4586dc237ed6bf671df8d855990d9687558a46176186ea269851e09fccb",
+      "state_audit_digest": "798c62618bbdf7997127b5628aebe98540f1566f6d4e3b1296ae149088e76ae0",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -736,7 +736,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 51425,
+      "duration_ms": 62028,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -843,7 +843,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "63aa8dcd23fc41d61e6467a77eaa9370c96bd16a29071ad227a5d023814c1016",
+      "meta_audit_digest": "3aa8963b7e93062fc25f4368bb2e04c7651e9f994ac2aa150026e24fe8d3c7c8",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -870,7 +870,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "cc179bb84f801b181289f503ad9423f43380839977a9340f85ae5d6883fa5d2c",
+      "state_audit_digest": "f2e76b4e8a8a84be4d0a46329862f679250516fb2ac287be6acc41eaab268e76",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -908,7 +908,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 51978,
+      "duration_ms": 62292,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -1015,7 +1015,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "2b7d253154ce6a371d98bd28335a10df6fa81a7cd1e85165b7988a6dda6fcb4a",
+      "meta_audit_digest": "4a861caeeb52d64e33549e6907ffef4f417114ca91eb449b4d7ab914e90ccf92",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -1042,7 +1042,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "3559ad142d2ad81c2088dd97784723db830bfda9acc59fd9cff1e8ea51663de8",
+      "state_audit_digest": "bcfffbeec2677c6eaec2e557a3173873bd06e7b85e6ed428018628dbf228e2b7",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -1080,7 +1080,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 51762,
+      "duration_ms": 62275,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -1187,7 +1187,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "42cef8c01c4ec9b0785f76b6f16ad5d39f39c6b6d4a35cdf5f7e9d2a37454601",
+      "meta_audit_digest": "bbd347455a86814d83e6fe1ff29da7897576ee567a662c6b82ec86ac5fe70e1e",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -1214,7 +1214,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "47d5b47913eefecc6f73509526c6513aad3a13928d156716f1d7cd815dda0f4e",
+      "state_audit_digest": "e4313043255a3fff0311d5723591ee804a86c4539ec278402b070980b5c81e0f",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -1252,7 +1252,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 52356,
+      "duration_ms": 62188,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -1359,7 +1359,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "c930ac7a3a2ac6175e7b182c9369209b1d20768dc884036d03aa7910fcb9f123",
+      "meta_audit_digest": "35177e08351b61d976e1d694bd9ce615f5316652094c63875f00673912404935",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 15,
@@ -1386,7 +1386,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "4a8fff52bf500fe5648c1df8d227b55ce14385a09ffef0777c87c020adb2a012",
+      "state_audit_digest": "e6ca3cc8fe673f45b5594ad11b5c14a19f2f0fe5b014aaaf669a457a8c48b9c6",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -1424,7 +1424,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 50083,
+      "duration_ms": 62284,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -1531,7 +1531,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "f87173fd5385800761986f3a4b15fa34a6df9beb52f1384691575f626b305a91",
+      "meta_audit_digest": "eb906ea98f3f16c9bebdfb6827774ba49533a8304fea28785871e5c8e8c799c8",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -1558,7 +1558,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "e56af61dfb5598427e3a1869603ab340b593d90cacbdd7cfe99067fb83f7f22f",
+      "state_audit_digest": "76e4b719c21873410f0040f9bb146790c56dff0ce1ba95efd65e88e244585871",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -1596,7 +1596,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49609,
+      "duration_ms": 62235,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -1703,7 +1703,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "f3ba1b8334b9fd68606e1c1d639b5d96d41e2433b00e5b54776e10836fe282d4",
+      "meta_audit_digest": "679e18bb5e28f636cda324b9674e94693e4c8bef0848645cfce19dc7b6661175",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -1730,7 +1730,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "cc808feef91916821af2b7b02831eab7d0654f8f16e91ff4c637b79c6db39dc9",
+      "state_audit_digest": "487efc10153995653e60e02514e7ac5b6b4815b746b6e0eef2b6020514afad74",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -1768,7 +1768,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49668,
+      "duration_ms": 62201,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -1875,7 +1875,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "aed9b8de9eb7ee2fa62cceac44f9f1b78bfc860fc12a8a9940371247f8903c30",
+      "meta_audit_digest": "ce1b873b53d33853d749cd293f4e5af305c211e9726227b8716eec71511929b9",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -1902,7 +1902,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "b70595376a27e220b6e0169140fc6a2b91ad0d2aae611acd91b74e40f8299ca7",
+      "state_audit_digest": "600010b75d4e69c0862684e59afae761a489489e130d9dbd37842f92e002df5d",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -1940,7 +1940,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49808,
+      "duration_ms": 62453,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -2047,7 +2047,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "b183a7b8434f1d05e8eba8b8418c199f7f8221fb7524c29f8496eda6f76de72d",
+      "meta_audit_digest": "e056665e0635090661a269d6aa4ede7c84eac8698316f5cc93faed03110e923b",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -2074,7 +2074,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "22ff6e7eecab3b884f9fdaf9622022c56f9f9a9197c84b4ff2c225314e7d0eb7",
+      "state_audit_digest": "afc17a5b2d274ce13c1f14feb227eea24ef323d671ce41345aef73f720ad4cd5",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -2112,7 +2112,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 50221,
+      "duration_ms": 62468,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -2219,7 +2219,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "ef5f1ad8bd9d233b155a1447d5453e35ca1c4d627ff18de04cb25f98ec2cc1b1",
+      "meta_audit_digest": "61c05566fd0987f9495a63c7f881b02ad95abc040e8c62b67cdb0c2c008fb90f",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -2246,7 +2246,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "be3bcff3897b94d0c3e0ab2f7bc08599e4240b21d1c0b03fbcd0b657f38b0752",
+      "state_audit_digest": "1c7b94b7bc1bfd4af9bdfbe02a4c267ee11b020e1be336c69c2cbdd136898e38",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -2284,7 +2284,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 50160,
+      "duration_ms": 62230,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -2391,7 +2391,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "03575ade25d52d74c3ab45804ac5bd11dbbd299eeee924bd1fe99cd670100aff",
+      "meta_audit_digest": "5a9a260dab4608b390509df6b025dd0e61392c49ff67cf4895d07d0a86576535",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 5,
@@ -2418,7 +2418,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "dc90f85020a2a4fd694a4fd5d2da4f5a52c7eaff9829d74883934ba41503a377",
+      "state_audit_digest": "b10541611a5fe9edb8f3e3a9edfb0ea5ee4cc7b43731f15e2f29bc3dc2107e0d",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -2456,7 +2456,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 50667,
+      "duration_ms": 62253,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -2563,7 +2563,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "ff1f9abf8902a0c5664491859c1b64a052dc256a08579f4887c6d3c6939728ca",
+      "meta_audit_digest": "ef1fc55f7bde3a400aca494d1643b7408f0bc841b94b767693428bd281386aa2",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -2590,7 +2590,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "574c89bfae19f84a04b439d55456050251f1f424ddc37280738db2e6fa01e87d",
+      "state_audit_digest": "99f74bebf2abe23180771b0619189b988dda1ce4359e9fbd9c05c755ae675ae9",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -2628,7 +2628,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 50763,
+      "duration_ms": 62190,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -2735,7 +2735,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "f46057c40ea7dd55efdf6477afc1877c12107d1ff0d3212da2ca6cc54e7013d8",
+      "meta_audit_digest": "dca005788d4dbb4b520382592cd531b9632d3656adfb6fb861b271a1e71c3c04",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -2762,7 +2762,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "0d50794a72015735152ea2e8748f5d214ce732e81c3b79da855f766affbc8fdc",
+      "state_audit_digest": "f027a3954558aae1e210e7c2f7feab61c03b6b617dbe6f6a3da341f62942dad7",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -2800,7 +2800,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47785,
+      "duration_ms": 62173,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -2907,7 +2907,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "e433625debbdc87c6fa84ead932e14d6e5e7cde2d96ef59c734fa6d25542e74e",
+      "meta_audit_digest": "1274a86b762e0e2481e3bf71eaa1e29a2bf67dfcc0dbecb0e9eba705272b5b27",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -2934,7 +2934,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "556b09e4a56d8f7a39c162b45f35c6d7b793e64d33c150e781247e45d90d09ac",
+      "state_audit_digest": "e67ced26c06cb39ad170c80d40cd4370e2324d95a2c55fd83304ed7de58e458c",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -2972,7 +2972,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48602,
+      "duration_ms": 62281,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -3079,7 +3079,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9102b8486e716da9fc793184597ccafa5d110afe012802701e08a6dae9350c9f",
+      "meta_audit_digest": "055a60c8483be85cac986a17234e0c9dec4bb58e94537cf1effcf0da21226942",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -3106,7 +3106,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "93cda73a941410c4edb89d435e7cb16551d783af79f298d6e35f5c6abf3cf04b",
+      "state_audit_digest": "61b96bad68e51adf293ced295b146c8657ab9d908711d44b116465a5c6d70462",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -3144,7 +3144,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47892,
+      "duration_ms": 62274,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -3251,7 +3251,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "95571a479b167d0822de07319d49524c2ad5c56215f0d71fdcafc913c82f2820",
+      "meta_audit_digest": "4855d8cca12122e2f70a19f842944b858439100d12b6abc914983e40adac4d83",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 4,
@@ -3278,7 +3278,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "b7d64913bca0f840777f56c49582ac6f428f04ac92109d2c2419c03e5421941a",
+      "state_audit_digest": "7aa895b5189776480d2af48bc7c295788a8fe3c89fa0715cade8ad26d9f4b42c",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -3316,7 +3316,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48286,
+      "duration_ms": 62409,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -3423,7 +3423,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "5a67df9e4957b0841c79bbe56da7de67227e8d1943d85f34bab796f88436698a",
+      "meta_audit_digest": "89180fbe5ce96f00eefe8b35ff9b05d4435a21a712b366cee2cff67b9b99b7f1",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 12,
@@ -3450,7 +3450,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "532ab9bec12be6ab01bb20d23a0401e43a981a4207d6d4a8c38fa30c264ce40e",
+      "state_audit_digest": "2e46454a3cd1025bb96d5e4b74525979875c82c10426663be06bf0e7fd4881ca",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -3488,7 +3488,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48566,
+      "duration_ms": 62170,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -3595,7 +3595,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "4bd0462770780037ab2795b9a11aa2785ac5f0044119ddc8a2dcbe6e65e8468e",
+      "meta_audit_digest": "10bbdd31d4f645687012664a985453baf1a3c6132a9739398dd63bed4d9a679b",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -3622,7 +3622,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "09b1b1cd54928b360b73ef4e9ed6cf36aa9f1916c7cbd9775a7013a401bd9b68",
+      "state_audit_digest": "17ad662480e2c6c7072fa4081d1d6907776f1ae1b03c30b57ad6bb6e272557de",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -3660,7 +3660,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48524,
+      "duration_ms": 62267,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -3767,7 +3767,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "023035e8be405ed4dddc368822da901209779acb6077e11e70601cef6ad02b71",
+      "meta_audit_digest": "ee70a8fe4731efed55267225f32398b7e44c45efcdf5622c95c7ef027afa2baa",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -3794,7 +3794,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "83c64def0a3cf164886a8937fb63b54c8e608c37f05ab01d2beb27cc79610a43",
+      "state_audit_digest": "a1f6efc6a60ce10c56db0222545feeee77a0585a4402f2a05cd15012b3c4470b",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -3832,7 +3832,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48764,
+      "duration_ms": 62610,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -3939,7 +3939,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "ebab8e5a2e3242ab92f61475ca20060b019fad9d7de139eb1235328fe186f5ef",
+      "meta_audit_digest": "54c999586d71bc7ff7a41cb8a6d66cb1db122dc4cf4083bb35faa9ec40a37265",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -3966,7 +3966,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "3bca0684ecfc2b8763e8fe88437561cae58363df1edc535c55e5fe623c17725f",
+      "state_audit_digest": "2e605ace7e49e9c12a2f1dbf0582cb928679faa387f3c6192e9cc42be171a265",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -4004,7 +4004,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49064,
+      "duration_ms": 62308,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -4111,7 +4111,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "64ccad850c7757ba7ecee1c78505293c0aaf5059bc94e6ab4a465efc91de4b2c",
+      "meta_audit_digest": "36850b3c638866c1a667ec9a5e3df5dc9bfe6b2042928c50880b440ad2fc682a",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -4138,7 +4138,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "6d14d11e693534dac66c767438ae6f90ed40bd8a656b92b6dd3f5061ff30083f",
+      "state_audit_digest": "cafbaea0e565f728e1fd1b64599cc5cf6ac78ca19c3fd9fea0ad8c7fd6a156cf",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -4176,7 +4176,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47672,
+      "duration_ms": 62127,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -4283,7 +4283,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "b618e78cc0e81bcdde3ac5df9487f71add76742596d361fb8d6e115658c42241",
+      "meta_audit_digest": "f049f7a164def263955539b524d870f3a98a5940c9af3cbcde7743696ffa6b24",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -4310,7 +4310,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "2ac582b2a7c48a7947ff01ab28473eab041e4b0e04af6c9b53a3e85a928dde37",
+      "state_audit_digest": "58834ec7b13520c397da38d6312c24de97e53bb4971cd5fdc03c3faff1cad399",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -4348,7 +4348,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47892,
+      "duration_ms": 62219,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -4455,7 +4455,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "604717dfa29a3a6d520820631dcc22991e3f65d500706d8349a970f81135eb4e",
+      "meta_audit_digest": "126c9bf0321ee82a1ac2d387fc761a0ba1819cba7f5b5f1c50b417462fe23f63",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -4482,7 +4482,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "9f5174f1305f75db936f87f2a46059fe3450197757d5bc36a714b06bad8fc2ed",
+      "state_audit_digest": "bc6ec1f7947ac4bd74a8aa3d9ba679c9535b6ddaa11b2e0cb53325bd75dbaa15",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -4520,7 +4520,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48321,
+      "duration_ms": 62222,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -4627,7 +4627,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "07194e98909c20c80d1eb15f6281182a18dabb1462c094d4f0007e9e80f4b913",
+      "meta_audit_digest": "3eb4edd9122fdf3aecab06949bd0ca289fa4bcddc29e8c707b63fc187d8a6ad0",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -4654,7 +4654,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "8a4c0ebcb1457bd5d4a72e97c9f60d3f35a199a3a7df1b266b06f1b3051a4ddc",
+      "state_audit_digest": "6a970ed02bbd1fc04213e0f318ddbe7c76e449cf060085fca58ba326131762a1",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -4692,7 +4692,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48260,
+      "duration_ms": 62201,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -4799,7 +4799,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9f1950ae5ccc09917b44de25e4e5921b02003688a941560b75505549c96d949f",
+      "meta_audit_digest": "1eebaf3d140b6623d8f1ed198266e2198d7e5952fb25097cc1e201e861e413f8",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -4826,7 +4826,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "d5f6962ed4afe6e3f45dcc2a05719aa6ab5e1e3b2f2639dc9925ac2f075048a5",
+      "state_audit_digest": "7d5e9c3324d0aa60bbf55af1443092e77e32448693da1beba2a71db1a6288740",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -4864,7 +4864,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48224,
+      "duration_ms": 62178,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -4971,7 +4971,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "55f2bc449dc69a00c2c0fd4c30f34392cd1b499362b73c5af906148fe4659c09",
+      "meta_audit_digest": "4e74dde02fb63baad97c768271dbae6bbde277a9dd2a83012be7ab862dfa2f23",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -4998,7 +4998,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "a2d5672d3ffe91c89ff02a4645141c66cb64c46df4b5707fe7ab9c7736010ce8",
+      "state_audit_digest": "5080b1b0c5ae6879ef5116c854aac0192efc5bba8994c3167fabe250f54e2370",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -5036,7 +5036,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47785,
+      "duration_ms": 62517,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -5143,7 +5143,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "5d6e0503bb007731d3398f8421798a6736a67a33b5d07a18e04859171ad8980e",
+      "meta_audit_digest": "57f3406f41f707842fe22c05c11d0b199d500c54eecf2468d680f2fd1684d4cd",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -5170,7 +5170,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "837d630962ff46806c5fb90ed57e23b1d2487c93d9a8e0d0745af80826b5e2ac",
+      "state_audit_digest": "043662e65805fb853e1912e40c002579360f6ce75971d84cf87fc2720c441c6b",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -5208,7 +5208,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48426,
+      "duration_ms": 62378,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -5315,7 +5315,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "a0cd76226690e135fd879d37a0a74313b55b4a23817243a3dfa652f6c0062839",
+      "meta_audit_digest": "860da00440098340fa98d53f5737b2ca69b85e8ba335170b01a058c91f5383f6",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -5342,7 +5342,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "d1e216923047288e738a5141a9d61374b4a14c0ddd783a2fd787a3959059ead9",
+      "state_audit_digest": "cce7b03ad259b39ee44cc03b15268b7b61fc592474233761f00b765882880794",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -5380,7 +5380,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48874,
+      "duration_ms": 62589,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -5487,7 +5487,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "bb43630dc3f97a8e5f53740cfc96eb0607889e83f0315b8a9fadd8f529d47e9e",
+      "meta_audit_digest": "b23bd611ca4dfd946237ecd1ae0d315a0282b13ebfa9c864740d3c51c9dd0801",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -5514,7 +5514,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "a2c48ca5bf26387df588a9812931776fa4289079a4d2e82aac9d12fb61b0a3e5",
+      "state_audit_digest": "e302feb4f17a844e64dd49499033cee043ad39836659593ed9e325160e1de709",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -5552,7 +5552,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 46975,
+      "duration_ms": 62222,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -5659,7 +5659,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9c92b2d44f892db96bfd13b602885d7b3b0dec7481c92c2852decfa035320859",
+      "meta_audit_digest": "818b65ba6991938b3803ea131447e60050f1d9b6c7e0734ae62c90c16b867e56",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 15,
@@ -5686,7 +5686,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "1973806b1f7aec2fbe5767a3c4a5df8e91612bb19be40023f98f162242832a5e",
+      "state_audit_digest": "84179089b232c2c3330af118b8b988a20b8d1aceb40fdeeac80daf0b0bdc321d",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -5724,7 +5724,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 46870,
+      "duration_ms": 62273,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -5831,7 +5831,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "3d3ef55a881ae5eb96f2ae589c83b0742fc35a3fb416a681f8fe41f7fa5bc9c4",
+      "meta_audit_digest": "26902ac749ef201e99d7aece91c0fba3996201b6c378b82664c39f9a7a800153",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -5858,7 +5858,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "f456f809ae43f13f35d0346430223eb445ed6658d6dd2b9fa0183f91df7ff9ef",
+      "state_audit_digest": "b090f54755bf2aa146387db5cb957e6c4ce092f4030b3cb9885c9f5c21d7d17c",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -5896,7 +5896,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47466,
+      "duration_ms": 62384,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -6003,7 +6003,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "340db77cc38cae6bcac38c0aacf82c4aa0e08319b74a4a546975d38b5a2ac39c",
+      "meta_audit_digest": "2431528208c41ba1428d095945c181ea5664b738fe56483b3f926a000639e32f",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -6030,7 +6030,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "175fccee860282694dd62636040674843831b0c250d86e0f09c2c570c923b0ea",
+      "state_audit_digest": "aca162358002d0c9ade4be678b30d218ce5df48ff6532747c9d40e531796e9a8",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -6068,7 +6068,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47254,
+      "duration_ms": 62469,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -6175,7 +6175,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "329a2515818bf759d2c88c4a86cc746a0311a77de77035090d7ea0c523a81072",
+      "meta_audit_digest": "8e665f17b0b8ad373dbd97dd1b73138600b15f3f271bcc89cdce717d05a5f44d",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -6202,7 +6202,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "3565ca25ed9852876062b173bdb5f3b912c7c6500e0a3bde4242f2c8f191f3a0",
+      "state_audit_digest": "783b967d046db8eef107740ec7c438d008cfc67acfc3c85fe8281b36cc5b303c",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -6240,7 +6240,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47326,
+      "duration_ms": 62232,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -6347,7 +6347,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "ce0a5b9c9d77ba5d2ea59ecdbb0e9d3c47366267b30f0d6404f8e4372e40b43b",
+      "meta_audit_digest": "c614139f24b46fd7a512fedbab1d6e20a7f14372d4cd4ff77bc5536185d5fa40",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -6374,7 +6374,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "aad0dd9f97654bb50e8ac7e6e3a9416f3e98359483a8c99eebd200e008d09e3b",
+      "state_audit_digest": "001d40b43f34a22f8176a54fb5c98f4bf9b8f88491c0daf7f49cdf0357517ec3",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -6412,7 +6412,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47623,
+      "duration_ms": 62437,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -6519,7 +6519,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "24c19137b6b8cf5cb4b49bf762e4bfaf8c0fd55f75680288c5e7ba96719373f4",
+      "meta_audit_digest": "7c2bfbbdb24ff15347e00ba37facaee486ead6d556b361b944e40db0145467c5",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -6546,7 +6546,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "04904be33adf79c7e3a207eed5a59401ac8f07920a3c0caf4ce4abe37fe045ca",
+      "state_audit_digest": "2476374c75754854b76cc994ceeca702fb9f1400044af7a54427487520b5eb4d",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -6584,7 +6584,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47615,
+      "duration_ms": 62359,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -6691,7 +6691,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "2c7883d80e0ac91e1db390165eff4d7ae0be0988350c3fbba3f8e21c9b15d25d",
+      "meta_audit_digest": "0b83b091460b4af249ff847048c7f0c068d89faa8b7a818c3a0b0457d0eb8d05",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -6718,7 +6718,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "b8bd22bb021c6e9ea6a0c9cabfdd6384ee67a35e39c38071574442800b039b52",
+      "state_audit_digest": "165733344c8e094d96d5b4d01150bf1f27fecc2dc9e49bb3b6666dccaa092ba8",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -6756,7 +6756,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48567,
+      "duration_ms": 62596,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -6863,7 +6863,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "059d122c3d8f3149b160b3d5704b6c8922f3f21ead1ab2f60b5a1762b6452b06",
+      "meta_audit_digest": "be2fe3cfca3abf5a6cb54713f22de34132d85dc4fd4ebb756d353818e38d41ab",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -6890,7 +6890,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "f1a6ecca24919c124c63fb3d2abafca24b2913a59b6a469bd6ab36e8d7bc2f6f",
+      "state_audit_digest": "c3b7595f00d7bfb226ba08bff7e7a7125e808359fd7de515c5e9f06656b456b6",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -6928,7 +6928,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47135,
+      "duration_ms": 62075,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -7035,7 +7035,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "7261cd428273d0332e0c6bdb801abf9338efb23ab73a586e337c03ff087534c8",
+      "meta_audit_digest": "98dc1cbeb58c3d237f4b1474a85ebdbbdd1de48c837bfd7e432e6e181d36eb88",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -7062,7 +7062,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "53e7c896737d0712759259885cfc4ef53ee3da012e9fe3e98bfcfdd976990266",
+      "state_audit_digest": "d189f8ee5c65c6b9bd0eddb35229e90c800a76361c5085eba2fd1bffea7daef1",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -7100,7 +7100,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47006,
+      "duration_ms": 62200,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -7207,7 +7207,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "a9f1dc9f06faf5b43bbecb414f1dd062fc2e1e2eb8546872b600cc98271d22f4",
+      "meta_audit_digest": "c1d1688919683c0bef9f2ca8588bdec088bb3e54afecda85b6b7fc15694d33f8",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -7234,7 +7234,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "5e91ce3965087c8cf494f143a2ec208cb9d5448638429a51b8bacdec5c809378",
+      "state_audit_digest": "473dcf449a77847368472096fd5d77329784c2f9f8b00df7bdc14054d45cec5d",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -7272,7 +7272,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47372,
+      "duration_ms": 62419,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -7379,7 +7379,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "4461151b15e0147b5f2b481d346a9ca68d7e4ffbd64392fe91c2b58c57993adf",
+      "meta_audit_digest": "43b9378f7123fd5ee66dd4a5e17b7a7b231ca0632520f85687b7fb0f30ba8405",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -7406,7 +7406,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "93cbca8ab2293f3bcfd63a26f03ca4e176aa30f26cf4a57795b4bfd1d31c9527",
+      "state_audit_digest": "98ee8f030cf7fd921a758360bdd3cb497ef0f1d0fa3778e6db8214d19572dc24",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -7444,7 +7444,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47691,
+      "duration_ms": 62286,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -7551,7 +7551,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "b1359d84ddb8967534afbf85ffb20a2bd2083442d7d3e32073345e4aa49db15f",
+      "meta_audit_digest": "962cfe33b27ede0a99a8aa216819e5716f6e5224be193362732bccefe5523556",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -7578,7 +7578,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "91abddf4d48f3097ce9b475e1ddecc0b688d230597fb00b1fe8853539b0c9ffc",
+      "state_audit_digest": "de6a0978c6c8bd4cece16988c138b0d68b1aa22c576bad7a57b284784453d909",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -7616,7 +7616,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47366,
+      "duration_ms": 62608,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -7723,7 +7723,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "52e8b5f82306bb4861937915e9ce69a01dcde26278cf80a728bc3d644fb343b5",
+      "meta_audit_digest": "6d8137d7b2f1f7544be860a1889d0bb748ee37fb4c047cda3c0408f4f0e826e8",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 12,
@@ -7750,7 +7750,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "021032ce5ee68376e729f9f070ce9ef46b00e2965e3d7ddc344d7d35920c8e24",
+      "state_audit_digest": "1f0a3780e92b406665339194a6b9770b8db04c002137b22aee9597c23db7436f",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -7788,7 +7788,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47207,
+      "duration_ms": 62257,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -7895,7 +7895,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "35afa653d09b3fe1f795f053ae2db5684a4c5a12f53aefe25ccee03509838eb5",
+      "meta_audit_digest": "611530c2d13810b7049e9eeed7a0251dd09d1fab4df68cfb4d8b51604e613781",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 15,
@@ -7922,7 +7922,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "16e3c91a146c49ee42b52afb880e9c11f2d2fdb1b1952d245b66faf723c8afc9",
+      "state_audit_digest": "97569f6d9cc9ac0ecd1fd832c9ce231fb4515a0d420c066956f2ebfef21e8072",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -7960,7 +7960,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47286,
+      "duration_ms": 62421,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -8067,7 +8067,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "51d503e20f7f4d7459327df8fa554bd1f9ef62c1927655f670acec906499af81",
+      "meta_audit_digest": "18a6162b2a4985a9d5039ec29429a4873435291bd71adf3a3411237dd6e688f2",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -8094,7 +8094,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "33450d9a97bad453126055125d1e69d7e0db1e38378d5cab8a0ecc81a3871b46",
+      "state_audit_digest": "12830cd8f4fd55e9f0cb07b1e09ad60129ab36833788c450a7c66af9dd24f997",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -8132,7 +8132,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47695,
+      "duration_ms": 62777,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -8239,7 +8239,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "f9beed7299b25974b5315ea27496b971757f98c9de131fb71159c58444983182",
+      "meta_audit_digest": "d678daf42746c30308b76ed2de99a795885641fa23125f0bce34cb7efada48d1",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -8266,7 +8266,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "80144c0bd88dd02f8251ad98ab2d560d1ffbea6073113685b40d23802220e98c",
+      "state_audit_digest": "7c955c668e6980cf8b8db008b2398e1c16a44b9ff4de3fff74ba488b208353b0",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -8304,7 +8304,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 46751,
+      "duration_ms": 62295,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -8411,7 +8411,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "8ded0efb21b0407f940691033c0c723b97a327d6289a429393b410f0a8357d24",
+      "meta_audit_digest": "35d43aa989bd83ec928994879f5e453355122b56d69deb64fd3c479e62cb82cd",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -8438,7 +8438,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "46db0cfc2b22705b473b37b24b3c9b9d214a1d300c0bd899a507d20e7a000bb1",
+      "state_audit_digest": "47b6ab3c9dd23d69fb896d3d087e66ec67bd161ecf3737fb448587b1179730e9",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -8476,7 +8476,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 46487,
+      "duration_ms": 62350,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -8583,7 +8583,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "f5c8e8a2bdc77d80772a57f90845fbf6df2454726a3ec509278b7127f088eb43",
+      "meta_audit_digest": "07b40fbe5278429ab09465d31a0a6ee035aa28d7c41c5951bb54947bf9e1947b",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -8610,7 +8610,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "3bb0cc9b48127af4ded60315be08b2de818d7c5a9b58c2dd524a36b35d1f704c",
+      "state_audit_digest": "396d3793a57fcdec3529b0d3a58000cad50c60e08a0fda88d80e6df7a8de46d7",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -8648,7 +8648,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47364,
+      "duration_ms": 62505,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -8755,7 +8755,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "bf36f244757e216980199e10fe5461fe15921875399f34dc86827be865582038",
+      "meta_audit_digest": "b34d3e546dd77a4bb3d82154624e735736bf96d13b5a6f5411bc0b5e959158e2",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -8782,7 +8782,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "e28fb1c18799ff0a070ef99aca5581dade9b603cd1f3455e9093cce812be9523",
+      "state_audit_digest": "e5597aae33cad3676e30da332a2f39154c16e86e4c9220a3d050943139f9807a",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -8820,7 +8820,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47206,
+      "duration_ms": 62428,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -8927,7 +8927,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "c1d58f6063eac53e1951cabe1ff7eef577966471d2a8c86e76a45739413defd2",
+      "meta_audit_digest": "fb94f1a9a2f66d874ecc57fbe830f0169a189d6247b48f9998a711557b01cf15",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -8954,7 +8954,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "a9a96315225743cb1b443020eeaf1ad89ef46a7d5ce0ea102dac20e3a2ee5091",
+      "state_audit_digest": "a9d35d37199b9dc94a9a850928f0f9f18b8329b816443505c3b29a7a1b9e2fc8",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -8992,7 +8992,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47340,
+      "duration_ms": 62232,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -9099,7 +9099,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9bbc1ddec403ec35adaaa0bd6e76acced20247c4ed94ad62bfd7a9f8844a84d1",
+      "meta_audit_digest": "650403dc8886bb95ba34047721ae4eb42e20a89ca712f06552e88a8b48d4a919",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -9126,7 +9126,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "abe6b6b76ba16a9a188cb441d9572c4b323a859bc2ac06aae0f7a3043a80740c",
+      "state_audit_digest": "3f6595fb7336dc0f20435c72f3bd44ea15ed36e04b86498aa8260e8f8334a55f",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -9164,7 +9164,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47417,
+      "duration_ms": 62424,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -9271,7 +9271,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "6f2a939430225d74260d9d82b4245ecec8a1918bcf8af01b6afe1768efbce3fa",
+      "meta_audit_digest": "f57ed9e2ffed0cee8fd8de40ce7186add63e325059e0731b93f084bcde08a974",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -9298,7 +9298,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "46e05a8d4533407ee83f7a58873c61c09852bb6653c90ac71946a4a1b30a7982",
+      "state_audit_digest": "9561f67d40d76baaa03a40f7537ea5e3dd277aea375fd7f36f01b15b78a75aae",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -9336,7 +9336,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47566,
+      "duration_ms": 62532,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -9443,7 +9443,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "de7a2b73a10e0900d7797810cf41f322773ef738e9967e328325b1592fce179f",
+      "meta_audit_digest": "cffc6723d4e194b1865ec269b7db6986747cfae23e6ef7342d38b62d561f9bb6",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -9470,7 +9470,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "9d5c81dc402e575792d033e4498e3299d56cfcc712141729a81425f567a435c9",
+      "state_audit_digest": "2e5f4aa0f32f34dde4187aef68514f86e7c06a7e874f3f0c6a11aea28e5a2404",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -9508,7 +9508,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47906,
+      "duration_ms": 62464,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -9615,7 +9615,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "bc5bcb38a5daccb35487a633a9fb259cf835d640a66f38c5e98673f230f3ee6d",
+      "meta_audit_digest": "bae1554a88bd0a9196d4fb0840483da14c2b303245e6b86df79cbfd5e1a6984e",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -9642,7 +9642,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "a251ff9b8bcc2e64fbf7821a49a7106c51d2a8714b53571136a00780e3bba5c9",
+      "state_audit_digest": "882087309c5d3f2f5c40f9b27d4a5177316c05c08ed00bdb3e3d160e065305ff",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -9680,7 +9680,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47623,
+      "duration_ms": 62106,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -9787,7 +9787,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "0037913f36cf32821e7afc44c7ac9eb2c3f9f671e14e88cd40473be777d4eafc",
+      "meta_audit_digest": "370bb27f3ae362cf742796667d3d376aaa4eafc1a71b55e1a09b6a8e3b334173",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -9814,7 +9814,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "ca6705fe6e01a32cb58893010af4fb7cd6abaf60afeed62b8a2ff840253b2a45",
+      "state_audit_digest": "4c4d2247cd6f506cca37ad411510a385dd3a4a2ac05e15f9a1865614eff82e37",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -9852,7 +9852,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 46967,
+      "duration_ms": 62431,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -9959,7 +9959,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "7e110f15c2216ee2e342813ee187ad4953be1c0e21e7fd20829029cf9687b71a",
+      "meta_audit_digest": "f11b6cd26e47459577b1a26490677f933bfeaced7f3e674be781b45cd5449c6a",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 5,
@@ -9986,7 +9986,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "b5cabe3fdb45ff79b41d7799e9962d9f25dded3c77f1ac54dc645d2aa62ff76f",
+      "state_audit_digest": "6e872494ec7d145a324718b57192c20cbc60f54313f94b396ae1077ad40a007b",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -10024,7 +10024,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47097,
+      "duration_ms": 62685,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -10131,7 +10131,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "2c9249ec41510875e767337477b6f919f5ae1e46cf4cf3dcc5bdddad57541112",
+      "meta_audit_digest": "37016c9c429d78841be8c80fee7aa8999c452f0c432633fb9ad3efd611697bd2",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -10158,7 +10158,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "4aef590ad43a90bbd325e64ec3580a79fd2e4adfb419075f924f5f0e03f687a6",
+      "state_audit_digest": "2d6c8d229ec8921878aee5973fe3fbde09dc65f6f9fbfc640857e53685f7bfde",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -10196,7 +10196,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47276,
+      "duration_ms": 62474,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -10303,7 +10303,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "cbdbe96707e43aee4d17bdc25e2fd488106dafebd71664600021364a8cffbf6e",
+      "meta_audit_digest": "177976bedcc35dad12ea5051f2b155b61f13945e733eff818914d6c8dfcca5dd",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 13,
@@ -10330,7 +10330,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "00ac0504c7af8184ed308d3a335ba1eb7bf39fbcbcb41c1a6a870ff0a51e0a80",
+      "state_audit_digest": "7063b8d93cfe012ef1de7c2b25365d6daf1febdeecc4253f58dca1a635383f78",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -10368,7 +10368,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47306,
+      "duration_ms": 62257,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -10475,7 +10475,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9476cadb122b6ae6955d5d0f736a03e9538297f47ca6074263ba94d8e6129d03",
+      "meta_audit_digest": "51d017fa97516bb61c6d8c8b02340022a1215a7b7d6b9b6d985f5bfcc5c42fdc",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -10502,7 +10502,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "786ccfb5cf14372fea52e9839b4e9214ed2ab7b89fb9c87f1426332109ca140e",
+      "state_audit_digest": "43f482d5996334c6738b94d922d274516bd9f55e102b75524000d677b8dcd6a5",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -10540,7 +10540,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47410,
+      "duration_ms": 62554,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -10647,7 +10647,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "e5a59dbfeea8093d11c7af9792ba9bf7619231321c611b577c96dc08bac8515f",
+      "meta_audit_digest": "dd4ebaa04523b382754154fe41d8ef7008048c84ff5b01fb4cba0183fc77ec50",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -10674,7 +10674,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "9263d36539298d6e9dc01c25b201e749bfff59123d1bbc116d1316918cd358a7",
+      "state_audit_digest": "916f8c0d964f416557324b7514d3109d1bef522b1ad0f93504e686c9b9598619",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -10712,7 +10712,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47740,
+      "duration_ms": 62532,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -10819,7 +10819,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "3b03981f95066c695796eddd3e63fe61d92eb56a8481fec34cb697b0030130aa",
+      "meta_audit_digest": "e47b41f5b6877663a61ceada3ccfabdba819d0951d40359d82a40ab8bc978320",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -10846,7 +10846,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "66e0c4ad2e1ea17be27d3adb0c4401eafea0dcf36b19c36931ec9dee7b1d5d6e",
+      "state_audit_digest": "7828ff059545861fd580fa79c234bf25cfbe7bf4339ea6c15b8c66207b960d22",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -10884,7 +10884,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47664,
+      "duration_ms": 62387,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -10991,7 +10991,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "85a0711a88da3749729a766c9a60057d5f073809c26998597450a1db1fa68609",
+      "meta_audit_digest": "71096968b7a8c196f947ca87d8def5382315927d750640991f63df61d5e9cc13",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -11018,7 +11018,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "f9317f47cd9da2be73769b9a996d8d9fc7f53c633605d5870d1246f895148d7a",
+      "state_audit_digest": "0cc3cb00612f6f6bcdf387bced668d0bd34b00e677eccd6d7eeb635e2b392954",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -11056,7 +11056,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47510,
+      "duration_ms": 62375,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -11163,7 +11163,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "e5604d114b6628e1172d028dac001640372f110e12b422bc82cefbe5f7e4a8d7",
+      "meta_audit_digest": "fc5b47c42cb0c45dee560ee3d2a47cea46a8b5a8faac37cad6f43ae44dd0d155",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 12,
@@ -11190,7 +11190,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "90a7579da745d1a07f48fa8a05e084870d6e831d30dac712b170e037b2a13eec",
+      "state_audit_digest": "e883c91350d79c43a140a3b9f67997c07fa2fb2069f9ba9a16ec1fbca9eb09c5",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -11228,7 +11228,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47437,
+      "duration_ms": 62098,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -11335,7 +11335,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "d8413c8bc1d2b3cd089c084eeedffd3f3cc7cbf0ec846ef4f67a8483c6890a04",
+      "meta_audit_digest": "9bbb6350e96d1639005815d56771cc368302c74251b7188ac317ae685cd4146e",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 5,
@@ -11362,7 +11362,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "ccdc2adac6207d12b86d6e33c49f407726c06933f2d69bd2f301ce3ed21870ce",
+      "state_audit_digest": "999cf4f6562c56732012c211f339d808270a1c4a93ac7f42565085684edba35a",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -11400,7 +11400,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47343,
+      "duration_ms": 62213,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -11507,7 +11507,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "d21f3b2674a78ebfb601ee40a50bb8ac1161437f17970afcc8f79f3e7cee01c1",
+      "meta_audit_digest": "88e5c15d8d1f594a689ae32d5ea6be994e9287e78ed1c353058530d62d418ff9",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -11534,7 +11534,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "616118d05926321799835f97ab75586adbaafa60162d1fddd9da229f99a6bc49",
+      "state_audit_digest": "b2e680ef42a0c379f1d6cc47ecdc62b9c7a7be0392c80b5798052aacec075a84",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -11572,7 +11572,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47909,
+      "duration_ms": 62295,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -11679,7 +11679,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "4adc73777a90cfdf0daf2136a39bb312369a71649ebc66636178b77ef39363a0",
+      "meta_audit_digest": "b9ce34f05952eca7b680a2aa1014362b17699b51c5ff3e4ae52270ec856beb0f",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -11706,7 +11706,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "b1beca245fef19204b6f3587c57b32c50b61274e11a87f5b9108d3089f30c6c5",
+      "state_audit_digest": "801a51351798c2c1483b2c0c9725697c4cb856a7b812317450126fd378212873",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -11744,7 +11744,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47696,
+      "duration_ms": 62333,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -11851,7 +11851,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "e63e0dfae0a2b9c18dc62ff2fcc5440f702fed84707cedfdd7115ebbbab2591f",
+      "meta_audit_digest": "6045402214e72f8771ec9c20260c9d512cd8eb1927c88ea53ec72c757d32526c",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -11878,7 +11878,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "6291cff72e82e0d3942d8f1cc914c3e2b6509b5fb32cfbdb043712f95deece2e",
+      "state_audit_digest": "c753da27a5795923083403318e15dce8644ab95de298c7a967a43ec4c220957b",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -11916,7 +11916,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47591,
+      "duration_ms": 62274,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -12023,7 +12023,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "0e43576490a3ddd8429d977c13368225df929e24ce103bf9814c303156930f8b",
+      "meta_audit_digest": "d3fc907fdab43b14b59b5c03c0cd15ee1d998e16f2c0718e482e1ef1e0de0482",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -12050,7 +12050,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "8e67de93724e9a9c102db6ea92e970689c26086f51dd698453c21fd85ecc75dc",
+      "state_audit_digest": "744b43d3d2fd8f81a3332138fcb8b53bcce14f4c5f222612baa7ecd14eae51d4",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -12088,7 +12088,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47844,
+      "duration_ms": 62431,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -12195,7 +12195,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "4a63ccd0b6cef10ef58d513b9085cdb6b6ec91183623bb713f278f95b0c8eebd",
+      "meta_audit_digest": "ac435e18a5c132acb9dc98bc7fac153b7b6c0907150ea09bfb4e0409a46affe1",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -12222,7 +12222,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "9aad21e9d0a5acc2a1a8befbfa3198df5b904a9e5878501ad2e2073e454f55f7",
+      "state_audit_digest": "6847a8b28a3c634129bdb51afc79d95df5edf2a45b2b0c955b378ecc6ff97a09",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -12260,7 +12260,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47911,
+      "duration_ms": 62604,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -12367,7 +12367,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "965dc8e784a3415b00938c180ddd45604ba11761925c7fffb04a4a5cf7b4e0fd",
+      "meta_audit_digest": "609ad8be3c60157ab3e50f113c6d9d7ad0de0e042a2e5e54562e376498e81c62",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -12394,7 +12394,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "8a1f2c1300996d32f69315c3c57e3d8cc430896553b09b14044d41327bdd69aa",
+      "state_audit_digest": "dfa9db83c242e061ba7d741611376f3dd46a5a60ed5868ecf5861e82666c3293",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -12432,7 +12432,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 46646,
+      "duration_ms": 62316,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -12539,7 +12539,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "3158835f33660cb3fd4443d1aee4549e4514468b3851abdb3a66f024c458bd01",
+      "meta_audit_digest": "212767514a9a4eb33def2644392f75157c413fd0f4ec7d1bb86124fbd700493e",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -12566,7 +12566,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "3e02c590ab5d89c02764e123de8ef26269c681935944e14bc9e1f708d274b859",
+      "state_audit_digest": "f478c003197957d993f2d168b0a6330eebf7bd985eda9f77b7cca78210efccc7",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -12604,7 +12604,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 46710,
+      "duration_ms": 62206,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -12711,7 +12711,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "8846b9688fb79e5a0191a379c48f1e6f6c851f5939192f2b822c708a45df6dc9",
+      "meta_audit_digest": "da35b9c7047425c3e705ce5932b0c8da7792eee595fa7711a6d6d42132ef0206",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -12738,7 +12738,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "544add0b360c5722e41e9db12b2f25d767fd105885d8b09496dbff8dcc2324c8",
+      "state_audit_digest": "4f1fe75650092360079352e7c5bc4d510e161b62d8a0f7d0b8e05fe5aa4622f3",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -12776,7 +12776,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47245,
+      "duration_ms": 62368,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -12883,7 +12883,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "079b9e0c2dc3cdee11d366e81000bfa5dff6ede07afc9a578044335c2e10fba5",
+      "meta_audit_digest": "4a03c6bb86122e41d61b0edd72db51b4caa8dca2d595a7137aa100779bc3b087",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -12910,7 +12910,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "83248aee3d611e221a791ebc1007373e3cdce5320c7fa78019c0a906ca8807e9",
+      "state_audit_digest": "5e7c05f8b013f2df27af71328fa908b91062b7298d674436170c7349310308e0",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -12948,7 +12948,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47708,
+      "duration_ms": 62604,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -13055,7 +13055,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "f1bf385fc1d736a0f4814814dadda756c72deffb35f78e2b3d8b155c4b114292",
+      "meta_audit_digest": "af52801b9bf2a7628d21ff861df88262ca6bedab5c8740b8da5df465a3e058e7",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 5,
@@ -13082,7 +13082,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "baae8adbf7c04d12c37734dfd9e9def2d229fccb36b2be17d771742adee9261a",
+      "state_audit_digest": "901e43686173c28c04f45eac3c1b841fc8f5dab47122c9a845b6cfe8ccba3d7b",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -13120,7 +13120,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47365,
+      "duration_ms": 62186,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -13227,7 +13227,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "4a3a078c2eaf39e642e437f2d4f661a2b204aef8f323718d2fb8f466fc268f56",
+      "meta_audit_digest": "ab9bde1a7f939502ee688446073d297889610220adf0bc52735411122a82f579",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -13254,7 +13254,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "924e7ac120378f915c80bedcd0fd88e83d18dfb3a34a41903ebe22552ca68238",
+      "state_audit_digest": "d7df6d559593a0f042fcbe1eee1993886fd5cdc6a8a5dc931830902427eaeca5",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -13292,7 +13292,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47666,
+      "duration_ms": 62453,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -13399,7 +13399,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "e2b0e4c242be109e65fa2aa54e2ad08f336af2c6d382ddd4b0f697a0d8c4a341",
+      "meta_audit_digest": "868a1a2261449648f39b974c0406e2ee1a5874c2a38a2c93dbb6147bacd5a205",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -13426,7 +13426,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "80ab97781100155c983f1e2df1a0ed662f0693cd0596ed16cbb62cd63e7aae0b",
+      "state_audit_digest": "e6e9e4b02525672d62a9e8eaf2368210626558a6f82c53c5c1039d250ca34138",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -13464,7 +13464,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48083,
+      "duration_ms": 62662,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -13571,7 +13571,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "4e3ce67e4957affc4122d43caccc969f66903199f65cfe5d85d394193c8c0c38",
+      "meta_audit_digest": "79d8761624a67ad85c8c96fcb154635ba9b65b98b247d612ddd04dead817d0d6",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -13598,7 +13598,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "60a393bcf573b54e53f58beaef53a3b2236168c8edaa5aca239ac4b163d8345d",
+      "state_audit_digest": "24796c2500448103d62881974632052d4a6a36a9673af094053089631ded38b1",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -13636,7 +13636,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48198,
+      "duration_ms": 62741,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -13743,7 +13743,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "8fa0eece95a5b4947b22a2bfa1604155cb7b503da802b17dcbd4d082960d8d36",
+      "meta_audit_digest": "5a3ff50141a96309b6ecc9def4897857c1d9fe05f379e01623f0ccbcb0079f71",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -13770,7 +13770,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "e7821836b8e81584e8f3784c5b40856658e7e5fe6f36a84cc6956da095838941",
+      "state_audit_digest": "a06fc8b733538597a7e986b862ae7958adf1abba2a99e5118a685cfbefe140da",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -13808,7 +13808,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47025,
+      "duration_ms": 62501,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -13915,7 +13915,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "4f3b60aebe55cb14bb78bc1462dc772f3f1dbfaa2193d79329c0af9bb98ff835",
+      "meta_audit_digest": "19408a3028ccea524e3ceb4d1e526d95a05410adf3b1931de1bb3e15a2c8fb3e",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -13942,7 +13942,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "0d45a7859201880ead3dcad274a732760a46cc100d911b147e74b8dd2e3bd6a7",
+      "state_audit_digest": "5b78817307a31620e7b1b136a00012be1136fbc5fac488da8df3fe089167170d",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -13980,7 +13980,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47334,
+      "duration_ms": 62180,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -14087,7 +14087,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "dfb169d1369c1cb71a1fcba47e3b3b919a76a4a5284e9e6ca5e837dc0a380434",
+      "meta_audit_digest": "5d35c6c6ce7cad58b6de574e857af06caeb65cb3429a9bf1fd7d0105ddd54b29",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 5,
@@ -14114,7 +14114,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "b514cc2f9c4cc9e73b1f8ab60fd9576741376bee07335faf9e932bbadcd10875",
+      "state_audit_digest": "4b9054fb38e60b92c76e3f0e33a8195f39cbab71249223ed82a8b53cc8744f5b",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -14152,7 +14152,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47765,
+      "duration_ms": 62407,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -14259,7 +14259,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "3879882289030b21756223fcd5e92c11c1fcda2b71363363b203e60d9669dd33",
+      "meta_audit_digest": "5f33221ee3e55860b5ca241ed1b23f1fdb16d174dd18058477e525429a431e5a",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -14286,7 +14286,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "d2caaf8740742cc8bb0c04e5c2579bb6361fc59c3c7772ba1e16ff44ad48830b",
+      "state_audit_digest": "2fd6aab1a54d96b9078573237d223fe5776fd0c7c8c0729332a50a8b82640281",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -14324,7 +14324,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47337,
+      "duration_ms": 62372,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -14431,7 +14431,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "3a5cd5752ed2b3cd713506826110cf2dd4d4bd884782334930b88bc832dca7e0",
+      "meta_audit_digest": "b5c34c2a69f93113c6343dc2aa2ad1db5325575bb350b82c4b4f9e70039fb845",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 9,
@@ -14458,7 +14458,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "28b2ba2a22998cc386b320601bc75cdf516071e295bb1e875458e0494a1739dc",
+      "state_audit_digest": "ec47be448f870f5c85f411b2163b435dba451a629b3ecdfc52a6e357bb933d92",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -14496,7 +14496,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47525,
+      "duration_ms": 62543,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -14603,7 +14603,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "c41c75f4d019a7389a18d443b3efdd7d6cd15460c84ff84de3e393e22f63ddd3",
+      "meta_audit_digest": "1c911523273da33466080262c15056c1bb03dd0ffd99dacbb8b8fa9e5229fc1b",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -14630,7 +14630,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "3d786512d6cdddd0c246d83a82dbce58b7ea7132deb281450aa7bf6999ae4b48",
+      "state_audit_digest": "609e796d4354e65c9c83033f3ea4a3e4d08d1338d191e5c70661fed5480588cc",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -14668,7 +14668,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47650,
+      "duration_ms": 62703,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -14775,7 +14775,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "7f131fa705d903a6911c401db45b354b58d2e47bb1a3ab26f545421bc6c02ce2",
+      "meta_audit_digest": "c685c3ded4b0f9ade3645b90038096b0e2591d3c43fc678660d10e37ac350384",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -14802,7 +14802,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "a086b40ca7eb2c1b98c66dd5b0b0841b4e041a8587f57c5e6fd5e478900cf957",
+      "state_audit_digest": "51c766faf4a013507cc955d8d73c6274771417ad5607124fe507c1f3782de946",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -14840,7 +14840,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47526,
+      "duration_ms": 62692,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -14947,7 +14947,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "d6bb320f61b29cf15b5c3776b73ef451260c71b7336671a00e14cf046514ca41",
+      "meta_audit_digest": "fc3b4f307757e3b51a542849c696271f54bc747d0672a9100717c32e5cf64687",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -14974,7 +14974,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "f7d34da9c7a665f390aa099ed37d7ef5dea566b700421907d36c3805b792eab3",
+      "state_audit_digest": "84ad530ccb46ec1511dd3e2da25befe92b699fe78489cbb284c5207a4c3d7347",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -15012,7 +15012,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47978,
+      "duration_ms": 62625,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -15119,7 +15119,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9565c5755dab890ae60a7bdc29487395c3ca4c9b1b64548a7b1bd5ab716211bf",
+      "meta_audit_digest": "dcc193fe98ae24bd4a91c45a65a7fb534bbe14ab7ffc75baeacfb1937279c894",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -15146,7 +15146,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "f0432c82d9f8947b3cc04949f628dabe61e211b94a5c5084505a779c93844090",
+      "state_audit_digest": "8ab315e269f351fdd2ce721e1ef7c5a24e5f85644e74212379a407474178353f",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -15184,7 +15184,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 47574,
+      "duration_ms": 62514,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -15291,7 +15291,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "74a8b0411b3cd7d0dab87d6a1f728721c4908b4252c38b2cd1f15f513ef89809",
+      "meta_audit_digest": "019e232b5cb77a78ab558fac9be444c1f12bf17c6fea4c75b782ccac77f368ee",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -15318,7 +15318,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "7fdc459306ceb7093f83f40937b01eaa15b34994571f1ee08a6b368c22e618e1",
+      "state_audit_digest": "939a0107dcd9e832ad44e4dcbfdc782eb8d47acc7ed59f505da71f34e663b1a3",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -15356,7 +15356,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 48446,
+      "duration_ms": 62175,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -15463,7 +15463,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "e1065c425248c5edfb4d920cfc0336a76617dc6330ed86496aa3c75ab72907c6",
+      "meta_audit_digest": "e34ed14b3b67a1e2f8d101a88ba90a953011b49f5e32d731e91c4663cb7c7ba2",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -15490,7 +15490,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "e320e5fb223e0df2405a804442f07636738f647694322b7cfe3db328382ef07d",
+      "state_audit_digest": "b9f224c98a48fd6fa0c2efb3c6a33564cea8a4dec271ccfffa4ba284073dccb8",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -15528,7 +15528,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49953,
+      "duration_ms": 62489,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -15635,7 +15635,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "092a88fcfe65aa21389a886cf4328f79f9d75c5e953edf31309e78a2f63f377f",
+      "meta_audit_digest": "b1beb4b338b9b5697564e18d540f4fa2b6bb01d3ac8e3b9a8e02d910ffa8d099",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 11,
@@ -15662,7 +15662,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "f78496a062ea788794ffcf4bb90352a640dcf4ef3e44865aebc8a791d4b0f49b",
+      "state_audit_digest": "7a97f70acc6e1cbee68864c01805067d2433831462043ee97f1dcde5844de912",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -15700,7 +15700,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49442,
+      "duration_ms": 62387,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -15807,7 +15807,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "061c58a357f338a63ad17bcd2f411954eb3fb9594bc89ffbba2d49c5e1867f88",
+      "meta_audit_digest": "ed14cd7f0857bece250f2c1df9d9de666efc23edbd624842c6ff959adaefb1c2",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 4,
@@ -15834,7 +15834,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "ae660a258807e3650438c4939215650703440bc59a5163d1f5b859f05dae7f1b",
+      "state_audit_digest": "7e2f5d747ab161b0fa2ee9636a871029f515a5b7ee290ae1feb5c0b9580d6abc",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -15872,7 +15872,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49361,
+      "duration_ms": 62367,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -15979,7 +15979,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "9d52f82543f986820ddecfd4dba438b767b4ff5f31aa4ee858f06852f51f2e74",
+      "meta_audit_digest": "5101fa5c0dbd780bdef6a5da7a5df499c52da9346ee34695b80aade1ffb98bc3",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -16006,7 +16006,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "50cab784cc30fa725a0e8ea995398bbe1a6ec65627e1483c2d89abd184083162",
+      "state_audit_digest": "d6a2e9cb027e91690518fd35fe7d0e9466485cae7a2581aed37934fc2ad62c89",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -16044,7 +16044,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49656,
+      "duration_ms": 62381,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -16151,7 +16151,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "072ae9aa31055360946a0c40e2f4a54cbcd139c7435e77c4e1cc91f7bf9178eb",
+      "meta_audit_digest": "c31d22c90cd5cba5afe67393ade5022589a7db6b81b20e1fc614b59d72decf62",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 13,
@@ -16178,7 +16178,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "202e026b8b77d768f68c87505361212b536a0baa2f14184b78334801a969417b",
+      "state_audit_digest": "a456ab129365dc17c7667e23e4638565b45da9669c4a958a5d66e4eab5b11d98",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -16216,7 +16216,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49762,
+      "duration_ms": 62595,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -16323,7 +16323,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "80db8665d54444ae0a9af70bd285755c8d7e8e7711d9335f4f8b02dd00f9c93f",
+      "meta_audit_digest": "d07106543e60ef5477f541d389b4914f9ec7459dd949912bddc9a80ac0b1e5df",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -16350,7 +16350,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "1b42b7fbb6839d9700cd9ccc4b7c2e9b7c6792e3bbdd7b1ded69f33a34042848",
+      "state_audit_digest": "ad869c8b5aae8d646f65f3e68a1b19b5d1a7ae88a6c3fe5b0827faab74410b3a",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -16388,7 +16388,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 49996,
+      "duration_ms": 62471,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -16495,7 +16495,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "88581f0e091ff2a11244c697bb91eac0db07a2c783858e82f1ce22b6e5ae1406",
+      "meta_audit_digest": "5705afed81f37e8c7be72ffb12daa3aba61895be0bbcf4c54ce9902d3201e883",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 7,
@@ -16522,7 +16522,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "7e2e30207e7846ad85cd7467630e872bb49301813174626d4ac336c1a3dcbc76",
+      "state_audit_digest": "e92493317c65c0910213aefd679eadd208078bbb7c6110da97d65bd61e699d5b",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -16560,7 +16560,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 42321,
+      "duration_ms": 60712,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -16667,7 +16667,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "a9aa09cef1163d7883374c6501bd0108df059abcd26e0e76a1fbd1f684269fb9",
+      "meta_audit_digest": "b0ab699a09e79be499461d6cfcc436835f02f4fee70c67f59173767283ba04c2",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 10,
@@ -16694,7 +16694,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "ca539a124e1679de42d81ac8854f3dcc44f7ee908e05d625bf4148f385930f1e",
+      "state_audit_digest": "7ed3ece6be558ed8b9e6065be9ebb5bc5158b618f0a26347640fa9568b7c4da4",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -16732,7 +16732,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 42191,
+      "duration_ms": 60815,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -16839,7 +16839,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "ed900726657865c01253e78ec622ec320b1ae956f1bb45f12e7105451a0e3782",
+      "meta_audit_digest": "9e4d1482c4f420945ede58529ff0ef9805d2fbbd374f5a007ce2d8c38b8f3c24",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 13,
@@ -16866,7 +16866,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "4e36c43bfe1576f0cf1d92fb1f1defd49a77c53de3cb6a8ef95b1b63c8e78561",
+      "state_audit_digest": "01f59a8fd42e5b89d6b5f9dd3805272951389ed62453a8748150093afbbb4606",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -16904,7 +16904,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 40547,
+      "duration_ms": 60940,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -17011,7 +17011,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "2ca6486fe2bbdde558d6210b876e4e84d385033f631b5a91416cbc63433f3b35",
+      "meta_audit_digest": "3e8c2f0b77ba05107f594f175a65a96d3866b7aa9f51c3470f96f7a619a3884c",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 8,
@@ -17038,7 +17038,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "f8b179ab25c832cdd1d1ef18604af7012395f53a6d6dacc2edc9e906b4115ded",
+      "state_audit_digest": "042cf54e2b44892fa4d2463fb2d33287ea52908ad87395618ea22fe5016870ef",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -17076,7 +17076,7 @@
         "terminal_rounds": 150,
         "unfinished_execution_claims": 0
       },
-      "duration_ms": 40372,
+      "duration_ms": 60815,
       "fault_path_semantics": {
         "meta_records": {
           "10": {
@@ -17183,7 +17183,7 @@
         ],
         "user_version": 1
       },
-      "meta_audit_digest": "59c31c5ba7eed41f7456570f2e7dc1ec93cfe792c7eb2779858c05942e5f7dd1",
+      "meta_audit_digest": "691c512447b592360f639bb5045ea54bc35edb75248d55ffbc2502064aa74bec",
       "meta_observation_count": 100,
       "order_counts": {
         "ABC": 6,
@@ -17210,7 +17210,7 @@
         "physical_call_identities": 346,
         "policy": "ARM_PRIVATE"
       },
-      "state_audit_digest": "49cd55b2202b9a525803912110b818d1298cf903f63a32d730ce6f1162da2196",
+      "state_audit_digest": "71b25ad6f721b0fdc0c94a922a854554c0c950f74b2a67e2f2e1b87d9c6a876d",
       "status": "PASS",
       "task_fixture_statuses": {
         "B:PROTOCOL_BRANCH_DIAGNOSTIC": {
@@ -17241,22 +17241,22 @@
   "scheduler_class": "ThreeArmPreCanaryOrchestratorV1+M6IExactSchedulerV1_CONFIGURATION_ONLY",
   "schema": "recclaw.m6i.exact-scheduler-stress.v1",
   "source_projection": {
-    "scripts/run_m6i_exact_scheduler_stress.py": "6e1c538d001a9573d4bd7ab4b9db867275bc82558de234d3dc3e44fc28643039",
-    "src/recclaw_core/experiments/helix_abc_v1/broker_failure_closure.py": "450a5b82f6f3aa43026fc4150f21edce65e4d43b624b8b6ab4d9ccf150fab12e",
+    "scripts/run_m6i_exact_scheduler_stress.py": "90592ab35978f7f41f62b63460decce15d39bad72cf645d3b797cc7cc03af17d",
+    "src/recclaw_core/experiments/helix_abc_v1/broker_failure_closure.py": "e8d573a83a9d451190e147cd607b00a0fe3f3fb3fcf622981449ae30eead11c7",
     "src/recclaw_core/experiments/helix_abc_v1/campaign_runtime.py": "93eefa0c44f62581ab23a021c4f43a41442e6177cb8fb370afa52a064d14b45e",
     "src/recclaw_core/experiments/helix_abc_v1/common_execution_guard.py": "9397b6174ce471077a26dc8c8300b7cb34d747ef5df40370f9354d4b6f6ff947",
     "src/recclaw_core/experiments/helix_abc_v1/compilation_cache.py": "021ac1f921fa7dc8cdd24d8549657dc5dd02c1301ca901583ad9ec780d3aebd9",
-    "src/recclaw_core/experiments/helix_abc_v1/integrated_state_core.py": "22e26e704b44c0616da9060cbace1d50209abef85f43d6caebbdf864cfd97b73",
+    "src/recclaw_core/experiments/helix_abc_v1/integrated_state_core.py": "a3d9e45c04542395a94f0fcdb0fd2e609e55c748c703fc55f8f2a6060ae4b945",
     "src/recclaw_core/experiments/helix_abc_v1/materialization.py": "0bfc2af7e200300db315db274cc6ec21cae2cae54df4bf293a09276e14a502ca",
     "src/recclaw_core/experiments/helix_abc_v1/meta_vnext/features.py": "d111626edd67b6ee094f1d479262c73a73c9937703a589568f5f5621d703591c",
     "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py": "08f8a3a962360f3b3ec5396b6f2c2af21aedf19280273fbbf5fb5ec33e308f46",
-    "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py": "e16d6a552fdb7cee7efeedb4a7981cadbcb826957171823873d2f8f4ae993cff",
-    "src/recclaw_core/experiments/helix_abc_v1/real_canary.py": "e3259947395cbb744b94274353ae1d048686aff314b2d5adf3f2b120c59b64ea",
+    "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py": "e67fde4382d6f6452fb8b6bf8cfbe5b2aafe54dacb719629512a90eaddd7f38e",
+    "src/recclaw_core/experiments/helix_abc_v1/real_canary.py": "e48482fd93032de7a45fd03baa5a8aa73c5da4bfa4a499457483d0f6220d24d0",
     "src/recclaw_core/experiments/helix_abc_v1/research_capability.py": "98def14fc46275bc80b45a4fcea348e203a09ffca10a031183eacbea57bbe457",
     "src/recclaw_core/experiments/helix_abc_v1/research_quality_gate.py": "984556c3e5645c366c4568129b92f8a9a6d008f07704eff59278ace9beca6a0a",
     "src/recclaw_core/helix/scientific_attribution.py": "0b15d5301a9e024c73dacdd397479f0330d120cb79c8de07269aea0b0a60930a"
   },
-  "source_projection_digest": "5c9eee4fc464f02b4897f76b42dbf697dee2bf94e74cb669551d248fbdd46c6a",
+  "source_projection_digest": "c81641b1f4f72efd6cf86ee99e21252e15525a6c65e25a40472aa6dc4b0808b5",
   "source_projection_unchanged": true,
   "status": "PASS",
   "totals": {

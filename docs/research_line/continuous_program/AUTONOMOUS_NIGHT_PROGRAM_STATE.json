@@ -1,20 +1,30 @@
 {
-  "active_stage": "M6I_CURRENT_BYTE_REQUALIFICATION_AFTER_V23_CANONICAL_REPAIR",
+  "active_stage": "M6I_CURRENT_BYTE_FINAL_AUDIT_PASS_BACKEND_SELECTION_NEXT",
   "active_version": "M6I_PRE_V24",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "d6e9597bf2fba3bf756546c32c991cd11b91cdf3",
+  "active_commit": "591878c8bfea6bf4a0104a57ec2a8651b9f46f0b",
   "active_contract_digest": "d96259271fff6cf8380d0816dff44a2f583d6fc88ef914991dab1a983aa8b08c",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
-  "active_backend_release": "TRAINING_RUNTIME_RELEASE_V15:58895ab819cbb63f3918ec6830bb60b8ea4ed1e90ec8dd5144da51f410799b0c",
+  "active_backend_release": null,
   "active_processes": [],
-  "last_completed_checkpoint": "V23_PARENT_IDENTITY_AND_PRE_EXECUTION_REJECTION_REPAIR_TARGETED_GATES_PASS",
-  "next_automatic_action": "RUN_FULL_CURRENT_BYTE_M6I_QUALIFICATION_PROVIDER_ISOLATION_AND_INDEPENDENT_P0_P1_AUDIT",
+  "last_completed_checkpoint": "M6I_CURRENT_BYTE_FINAL_INDEPENDENT_AUDIT_PASS_P0_0_P1_0",
+  "next_automatic_action": "CREATE_LOCAL_M6I_CHECKPOINT_THEN_INSPECT_GPU2_AND_GPU35_AND_QUALIFY_ONE_COMMON_BACKEND_FOR_FRESH_V24",
   "round_progress": {
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
       "rounds_per_arm": 50,
-      "terminal_arm_rounds": 15000
+      "terminal_arm_rounds": 15000,
+      "open_arm_rounds": 0,
+      "closed_triplet_barriers": 5000,
+      "meta_boundary_events": 10000,
+      "cross_arm_physical_identities": 0,
+      "duplicate_claims": 0,
+      "duplicate_feedback": 0,
+      "unfinished_execution_claims": 0,
+      "source_projection_digest": "c81641b1f4f72efd6cf86ee99e21252e15525a6c65e25a40472aa6dc4b0808b5",
+      "report_sha256": "1e7f0208449d179ff42427228133c89b5c7ac7f74b600e9ff5c443a2b28be2aa",
+      "status": "PASS"
     },
     "M6I_v23_canonical_repair_targeted_qualification": {
       "bl_icf_executable_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
@@ -23,6 +33,17 @@
       "parent_and_pre_execution_tests_passed": 39,
       "parent_and_pre_execution_subtests_passed": 86,
       "status": "PASS"
+    },
+    "M6I_current_byte_591878c_qualification": {
+      "active_regression_passed": 457,
+      "active_regression_subtests_passed": 400,
+      "deterministic_conformance": "PASS",
+      "historical_or_environment_tests_deselected": 13,
+      "provider_isolation_probe": "PASS",
+      "provider_probe_fresh_calls": 12,
+      "provider_probe_training_executions": 0,
+      "synthetic_schedule_seeds": 100,
+      "synthetic_terminal_arm_rounds": 15000
     },
     "V22_gpu35_runtime_v14_qualification": {
       "fixed_canaries_passed": 3,
@@ -56,10 +77,10 @@
       "verdict": "NON_GO"
     }
   },
-  "provider_calls": 13,
+  "provider_calls": 25,
   "training_executions": 8,
   "P0": 0,
-  "P1": 1,
+  "P1": 0,
   "P2": 1,
   "hard_stop": false
 }
