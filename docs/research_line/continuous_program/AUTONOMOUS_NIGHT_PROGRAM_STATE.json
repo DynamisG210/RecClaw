@@ -1,5 +1,5 @@
 {
-  "active_stage": "V23_REMOTE_TERMINAL_STATE_PENDING_NETWORK_RESTORE",
+  "active_stage": "V23_SEALED_RECOVERABLE_FAILURE_CANONICAL_PARENT_BINDING_REPAIR",
   "active_version": "V23",
   "active_worktree": "/root/projects/RecClaw_m6i",
   "active_commit": "d658a2eb5880d455a2b36a2b9ef8d4cd08994e57",
@@ -7,16 +7,9 @@
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
   "active_backend_release": "TRAINING_RUNTIME_RELEASE_V15:58895ab819cbb63f3918ec6830bb60b8ea4ed1e90ec8dd5144da51f410799b0c",
-  "active_processes": [
-    {
-      "host": "gpu35",
-      "kind": "run_v23_pilot",
-      "pid_at_start": 79306,
-      "status": "UNKNOWN_AFTER_EXPERIMENT_NETWORK_ROUTE_RESET"
-    }
-  ],
-  "last_completed_checkpoint": "V23_LAST_OBSERVED_REMOTE_SNAPSHOT_7_CLOSED_1_OPEN_8_EXECUTION_CLAIMS",
-  "next_automatic_action": "RESTORE_EXISTING_EXPERIMENT_VPN_THEN_READ_ONLY_AUDIT_V23_TERMINAL_STATE_CREDENTIAL_RESIDUE_AND_PROCESSES",
+  "active_processes": [],
+  "last_completed_checkpoint": "V23_NATURAL_FAILURE_AUDITED_AND_PERMANENTLY_SEALED",
+  "next_automatic_action": "REPAIR_CANONICAL_PROVIDER_TO_LINEAGE_PARENT_BINDING_THEN_RERUN_AFFECTED_M6I_AND_PROVIDER_GATES",
   "round_progress": {
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
@@ -42,20 +35,23 @@
       "runtime_validation": "PASS"
     },
     "V23_five_round_pilot": {
+      "broker_calls": 13,
+      "closed_rounds": 8,
+      "execution_claims_finished": 8,
+      "open_rounds": 1,
       "rounds_per_arm": 5,
       "search_seed": 9225,
+      "sealed": true,
       "started": true,
-      "last_observed_closed_rounds": 7,
-      "last_observed_execution_claims": 8,
-      "last_observed_open_rounds": 1,
-      "remote_terminal_state_confirmed": false,
-      "terminal_arm_rounds": 7
+      "status": "SEALED_RECOVERABLE_FAILURE",
+      "terminal_arm_rounds": 8,
+      "verdict": "NON_GO"
     }
   },
-  "provider_calls": 12,
-  "training_executions": 9,
+  "provider_calls": 13,
+  "training_executions": 8,
   "P0": 0,
-  "P1": 0,
+  "P1": 1,
   "P2": 1,
   "hard_stop": false
 }
