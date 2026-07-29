@@ -1,15 +1,15 @@
 {
-  "active_stage": "V24_GPU35_BACKEND_QUALIFICATION_PASS_CLOSURE_FREEZE_NEXT",
+  "active_stage": "V24_FROZEN_PRE_OUTCOME_START_AUDIT_AND_LAUNCH_NEXT",
   "active_version": "V24",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "8f0cdaa06608852ceff954f7c42165ff6dd00fa4",
-  "active_contract_digest": "d96259271fff6cf8380d0816dff44a2f583d6fc88ef914991dab1a983aa8b08c",
+  "active_commit": "a52e52ebe2a88faabbb24ad8e5f21762aa9c249a",
+  "active_contract_digest": "2f6309c0036375f897ad842d459011b1b0c849f35c790553cabbe5eebfa27968",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
   "active_backend_release": "TRAINING_RUNTIME_RELEASE_V16:2de9e64bee31f8d7c2e86ee381f37c734902f383f448d87e61c62617e3a73556",
   "active_processes": [],
-  "last_completed_checkpoint": "V24_GPU35_THREE_FIXED_CANARIES_AND_PINNED_ORIGINAL_PROBE_PASS",
-  "next_automatic_action": "FREEZE_AND_VERIFY_ONE_V24_RUNTIME_BACKEND_RESOURCE_SOURCE_AND_PILOT_CONTRACT_CLOSURE",
+  "last_completed_checkpoint": "V24_SINGLE_RUNTIME_BACKEND_RESOURCE_SOURCE_AND_PILOT_CONTRACT_CLOSURE_PASS",
+  "next_automatic_action": "RUN_V24_IDENTITY_START_AUDIT_THEN_FRESH_FIVE_ROUND_FULL_TRAINING_PILOT",
   "round_progress": {
     "V24_backend_selection": {
       "gpu2_gpu1": "NOT_QUALIFIED_18427_MIB_OCCUPIED_5666_MIB_FREE_AND_GPU0_DEVICE_HANDLE_ERROR",
@@ -53,6 +53,19 @@
         "status": "PASS"
       },
       "required": 3
+    },
+    "V24_frozen_contract": {
+      "content_digest": "2f6309c0036375f897ad842d459011b1b0c849f35c790553cabbe5eebfa27968",
+      "gpu_cost_microunits_per_arm_round": 340000,
+      "gpu_device_time_ms_per_arm_round": 1200000,
+      "p0": 0,
+      "p1": 0,
+      "pilot_started": false,
+      "rounds_per_arm": 5,
+      "search_seed": 9226,
+      "source_head": "a52e52ebe2a88faabbb24ad8e5f21762aa9c249a",
+      "status": "FROZEN_PRE_OUTCOME",
+      "wall_time_ms_per_arm_round": 1200000
     },
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
