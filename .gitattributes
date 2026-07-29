@@ -6,3 +6,9 @@
 *.yaml text eol=lf
 *.yml text eol=lf
 *.sh text eol=lf
+
+# Preserve the exact bytes of legacy files whose committed content predates
+# the LF policy. Their runtime identities are part of the frozen release.
+notes/method_change_space.md -text
+recclaw_ext/models/lightgcn_lw.py -text
+scripts/agent.py -text

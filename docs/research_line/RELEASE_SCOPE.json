@@ -1,0 +1,30 @@
+{
+  "release_schema": "recclaw.research-line-functional-release.v1",
+  "source_snapshot_commit": "b621a5c78e05c5c52ffc55d4090c0707af80cc27",
+  "release_tag": "research-line-functional-v1.0.0",
+  "authority": "FUNCTIONAL_CODE_RELEASE_ONLY",
+  "formal_research_claim": false,
+  "main_authorized": false,
+  "held_out_accessed": false,
+  "included": [
+    "integrated Research Line core",
+    "EvidencePort and Evidence Guard integration",
+    "executable model and configuration resources",
+    "generic workers and command-line entry points",
+    "self-contained functional regression tests"
+  ],
+  "excluded": [
+    "historical milestone and nightly documents",
+    "version-specific Pilot and qualification wrappers",
+    "generated results, logs, databases, and Broker outputs",
+    "machine-specific supervision and recovery helpers",
+    "historical and external-backend integration tests"
+  ],
+  "local_archive": {
+    "path": "/root/projects/RecClaw_research_line_archive_2026-07-29_b621a5c",
+    "file_count": 834,
+    "total_bytes": 8128507,
+    "manifest": "SHA256_MANIFEST.txt",
+    "manifest_sha256": "dd148c2bc4da3d1e2a9c36177a7ff213e656fe7212ae131e8268d063b2a146af"
+  }
+}

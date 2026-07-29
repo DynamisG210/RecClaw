@@ -1,36 +1,43 @@
 # RecClaw
 
-RecClaw is a recommender-system research agent workspace built around RecBole.
-It is used to propose, validate, implement, run, and reflect on candidate
-recommendation algorithms under a fixed evaluation protocol.
+RecClaw is a recommender-system research agent built around RecBole. It
+proposes mechanism-level candidates, materializes them in a controlled
+executable space, runs isolated comparisons, and learns from outcomes without
+silently changing the experiment protocol.
 
-The current runtime focuses on controlled BPR/LightGCN action-space exploration
-with local extension code under `recclaw_ext/`.
+This branch is the compact functional Research Line release. Historical Pilot
+records, generated result databases, version-by-version launch scripts, and
+nightly process documents are intentionally excluded from the release tree.
+See [docs/research_line/README.md](docs/research_line/README.md) for the exact
+scope and evidence boundary.
 
-## Main Pieces
+## Main components
 
-- `configs/action_space.yaml`: runtime boundary for what the agent may change.
-- `configs/candidate_registry.yaml`: runnable candidate catalog.
-- `scripts/agent.py`: Observe -> Plan -> Propose -> Validate -> Run -> Reflect loop.
-- `scripts/research_line.py`: explicit research-ability line with Candidate
-  Producers, Research Router, Search Memory, and Meta-Research advisory state.
+- `src/recclaw_core/experiments/helix_abc_v1/`: three-arm Research Line runtime,
+  canonical identities, state stores, orchestration, training contracts, Meta
+  control, and audit projections.
+- `src/recclaw_core/helix/` and `src/recclaw_evidence_guard/`: EvidencePort and
+  Evidence Guard integration.
+- `recclaw_ext/`: executable recommender-model, loss, sampler, and composition
+  extensions.
+- `configs/`: action-space, candidate, dataset, and execution configuration.
+- `scripts/research_line.py`: side-effect-free Producer, Router, Search Memory,
+  and Meta-Research utilities.
+- `scripts/campaign_train_worker.py`: common training worker.
 - `scripts/run_candidate.py`: isolated candidate execution.
-- `scripts/build_experience_summary.py`: reflection memory and search steering.
-- `scripts/plan_research_line_comparison.py`: paired command-plan generator for
-  comparing this research-line version against `RecClaw-原版`.
-- `recclaw_ext/`: local model/loss/sampler extensions.
-- `recclaw_program.md`: operating manual for the agent and experiments.
+- `scripts/plan_research_line_comparison.py`: matched comparison-plan generator.
+- `tests/`: retained functional and regression coverage.
 
-## Quick Checks
+## Quick checks
 
 ```bash
 python3 scripts/analysis/lint_recclaw_space.py
-python3 -m unittest discover -s tests
+python3 -m pytest -q tests/experiments/helix_abc_v1
 ```
 
-## Pilot Entry
+## Local pilot entry
 
-Use an isolated output directory for each run:
+Use a fresh output directory for every development run:
 
 ```bash
 python3 scripts/run_reflection_pilot.py \
@@ -40,17 +47,14 @@ python3 scripts/run_reflection_pilot.py \
   --gpu-id 0
 ```
 
-## Comparison Plan
-
-Generate a matched command plan against the original RecClaw without modifying
-the original folder:
+Generate a matched command plan without modifying the original checkout:
 
 ```bash
 python3 scripts/plan_research_line_comparison.py \
-  --old-root ../RecClaw-原版 \
+  --old-root ../RecClaw-original \
   --rounds 50 \
   --proposal-source heuristic
 ```
 
-Keep `RecClaw_LabLog` out of runtime inputs. Use it only for human-facing
-analysis, plots, and reports.
+Keep `RecClaw_LabLog` and generated experiment outputs out of runtime inputs.
+They may be used only for human-facing analysis and reporting.
