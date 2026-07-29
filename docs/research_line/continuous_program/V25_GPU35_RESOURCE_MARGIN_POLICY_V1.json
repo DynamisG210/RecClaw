@@ -1,0 +1,61 @@
+{
+  "authority": "NONE",
+  "canary_execution_purpose": "DEVELOPMENT_EFFECT_PILOT_OFFLINE_TOPN",
+  "canary_specs": [
+    {
+      "campaign_mechanism_id": "BPR_MF",
+      "family": "BPR_FIXED_CONTROL",
+      "search_seed": 9383
+    },
+    {
+      "campaign_mechanism_id": "LIGHTGCN",
+      "family": "LIGHTGCN_FIXED_CONTROL",
+      "search_seed": 9384
+    },
+    {
+      "campaign_mechanism_id": "LIGHTGCN__LGCN_AUX_ALIGNMENT__LGCN_DUAL_PATH",
+      "family": "COMPOSITIONAL_HIGHER_COST",
+      "search_seed": 9385
+    },
+    {
+      "campaign_mechanism_id": "BPR_MF__BPR_TAIL_REWEIGHT",
+      "family": "V24_TAIL_REWEIGHT_REPAIR_REQUALIFICATION",
+      "search_seed": 9386
+    }
+  ],
+  "evidence_class": "DEVELOPMENT_ONLY_PRE_OUTCOME",
+  "formal_acceptance": false,
+  "margin_policy": {
+    "gpu_cost_microunits": "ceil_to_10000(gpu_device_time_ceiling_ms * 1000000 / 3600000)",
+    "gpu_device_time_ms": "ceil_to_60000(max_canary_gpu_device_time_ms * 1.25)",
+    "wall_time_ms": "ceil_to_60000(max_canary_observed_wall_time_ms * 1.25)"
+  },
+  "outcome_use_boundary": {
+    "allowed": "V24 diagnostic identified a tail-reweight implementation defect and the need for an explicit repaired-mechanism canary.",
+    "pilot_effects_used_to_choose_margin_or_ceiling": false,
+    "threshold_metric_or_estimand_changed": false
+  },
+  "policy_id": "GPU35_V25_RUNTIME_V17_FOUR_FULL_RECIPE_CANARY_MAX_X1_25_V1",
+  "predeclared_qualification_ceiling": {
+    "common_validation_count": 4,
+    "gpu_cost_microunits": 2000000,
+    "gpu_device_time_ms": 7200000,
+    "ordinary_executions": 1,
+    "proposal_attempt_debit": 0,
+    "retry_debit": 0,
+    "total_billed_token_debit": 0,
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_proposal_count": 0,
+    "wall_time_ms": 7200000
+  },
+  "record_schema": "recclaw.v25-gpu35-resource-margin-policy.v1",
+  "rounding": {
+    "gpu_cost_microunits": 10000,
+    "gpu_device_time_ms": 60000,
+    "wall_time_ms": 60000
+  },
+  "status": "PREDECLARED_BEFORE_RUNTIME_V17_CANARIES",
+  "supersedes_policy_id": "GPU35_V24_RUNTIME_V16_THREE_FULL_RECIPE_CANARY_MAX_X1_25_V1",
+  "supersession_reason": "Runtime V17 binds repaired seed execution, finite tail normalization, Meta V20 producer opportunity, matched-control reuse, incremental audit and V25 effect-analysis bytes. The deterministic max-times-1.25 rule is unchanged."
+}

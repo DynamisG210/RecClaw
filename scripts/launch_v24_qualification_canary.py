@@ -48,6 +48,12 @@ def main() -> int:
     parser.add_argument("--name", required=True)
     parser.add_argument("--mechanism-id", required=True)
     parser.add_argument("--search-seed", type=int, required=True)
+    parser.add_argument("--version-label", default="V24")
+    parser.add_argument("--runtime-label", default="V16")
+    parser.add_argument(
+        "--canary-parent-name",
+        default="backend_canaries_v24",
+    )
     args = parser.parse_args()
 
     backend = args.backend_root.resolve()
@@ -64,7 +70,7 @@ def main() -> int:
         "/NAS2020/Workspaces/DMGroup/tingrangan/"
         "recclaw_v15_backend_v1/search_dataset"
     )
-    canary_parent = backend / "backend_canaries_v24"
+    canary_parent = backend / args.canary_parent_name
     output_root = canary_parent / (
         f"canary_{args.name}_{args.search_seed}_full_recipe_v1"
     )
@@ -80,7 +86,8 @@ def main() -> int:
         raise RuntimeError(f"gpu35 is not idle: {initial}")
 
     result_filename = (
-        f"GPU35_V16_{args.name.upper()}_{args.search_seed}_RESULT.json"
+        f"GPU35_{args.runtime_label}_{args.name.upper()}_"
+        f"{args.search_seed}_RESULT.json"
     )
     command = [
         str(python),
@@ -96,9 +103,11 @@ def main() -> int:
         "--campaign-mechanism-id",
         args.mechanism_id,
         "--experiment-id",
-        f"V24-GPU35-FULL-RECIPE-CANARY-{args.search_seed}",
+        f"{args.version_label}-GPU35-FULL-RECIPE-CANARY-"
+        f"{args.search_seed}",
         "--lineage-partition",
-        "V24_GPU35_QUALIFICATION_EXCLUDED_FROM_PILOT_AND_MAIN",
+        f"{args.version_label}_GPU35_QUALIFICATION_"
+        "EXCLUDED_FROM_PILOT_AND_MAIN",
         "--result-filename",
         result_filename,
         "--search-seed",
