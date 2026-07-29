@@ -1,0 +1,49 @@
+{
+  "authority": "NONE",
+  "canary": {
+    "campaign_mechanism_id": "LIGHTGCN__LGCN_AUX_ALIGNMENT__LGCN_DUAL_PATH",
+    "experiment_id": "V25-GPU35-FULL-RECIPE-CANARY-9385",
+    "name": "compositional",
+    "search_seed": 9385
+  },
+  "classification": "QUALIFICATION_LAUNCHER_FILESYSTEM_AUDIT_FAILURE",
+  "evidence_class": "DEVELOPMENT_ONLY_PRE_OUTCOME",
+  "failed_root_policy": {
+    "reuse_allowed": false,
+    "status": "PERMANENT_REGRESSION_FIXTURE"
+  },
+  "formal_acceptance": false,
+  "observations": {
+    "common_result_decision": "TRAINING_RESULT_REJECTED",
+    "common_result_reason_codes": [
+      "TRAINING_RAW_RESULT_MISMATCH"
+    ],
+    "filesystem_confinement_status": "FAIL",
+    "gpu_cost_microunits": 257691,
+    "gpu_device_time_ms": 927689,
+    "normalized_metric_was_not_released": true,
+    "resource_ceiling_status": "VERIFIED",
+    "training_worker_best_valid_ndcg_at_10": 0.2054,
+    "training_worker_exit_status": "SUCCESS",
+    "wall_time_ms": 927689
+  },
+  "root_cause": {
+    "after_manifest_digest": "380eae1239b2a437ec7a4291eadae2cbbf38e2da9610439d1bab8a148f99941a",
+    "before_manifest_digest": "14e5f58743c775dec784d525b11cc5502a66eb42abd0ace4815936f0cf36ca35",
+    "cause": "The outer qualification launcher did not set PYTHONDONTWRITEBYTECODE. Four lazy imports wrote CPython bytecode beneath the protected source root after the pre-execution manifest was captured.",
+    "exact_reproduction": "Removing exactly the four newly written bytecode rows from the after-manifest projection reproduces the before_manifest_digest.",
+    "new_protected_files": [
+      "project/scripts/__pycache__/freeze_v13_pilot_contract.cpython-310.pyc",
+      "project/scripts/__pycache__/run_v13_pilot.cpython-310.pyc",
+      "project/src/recclaw_core/experiments/helix_abc_v1/__pycache__/campaign_pilot_v13.cpython-310.pyc",
+      "project/src/recclaw_core/experiments/helix_abc_v1/__pycache__/meta_vnext_pilot.cpython-310.pyc"
+    ]
+  },
+  "scientific_interpretation": {
+    "candidate_effect_evidence": false,
+    "mechanism_failure": false,
+    "resource_failure": false,
+    "treatment_change_required": false
+  },
+  "status": "SEALED_FAILED_PRE_PILOT_QUALIFICATION_ATTEMPT"
+}

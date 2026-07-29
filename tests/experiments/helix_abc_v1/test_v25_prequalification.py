@@ -148,6 +148,48 @@ def test_v25_runtime_release_v17_has_closed_digest() -> None:
     )
 
 
+def test_v25_canary_recovery_is_versioned_and_preserves_resource_rule() -> None:
+    docs = ROOT / "docs/research_line/continuous_program"
+    v1 = json.loads(
+        (docs / "V25_GPU35_RESOURCE_MARGIN_POLICY_V1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    v2 = json.loads(
+        (docs / "V25_GPU35_RESOURCE_MARGIN_POLICY_V2.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    failure = json.loads(
+        (docs / "V25_COMPOSITIONAL_CANARY_9385_FAILURE.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    launcher = (
+        ROOT / "scripts/launch_v24_qualification_canary.py"
+    ).read_text(encoding="utf-8")
+    assert v2["margin_policy"] == v1["margin_policy"]
+    assert v2["predeclared_qualification_ceiling"] == (
+        v1["predeclared_qualification_ceiling"]
+    )
+    assert v2["qualification_process_environment"][
+        "PYTHONDONTWRITEBYTECODE"
+    ] == "1"
+    assert [row["search_seed"] for row in v2["canary_specs"]] == [
+        9383,
+        9384,
+        9387,
+        9386,
+    ]
+    assert failure["failed_root_policy"]["reuse_allowed"] is False
+    assert failure["observations"]["resource_ceiling_status"] == "VERIFIED"
+    assert failure["scientific_interpretation"][
+        "candidate_effect_evidence"
+    ] is False
+    assert '"PYTHONDONTWRITEBYTECODE"] = "1"' in launcher
+    assert '"source_bytecode_write_disabled"' in launcher
+
+
 def test_v25_analysis_rows_bind_executed_semantics(
     tmp_path: Path,
 ) -> None:

@@ -54,6 +54,14 @@ def main() -> int:
         "--canary-parent-name",
         default="backend_canaries_v24",
     )
+    parser.add_argument(
+        "--prevent-source-bytecode-writes",
+        action="store_true",
+        help=(
+            "Set PYTHONDONTWRITEBYTECODE=1 for the qualification process. "
+            "This preserves the protected source manifest across lazy imports."
+        ),
+    )
     args = parser.parse_args()
 
     backend = args.backend_root.resolve()
@@ -135,6 +143,8 @@ def main() -> int:
     environment["PYTHONPATH"] = os.pathsep.join(
         [str(source), str(source / "src"), str(recbole)]
     )
+    if args.prevent_source_bytecode_writes:
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
     started_utc = datetime.now(timezone.utc).isoformat()
     started_ns = time.monotonic_ns()
     thread = threading.Thread(target=monitor, daemon=True)
@@ -173,6 +183,9 @@ def main() -> int:
         "output_root": output_root.as_posix(),
         "result_path": (output_root / result_filename).as_posix(),
         "search_seed": args.search_seed,
+        "source_bytecode_write_disabled": bool(
+            args.prevent_source_bytecode_writes
+        ),
         "started_utc": started_utc,
     }
     status_path = canary_parent / (
