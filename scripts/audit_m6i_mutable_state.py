@@ -28,8 +28,9 @@ ACTIVE_PATH_GLOBS = (
 ACTIVE_ENTRYPOINTS = (
     "recclaw_ext/models/composable_v2.py",
     "scripts/campaign_train_worker.py",
-    "scripts/run_v16_pilot.py",
-    "scripts/freeze_v16_pilot_contract.py",
+    "scripts/build_v25_gpu35_closure.py",
+    "scripts/run_m6i_provider_isolation_probe.py",
+    "scripts/run_v25_effect_pilot.py",
 )
 
 
@@ -148,14 +149,24 @@ MANUAL_OWNERSHIP = (
         "readers": ["owning Arm scheduler/controller"],
     },
     {
-        "object": "MetaV17CampaignRuntimeV1._states/_bound_rounds/directives",
+        "object": "MetaV20CampaignRuntimeV1._states/_bound_rounds/directives",
         "scope": "ARM_PRIVATE",
         "owner": "B or C opaque Arm instance",
         "write_rule": "one canonical terminal boundary per B/C round",
         "readers": ["owning Arm producer/router", "neutral audit"],
     },
     {
-        "object": "MetaV17CampaignRuntimeV1._observation_records",
+        "object": "MetaV20CampaignRuntimeV1 producer opportunity histories",
+        "scope": "ARM_PRIVATE",
+        "owner": "B or C opaque Arm instance",
+        "write_rule": (
+            "append one selected role per opportunity; block coverage before "
+            "exact parent-score ordering"
+        ),
+        "readers": ["owning Arm Meta runtime", "neutral audit"],
+    },
+    {
+        "object": "MetaV20CampaignRuntimeV1._observation_records",
         "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
         "owner": "Meta runtime with Arm partition field",
         "write_rule": "one append per terminal B/C round",
@@ -190,6 +201,15 @@ MANUAL_OWNERSHIP = (
         "readers": ["common training worker", "neutral closure audit"],
     },
     {
+        "object": "ExecutionSeedBindingV1 artifacts and claim seed fields",
+        "scope": "ROUND_LOCAL",
+        "owner": "final candidate binding plus opaque Arm and round",
+        "write_rule": (
+            "derive once from final candidate binding and verify at result close"
+        ),
+        "readers": ["common training worker", "neutral closure audit"],
+    },
+    {
         "object": "broker subprocess registry and failure closure receipts",
         "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
         "owner": "neutral broker supervisor",
@@ -209,6 +229,23 @@ MANUAL_OWNERSHIP = (
         "owner": "opaque Arm state partition",
         "write_rule": "typed Observed/SearchEligible only; Confirmed unavailable",
         "readers": ["owning Arm analysis", "neutral aggregate audit"],
+    },
+    {
+        "object": "incremental Arm-private audit checkpoints",
+        "scope": "ARM_PRIVATE",
+        "owner": "opaque Arm instance at terminal round boundary",
+        "write_rule": "one immutable checkpoint per Arm per triplet",
+        "readers": ["independent read-only audit"],
+    },
+    {
+        "object": "association-free neutral triplet and V25 effect checkpoints",
+        "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+        "owner": "neutral scheduler at closed triplet barrier",
+        "write_rule": (
+            "immutable aggregate only; no treatment mapping and no runtime "
+            "feedback"
+        ),
+        "readers": ["independent read-only audit"],
     },
     {
         "object": "module-level or process-global treatment-dependent mutable",

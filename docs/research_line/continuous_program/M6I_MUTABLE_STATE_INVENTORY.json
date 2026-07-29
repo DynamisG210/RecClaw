@@ -1,9 +1,10 @@
 {
   "active_paths": [
     "recclaw_ext/models/composable_v2.py",
+    "scripts/build_v25_gpu35_closure.py",
     "scripts/campaign_train_worker.py",
-    "scripts/freeze_v16_pilot_contract.py",
-    "scripts/run_v16_pilot.py",
+    "scripts/run_m6i_provider_isolation_probe.py",
+    "scripts/run_v25_effect_pilot.py",
     "src/recclaw_core/experiments/helix_abc_v1/__init__.py",
     "src/recclaw_core/experiments/helix_abc_v1/audit_snapshot.py",
     "src/recclaw_core/experiments/helix_abc_v1/broker_failure_closure.py",
@@ -16,6 +17,8 @@
     "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v16.py",
     "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v22.py",
     "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v23.py",
+    "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v24.py",
+    "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
     "src/recclaw_core/experiments/helix_abc_v1/campaign_runtime.py",
     "src/recclaw_core/experiments/helix_abc_v1/canary_broker.py",
     "src/recclaw_core/experiments/helix_abc_v1/canonical.py",
@@ -23,6 +26,7 @@
     "src/recclaw_core/experiments/helix_abc_v1/compilation_cache.py",
     "src/recclaw_core/experiments/helix_abc_v1/contracts.py",
     "src/recclaw_core/experiments/helix_abc_v1/controllers.py",
+    "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
     "src/recclaw_core/experiments/helix_abc_v1/evidence.py",
     "src/recclaw_core/experiments/helix_abc_v1/fake_runner.py",
     "src/recclaw_core/experiments/helix_abc_v1/fusion.py",
@@ -46,6 +50,7 @@
     "src/recclaw_core/experiments/helix_abc_v1/pilot_analysis.py",
     "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
     "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+    "src/recclaw_core/experiments/helix_abc_v1/producer_opportunity.py",
     "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
     "src/recclaw_core/experiments/helix_abc_v1/real_pilot.py",
     "src/recclaw_core/experiments/helix_abc_v1/research_capability.py",
@@ -79,7 +84,7 @@
   ],
   "authority": "NONE",
   "evidence_class": "DEVELOPMENT_ONLY",
-  "finding_count": 648,
+  "finding_count": 695,
   "findings": [
     {
       "kind": "ListComp",
@@ -91,7 +96,7 @@
     },
     {
       "kind": "List",
-      "line": 190,
+      "line": 208,
       "path": "recclaw_ext/models/composable_v2.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -99,7 +104,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 250,
+      "line": 268,
       "path": "recclaw_ext/models/composable_v2.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -107,11 +112,147 @@
     },
     {
       "kind": "List",
-      "line": 279,
+      "line": 297,
       "path": "recclaw_ext/models/composable_v2.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
       "symbol": "__all__"
+    },
+    {
+      "kind": "Set",
+      "line": 115,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
+      "scope": "COMMON_IMMUTABLE",
+      "symbol": "SELECTED_SCRIPTS"
+    },
+    {
+      "kind": "Call",
+      "line": 157,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "preimage"
+    },
+    {
+      "kind": "Call",
+      "line": 198,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "preimage"
+    },
+    {
+      "kind": "Call",
+      "line": 216,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "rows"
+    },
+    {
+      "kind": "ListComp",
+      "line": 217,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "clean"
+    },
+    {
+      "kind": "List",
+      "line": 237,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "records"
+    },
+    {
+      "kind": "Dict",
+      "line": 303,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "envelope"
+    },
+    {
+      "kind": "DictComp",
+      "line": 350,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "files"
+    },
+    {
+      "kind": "ListComp",
+      "line": 366,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "mismatches"
+    },
+    {
+      "kind": "Dict",
+      "line": 402,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "audit"
+    },
+    {
+      "kind": "Dict",
+      "line": 427,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "criteria"
+    },
+    {
+      "kind": "Dict",
+      "line": 537,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "audit"
+    },
+    {
+      "kind": "Dict",
+      "line": 620,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "gate"
+    },
+    {
+      "kind": "List",
+      "line": 661,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "producer_roles"
+    },
+    {
+      "kind": "Call",
+      "line": 820,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "original"
+    },
+    {
+      "kind": "Call",
+      "line": 884,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "preimage"
+    },
+    {
+      "kind": "Dict",
+      "line": 954,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "exact"
     },
     {
       "kind": "Dict",
@@ -186,44 +327,60 @@
       "symbol": "payload"
     },
     {
-      "kind": "Dict",
-      "line": 97,
-      "path": "scripts/freeze_v16_pilot_contract.py",
+      "kind": "DictComp",
+      "line": 151,
+      "path": "scripts/run_m6i_provider_isolation_probe.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
-      "symbol": "replacements"
+      "symbol": "arm_ids"
     },
     {
-      "kind": "SetComp",
-      "line": 115,
-      "path": "scripts/freeze_v16_pilot_contract.py",
+      "kind": "DictComp",
+      "line": 157,
+      "path": "scripts/run_m6i_provider_isolation_probe.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
-      "symbol": "rows"
+      "symbol": "side_effect_state"
     },
     {
-      "kind": "Call",
-      "line": 161,
-      "path": "scripts/freeze_v16_pilot_contract.py",
+      "kind": "List",
+      "line": 168,
+      "path": "scripts/run_m6i_provider_isolation_probe.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
-      "symbol": "payload"
-    },
-    {
-      "kind": "Call",
-      "line": 201,
-      "path": "scripts/freeze_v16_pilot_contract.py",
-      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
-      "scope": "ROUND_LOCAL",
-      "symbol": "preimage"
+      "symbol": "calls"
     },
     {
       "kind": "Dict",
-      "line": 235,
-      "path": "scripts/freeze_v16_pilot_contract.py",
+      "line": 169,
+      "path": "scripts/run_m6i_provider_isolation_probe.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
-      "symbol": "exact"
+      "symbol": "candidate_ids"
+    },
+    {
+      "kind": "List",
+      "line": 189,
+      "path": "scripts/run_m6i_provider_isolation_probe.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "pair_records"
+    },
+    {
+      "kind": "List",
+      "line": 266,
+      "path": "scripts/run_m6i_provider_isolation_probe.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "pair_checks"
+    },
+    {
+      "kind": "Dict",
+      "line": 300,
+      "path": "scripts/run_m6i_provider_isolation_probe.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "checks"
     },
     {
       "kind": "List",
@@ -259,7 +416,7 @@
     },
     {
       "kind": "Dict",
-      "line": 166,
+      "line": 197,
       "path": "src/recclaw_core/experiments/helix_abc_v1/audit_snapshot.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -267,7 +424,7 @@
     },
     {
       "kind": "List",
-      "line": 252,
+      "line": 279,
       "path": "src/recclaw_core/experiments/helix_abc_v1/audit_snapshot.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -645,6 +802,70 @@
       "kind": "List",
       "line": 198,
       "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v23.py",
+      "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
+      "scope": "COMMON_IMMUTABLE",
+      "symbol": "__all__"
+    },
+    {
+      "kind": "Dict",
+      "line": 87,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v24.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "payload"
+    },
+    {
+      "kind": "List",
+      "line": 198,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v24.py",
+      "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
+      "scope": "COMMON_IMMUTABLE",
+      "symbol": "__all__"
+    },
+    {
+      "kind": "Dict",
+      "line": 89,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "payload"
+    },
+    {
+      "kind": "Dict",
+      "line": 194,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "counts"
+    },
+    {
+      "kind": "Dict",
+      "line": 219,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "expected"
+    },
+    {
+      "kind": "Dict",
+      "line": 249,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "record"
+    },
+    {
+      "kind": "List",
+      "line": 274,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "results"
+    },
+    {
+      "kind": "List",
+      "line": 284,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
       "symbol": "__all__"
@@ -1264,6 +1485,70 @@
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
       "symbol": "transition"
+    },
+    {
+      "kind": "List",
+      "line": 79,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "running"
+    },
+    {
+      "kind": "List",
+      "line": 82,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "token_points"
+    },
+    {
+      "kind": "List",
+      "line": 83,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "gpu_points"
+    },
+    {
+      "kind": "List",
+      "line": 89,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "semantic_digests"
+    },
+    {
+      "kind": "Dict",
+      "line": 201,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "deltas"
+    },
+    {
+      "kind": "Dict",
+      "line": 215,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "ratios"
+    },
+    {
+      "kind": "Dict",
+      "line": 292,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "required_exact"
+    },
+    {
+      "kind": "List",
+      "line": 371,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
+      "scope": "COMMON_IMMUTABLE",
+      "symbol": "__all__"
     },
     {
       "kind": "List",
@@ -2611,7 +2896,7 @@
     },
     {
       "kind": "Dict",
-      "line": 358,
+      "line": 401,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2619,7 +2904,7 @@
     },
     {
       "kind": "Dict",
-      "line": 361,
+      "line": 404,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -2627,7 +2912,7 @@
     },
     {
       "kind": "Dict",
-      "line": 362,
+      "line": 405,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -2635,7 +2920,7 @@
     },
     {
       "kind": "Dict",
-      "line": 363,
+      "line": 406,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2643,7 +2928,7 @@
     },
     {
       "kind": "List",
-      "line": 366,
+      "line": 409,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "neutral accounting or audit state is create-once/append-only",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2651,7 +2936,7 @@
     },
     {
       "kind": "Dict",
-      "line": 367,
+      "line": 410,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -2659,7 +2944,7 @@
     },
     {
       "kind": "Call",
-      "line": 604,
+      "line": 647,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2667,7 +2952,7 @@
     },
     {
       "kind": "SetComp",
-      "line": 656,
+      "line": 699,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2675,7 +2960,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 660,
+      "line": 703,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2683,7 +2968,7 @@
     },
     {
       "kind": "List",
-      "line": 665,
+      "line": 708,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2691,7 +2976,7 @@
     },
     {
       "kind": "Dict",
-      "line": 667,
+      "line": 710,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2699,7 +2984,7 @@
     },
     {
       "kind": "Dict",
-      "line": 740,
+      "line": 783,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2707,7 +2992,7 @@
     },
     {
       "kind": "Call",
-      "line": 775,
+      "line": 818,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2715,7 +3000,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 931,
+      "line": 994,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2723,7 +3008,7 @@
     },
     {
       "kind": "Dict",
-      "line": 958,
+      "line": 1028,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2731,7 +3016,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 966,
+      "line": 1036,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2739,7 +3024,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 1052,
+      "line": 1122,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2747,7 +3032,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 1056,
+      "line": 1126,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2755,7 +3040,7 @@
     },
     {
       "kind": "Set",
-      "line": 1163,
+      "line": 1240,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2763,15 +3048,39 @@
     },
     {
       "kind": "Set",
-      "line": 1168,
+      "line": 1245,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
       "symbol": "valid_observations"
     },
     {
+      "kind": "Dict",
+      "line": 1881,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
+      "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "symbol": "self._producer_opportunity_history"
+    },
+    {
+      "kind": "Dict",
+      "line": 1887,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
+      "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
+      "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
+      "symbol": "self._producer_opportunity_decisions"
+    },
+    {
+      "kind": "Dict",
+      "line": 1943,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "expected_opportunity"
+    },
+    {
       "kind": "List",
-      "line": 1763,
+      "line": 2109,
       "path": "src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -2819,7 +3128,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 160,
+      "line": 162,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2827,7 +3136,7 @@
     },
     {
       "kind": "List",
-      "line": 163,
+      "line": 165,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2835,7 +3144,7 @@
     },
     {
       "kind": "Call",
-      "line": 208,
+      "line": 210,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2843,7 +3152,7 @@
     },
     {
       "kind": "Call",
-      "line": 209,
+      "line": 211,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "configuration identity is frozen before execution",
       "scope": "COMMON_IMMUTABLE",
@@ -2851,7 +3160,7 @@
     },
     {
       "kind": "Call",
-      "line": 210,
+      "line": 212,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2859,7 +3168,7 @@
     },
     {
       "kind": "Call",
-      "line": 211,
+      "line": 213,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2867,7 +3176,7 @@
     },
     {
       "kind": "Call",
-      "line": 212,
+      "line": 214,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2875,7 +3184,7 @@
     },
     {
       "kind": "Call",
-      "line": 216,
+      "line": 218,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2883,7 +3192,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 287,
+      "line": 289,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -2891,7 +3200,7 @@
     },
     {
       "kind": "Dict",
-      "line": 288,
+      "line": 290,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -2899,7 +3208,7 @@
     },
     {
       "kind": "Call",
-      "line": 298,
+      "line": 300,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2907,7 +3216,7 @@
     },
     {
       "kind": "Set",
-      "line": 311,
+      "line": 313,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2915,7 +3224,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 338,
+      "line": 340,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2923,7 +3232,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 344,
+      "line": 346,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2931,7 +3240,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 348,
+      "line": 350,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2939,7 +3248,7 @@
     },
     {
       "kind": "Call",
-      "line": 349,
+      "line": 351,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2947,7 +3256,7 @@
     },
     {
       "kind": "Call",
-      "line": 350,
+      "line": 352,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2955,7 +3264,7 @@
     },
     {
       "kind": "Call",
-      "line": 351,
+      "line": 353,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2963,7 +3272,7 @@
     },
     {
       "kind": "Call",
-      "line": 352,
+      "line": 354,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2971,7 +3280,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 353,
+      "line": 355,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -2979,7 +3288,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 359,
+      "line": 361,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -2987,7 +3296,7 @@
     },
     {
       "kind": "Dict",
-      "line": 374,
+      "line": 376,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -2995,7 +3304,7 @@
     },
     {
       "kind": "List",
-      "line": 389,
+      "line": 391,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3003,7 +3312,7 @@
     },
     {
       "kind": "Call",
-      "line": 430,
+      "line": 432,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3011,7 +3320,7 @@
     },
     {
       "kind": "Call",
-      "line": 431,
+      "line": 433,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3019,7 +3328,7 @@
     },
     {
       "kind": "Dict",
-      "line": 433,
+      "line": 435,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3027,7 +3336,7 @@
     },
     {
       "kind": "Call",
-      "line": 441,
+      "line": 443,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3035,7 +3344,7 @@
     },
     {
       "kind": "Call",
-      "line": 451,
+      "line": 453,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3043,7 +3352,7 @@
     },
     {
       "kind": "Dict",
-      "line": 457,
+      "line": 459,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3051,7 +3360,7 @@
     },
     {
       "kind": "Dict",
-      "line": 489,
+      "line": 491,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3059,7 +3368,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 506,
+      "line": 508,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3067,7 +3376,7 @@
     },
     {
       "kind": "List",
-      "line": 535,
+      "line": 537,
       "path": "src/recclaw_core/experiments/helix_abc_v1/original_main.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -3139,7 +3448,7 @@
     },
     {
       "kind": "Call",
-      "line": 65,
+      "line": 71,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3147,7 +3456,7 @@
     },
     {
       "kind": "Call",
-      "line": 67,
+      "line": 73,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3155,7 +3464,7 @@
     },
     {
       "kind": "Call",
-      "line": 68,
+      "line": 74,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3163,7 +3472,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 75,
+      "line": 81,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3171,7 +3480,7 @@
     },
     {
       "kind": "Dict",
-      "line": 273,
+      "line": 280,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3179,7 +3488,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 368,
+      "line": 375,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3187,7 +3496,7 @@
     },
     {
       "kind": "Dict",
-      "line": 505,
+      "line": 512,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3195,7 +3504,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 521,
+      "line": 528,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3203,7 +3512,7 @@
     },
     {
       "kind": "Dict",
-      "line": 537,
+      "line": 544,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3211,7 +3520,7 @@
     },
     {
       "kind": "Call",
-      "line": 673,
+      "line": 680,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3219,7 +3528,7 @@
     },
     {
       "kind": "List",
-      "line": 723,
+      "line": 730,
       "path": "src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -3227,7 +3536,7 @@
     },
     {
       "kind": "Call",
-      "line": 261,
+      "line": 263,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3235,7 +3544,7 @@
     },
     {
       "kind": "Call",
-      "line": 264,
+      "line": 266,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3243,7 +3552,7 @@
     },
     {
       "kind": "List",
-      "line": 301,
+      "line": 303,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3251,7 +3560,7 @@
     },
     {
       "kind": "Set",
-      "line": 302,
+      "line": 304,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3259,7 +3568,7 @@
     },
     {
       "kind": "List",
-      "line": 305,
+      "line": 307,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3267,7 +3576,7 @@
     },
     {
       "kind": "List",
-      "line": 318,
+      "line": 320,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3275,7 +3584,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 430,
+      "line": 432,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3283,7 +3592,7 @@
     },
     {
       "kind": "SetComp",
-      "line": 489,
+      "line": 491,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3291,7 +3600,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 508,
+      "line": 510,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3299,7 +3608,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 561,
+      "line": 563,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3307,7 +3616,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 580,
+      "line": 582,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3315,7 +3624,7 @@
     },
     {
       "kind": "Call",
-      "line": 581,
+      "line": 583,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3323,7 +3632,7 @@
     },
     {
       "kind": "Dict",
-      "line": 663,
+      "line": 665,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3331,7 +3640,7 @@
     },
     {
       "kind": "List",
-      "line": 668,
+      "line": 670,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3339,7 +3648,7 @@
     },
     {
       "kind": "Dict",
-      "line": 779,
+      "line": 781,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3347,7 +3656,7 @@
     },
     {
       "kind": "Dict",
-      "line": 788,
+      "line": 790,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3355,7 +3664,7 @@
     },
     {
       "kind": "Dict",
-      "line": 865,
+      "line": 867,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3363,7 +3672,7 @@
     },
     {
       "kind": "Dict",
-      "line": 941,
+      "line": 943,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "instance mutable is owned by its enclosing runtime and audited for create-once writes",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -3371,7 +3680,7 @@
     },
     {
       "kind": "Dict",
-      "line": 957,
+      "line": 959,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -3379,7 +3688,7 @@
     },
     {
       "kind": "Dict",
-      "line": 965,
+      "line": 967,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "treatment-dependent state is partitioned by an opaque Arm owner",
       "scope": "ARM_PRIVATE",
@@ -3387,7 +3696,7 @@
     },
     {
       "kind": "Dict",
-      "line": 971,
+      "line": 973,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "neutral accounting or audit state is create-once/append-only",
       "scope": "EXPERIMENT_SHARED_APPEND_ONLY",
@@ -3395,7 +3704,7 @@
     },
     {
       "kind": "Call",
-      "line": 1009,
+      "line": 1011,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3403,7 +3712,7 @@
     },
     {
       "kind": "SetComp",
-      "line": 1191,
+      "line": 1193,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3411,7 +3720,7 @@
     },
     {
       "kind": "Dict",
-      "line": 1214,
+      "line": 1216,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3419,7 +3728,7 @@
     },
     {
       "kind": "Dict",
-      "line": 1273,
+      "line": 1275,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3427,15 +3736,55 @@
     },
     {
       "kind": "List",
-      "line": 1679,
+      "line": 1685,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
       "symbol": "results"
     },
     {
+      "kind": "List",
+      "line": 1752,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "private_digests"
+    },
+    {
+      "kind": "List",
+      "line": 1753,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "result_digests"
+    },
+    {
       "kind": "Dict",
-      "line": 1741,
+      "line": 1754,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "terminal_counts"
+    },
+    {
+      "kind": "Dict",
+      "line": 1837,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "private_record"
+    },
+    {
+      "kind": "Dict",
+      "line": 1915,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "neutral_record"
+    },
+    {
+      "kind": "Dict",
+      "line": 1959,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3443,7 +3792,7 @@
     },
     {
       "kind": "List",
-      "line": 2157,
+      "line": 2375,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3451,7 +3800,7 @@
     },
     {
       "kind": "List",
-      "line": 2158,
+      "line": 2376,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3459,7 +3808,7 @@
     },
     {
       "kind": "Dict",
-      "line": 2159,
+      "line": 2377,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3467,7 +3816,7 @@
     },
     {
       "kind": "List",
-      "line": 2213,
+      "line": 2431,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3475,7 +3824,7 @@
     },
     {
       "kind": "Dict",
-      "line": 2232,
+      "line": 2450,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3483,7 +3832,7 @@
     },
     {
       "kind": "Dict",
-      "line": 2522,
+      "line": 2740,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3491,7 +3840,7 @@
     },
     {
       "kind": "Dict",
-      "line": 2872,
+      "line": 3150,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3499,7 +3848,7 @@
     },
     {
       "kind": "Dict",
-      "line": 3079,
+      "line": 3357,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3507,7 +3856,7 @@
     },
     {
       "kind": "Call",
-      "line": 3104,
+      "line": 3382,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3515,7 +3864,7 @@
     },
     {
       "kind": "SetComp",
-      "line": 3105,
+      "line": 3383,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3523,7 +3872,7 @@
     },
     {
       "kind": "Call",
-      "line": 3126,
+      "line": 3404,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3531,7 +3880,7 @@
     },
     {
       "kind": "Dict",
-      "line": 3128,
+      "line": 3406,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3539,7 +3888,7 @@
     },
     {
       "kind": "Call",
-      "line": 3172,
+      "line": 3450,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3547,7 +3896,7 @@
     },
     {
       "kind": "Dict",
-      "line": 3195,
+      "line": 3473,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3555,7 +3904,7 @@
     },
     {
       "kind": "Dict",
-      "line": 3208,
+      "line": 3486,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3563,8 +3912,32 @@
     },
     {
       "kind": "List",
-      "line": 3222,
+      "line": 3500,
       "path": "src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
+      "scope": "COMMON_IMMUTABLE",
+      "symbol": "__all__"
+    },
+    {
+      "kind": "Call",
+      "line": 77,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/producer_opportunity.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "role_set"
+    },
+    {
+      "kind": "DictComp",
+      "line": 78,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/producer_opportunity.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "candidate_roles"
+    },
+    {
+      "kind": "List",
+      "line": 152,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/producer_opportunity.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
       "symbol": "__all__"
@@ -3595,7 +3968,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 354,
+      "line": 357,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3603,7 +3976,7 @@
     },
     {
       "kind": "SetComp",
-      "line": 668,
+      "line": 673,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3611,7 +3984,7 @@
     },
     {
       "kind": "List",
-      "line": 748,
+      "line": 753,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3619,7 +3992,7 @@
     },
     {
       "kind": "Call",
-      "line": 749,
+      "line": 754,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3627,7 +4000,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 786,
+      "line": 791,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3635,7 +4008,7 @@
     },
     {
       "kind": "Call",
-      "line": 817,
+      "line": 822,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3643,7 +4016,7 @@
     },
     {
       "kind": "Dict",
-      "line": 826,
+      "line": 831,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3651,7 +4024,7 @@
     },
     {
       "kind": "List",
-      "line": 1048,
+      "line": 1053,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3659,7 +4032,7 @@
     },
     {
       "kind": "Call",
-      "line": 1049,
+      "line": 1054,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3667,7 +4040,7 @@
     },
     {
       "kind": "Dict",
-      "line": 1131,
+      "line": 1136,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3675,7 +4048,7 @@
     },
     {
       "kind": "Dict",
-      "line": 1145,
+      "line": 1150,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3683,7 +4056,7 @@
     },
     {
       "kind": "Call",
-      "line": 1165,
+      "line": 1170,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3691,7 +4064,7 @@
     },
     {
       "kind": "Call",
-      "line": 1166,
+      "line": 1171,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3699,7 +4072,7 @@
     },
     {
       "kind": "Call",
-      "line": 1167,
+      "line": 1172,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3707,7 +4080,7 @@
     },
     {
       "kind": "Call",
-      "line": 1323,
+      "line": 1330,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3715,7 +4088,7 @@
     },
     {
       "kind": "List",
-      "line": 1582,
+      "line": 1590,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3723,7 +4096,7 @@
     },
     {
       "kind": "List",
-      "line": 1583,
+      "line": 1591,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3731,7 +4104,7 @@
     },
     {
       "kind": "Call",
-      "line": 1585,
+      "line": 1593,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3739,7 +4112,7 @@
     },
     {
       "kind": "List",
-      "line": 1978,
+      "line": 1986,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3747,7 +4120,7 @@
     },
     {
       "kind": "Call",
-      "line": 1980,
+      "line": 1988,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3755,7 +4128,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 2001,
+      "line": 2009,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3763,7 +4136,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 2042,
+      "line": 2050,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3771,7 +4144,7 @@
     },
     {
       "kind": "Call",
-      "line": 2095,
+      "line": 2103,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3779,7 +4152,7 @@
     },
     {
       "kind": "List",
-      "line": 2097,
+      "line": 2105,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3787,7 +4160,7 @@
     },
     {
       "kind": "Dict",
-      "line": 2098,
+      "line": 2106,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3795,7 +4168,7 @@
     },
     {
       "kind": "Call",
-      "line": 2100,
+      "line": 2108,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3803,7 +4176,7 @@
     },
     {
       "kind": "Dict",
-      "line": 2117,
+      "line": 2125,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3811,7 +4184,7 @@
     },
     {
       "kind": "Dict",
-      "line": 2180,
+      "line": 2188,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3819,7 +4192,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 2215,
+      "line": 2223,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3827,7 +4200,7 @@
     },
     {
       "kind": "List",
-      "line": 2337,
+      "line": 2345,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3835,7 +4208,7 @@
     },
     {
       "kind": "Call",
-      "line": 2349,
+      "line": 2357,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3843,7 +4216,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 2400,
+      "line": 2408,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3851,7 +4224,7 @@
     },
     {
       "kind": "Call",
-      "line": 2412,
+      "line": 2420,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3859,7 +4232,7 @@
     },
     {
       "kind": "SetComp",
-      "line": 2467,
+      "line": 2475,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -3867,7 +4240,7 @@
     },
     {
       "kind": "List",
-      "line": 2503,
+      "line": 2511,
       "path": "src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -4218,8 +4591,16 @@
       "symbol": "rows"
     },
     {
+      "kind": "ListComp",
+      "line": 194,
+      "path": "src/recclaw_core/experiments/helix_abc_v1/research_science.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "rows"
+    },
+    {
       "kind": "Call",
-      "line": 188,
+      "line": 208,
       "path": "src/recclaw_core/experiments/helix_abc_v1/research_science.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4227,7 +4608,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 207,
+      "line": 227,
       "path": "src/recclaw_core/experiments/helix_abc_v1/research_science.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4235,7 +4616,7 @@
     },
     {
       "kind": "List",
-      "line": 439,
+      "line": 486,
       "path": "src/recclaw_core/experiments/helix_abc_v1/research_science.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -4675,7 +5056,7 @@
     },
     {
       "kind": "List",
-      "line": 274,
+      "line": 275,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_execution_guard.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4683,7 +5064,7 @@
     },
     {
       "kind": "Dict",
-      "line": 294,
+      "line": 295,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_execution_guard.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4691,7 +5072,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 302,
+      "line": 303,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_execution_guard.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4699,7 +5080,7 @@
     },
     {
       "kind": "List",
-      "line": 394,
+      "line": 395,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_execution_guard.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -4835,7 +5216,7 @@
     },
     {
       "kind": "List",
-      "line": 429,
+      "line": 450,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_contracts.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -4843,7 +5224,7 @@
     },
     {
       "kind": "List",
-      "line": 284,
+      "line": 285,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4851,7 +5232,7 @@
     },
     {
       "kind": "List",
-      "line": 323,
+      "line": 324,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4859,7 +5240,7 @@
     },
     {
       "kind": "List",
-      "line": 449,
+      "line": 450,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4867,7 +5248,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 725,
+      "line": 726,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4875,7 +5256,7 @@
     },
     {
       "kind": "Call",
-      "line": 741,
+      "line": 742,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4883,7 +5264,7 @@
     },
     {
       "kind": "List",
-      "line": 756,
+      "line": 757,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4891,7 +5272,7 @@
     },
     {
       "kind": "Call",
-      "line": 812,
+      "line": 813,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4899,7 +5280,7 @@
     },
     {
       "kind": "Dict",
-      "line": 968,
+      "line": 969,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4907,7 +5288,7 @@
     },
     {
       "kind": "Dict",
-      "line": 1017,
+      "line": 1018,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -4915,7 +5296,7 @@
     },
     {
       "kind": "List",
-      "line": 1043,
+      "line": 1044,
       "path": "src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",

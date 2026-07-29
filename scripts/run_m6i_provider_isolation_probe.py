@@ -47,15 +47,16 @@ DEFAULT_ROOT = (
     ROOT
     / "results"
     / "research_line"
-    / "m6i_provider_isolation_probe_v3"
+    / "m6i_provider_isolation_probe_v6"
 )
 DEFAULT_REPORT = (
     ROOT
     / "docs"
     / "research_line"
     / "continuous_program"
-    / "M6I_PROVIDER_ISOLATION_PROBE.json"
+    / "M6I_V25_PROVIDER_ISOLATION_PROBE.json"
 )
+DEFAULT_EXPERIMENT_ID = "M6I-PROVIDER-ISOLATION-PROBE-V6"
 ALL_ORDERS = tuple(permutations(tuple(ArmCode)))
 
 
@@ -139,6 +140,7 @@ def run_probe(
     schema_path: Path,
     private_root: Path,
     report_path: Path,
+    experiment_id: str,
 ) -> dict[str, Any]:
     if private_root.exists():
         raise RuntimeError(
@@ -146,7 +148,6 @@ def run_probe(
         )
     private_root.mkdir(parents=True)
     private_root.chmod(0o700)
-    experiment_id = "M6I-PROVIDER-ISOLATION-PROBE-V3"
     arm_ids = {
         arm: f"{experiment_id}-opaque-{arm.value.lower()}" for arm in ArmCode
     }
@@ -344,6 +345,7 @@ def run_probe(
             "evidence_class": "DEVELOPMENT_ONLY",
             "formal_acceptance": False,
             "pilot_result": False,
+            "probe_experiment_id": experiment_id,
             "search_memory_import_allowed": False,
             "policy_training_import_allowed": False,
             "status": "PASS" if all(checks.values()) else "FAIL",
@@ -384,12 +386,17 @@ def main() -> int:
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument("--private-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument(
+        "--experiment-id",
+        default=DEFAULT_EXPERIMENT_ID,
+    )
     args = parser.parse_args()
     report = run_probe(
         config_path=args.config.resolve(),
         schema_path=args.schema.resolve(),
         private_root=args.private_root.resolve(),
         report_path=args.report.resolve(),
+        experiment_id=args.experiment_id,
     )
     print(
         json.dumps(

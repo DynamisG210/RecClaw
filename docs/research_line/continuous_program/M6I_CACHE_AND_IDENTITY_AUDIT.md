@@ -2,8 +2,8 @@
 
 - authority: `NONE`
 - evidence class: `DEVELOPMENT_ONLY`
-- active source files scanned: `76`
-- mutable findings classified: `648`
+- active source files scanned: `81`
+- mutable findings classified: `695`
 - forbidden global mutable findings: `0`
 - static P0 checks failed: `0`
 
