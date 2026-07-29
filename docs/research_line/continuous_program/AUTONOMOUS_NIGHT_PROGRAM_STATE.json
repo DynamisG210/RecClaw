@@ -1,15 +1,15 @@
 {
-  "active_stage": "V24_GPU35_FIXED_BACKEND_CANARIES_NEXT",
+  "active_stage": "V24_GPU35_BACKEND_QUALIFICATION_PASS_CLOSURE_FREEZE_NEXT",
   "active_version": "V24",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "327ef511f1bac70c905a3b99961ae46be8d4b443",
+  "active_commit": "8f0cdaa06608852ceff954f7c42165ff6dd00fa4",
   "active_contract_digest": "d96259271fff6cf8380d0816dff44a2f583d6fc88ef914991dab1a983aa8b08c",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
   "active_backend_release": "TRAINING_RUNTIME_RELEASE_V16:2de9e64bee31f8d7c2e86ee381f37c734902f383f448d87e61c62617e3a73556",
   "active_processes": [],
-  "last_completed_checkpoint": "V24_RUNTIME_V16_AND_PROFILE_ISOLATION_QUALIFICATION_PASS",
-  "next_automatic_action": "RUN_FIXED_BPR_LIGHTGCN_AND_COMPOSITIONAL_FULL_RECIPE_CANARIES_ON_IDLE_GPU35",
+  "last_completed_checkpoint": "V24_GPU35_THREE_FIXED_CANARIES_AND_PINNED_ORIGINAL_PROBE_PASS",
+  "next_automatic_action": "FREEZE_AND_VERIFY_ONE_V24_RUNTIME_BACKEND_RESOURCE_SOURCE_AND_PILOT_CONTRACT_CLOSURE",
   "round_progress": {
     "V24_backend_selection": {
       "gpu2_gpu1": "NOT_QUALIFIED_18427_MIB_OCCUPIED_5666_MIB_FREE_AND_GPU0_DEVICE_HANDLE_ERROR",
@@ -23,6 +23,36 @@
       "provider_response_schema_sha256": "5ff197c6b6d7d16a7d7ddf2218880c71edcb73af498f602547842ea3370d5b0c",
       "runtime_release_digest": "2de9e64bee31f8d7c2e86ee381f37c734902f383f448d87e61c62617e3a73556",
       "runtime_release_validation": "PASS"
+    },
+    "V24_fixed_canaries": {
+      "bpr_9380": {
+        "gpu_device_time_ms": 176064,
+        "ndcg_at_10": 0.2062,
+        "status": "PASS"
+      },
+      "lightgcn_9381": {
+        "gpu_cost_microunits": 234057,
+        "gpu_device_time_ms": 842604,
+        "ndcg_at_10": 0.2112,
+        "status": "PASS",
+        "wall_time_ms": 842604
+      },
+      "compositional_9382": {
+        "gpu_cost_microunits": 257040,
+        "gpu_device_time_ms": 925344,
+        "ndcg_at_10": 0.2054,
+        "status": "PASS",
+        "wall_time_ms": 925344
+      },
+      "completed": 3,
+      "pinned_original_probe": {
+        "main_commit": "2d8c881354e1b536a6c66d7dfbb977e0c5090e50",
+        "p0": 0,
+        "p1": 0,
+        "result_digest": "db5edbbd9503d972e622f13966bc76d0369945eb9e672c0db0bce4c37f13d877",
+        "status": "PASS"
+      },
+      "required": 3
     },
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
