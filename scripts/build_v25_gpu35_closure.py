@@ -59,7 +59,10 @@ V24_CONTRACT = DOCS / "V24_FROZEN_CHAIN_PILOT_CONTRACT.json"
 V24_DIAGNOSIS = DOCS / "V24_FIVE_ROUND_METHOD_DIAGNOSIS.json"
 M6I_EXACT_REPORT = DOCS / "M6I_V20_EXACT_100X50_REPORT.json"
 M6I_SYNTHETIC_REPORT = DOCS / "M6I_V20_SYNTHETIC_100X50_REPORT.json"
-MARGIN_POLICY = DOCS / "V25_GPU35_RESOURCE_MARGIN_POLICY_V1.json"
+MARGIN_POLICY = DOCS / "V25_GPU35_RESOURCE_MARGIN_POLICY_V2.json"
+COMPOSITIONAL_FAILURE = (
+    DOCS / "V25_COMPOSITIONAL_CANARY_9385_FAILURE.json"
+)
 RESOURCE_ENVELOPE = (
     RESOURCES / "pilot_v25_gpu35_resource_envelope.json"
 )
@@ -106,12 +109,14 @@ RUNTIME_RELEASE_ID = "TRAINING_RUNTIME_RELEASE_V17"
 CANARY_EXECUTION_SOURCE_HEAD = (
     "28cfe21dbe9391307e3aa7c92b5de577a4852b83"
 )
+CANARY_RECOVERY_SOURCE_HEAD = (
+    "720f69ad81f62f0fed66996ace575ace9c052057"
+)
 CANARY_EXECUTION_SOURCE_PATHS = (
     "configs",
     "recclaw_ext",
     "src",
     "scripts/campaign_train_worker.py",
-    "scripts/launch_v24_qualification_canary.py",
     "scripts/run_candidate.py",
     "scripts/run_v24_full_recipe_canary.py",
 )
@@ -127,9 +132,9 @@ CANARY_SPECS = (
     ("bpr", "BPR_MF", 9383),
     ("lightgcn", "LIGHTGCN", 9384),
     (
-        "compositional",
+        "compositional_recovery",
         "LIGHTGCN__LGCN_AUX_ALIGNMENT__LGCN_DUAL_PATH",
-        9385,
+        9387,
     ),
     ("tail_reweight", "BPR_MF__BPR_TAIL_REWEIGHT", 9386),
 )
@@ -236,6 +241,51 @@ def _canary_execution_source_subset() -> dict[str, str]:
     }
 
 
+def _qualification_launcher_recovery() -> dict[str, Any]:
+    path = "scripts/launch_v24_qualification_canary.py"
+    changed = set(
+        _git(
+            "diff",
+            "--name-only",
+            CANARY_EXECUTION_SOURCE_HEAD,
+            CANARY_RECOVERY_SOURCE_HEAD,
+        ).splitlines()
+    )
+    allowed = {
+        path,
+        "docs/research_line/continuous_program/"
+        "V25_COMPOSITIONAL_CANARY_9385_FAILURE.json",
+        "docs/research_line/continuous_program/"
+        "V25_GPU35_RESOURCE_MARGIN_POLICY_V2.json",
+        "tests/experiments/helix_abc_v1/"
+        "test_v25_prequalification.py",
+    }
+    if changed != allowed:
+        raise RuntimeError(
+            "V25 canary recovery commit has an unexpected scope: "
+            f"{sorted(changed)}"
+        )
+    before = _git("show", f"{CANARY_EXECUTION_SOURCE_HEAD}:{path}")
+    after = _git("show", f"{CANARY_RECOVERY_SOURCE_HEAD}:{path}")
+    if (
+        '"PYTHONDONTWRITEBYTECODE"] = "1"' not in after
+        or "--prevent-source-bytecode-writes" not in after
+        or before == after
+    ):
+        raise RuntimeError("V25 qualification launcher recovery is invalid")
+    return {
+        "common_training_and_treatment_bytes_changed": False,
+        "failed_attempt_record_path": COMPOSITIONAL_FAILURE.as_posix(),
+        "failed_attempt_record_sha256": file_sha256(
+            COMPOSITIONAL_FAILURE
+        ),
+        "launch_head_after": CANARY_RECOVERY_SOURCE_HEAD,
+        "launch_head_before": CANARY_EXECUTION_SOURCE_HEAD,
+        "launcher_path": path,
+        "recovery": "DISABLE_QUALIFICATION_PROCESS_BYTECODE_WRITES",
+    }
+
+
 def _runtime_release_digest() -> str:
     from recclaw_core.experiments.helix_abc_v1.training_runtime_contracts import (
         TrainingRuntimeReleaseV3,
@@ -295,6 +345,10 @@ def _canary_records() -> list[dict[str, Any]]:
         monitor_path = parent / f"canary_{name}_{seed}_gpu_monitor.csv"
         result = _read(result_path)
         status = _read(status_path)
+        recovery_canary = name in {
+            "compositional_recovery",
+            "tail_reweight",
+        }
         if (
             result["verdict"] != "PASS"
             or not all(result["gates"].values())
@@ -303,6 +357,10 @@ def _canary_records() -> list[dict[str, Any]]:
             or int(result["search_seed"]) != seed
             or result["runtime_release_digest"]
             != _runtime_release_digest()
+            or (
+                recovery_canary
+                and status.get("source_bytecode_write_disabled") is not True
+            )
         ):
             raise RuntimeError(f"qualification canary failed: {name}")
         records.append(
@@ -326,6 +384,11 @@ def _canary_records() -> list[dict[str, Any]]:
                     "runtime_release_digest"
                 ],
                 "search_seed": seed,
+                "source_head": (
+                    CANARY_RECOVERY_SOURCE_HEAD
+                    if recovery_canary
+                    else CANARY_EXECUTION_SOURCE_HEAD
+                ),
                 "status_path": status_path.as_posix(),
                 "status_sha256": file_sha256(status_path),
                 "verdict": "PASS",
@@ -578,8 +641,9 @@ def _backend_audit(
 ) -> dict[str, Any]:
     profile_log = PROFILE_TEST_LOG.read_text(encoding="utf-8")
     canary_source_files = _canary_execution_source_subset()
+    launcher_recovery = _qualification_launcher_recovery()
     if (
-        "58 passed, 82 subtests passed" not in profile_log
+        "59 passed, 82 subtests passed" not in profile_log
         or any(row["verdict"] != "PASS" for row in canaries)
     ):
         raise RuntimeError("V25 profile/canary qualification is not PASS")
@@ -602,7 +666,7 @@ def _backend_audit(
             "full_profile_compiled_and_materialized": True,
             "m6i_isolation_tests": True,
             "producer_v20_tests": True,
-            "result": "58 passed, 82 subtests passed",
+            "result": "59 passed, 82 subtests passed",
             "test_log_path": PROFILE_TEST_LOG.as_posix(),
             "test_log_sha256": file_sha256(PROFILE_TEST_LOG),
         },
@@ -618,8 +682,11 @@ def _backend_audit(
                 CANARY_POST_LAUNCH_ALLOWED_PATHS
             ),
             "files_digest": sha256_digest(canary_source_files),
-            "launch_head": CANARY_EXECUTION_SOURCE_HEAD,
+            "common_training_launch_head": (
+                CANARY_EXECUTION_SOURCE_HEAD
+            ),
             "qualification_head": source_head,
+            "qualification_launcher_recovery": launcher_recovery,
             "subset_unchanged_between_heads": True,
         },
         "evidence_class": "DEVELOPMENT_ONLY_PRE_OUTCOME",
