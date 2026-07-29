@@ -329,38 +329,9 @@ class M6IFakeProviderV1:
                     else "DISCOVERY"
                 ),
             )
-            if role == "lineage_refiner":
-                consumer_value = next(
-                    (
-                        str(record["consumer"]["value"])
-                        for record in reversed(
-                            self.broker._call_registry.audit_records
-                        )
-                        if "consumer" in record
-                        and str(record["consumer"]["value"])
-                        in logical_call_id
-                    ),
-                    None,
-                )
-                if consumer_value is None:
-                    raise AssertionError(
-                        "lineage fake call lacks its consumer ownership record"
-                    )
-                owner_arm = next(
-                    ArmCode(str(record["owner"]["arm"]))
-                    for record in reversed(
-                        self.broker._call_registry.audit_records
-                    )
-                    if record.get("consumer", {}).get("value")
-                    == consumer_value
-                )
-                parent = self.broker.lineage_indexes[
-                    owner_arm
-                ].latest_success()
-                proposal["parent_candidate_id"] = (
-                    parent.proposal_candidate_id
-                    if parent is not None
-                    else None
+            if proposal["parent_candidate_id"] is not None:
+                raise AssertionError(
+                    "fake Provider authored a runtime-owned parent identity"
                 )
             proposals = [proposal]
         if len(proposals) != expected_proposal_count:

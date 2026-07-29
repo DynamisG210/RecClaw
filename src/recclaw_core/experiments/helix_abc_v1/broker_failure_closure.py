@@ -68,7 +68,7 @@ class BrokerFailureClosureV1:
         output_tokens: int,
         billed_tokens: int,
         wall_time_ms: int,
-        ceilings: ResourceCeilingsV1,
+        ceilings: ResourceCeilingsV1 | None = None,
     ) -> "BrokerFailureClosureV1":
         if outcome.status != "PROCESS_FAILURE":
             raise ValueError("Broker failure closure requires a process failure")
@@ -88,6 +88,26 @@ class BrokerFailureClosureV1:
             raise ValueError(
                 "Broker failure resource usage must be non-negative integers"
             )
+        input_ceiling = (
+            ceilings.total_input_tokens
+            if ceilings is not None
+            else input_tokens
+        )
+        output_ceiling = (
+            ceilings.total_output_tokens
+            if ceilings is not None
+            else output_tokens
+        )
+        billed_ceiling = (
+            ceilings.total_billed_token_debit
+            if ceilings is not None
+            else billed_tokens
+        )
+        wall_ceiling = (
+            ceilings.wall_time_ms
+            if ceilings is not None
+            else wall_time_ms
+        )
         allocation_ceiling_exceeded = tuple(
             sorted(
                 dimension
@@ -95,22 +115,22 @@ class BrokerFailureClosureV1:
                     (
                         "BILLED_TOKEN_DEBIT",
                         billed_tokens,
-                        ceilings.total_billed_token_debit,
+                        billed_ceiling,
                     ),
                     (
                         "INPUT_TOKEN",
                         input_tokens,
-                        ceilings.total_input_tokens,
+                        input_ceiling,
                     ),
                     (
                         "OUTPUT_TOKEN",
                         output_tokens,
-                        ceilings.total_output_tokens,
+                        output_ceiling,
                     ),
                     (
                         "WALL_TIME_MS",
                         wall_time_ms,
-                        ceilings.wall_time_ms,
+                        wall_ceiling,
                     ),
                 )
                 if actual > ceiling
@@ -122,7 +142,7 @@ class BrokerFailureClosureV1:
             ),
             "billed_token_allocation_debit": min(
                 billed_tokens,
-                ceilings.total_billed_token_debit,
+                billed_ceiling,
             ),
             "broker_outcome_digest": outcome.outcome_digest,
             "classifier_rule_id": outcome.classifier_rule_id,
@@ -138,18 +158,18 @@ class BrokerFailureClosureV1:
             "input_token_debit": input_tokens,
             "input_token_allocation_debit": min(
                 input_tokens,
-                ceilings.total_input_tokens,
+                input_ceiling,
             ),
             "output_token_debit": output_tokens,
             "output_token_allocation_debit": min(
                 output_tokens,
-                ceilings.total_output_tokens,
+                output_ceiling,
             ),
             "billed_token_debit": billed_tokens,
             "wall_time_ms": wall_time_ms,
             "wall_time_allocation_debit_ms": min(
                 wall_time_ms,
-                ceilings.wall_time_ms,
+                wall_ceiling,
             ),
             "receipt_digest": receipt.receipt_digest,
             "redacted_excerpt": outcome.redacted_excerpt,

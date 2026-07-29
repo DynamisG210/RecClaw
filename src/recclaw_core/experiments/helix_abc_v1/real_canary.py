@@ -21,6 +21,7 @@ from recclaw_core.helix.contracts import CandidateEnvelope, RawResultEnvelope
 from recclaw_core.helix.scientific_attribution import FusedSearchFeedbackV2
 
 from .campaign_runtime import (
+    CampaignRuntimeError,
     campaign_projection,
     campaign_runtime_profile,
     executable_mechanism,
