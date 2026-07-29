@@ -1,5 +1,5 @@
 {
-  "active_stage": "V24_FROZEN_PRE_OUTCOME_START_AUDIT_AND_LAUNCH_NEXT",
+  "active_stage": "V24_FIVE_ROUND_FULL_TRAINING_PILOT_RUNNING",
   "active_version": "V24",
   "active_worktree": "/root/projects/RecClaw_m6i",
   "active_commit": "a52e52ebe2a88faabbb24ad8e5f21762aa9c249a",
@@ -7,9 +7,16 @@
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
   "active_backend_release": "TRAINING_RUNTIME_RELEASE_V16:2de9e64bee31f8d7c2e86ee381f37c734902f383f448d87e61c62617e3a73556",
-  "active_processes": [],
-  "last_completed_checkpoint": "V24_SINGLE_RUNTIME_BACKEND_RESOURCE_SOURCE_AND_PILOT_CONTRACT_CLOSURE_PASS",
-  "next_automatic_action": "RUN_V24_IDENTITY_START_AUDIT_THEN_FRESH_FIVE_ROUND_FULL_TRAINING_PILOT",
+  "active_processes": [
+    {
+      "host": "gpu35",
+      "kind": "V24_FIVE_ROUND_FULL_TRAINING_PILOT",
+      "pid": 107064,
+      "search_seed": 9226
+    }
+  ],
+  "last_completed_checkpoint": "V24_IDENTITY_START_AUDIT_PASS_AND_FRESH_PILOT_LAUNCHED",
+  "next_automatic_action": "SUPERVISE_V24_TO_NATURAL_COMPLETION_THEN_RUN_INDEPENDENT_BEHAVIORAL_AUDIT",
   "round_progress": {
     "V24_backend_selection": {
       "gpu2_gpu1": "NOT_QUALIFIED_18427_MIB_OCCUPIED_5666_MIB_FREE_AND_GPU0_DEVICE_HANDLE_ERROR",
@@ -60,7 +67,7 @@
       "gpu_device_time_ms_per_arm_round": 1200000,
       "p0": 0,
       "p1": 0,
-      "pilot_started": false,
+      "pilot_started": true,
       "rounds_per_arm": 5,
       "search_seed": 9226,
       "source_head": "a52e52ebe2a88faabbb24ad8e5f21762aa9c249a",
