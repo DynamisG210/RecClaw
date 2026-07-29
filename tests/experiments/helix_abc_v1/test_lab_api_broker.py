@@ -14,6 +14,9 @@ from recclaw_core.experiments.helix_abc_v1.canary_broker import (
 from recclaw_core.experiments.helix_abc_v1.broker_failure_closure import (
     BrokerFailureClosureV1,
 )
+from recclaw_core.experiments.helix_abc_v1.audit_snapshot import (
+    association_free_neutral_audit,
+)
 from recclaw_core.experiments.helix_abc_v1.lab_api_broker import (
     LabApiCanaryBrokerV1,
 )
@@ -137,6 +140,28 @@ def test_single_schema_request_and_create_once_replay(
         )
         assert snapshot.audit_purpose == "TEST_LAB_API_BROKER"
         assert (tmp_path / "audit.sqlite3").is_file()
+        state_path = tmp_path / "state.sqlite3"
+        state = sqlite3.connect(state_path)
+        state.execute("CREATE TABLE execution_claims(claim_id TEXT)")
+        state.execute(
+            "CREATE TABLE resource_ledger(dimension TEXT, quantity INTEGER)"
+        )
+        state.execute("CREATE TABLE rounds(status TEXT, terminal_class TEXT)")
+        state.execute("CREATE TABLE scheduled_slots(slot_status TEXT)")
+        state.commit()
+        state.close()
+        guard_path = tmp_path / "guard.sqlite3"
+        guard = sqlite3.connect(guard_path)
+        guard.execute("CREATE TABLE guard_calls(guard_call_id TEXT)")
+        guard.commit()
+        guard.close()
+        projection = association_free_neutral_audit(
+            state_snapshot=state_path,
+            broker_snapshot=tmp_path / "audit.sqlite3",
+            guard_snapshot=guard_path,
+        )
+        assert projection["broker_call_count_by_status"] == {"SUCCESS": 1}
+        assert projection["broker_receipt_coverage_count"] == 1
     finally:
         broker.close()
     for artifact in private_root.rglob("*"):

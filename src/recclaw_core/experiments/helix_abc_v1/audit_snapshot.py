@@ -151,6 +151,37 @@ def _rows_as_counts(
     }
 
 
+def _broker_receipt_coverage_count(
+    connection: sqlite3.Connection,
+) -> int:
+    """Count receipts for either qualified Broker snapshot schema."""
+
+    columns = frozenset(
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(calls)").fetchall()
+    )
+    if "exit_receipt_digest" in columns:
+        receipt_column = "exit_receipt_digest"
+    elif {
+        "receipt_digest",
+        "receipt_json",
+        "closure_receipt_json",
+        "outcome_json",
+    }.issubset(columns):
+        receipt_column = "receipt_digest"
+    else:
+        raise RuntimeError(
+            "neutral audit does not recognize the Broker receipt schema"
+        )
+    return int(
+        connection.execute(
+            f"SELECT COUNT(*) FROM calls "
+            f"WHERE {receipt_column} IS NOT NULL "
+            f"AND length({receipt_column})=64"
+        ).fetchone()[0]
+    )
+
+
 def association_free_neutral_audit(
     *,
     state_snapshot: Path,
@@ -174,12 +205,8 @@ def association_free_neutral_audit(
                 "FROM calls GROUP BY COALESCE(error_type, 'NONE') "
                 "ORDER BY COALESCE(error_type, 'NONE')",
             ),
-            "broker_receipt_coverage_count": int(
-                broker.execute(
-                    "SELECT COUNT(*) FROM calls "
-                    "WHERE exit_receipt_digest IS NOT NULL "
-                    "AND length(exit_receipt_digest)=64"
-                ).fetchone()[0]
+            "broker_receipt_coverage_count": (
+                _broker_receipt_coverage_count(broker)
             ),
             "execution_claim_count": int(
                 state.execute("SELECT COUNT(*) FROM execution_claims").fetchone()[0]
