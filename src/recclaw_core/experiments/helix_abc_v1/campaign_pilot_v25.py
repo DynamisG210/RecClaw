@@ -280,6 +280,51 @@ class V25PilotOrchestratorV1(MetaV17PilotOrchestratorV1):
                 self._persist_read_only_checkpoint(round_index)
         return tuple(results)
 
+    def immutable_audit_bundle(self, snapshot_root: Path) -> dict[str, Any]:
+        bundle = super().immutable_audit_bundle(snapshot_root)
+        integrated = self.integrated_state.audit_projection()
+        sharing = self.broker.call_sharing_audit()
+        encoded_sharing = json.dumps(
+            sharing["records"],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).lower()
+        forbidden_guard_private_tokens = (
+            "evidence_guard",
+            "evidence_root",
+            "guard_ledger",
+            "guard_private",
+        )
+        bundle["m6i_safety_projection"] = canonical_value(
+            {
+                "call_sharing_policy": sharing["policy"],
+                "candidate_instance_identities": sharing[
+                    "candidate_instance_identities"
+                ],
+                "consumer_logical_identities": sharing[
+                    "consumer_logical_identities"
+                ],
+                "cross_arm_physical_identities": sharing[
+                    "cross_arm_physical_identities"
+                ],
+                "guard_private_context_token_count": sum(
+                    token in encoded_sharing
+                    for token in forbidden_guard_private_tokens
+                ),
+                "integrated_cross_arm_reads": integrated[
+                    "cross_arm_reads"
+                ],
+                "integrated_round_count": len(integrated["rounds"]),
+                "integrated_triplet_barrier_count": len(
+                    integrated["triplet_barriers"]
+                ),
+                "physical_call_identities": sharing[
+                    "physical_call_identities"
+                ],
+            }
+        )
+        return canonical_value(bundle)
+
 
 __all__ = [
     "V25_EXECUTABLE_PROFILE_DIGEST",

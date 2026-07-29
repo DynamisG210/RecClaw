@@ -114,6 +114,7 @@ def _collect_analysis_rows(
         )
         payload = json.loads(str(row["payload_json"]))
         feedback = dict(payload["feedback"])
+        utility_event = dict(feedback.get("search_utility_event") or {})
         round_id = str(row["round_id"])
         metrics = (
             dict(envelope["normalized_metrics"])
@@ -133,10 +134,13 @@ def _collect_analysis_rows(
             "candidate_id": (
                 str(envelope["candidate_id"])
                 if envelope is not None
-                else None
+                else feedback.get("candidate_id")
             ),
             "gpu_cost_microunits": debits.get(
                 (round_id, "GPU_COST_MICROUNITS"), 0
+            ),
+            "mechanism_semantics_digest": utility_event.get(
+                "candidate_semantic_digest"
             ),
             "ndcg": metrics.get("ndcg"),
             "observation_seed": (

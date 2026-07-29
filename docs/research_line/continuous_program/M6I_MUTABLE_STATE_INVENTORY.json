@@ -1,6 +1,7 @@
 {
   "active_paths": [
     "recclaw_ext/models/composable_v2.py",
+    "scripts/analyze_v25_effect_pilot.py",
     "scripts/audit_v25_m6i_prelaunch.py",
     "scripts/build_v25_gpu35_closure.py",
     "scripts/campaign_train_worker.py",
@@ -85,7 +86,7 @@
   ],
   "authority": "NONE",
   "evidence_class": "DEVELOPMENT_ONLY",
-  "finding_count": 702,
+  "finding_count": 716,
   "findings": [
     {
       "kind": "ListComp",
@@ -118,6 +119,110 @@
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
       "symbol": "__all__"
+    },
+    {
+      "kind": "Call",
+      "line": 52,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "connection"
+    },
+    {
+      "kind": "Call",
+      "line": 59,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "preimage"
+    },
+    {
+      "kind": "Call",
+      "line": 70,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "artifacts"
+    },
+    {
+      "kind": "ListComp",
+      "line": 81,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "neutral"
+    },
+    {
+      "kind": "ListComp",
+      "line": 87,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "effect"
+    },
+    {
+      "kind": "ListComp",
+      "line": 157,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "calls"
+    },
+    {
+      "kind": "SetComp",
+      "line": 165,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "pre_legal"
+    },
+    {
+      "kind": "SetComp",
+      "line": 171,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "post_candidates"
+    },
+    {
+      "kind": "SetComp",
+      "line": 185,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "c_no_execution"
+    },
+    {
+      "kind": "DictComp",
+      "line": 249,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "by_arm"
+    },
+    {
+      "kind": "DictComp",
+      "line": 259,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "arm_metrics"
+    },
+    {
+      "kind": "Dict",
+      "line": 319,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "chain_checks"
+    },
+    {
+      "kind": "Dict",
+      "line": 352,
+      "path": "scripts/analyze_v25_effect_pilot.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "report"
     },
     {
       "kind": "Dict",
@@ -177,7 +282,7 @@
     },
     {
       "kind": "Set",
-      "line": 128,
+      "line": 136,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",
@@ -185,7 +290,7 @@
     },
     {
       "kind": "Call",
-      "line": 171,
+      "line": 180,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -193,7 +298,15 @@
     },
     {
       "kind": "Call",
-      "line": 239,
+      "line": 212,
+      "path": "scripts/build_v25_gpu35_closure.py",
+      "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
+      "scope": "ROUND_LOCAL",
+      "symbol": "changed"
+    },
+    {
+      "kind": "Call",
+      "line": 249,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -201,7 +314,7 @@
     },
     {
       "kind": "Call",
-      "line": 257,
+      "line": 267,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -209,7 +322,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 258,
+      "line": 268,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -217,7 +330,7 @@
     },
     {
       "kind": "List",
-      "line": 278,
+      "line": 288,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -225,7 +338,7 @@
     },
     {
       "kind": "Dict",
-      "line": 344,
+      "line": 354,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -233,7 +346,7 @@
     },
     {
       "kind": "DictComp",
-      "line": 391,
+      "line": 401,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -241,7 +354,7 @@
     },
     {
       "kind": "ListComp",
-      "line": 407,
+      "line": 417,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -249,7 +362,7 @@
     },
     {
       "kind": "Dict",
-      "line": 443,
+      "line": 453,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -257,7 +370,7 @@
     },
     {
       "kind": "Dict",
-      "line": 468,
+      "line": 478,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -265,7 +378,7 @@
     },
     {
       "kind": "Dict",
-      "line": 579,
+      "line": 589,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -273,7 +386,7 @@
     },
     {
       "kind": "Dict",
-      "line": 681,
+      "line": 701,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -281,7 +394,7 @@
     },
     {
       "kind": "List",
-      "line": 725,
+      "line": 745,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -289,7 +402,7 @@
     },
     {
       "kind": "Call",
-      "line": 884,
+      "line": 904,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -297,7 +410,7 @@
     },
     {
       "kind": "Call",
-      "line": 948,
+      "line": 968,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -305,7 +418,7 @@
     },
     {
       "kind": "Dict",
-      "line": 1018,
+      "line": 1038,
       "path": "scripts/build_v25_gpu35_closure.py",
       "rationale": "function-local mutable cannot cross an Arm boundary unless persisted explicitly",
       "scope": "ROUND_LOCAL",
@@ -921,7 +1034,7 @@
     },
     {
       "kind": "List",
-      "line": 284,
+      "line": 329,
       "path": "src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
       "rationale": "module constant is treated as frozen configuration; runtime writes are forbidden",
       "scope": "COMMON_IMMUTABLE",

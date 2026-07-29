@@ -19,6 +19,7 @@ from build_v25_gpu35_closure import (  # noqa: E402
     activate_original_git_tool,
     verify_v25_pilot_contract,
 )
+from analyze_v25_effect_pilot import analyze  # noqa: E402
 from freeze_v13_pilot_contract import DEFAULT_LLM_CONFIG  # noqa: E402
 from recclaw_core.experiments.helix_abc_v1.campaign_pilot_v25 import (  # noqa: E402
     V25_PILOT_ROUNDS_PER_ARM,
@@ -33,7 +34,7 @@ from run_v13_pilot import execute_campaign_pilot  # noqa: E402
 
 def execute(contract_path: Path, llm_api_config: Path) -> int:
     activate_original_git_tool()
-    return execute_campaign_pilot(
+    exit_code = execute_campaign_pilot(
         contract_path,
         llm_api_config,
         verify_contract=verify_v25_pilot_contract,
@@ -43,6 +44,10 @@ def execute(contract_path: Path, llm_api_config: Path) -> int:
         rounds_per_arm=V25_PILOT_ROUNDS_PER_ARM,
         version_label="V25",
     )
+    if exit_code != 0:
+        return exit_code
+    report = analyze(contract_path)
+    return 0 if report["chain_line"] == "PASS" else 3
 
 
 def main() -> int:

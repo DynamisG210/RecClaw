@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import sqlite3
+import sys
 from pathlib import Path
 
 from recclaw_core.experiments.helix_abc_v1.campaign_pilot_v16 import (
@@ -35,6 +37,12 @@ from recclaw_core.experiments.helix_abc_v1.training_runtime_contracts import (
 
 
 ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+from run_v13_pilot import _collect_analysis_rows  # noqa: E402
+
+
 RESOURCE_ROOT = (
     ROOT
     / "src/recclaw_core/experiments/helix_abc_v1/resources"
@@ -70,10 +78,23 @@ def test_v25_runtime_binds_meta_v20_and_resource_envelope() -> None:
     independent_audit = (
         ROOT / "scripts/audit_v25_m6i_prelaunch.py"
     ).read_text(encoding="utf-8")
+    effect_audit = (
+        ROOT / "scripts/analyze_v25_effect_pilot.py"
+    ).read_text(encoding="utf-8")
+    runner = (ROOT / "scripts/run_v25_effect_pilot.py").read_text(
+        encoding="utf-8"
+    )
+    analysis_rows = (ROOT / "scripts/run_v13_pilot.py").read_text(
+        encoding="utf-8"
+    )
     assert "M6I_V25_FINAL_INDEPENDENT_AUDIT.json" in builder
     assert "M6I V25 independent audit is not PASS" in builder
     assert "LabApiCanaryBrokerV1" not in independent_audit
     assert "campaign_train_worker" not in independent_audit
+    assert "effect_pilot_verdict" in effect_audit
+    assert "seed_binding_mismatch_count" in effect_audit
+    assert "report = analyze(contract_path)" in runner
+    assert '"mechanism_semantics_digest"' in analysis_rows
 
 
 def test_v25_checkpoints_are_barrier_complete_and_read_only() -> None:
@@ -86,6 +107,12 @@ def test_v25_checkpoints_are_barrier_complete_and_read_only() -> None:
     assert "register_artifact" in source
     assert "update" not in source.lower()
     assert "delete" not in source.lower()
+    safety_source = inspect.getsource(
+        V25PilotOrchestratorV1.immutable_audit_bundle
+    )
+    assert "m6i_safety_projection" in safety_source
+    assert "cross_arm_physical_identities" in safety_source
+    assert "guard_private_context_token_count" in safety_source
 
 
 def test_v25_meta_checkpoint_is_exact_and_not_a_promotion() -> None:
@@ -119,3 +146,83 @@ def test_v25_runtime_release_v17_has_closed_digest() -> None:
     assert expected == (
         "eec5a5a7482e56c7f5ed7b899d60236539346394d2ef6c828f9c2ee40f27bc9d"
     )
+
+
+def test_v25_analysis_rows_bind_executed_semantics(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.sqlite3"
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    connection = sqlite3.connect(state)
+    connection.executescript(
+        """
+        CREATE TABLE rounds (
+            round_id TEXT,
+            arm_instance_id TEXT,
+            round_index INTEGER,
+            terminal_class TEXT,
+            status TEXT
+        );
+        CREATE TABLE artifact_index (
+            round_id TEXT,
+            artifact_type TEXT,
+            relative_path TEXT
+        );
+        CREATE TABLE round_events (
+            round_id TEXT,
+            event_type TEXT,
+            payload_json TEXT
+        );
+        CREATE TABLE resource_ledger (
+            round_id TEXT,
+            dimension TEXT,
+            quantity INTEGER
+        );
+        """
+    )
+    connection.execute(
+        "INSERT INTO rounds VALUES ('r1','opaque-a',1,'COMPLETED','CLOSED')"
+    )
+    connection.execute(
+        "INSERT INTO artifact_index VALUES "
+        "('r1','RAW_RESULT_ENVELOPE_V2','raw.json')"
+    )
+    feedback = {
+        "feedback": {
+            "candidate_id": "candidate-1",
+            "frontier_eligibility": "SEARCH_ELIGIBLE",
+            "search_utility_event": {
+                "candidate_semantic_digest": "a" * 64,
+            },
+        }
+    }
+    connection.execute(
+        "INSERT INTO round_events VALUES (?,?,?)",
+        ("r1", "ROUND_FEEDBACK", json.dumps(feedback)),
+    )
+    connection.executemany(
+        "INSERT INTO resource_ledger VALUES (?,?,?)",
+        [
+            ("r1", "BILLED_TOKEN_DEBIT", 10),
+            ("r1", "GPU_COST_MICROUNITS", 20),
+            ("r1", "ORDINARY_EXECUTION", 1),
+        ],
+    )
+    connection.commit()
+    connection.close()
+    (artifacts / "raw.json").write_text(
+        json.dumps(
+            {
+                "candidate_id": "candidate-1",
+                "exit_status": "SUCCESS",
+                "normalized_metrics": {"ndcg": 0.2},
+                "seed": 2026,
+            }
+        ),
+        encoding="utf-8",
+    )
+    rows, eligibility = _collect_analysis_rows(state, artifacts)
+    assert rows[0]["mechanism_semantics_digest"] == "a" * 64
+    assert rows[0]["candidate_id"] == "candidate-1"
+    assert list(eligibility.values()) == ["SEARCH_ELIGIBLE"]

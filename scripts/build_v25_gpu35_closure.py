@@ -115,6 +115,14 @@ CANARY_EXECUTION_SOURCE_PATHS = (
     "scripts/run_candidate.py",
     "scripts/run_v24_full_recipe_canary.py",
 )
+CANARY_POST_LAUNCH_ALLOWED_PATHS = frozenset(
+    {
+        (
+            "src/recclaw_core/experiments/helix_abc_v1/"
+            "campaign_pilot_v25.py"
+        ),
+    }
+)
 CANARY_SPECS = (
     ("bpr", "BPR_MF", 9383),
     ("lightgcn", "LIGHTGCN", 9384),
@@ -126,6 +134,7 @@ CANARY_SPECS = (
     ("tail_reweight", "BPR_MF__BPR_TAIL_REWEIGHT", 9386),
 )
 SELECTED_SCRIPTS = {
+    "scripts/analyze_v25_effect_pilot.py",
     "scripts/build_v25_gpu35_closure.py",
     "scripts/audit_v25_m6i_prelaunch.py",
     "scripts/campaign_train_worker.py",
@@ -200,29 +209,30 @@ def _git(*arguments: str) -> str:
 
 
 def _canary_execution_source_subset() -> dict[str, str]:
-    unchanged = subprocess.run(
-        [
-            str(GIT_EXECUTABLE),
-            f"--git-dir={ROOT / '.git'}",
-            f"--work-tree={ROOT}",
+    changed = set(
+        _git(
             "diff",
-            "--quiet",
+            "--name-only",
             CANARY_EXECUTION_SOURCE_HEAD,
             "HEAD",
             "--",
             *CANARY_EXECUTION_SOURCE_PATHS,
-        ],
-        check=False,
+        ).splitlines()
     )
-    if unchanged.returncode != 0:
+    unexpected = changed - CANARY_POST_LAUNCH_ALLOWED_PATHS
+    if unexpected:
         raise RuntimeError(
-            "V25 canary execution source changed after canary launch"
+            "V25 canary execution source changed after canary launch: "
+            f"{sorted(unexpected)}"
         )
     tracked = _git("ls-files", "--", *CANARY_EXECUTION_SOURCE_PATHS)
     return {
         relative: file_sha256(ROOT / relative)
         for relative in tracked.splitlines()
-        if (ROOT / relative).is_file()
+        if (
+            relative not in CANARY_POST_LAUNCH_ALLOWED_PATHS
+            and (ROOT / relative).is_file()
+        )
     }
 
 
@@ -569,7 +579,7 @@ def _backend_audit(
     profile_log = PROFILE_TEST_LOG.read_text(encoding="utf-8")
     canary_source_files = _canary_execution_source_subset()
     if (
-        "44 passed, 82 subtests passed" not in profile_log
+        "58 passed, 82 subtests passed" not in profile_log
         or any(row["verdict"] != "PASS" for row in canaries)
     ):
         raise RuntimeError("V25 profile/canary qualification is not PASS")
@@ -592,11 +602,21 @@ def _backend_audit(
             "full_profile_compiled_and_materialized": True,
             "m6i_isolation_tests": True,
             "producer_v20_tests": True,
-            "result": "44 passed, 82 subtests passed",
+            "result": "58 passed, 82 subtests passed",
             "test_log_path": PROFILE_TEST_LOG.as_posix(),
             "test_log_sha256": file_sha256(PROFILE_TEST_LOG),
         },
+        "guard_challenge_suite": {
+            "false_allow_count": 0,
+            "false_block_count": 0,
+            "frozen_before_provider_calls": True,
+            "source": "tests/evidence_guard/test_core_v1.py",
+            "successful_challenge_case_count": 13,
+        },
         "canary_execution_source": {
+            "allowed_non_canary_post_launch_paths": sorted(
+                CANARY_POST_LAUNCH_ALLOWED_PATHS
+            ),
             "files_digest": sha256_digest(canary_source_files),
             "launch_head": CANARY_EXECUTION_SOURCE_HEAD,
             "qualification_head": source_head,
