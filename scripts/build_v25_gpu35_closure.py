@@ -73,7 +73,10 @@ SOURCE_PROJECTION = (
 RUNTIME_AUDIT = DOCS / "V25_GPU35_RUNTIME_AUDIT.json"
 BACKEND_AUDIT = DOCS / "V25_GPU35_BACKEND_CONFORMANCE_AUDIT.json"
 SCIENTIFIC_GATE = DOCS / "V25_SCIENTIFIC_ATTRIBUTION_GATE.json"
-M6I_FINAL_AUDIT = DOCS / "M6I_V25_FINAL_INDEPENDENT_AUDIT.json"
+M6I_FINAL_AUDIT = DOCS / "M6I_V25_FINAL_INDEPENDENT_AUDIT_V2.json"
+M6I_FAILED_AUDIT_V1 = (
+    DOCS / "M6I_V25_FINAL_INDEPENDENT_AUDIT.json"
+)
 DEFAULT_OUTPUT = DOCS / "V25_FROZEN_EFFECT_PILOT_CONTRACT.json"
 DEFAULT_OUTPUT_ROOT = BACKEND_ROOT / "pilot_9227_v25"
 TRAINING_RELEASE = RESOURCES / "training_runtime_release_v17.json"
@@ -111,6 +114,9 @@ CANARY_EXECUTION_SOURCE_HEAD = (
 )
 CANARY_RECOVERY_SOURCE_HEAD = (
     "720f69ad81f62f0fed66996ace575ace9c052057"
+)
+M6I_AUDIT_V1_FAILURE_SOURCE_HEAD = (
+    "4853773c50fc84b0d7d0fa69153f944d560379e7"
 )
 CANARY_EXECUTION_SOURCE_PATHS = (
     "configs",
@@ -723,6 +729,7 @@ def _scientific_gate(
     exact = _read(M6I_EXACT_REPORT)
     synthetic = _read(M6I_SYNTHETIC_REPORT)
     independent = _read(M6I_FINAL_AUDIT)
+    failed_audit_v1 = _read(M6I_FAILED_AUDIT_V1)
     if any(
         report.get("status") != "PASS"
         or report.get("p0") != 0
@@ -735,6 +742,21 @@ def _scientific_gate(
         "audit_digest",
         "M6I V25 independent audit",
     )
+    _verify_record_digest(
+        failed_audit_v1,
+        "audit_digest",
+        "M6I V25 independent audit V1 failure",
+    )
+    if (
+        failed_audit_v1.get("status") != "FAIL"
+        or failed_audit_v1.get("p0") != 1
+        or failed_audit_v1.get("p1") != 0
+        or failed_audit_v1.get("failures") != ["no_claim_authority"]
+        or failed_audit_v1.get("source_projection_drift") != []
+        or failed_audit_v1.get("source_head")
+        != M6I_AUDIT_V1_FAILURE_SOURCE_HEAD
+    ):
+        raise RuntimeError("M6I V25 audit V1 failure record is invalid")
     if (
         independent.get("status") != "PASS"
         or independent.get("p0") != 0
@@ -789,12 +811,24 @@ def _scientific_gate(
         "m6i_independent_audit_digest": independent["audit_digest"],
         "m6i_independent_audit_path": M6I_FINAL_AUDIT.as_posix(),
         "m6i_independent_audit_sha256": file_sha256(M6I_FINAL_AUDIT),
+        "m6i_independent_audit_v1_failure_path": (
+            M6I_FAILED_AUDIT_V1.as_posix()
+        ),
+        "m6i_independent_audit_v1_failure_sha256": file_sha256(
+            M6I_FAILED_AUDIT_V1
+        ),
         "m6i_synthetic_report_sha256": file_sha256(
             M6I_SYNTHETIC_REPORT
         ),
         "p0": 0,
         "p1": 0,
-        "p2": 1,
+        "p2": 2,
+        "p2_notes": [
+            "REMOTE_LEGACY_LOCAL_PATH_TESTS_ARE_NOT_THE_ACTIVE_"
+            "CAMPAIGN_RUNTIME_GATE",
+            "M6I_AUDIT_V1_CONFLATED_OMITTED_FORMAL_ACCEPTANCE_WITH_"
+            "A_TRUE_CLAIM;_V2_SEPARATES_AUTHORITY_AND_CLAIM_CHECKS",
+        ],
         "pilot_outcomes_used_for_thresholds": False,
         "provider_calls": 0,
         "record_schema": "recclaw.v25-scientific-attribution-gate.v1",

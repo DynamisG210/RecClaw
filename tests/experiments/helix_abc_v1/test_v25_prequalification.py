@@ -87,6 +87,7 @@ def test_v25_runtime_binds_meta_v20_and_resource_envelope() -> None:
     analysis_rows = (ROOT / "scripts/run_v13_pilot.py").read_text(
         encoding="utf-8"
     )
+    assert "M6I_V25_FINAL_INDEPENDENT_AUDIT_V2.json" in builder
     assert "M6I_V25_FINAL_INDEPENDENT_AUDIT.json" in builder
     assert "M6I V25 independent audit is not PASS" in builder
     assert "V25_GPU35_RESOURCE_MARGIN_POLICY_V2.json" in builder
@@ -95,6 +96,10 @@ def test_v25_runtime_binds_meta_v20_and_resource_envelope() -> None:
     assert "CANARY_RECOVERY_SOURCE_HEAD" in builder
     assert "LabApiCanaryBrokerV1" not in independent_audit
     assert "campaign_train_worker" not in independent_audit
+    assert '"formal_acceptance", False' in independent_audit
+    assert "recclaw.m6i-v25-final-independent-audit.v2" in (
+        independent_audit
+    )
     assert "effect_pilot_verdict" in effect_audit
     assert "seed_binding_mismatch_count" in effect_audit
     assert "report = analyze(contract_path)" in runner

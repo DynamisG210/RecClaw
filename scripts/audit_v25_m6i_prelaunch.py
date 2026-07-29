@@ -29,7 +29,7 @@ from recclaw_core.experiments.helix_abc_v1.canonical import (  # noqa: E402
 
 
 DOCS = ROOT / "docs/research_line/continuous_program"
-DEFAULT_OUTPUT = DOCS / "M6I_V25_FINAL_INDEPENDENT_AUDIT.json"
+DEFAULT_OUTPUT = DOCS / "M6I_V25_FINAL_INDEPENDENT_AUDIT_V2.json"
 REPORT_PATHS = {
     "arm_order": DOCS / "M6I_ARM_ORDER_INVARIANCE_REPORT.json",
     "call_sharing": DOCS / "M6I_CALL_SHARING_CONFORMANCE.json",
@@ -150,9 +150,12 @@ def build(output: Path) -> dict[str, Any]:
                 and probe["training_executions"] == 0
                 and all(probe["checks"].values())
             ),
-            "no_claim_authority": all(
+            "all_reports_deny_authority": all(
                 report.get("authority") == "NONE"
-                and report.get("formal_acceptance") is False
+                for report in reports.values()
+            ),
+            "no_report_claims_formal_acceptance": all(
+                report.get("formal_acceptance", False) is False
                 for report in reports.values()
             ),
         }
@@ -190,7 +193,7 @@ def build(output: Path) -> dict[str, Any]:
         "main_eligibility": False,
         "p0": len(failures),
         "p1": 0,
-        "record_schema": "recclaw.m6i-v25-final-independent-audit.v1",
+        "record_schema": "recclaw.m6i-v25-final-independent-audit.v2",
         "source_head": _git_head(),
         "source_projection_drift": drift,
         "status": "PASS" if not failures else "FAIL",
