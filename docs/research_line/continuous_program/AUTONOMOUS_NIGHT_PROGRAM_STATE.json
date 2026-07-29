@@ -1,16 +1,22 @@
 {
-  "active_stage": "M6I_CURRENT_BYTE_FINAL_AUDIT_PASS_BACKEND_SELECTION_NEXT",
-  "active_version": "M6I_PRE_V24",
+  "active_stage": "V24_GPU35_BACKEND_RUNTIME_PREQUALIFICATION_IMPLEMENTATION",
+  "active_version": "V24",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "591878c8bfea6bf4a0104a57ec2a8651b9f46f0b",
+  "active_commit": "13a03d4",
   "active_contract_digest": "d96259271fff6cf8380d0816dff44a2f583d6fc88ef914991dab1a983aa8b08c",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
   "active_backend_release": null,
   "active_processes": [],
-  "last_completed_checkpoint": "M6I_CURRENT_BYTE_FINAL_INDEPENDENT_AUDIT_PASS_P0_0_P1_0",
-  "next_automatic_action": "CREATE_LOCAL_M6I_CHECKPOINT_THEN_INSPECT_GPU2_AND_GPU35_AND_QUALIFY_ONE_COMMON_BACKEND_FOR_FRESH_V24",
+  "last_completed_checkpoint": "M6I_CURRENT_BYTE_FINAL_INDEPENDENT_AUDIT_PASS_AND_GPU35_SELECTED",
+  "next_automatic_action": "COMMIT_V24_PREQUALIFICATION_BYTES_THEN_FREEZE_RUNTIME_V16_AND_RUN_FIXED_BACKEND_CANARIES",
   "round_progress": {
+    "V24_backend_selection": {
+      "gpu2_gpu1": "NOT_QUALIFIED_18427_MIB_OCCUPIED_5666_MIB_FREE_AND_GPU0_DEVICE_HANDLE_ERROR",
+      "gpu35_gpu0": "SELECTED_IDLE_RTX3080_10003_MIB_FREE",
+      "selection_basis": "CURRENT_CONFORMANCE_REPRODUCIBILITY_AND_NO_EXTERNAL_JOB_INTERFERENCE",
+      "selected_backend_root": "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_gpu35_backend_v4_m6i"
+    },
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
       "rounds_per_arm": 50,
