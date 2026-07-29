@@ -224,6 +224,14 @@ def test_bpr_operator_families_execute_loss_and_backward() -> None:
     for operators in combinations:
         config = _config("BPR", operators)
         model = BPRComposableV2(config, create_dataset(config))
+        if "BPR_TAIL_REWEIGHT" in operators:
+            assert torch.isfinite(model.item_tail_weight).all()
+            assert model.item_tail_weight[0].item() == 0.0
+            assert torch.all(model.item_tail_weight[1:] > 0)
+            assert torch.isclose(
+                model.item_tail_weight[1:].mean(),
+                torch.tensor(1.0),
+            )
         _loss_backward(model)
 
 

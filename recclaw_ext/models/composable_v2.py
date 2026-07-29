@@ -45,6 +45,25 @@ def _pair_scores(model, interaction, *, negative_sampler=None):
     return user, pos_item, neg_item
 
 
+def _normalized_tail_weight(popularity: torch.Tensor) -> torch.Tensor:
+    """Build finite real-item tail weights while excluding padding item zero."""
+
+    tail_weight = popularity.clamp_min(1.0).rsqrt()
+    tail_weight = tail_weight.clone()
+    if tail_weight.numel() == 0:
+        return tail_weight
+    tail_weight[0] = 0.0
+    real_item_weight = tail_weight[1:]
+    if real_item_weight.numel() == 0:
+        return tail_weight
+    normalizer = real_item_weight.mean()
+    if not torch.isfinite(normalizer) or normalizer <= 0:
+        raise ValueError("tail-weight normalizer must be finite and positive")
+    tail_weight = tail_weight / normalizer
+    tail_weight[0] = 0.0
+    return tail_weight
+
+
 class BPRComposableV2(BPR):
     """BPR with at most two compatible typed operators."""
 
@@ -78,10 +97,9 @@ class BPRComposableV2(BPR):
         self.lambda_norm = config_float(config, "lambda_norm", 1e-4)
         self.max_norm = config_float(config, "max_norm", 1.0)
         self.lambda_pop = config_float(config, "lambda_pop", 1e-4)
-        tail_weight = popularity.rsqrt()
         self.register_buffer(
             "item_tail_weight",
-            tail_weight / tail_weight.mean().clamp_min(1e-12),
+            _normalized_tail_weight(popularity),
         )
         item_popularity = torch.log1p(popularity)
         self.register_buffer(

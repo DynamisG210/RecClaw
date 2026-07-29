@@ -21,8 +21,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+for import_root in (ROOT, SRC):
+    if str(import_root) not in sys.path:
+        sys.path.insert(0, str(import_root))
 
 from recclaw_core.experiments.helix_abc_v1.campaign_dataset import (  # noqa: E402
     campaign_development_protocol,
@@ -49,10 +50,17 @@ from recclaw_core.experiments.helix_abc_v1.compilation_cache import (  # noqa: E
     compile_campaign_program,
 )
 from recclaw_core.experiments.helix_abc_v1.meta_vnext_campaign import (  # noqa: E402
-    MetaV19CampaignRuntimeV1,
+    MetaV20CampaignRuntimeV1,
 )
 from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (  # noqa: E402
     ThreeArmPreCanaryOrchestratorV1,
+)
+from recclaw_core.experiments.helix_abc_v1.producer_opportunity import (  # noqa: E402
+    PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1,
+    PRODUCER_OPPORTUNITY_POLICY_ID_V1,
+)
+from recclaw_core.experiments.helix_abc_v1.research_capability import (  # noqa: E402
+    DISCOVERY_PRODUCERS,
 )
 from recclaw_core.experiments.helix_abc_v1.real_canary import (  # noqa: E402
     RealCanaryProposalBrokerV1,
@@ -71,7 +79,7 @@ CHECKPOINT = (
     / "experiments"
     / "helix_abc_v1"
     / "resources"
-    / "meta_vnext_policy_checkpoint_v19.json"
+    / "meta_vnext_policy_checkpoint_v20.json"
 )
 TEMPLATES = ROOT / "tests" / "fixtures" / "bl_icf_anchor_programs_v1.json"
 DEFAULT_OUTPUT = (
@@ -124,6 +132,12 @@ QUALIFIED_SOURCE_PATHS = (
     / "experiments"
     / "helix_abc_v1"
     / "meta_vnext_campaign.py",
+    SRC
+    / "recclaw_core"
+    / "experiments"
+    / "helix_abc_v1"
+    / "producer_opportunity.py",
+    CHECKPOINT,
     SRC
     / "recclaw_core"
     / "experiments"
@@ -357,7 +371,7 @@ class M6IExactSchedulerV1(ThreeArmPreCanaryOrchestratorV1):
     def __init__(
         self,
         *args: Any,
-        meta_runtime: MetaV19CampaignRuntimeV1,
+        meta_runtime: MetaV20CampaignRuntimeV1,
         **kwargs: Any,
     ) -> None:
         self.meta_runtime = meta_runtime
@@ -510,7 +524,7 @@ def run_schedule(
 ) -> dict[str, Any]:
     rng = random.Random(schedule_seed)
     experiment_id = f"M6I-EXACT-SCHEDULER-{schedule_seed:03d}"
-    meta_runtime = MetaV19CampaignRuntimeV1(
+    meta_runtime = MetaV20CampaignRuntimeV1(
         checkpoint_path=CHECKPOINT,
         experiment_id=experiment_id,
         search_seed=SEARCH_SEED,
@@ -649,7 +663,24 @@ def run_schedule(
                     "SELECT COUNT(*) FROM triplet_barrier "
                     "WHERE closed_bitmap = 7 AND next_index_authorized = 1",
                 ),
+                "execution_seed_bindings": _count(
+                    store._connection,
+                    "SELECT COUNT(*) FROM artifact_index "
+                    "WHERE artifact_type = 'EXECUTION_SEED_BINDING_V1'",
+                ),
+                "incremental_neutral_checkpoints": _count(
+                    store._connection,
+                    "SELECT COUNT(*) FROM artifact_index "
+                    "WHERE artifact_type = "
+                    "'INCREMENTAL_NEUTRAL_BEHAVIORAL_CHECKPOINT_V1'",
+                ),
             }
+            counts["incremental_arm_private_checkpoints"] = sum(
+                1
+                for _path in orchestrator.layout.root.rglob(
+                    "*.arm-private.v1.json"
+                )
+            )
             state_audit = orchestrator.integrated_state.audit_projection()
             sharing_audit = broker.call_sharing_audit()
             meta_audit = meta_runtime.audit_projection()
@@ -689,6 +720,9 @@ def run_schedule(
                 if record["arm"] == ArmCode.B.value
                 and 7 <= int(record["round_index"]) <= 11
             }
+            producer_decisions = tuple(
+                meta_audit["producer_opportunity_decisions"]
+            )
     expected_rounds = rounds_per_arm * 3
     violations = []
     if runtime_failure is not None:
@@ -707,6 +741,12 @@ def run_schedule(
         violations.append("DUPLICATE_FEEDBACK")
     if counts["closed_triplet_barriers"] != rounds_per_arm:
         violations.append("TRIPLET_BARRIER")
+    if counts["execution_seed_bindings"] != counts["execution_claims"]:
+        violations.append("EXECUTION_SEED_BINDING_COUNT")
+    if counts["incremental_neutral_checkpoints"] != rounds_per_arm:
+        violations.append("INCREMENTAL_NEUTRAL_CHECKPOINT_COUNT")
+    if counts["incremental_arm_private_checkpoints"] != expected_rounds:
+        violations.append("INCREMENTAL_ARM_PRIVATE_CHECKPOINT_COUNT")
     if len(meta_audit["observations"]) != rounds_per_arm * 2:
         violations.append("META_BOUNDARY_COUNT")
     if sharing_audit["cross_arm_physical_identities"] != 0:
@@ -717,6 +757,53 @@ def run_schedule(
         violations.append("STATE_STORE_INTEGRITY")
     if upstream.injected_failure_count != 1:
         violations.append("TYPED_PROVIDER_FAILURE_NOT_EXERCISED_ONCE")
+    if (
+        meta_audit.get("producer_opportunity_policy_digest")
+        != PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1
+        or meta_audit.get("producer_opportunity_policy_id")
+        != PRODUCER_OPPORTUNITY_POLICY_ID_V1
+        or meta_audit.get("development_activation_not_promotion") is not True
+    ):
+        violations.append("PRODUCER_OPPORTUNITY_POLICY_IDENTITY")
+    producer_decisions_by_arm = {
+        arm.value: tuple(
+            item
+            for item in producer_decisions
+            if item["arm"] == arm.value
+        )
+        for arm in (ArmCode.B, ArmCode.C)
+    }
+    producer_role_counts: dict[str, dict[str, int]] = {}
+    for arm in (ArmCode.B, ArmCode.C):
+        arm_decisions = producer_decisions_by_arm[arm.value]
+        opportunity_indexes = tuple(
+            int(item["decision"]["opportunity_index"])
+            for item in arm_decisions
+        )
+        if opportunity_indexes != tuple(range(len(arm_decisions))):
+            violations.append(
+                f"PRODUCER_OPPORTUNITY_INDEX_CONTINUITY:{arm.value}"
+            )
+        role_counts = Counter(
+            str(item["decision"]["selected_producer_role"])
+            for item in arm_decisions
+        )
+        producer_role_counts[arm.value] = {
+            role: int(role_counts[role])
+            for role in DISCOVERY_PRODUCERS
+        }
+        for block_start in range(0, len(arm_decisions), 8):
+            block = arm_decisions[block_start : block_start + 8]
+            if len(block) < len(DISCOVERY_PRODUCERS):
+                continue
+            roles = {
+                str(item["decision"]["selected_producer_role"])
+                for item in block
+            }
+            if not set(DISCOVERY_PRODUCERS).issubset(roles):
+                violations.append(
+                    f"PRODUCER_BLOCK_COVERAGE:{arm.value}:{block_start // 8}"
+                )
     if any(
         item["actual"] != item["expected"]
         for item in task_fixture_statuses.values()
@@ -823,6 +910,16 @@ def run_schedule(
                 )
             },
             "meta_observation_count": len(meta_audit["observations"]),
+            "producer_opportunity": {
+                "decision_count": len(producer_decisions),
+                "policy_digest": meta_audit.get(
+                    "producer_opportunity_policy_digest"
+                ),
+                "policy_id": meta_audit.get(
+                    "producer_opportunity_policy_id"
+                ),
+                "role_counts_by_arm": producer_role_counts,
+            },
             "state_audit_digest": sha256_digest(state_audit),
             "meta_audit_digest": sha256_digest(meta_audit),
             "integrity": integrity,
@@ -909,7 +1006,7 @@ def run_stress(
                 "+M6IExactSchedulerV1_CONFIGURATION_ONLY"
             ),
             "canonical_core_class": "IntegratedCampaignStateCoreV1",
-            "meta_runtime_class": "MetaV19CampaignRuntimeV1",
+            "meta_runtime_class": "MetaV20CampaignRuntimeV1",
             "fake_runner_abi": "recclaw.fake-non-training-runner.v1",
             "fault_injection": {
                 "typed_provider_process_failure": True,
@@ -958,8 +1055,26 @@ def run_stress(
                     result["counts"]["closed_triplet_barriers"]
                     for result in results
                 ),
+                "execution_seed_bindings": sum(
+                    result["counts"]["execution_seed_bindings"]
+                    for result in results
+                ),
+                "incremental_neutral_checkpoints": sum(
+                    result["counts"]["incremental_neutral_checkpoints"]
+                    for result in results
+                ),
+                "incremental_arm_private_checkpoints": sum(
+                    result["counts"][
+                        "incremental_arm_private_checkpoints"
+                    ]
+                    for result in results
+                ),
                 "meta_boundary_events": sum(
                     result["meta_observation_count"] for result in results
+                ),
+                "producer_opportunity_decisions": sum(
+                    result["producer_opportunity"]["decision_count"]
+                    for result in results
                 ),
                 "fake_provider_calls": sum(
                     result["provider_calls"] for result in results

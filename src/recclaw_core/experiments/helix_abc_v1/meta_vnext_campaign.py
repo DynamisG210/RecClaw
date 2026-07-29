@@ -42,6 +42,12 @@ from .meta_vnext.v18_support import (
     load_feature_support,
     route_support_aware,
 )
+from .producer_opportunity import (
+    PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1,
+    PRODUCER_OPPORTUNITY_POLICY_ID_V1,
+    ProducerOpportunityDecisionV1,
+    acquire_producer_opportunity,
+)
 from .research_capability import StrongStaticRouterV1, VersionedResearchPolicyV1
 from .research_contracts import (
     CandidateProposalV2,
@@ -96,6 +102,18 @@ POLICY_BUNDLE_DIGEST_V19 = (
 )
 CHECKPOINT_SHA256_V19 = (
     "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173"
+)
+POLICY_BUNDLE_DIGEST_V20 = (
+    "f3d52f0d2cb6994cd4feee657b89cc5738a280c5fb97ac93253daa8ac81fe972"
+)
+CHECKPOINT_SHA256_V20 = (
+    "5ff049e563ac73a192ad657cdabcf11c014d58a55d95838e9bbb63a1c2b11227"
+)
+DEVELOPMENT_ACTIVATION_DECISION_DIGEST_V20 = (
+    "4f57afd74a84bc29c9579ace4ad0a33e50b4ef8193dda03f9e4b275ffd7f0032"
+)
+V24_METHOD_DIAGNOSIS_SHA256 = (
+    "9521e2ea0f21d9bf5e9714a7d82da8f7255a8f4bef2520382473fe4fea500145"
 )
 
 
@@ -234,6 +252,31 @@ def meta_v19_research_control_policy() -> VersionedResearchPolicyV1:
         ),
         promotion_decision_digest=PROMOTION_DECISION_DIGEST_V19,
         control_mode="PROMOTED_META_V19_PROVIDER_STRICT_SCHEMA_REBIND",
+    )
+
+
+def meta_v20_research_control_policy() -> VersionedResearchPolicyV1:
+    """Bind the V19 scorer to the development Producer opportunity policy."""
+
+    parent = meta_v19_research_control_policy()
+    return replace(
+        parent,
+        version=21,
+        acquisition_parameters=(
+            *parent.acquisition_parameters,
+            ("producer_coverage_fraction", 0.5),
+            ("producer_coverage_block_size", 8.0),
+        ),
+        predecessor_digest=parent.digest,
+        meta_router_policy_digest=POLICY_BUNDLE_DIGEST_V20,
+        meta_router_promotion_decision_digest=(
+            DEVELOPMENT_ACTIVATION_DECISION_DIGEST_V20
+        ),
+        promotion_decision_digest=None,
+        activation_boundary="NEXT_FRESH_CAMPAIGN",
+        control_mode=(
+            "DEVELOPMENT_META_V20_BLOCK8_PRODUCER_OPPORTUNITY"
+        ),
     )
 
 
@@ -868,6 +911,26 @@ class MetaV17CampaignRuntimeV1:
             else "META_VNEXT_V17_SLOW_ONLY_FAST_OUT_OF_SUPPORT"
         )
 
+    def _acquire_candidate_order(
+        self,
+        *,
+        arm: ArmCode,
+        round_index: int,
+        parent_ranked_candidate_ids: tuple[str, ...],
+        proposal_by_id: Mapping[
+            str,
+            CandidateProposalV2
+            | CandidateProposalV3
+            | CandidateProposalV4,
+        ],
+        parent_decision_digest: str | None,
+    ) -> tuple[tuple[str, ...], str | None]:
+        del arm, round_index, proposal_by_id, parent_decision_digest
+        return parent_ranked_candidate_ids, None
+
+    def _singleton_route_mode(self) -> str:
+        return "STATIC_SINGLETON_INSUFFICIENT_META_POOL"
+
     def _fast_observation_supported(
         self,
         *,
@@ -932,14 +995,21 @@ class MetaV17CampaignRuntimeV1:
             proposal.candidate_id: proposal for proposal in route_proposals
         }
         if len(ranked_static) == 1:
+            acquired, acquisition_digest = self._acquire_candidate_order(
+                arm=arm,
+                round_index=round_index,
+                parent_ranked_candidate_ids=tuple(ranked_static),
+                proposal_by_id=proposal_by_id,
+                parent_decision_digest=None,
+            )
             result = MetaV17RouteResultV1(
                 arm=arm.value,
                 round_index=round_index,
-                mode="STATIC_SINGLETON_INSUFFICIENT_META_POOL",
+                mode=self._singleton_route_mode(),
                 pool_digest=None,
-                decision_digest=None,
-                ranked_candidate_ids=ranked_static,
-                selected_candidate_id=static_champion_id,
+                decision_digest=acquisition_digest,
+                ranked_candidate_ids=acquired,
+                selected_candidate_id=acquired[0],
                 static_champion_candidate_id=static_champion_id,
                 selected_candidate_semantics_digest=None,
                 pool_candidate_semantics_digests=(),
@@ -1057,7 +1127,7 @@ class MetaV17CampaignRuntimeV1:
             item.candidate_id: index
             for index, item in enumerate(pool.eligible_candidates)
         }
-        ranked = tuple(
+        score_ranked = tuple(
             sorted(
                 score_by_id,
                 key=lambda candidate_id: (
@@ -1066,14 +1136,21 @@ class MetaV17CampaignRuntimeV1:
                 ),
             )
         )
-        if ranked[0] != decision.selected_candidate_id:
+        if score_ranked[0] != decision.selected_candidate_id:
             raise MetaV17CampaignError("Meta decision and executable order diverged")
+        ranked, acquisition_digest = self._acquire_candidate_order(
+            arm=arm,
+            round_index=round_index,
+            parent_ranked_candidate_ids=score_ranked,
+            proposal_by_id=proposal_by_id,
+            parent_decision_digest=decision.digest,
+        )
         result = MetaV17RouteResultV1(
             arm=arm.value,
             round_index=round_index,
             mode=self._route_mode(fast_supported),
             pool_digest=pool.digest,
-            decision_digest=decision.digest,
+            decision_digest=acquisition_digest or decision.digest,
             ranked_candidate_ids=ranked,
             selected_candidate_id=ranked[0],
             static_champion_candidate_id=static_champion_id,
@@ -1760,17 +1837,288 @@ class MetaV19CampaignRuntimeV1(MetaV18CampaignRuntimeV1):
         return meta_v19_research_control_policy()
 
 
+class MetaV20CampaignRuntimeV1(MetaV19CampaignRuntimeV1):
+    """V19 scoring plus a pre-frozen, Arm-private Producer opportunity layer."""
+
+    version_label = "V20"
+    expected_checkpoint_id = (
+        "META_VNEXT_V20_PRODUCER_OPPORTUNITY_ACQUISITION"
+    )
+    expected_checkpoint_sha256 = CHECKPOINT_SHA256_V20
+    expected_policy_bundle_digest = POLICY_BUNDLE_DIGEST_V20
+    promotion_decision_digest = (
+        DEVELOPMENT_ACTIVATION_DECISION_DIGEST_V20
+    )
+    source_manifest_digest = sha256_digest(
+        {
+            "parent_source_manifest_digest": (
+                MetaV19CampaignRuntimeV1.source_manifest_digest
+            ),
+            "producer_opportunity_policy_digest": (
+                PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1
+            ),
+            "v24_method_diagnosis_sha256": (
+                V24_METHOD_DIAGNOSIS_SHA256
+            ),
+        }
+    )
+    runtime_repair_digest = sha256_digest(
+        {
+            "parent_runtime_repair_digest": (
+                MetaV19CampaignRuntimeV1.runtime_repair_digest
+            ),
+            "producer_opportunity_policy_digest": (
+                PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1
+            ),
+        }
+    )
+    activation_mode = (
+        "DEVELOPMENT_META_V20_V19_SCORE_WITH_BLOCK8_PRODUCER_OPPORTUNITY"
+    )
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._producer_opportunity_history: dict[
+            ArmCode, tuple[str, ...]
+        ] = {
+            ArmCode.B: (),
+            ArmCode.C: (),
+        }
+        self._producer_opportunity_decisions: dict[
+            tuple[ArmCode, int], ProducerOpportunityDecisionV1
+        ] = {}
+
+    def _load_checkpoint(
+        self,
+        checkpoint_path: Path,
+    ) -> tuple[dict[str, Any], PairwiseSlowPolicyV1, MetaVNextRouterV1]:
+        if hashlib.sha256(checkpoint_path.read_bytes()).hexdigest() != (
+            self.expected_checkpoint_sha256
+        ):
+            raise MetaV17CampaignError(
+                "V20 checkpoint bytes are not exact"
+            )
+        checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        parent_path = checkpoint_path.parent / str(
+            checkpoint["parent_checkpoint_resource"]
+        )
+        if hashlib.sha256(parent_path.read_bytes()).hexdigest() != (
+            CHECKPOINT_SHA256_V19
+        ):
+            raise MetaV17CampaignError(
+                "V20 parent V19 checkpoint bytes drifted"
+            )
+        parent = json.loads(parent_path.read_text(encoding="utf-8"))
+        slow_path = parent_path.parent / str(
+            parent["parent_checkpoint_resource"]
+        )
+        if hashlib.sha256(slow_path.read_bytes()).hexdigest() != parent[
+            "parent_checkpoint_sha256"
+        ]:
+            raise MetaV17CampaignError(
+                "V20 inherited slow-policy checkpoint bytes drifted"
+            )
+        slow_parent = json.loads(slow_path.read_text(encoding="utf-8"))
+        policy = PairwiseSlowPolicyV1.from_dict(slow_parent["policy"])
+        router = MetaVNextRouterV1(**slow_parent["router"])
+        profile_digest = bl_icf_executable_profile_v2()["profile_digest"]
+        bundle = sha256_digest(
+            {
+                "schema": "recclaw.meta-vnext.policy-bundle.v3",
+                "parent_policy_bundle_digest": POLICY_BUNDLE_DIGEST_V19,
+                "parent_checkpoint_sha256": CHECKPOINT_SHA256_V19,
+                "coefficient_action": (
+                    "INHERIT_EXACT_V19_NO_COEFFICIENT_CHANGE"
+                ),
+                "producer_opportunity_policy_digest": (
+                    PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1
+                ),
+                "candidate_contract": "CandidateProposalV4",
+                "executable_profile_digest": profile_digest,
+                "v24_method_diagnosis_sha256": (
+                    V24_METHOD_DIAGNOSIS_SHA256
+                ),
+            }
+        )
+        expected_opportunity = {
+            "block_size": 8,
+            "coverage_role_count": 4,
+            "policy_digest": PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1,
+            "policy_id": PRODUCER_OPPORTUNITY_POLICY_ID_V1,
+            "score_source": "EXACT_PARENT_META_V19_ORDER",
+            "selection": (
+                "FORCE_EACH_AVAILABLE_ROLE_ONCE_PER_BLOCK_BEFORE_SCORE_ONLY"
+            ),
+        }
+        if (
+            checkpoint.get("schema")
+            != "recclaw.meta-vnext-policy-checkpoint.v3"
+            or checkpoint.get("checkpoint_id")
+            != self.expected_checkpoint_id
+            or checkpoint.get("authority") != "NONE"
+            or checkpoint.get("formal_acceptance") is not False
+            or checkpoint.get("candidate_contract")
+            != "CandidateProposalV4"
+            or checkpoint.get("executable_profile_digest")
+            != profile_digest
+            or checkpoint.get("parent_checkpoint_sha256")
+            != CHECKPOINT_SHA256_V19
+            or checkpoint.get("parent_policy_bundle_digest")
+            != POLICY_BUNDLE_DIGEST_V19
+            or parent.get("policy_bundle_digest")
+            != POLICY_BUNDLE_DIGEST_V19
+            or checkpoint.get("coefficient_action")
+            != "INHERIT_EXACT_V19_NO_COEFFICIENT_CHANGE"
+            or checkpoint.get("producer_opportunity_policy")
+            != expected_opportunity
+            or checkpoint.get("policy_bundle_digest") != bundle
+            or bundle != self.expected_policy_bundle_digest
+            or checkpoint.get("development_activation_decision_digest")
+            != DEVELOPMENT_ACTIVATION_DECISION_DIGEST_V20
+            or checkpoint.get("activation_boundary")
+            != "NEXT_FRESH_CAMPAIGN"
+            or checkpoint.get("pilot_outcomes_used") is not True
+            or checkpoint.get("outcome_use_scope")
+            != (
+                "V24_DIAGNOSTIC_ONLY_NO_THRESHOLD_METRIC_SEED_"
+                "OR_RESULT_STATE_REUSE"
+            )
+            or checkpoint.get("success_metric_or_threshold_changed")
+            is not False
+            or checkpoint.get("v24_method_diagnosis_sha256")
+            != V24_METHOD_DIAGNOSIS_SHA256
+            or checkpoint.get("shadow_only") is not False
+        ):
+            raise MetaV17CampaignError(
+                "V20 checkpoint identity is not exact"
+            )
+        return checkpoint, policy, router
+
+    def _research_control_policy(self) -> VersionedResearchPolicyV1:
+        return meta_v20_research_control_policy()
+
+    def _acquire_candidate_order(
+        self,
+        *,
+        arm: ArmCode,
+        round_index: int,
+        parent_ranked_candidate_ids: tuple[str, ...],
+        proposal_by_id: Mapping[
+            str,
+            CandidateProposalV2
+            | CandidateProposalV3
+            | CandidateProposalV4,
+        ],
+        parent_decision_digest: str | None,
+    ) -> tuple[tuple[str, ...], str | None]:
+        decision = acquire_producer_opportunity(
+            parent_ranked_candidate_ids=parent_ranked_candidate_ids,
+            parent_decision_digest=(
+                parent_decision_digest
+                or sha256_digest(
+                    {
+                        "mode": "STATIC_SINGLETON",
+                        "ranked_candidate_ids": (
+                            parent_ranked_candidate_ids
+                        ),
+                    }
+                )
+            ),
+            producer_role_by_candidate_id={
+                candidate_id: proposal_by_id[
+                    candidate_id
+                ].producer_role
+                for candidate_id in parent_ranked_candidate_ids
+            },
+            prior_selected_roles=(
+                self._producer_opportunity_history[arm]
+            ),
+        )
+        self._producer_opportunity_history[arm] = (
+            *self._producer_opportunity_history[arm],
+            decision.selected_producer_role,
+        )
+        self._producer_opportunity_decisions[(arm, round_index)] = decision
+        return decision.ranked_candidate_ids, decision.digest
+
+    def _route_mode(self, fast_supported: bool) -> str:
+        parent = super()._route_mode(fast_supported)
+        return f"{parent}_V20_BLOCK8_PRODUCER_OPPORTUNITY"
+
+    def _singleton_route_mode(self) -> str:
+        return (
+            "STATIC_SINGLETON_V20_PRODUCER_OPPORTUNITY_RECORDED"
+        )
+
+    def arm_private_context_digest(self, arm: ArmCode) -> str:
+        return sha256_digest(
+            {
+                "parent_context_digest": (
+                    super().arm_private_context_digest(arm)
+                ),
+                "producer_opportunity_history": (
+                    self._producer_opportunity_history[arm]
+                ),
+                "producer_opportunity_decisions": [
+                    {
+                        "round_index": round_index,
+                        "decision": decision.to_dict(),
+                    }
+                    for (decision_arm, round_index), decision in sorted(
+                        self._producer_opportunity_decisions.items(),
+                        key=lambda item: item[0][1],
+                    )
+                    if decision_arm is arm
+                ],
+            }
+        )
+
+    def audit_projection(self) -> dict[str, Any]:
+        result = super().audit_projection()
+        result.update(
+            {
+                "development_activation_not_promotion": True,
+                "producer_opportunity_policy_digest": (
+                    PRODUCER_OPPORTUNITY_POLICY_DIGEST_V1
+                ),
+                "producer_opportunity_policy_id": (
+                    PRODUCER_OPPORTUNITY_POLICY_ID_V1
+                ),
+                "producer_opportunity_decisions": [
+                    {
+                        "arm": arm.value,
+                        "round_index": round_index,
+                        "decision": decision.to_dict(),
+                    }
+                    for (arm, round_index), decision in sorted(
+                        self._producer_opportunity_decisions.items(),
+                        key=lambda item: (
+                            item[0][1],
+                            item[0][0].value,
+                        ),
+                    )
+                ],
+                "v24_method_diagnosis_sha256": (
+                    V24_METHOD_DIAGNOSIS_SHA256
+                ),
+            }
+        )
+        return canonical_value(result)
+
+
 __all__ = [
     "MetaV17CampaignError",
     "MetaV17CampaignRuntimeV1",
     "MetaV18CampaignRuntimeV1",
     "MetaV19CampaignRuntimeV1",
+    "MetaV20CampaignRuntimeV1",
     "MetaProducerDirectiveV1",
     "MetaV17RouteResultV1",
     "META_V17_RUNTIME_REPAIR_DIGEST_V1",
     "POLICY_BUNDLE_DIGEST_V17",
     "POLICY_BUNDLE_DIGEST_V18",
     "POLICY_BUNDLE_DIGEST_V19",
+    "POLICY_BUNDLE_DIGEST_V20",
     "PROMOTION_DECISION_DIGEST_V17",
     "PROMOTION_DECISION_DIGEST_V18",
     "PROMOTION_DECISION_DIGEST_V19",
@@ -1779,4 +2127,5 @@ __all__ = [
     "meta_v17_static_producer_policy",
     "meta_v18_research_control_policy",
     "meta_v19_research_control_policy",
+    "meta_v20_research_control_policy",
 ]

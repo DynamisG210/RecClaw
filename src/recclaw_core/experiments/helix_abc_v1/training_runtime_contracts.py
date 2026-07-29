@@ -179,6 +179,27 @@ class CandidateExecutionBindingV3(ClosedRuntimeRecord):
     )
 
 
+class ExecutionSeedBindingV1(ClosedRuntimeRecord):
+    """Arm-private audit record binding task intent to executed seed bytes."""
+
+    record_type = "ExecutionSeedBindingV1"
+    required_fields = frozenset(
+        {
+            "active_task_digest",
+            "active_task_id",
+            "active_task_type",
+            "base_binding_digest",
+            "binding_digest",
+            "candidate_instance_id",
+            "execution_seed",
+            "opaque_arm_instance_id",
+            "required_seed_or_control",
+            "round_id",
+            "source_kind",
+        }
+    )
+
+
 class CommonExecutionPermitV2(ClosedRuntimeRecord):
     record_type = "CommonExecutionPermitV2"
     required_fields = frozenset(
@@ -430,6 +451,7 @@ __all__ = [
     "CandidateExecutionBindingV3",
     "CommonExecutionPermitV2",
     "CommonResultClosureV2",
+    "ExecutionSeedBindingV1",
     "ExecutionStartConfirmationV1",
     "ExecutionStartReceiptV2",
     "RawResultEnvelopeV2",

@@ -259,6 +259,64 @@ class M4BrokerAndE2ETest(unittest.TestCase):
             )
             self.assertEqual(results, replay)
             self.assertEqual(len(results), 3)
+            private_checkpoints = []
+            for result in results:
+                paths = list(
+                    orchestrator.layout.arm(
+                        result.opaque_instance_id
+                    )
+                    .namespace("registry")
+                    .glob(
+                        "behavioral_checkpoints/42/"
+                        "0001.arm-private.v1.json"
+                    )
+                )
+                self.assertEqual(len(paths), 1)
+                checkpoint = json.loads(
+                    paths[0].read_text(encoding="utf-8")
+                )
+                self.assertEqual(
+                    checkpoint["integrated_round"]["state"],
+                    "ROUND_TERMINAL",
+                )
+                self.assertEqual(
+                    checkpoint["execution_seed_binding"][
+                        "execution_seed"
+                    ],
+                    "2026",
+                )
+                private_checkpoints.append(checkpoint)
+            neutral_paths = list(
+                orchestrator.store.artifact_root.glob(
+                    "behavioral_checkpoints/*/"
+                    "triplet_checkpoint.v1.json"
+                )
+            )
+            self.assertEqual(len(neutral_paths), 1)
+            incremental_neutral = json.loads(
+                neutral_paths[0].read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                len(
+                    incremental_neutral[
+                        "private_checkpoint_digests"
+                    ]
+                ),
+                3,
+            )
+            incremental_text = canonical_json_bytes(
+                incremental_neutral
+            ).decode("utf-8").lower()
+            for forbidden in (
+                "arm_code",
+                "arm_instance",
+                "assignment_key",
+                "candidate_id",
+                "metric",
+                "ndcg",
+                "treatment",
+            ):
+                self.assertNotIn(forbidden, incremental_text)
             self.assertTrue(all(item.terminal_class == "COMPLETED" for item in results))
             self.assertTrue(all(item.ordinary_execution_count == 1 for item in results))
 
@@ -334,6 +392,14 @@ class M4BrokerAndE2ETest(unittest.TestCase):
             self.assertEqual(
                 db.execute("SELECT COUNT(*) FROM execution_claims").fetchone()[0],
                 3,
+            )
+            self.assertEqual(
+                db.execute(
+                    "SELECT COUNT(*) FROM artifact_index "
+                    "WHERE artifact_type="
+                    "'INCREMENTAL_NEUTRAL_BEHAVIORAL_CHECKPOINT_V1'"
+                ).fetchone()[0],
+                1,
             )
             barrier = db.execute(
                 "SELECT closed_bitmap, next_index_authorized FROM triplet_barrier "

@@ -58,6 +58,7 @@ from recclaw_core.experiments.helix_abc_v1.research_contracts import (
 )
 from recclaw_core.experiments.helix_abc_v1.research_science import (
     ControlAblationBuilderV2,
+    LineageIndexV1,
     LineageRecordV1,
     RepairEngineerV2,
 )
@@ -210,6 +211,8 @@ def lineage_record(
     mechanism_id: str = "LIGHTGCN",
     metric: float = 0.30,
     run_status: str = "SUCCESS",
+    protocol_digest: str = PROTOCOL_DIGEST,
+    observation_seed: str = "2026",
 ) -> LineageRecordV1:
     mechanism = executable_mechanism(mechanism_id)
     return LineageRecordV1(
@@ -220,8 +223,8 @@ def lineage_record(
         mechanism_program_digest=mechanism.mechanism_program_digest,
         mechanism_semantics_digest=mechanism.mechanism_semantics_digest,
         parent_candidate_id=None,
-        protocol_digest=PROTOCOL_DIGEST,
-        observation_seed="2026",
+        protocol_digest=protocol_digest,
+        observation_seed=observation_seed,
         run_status=run_status,
         metric_name="ndcg@10",
         metric_value=metric,
@@ -416,6 +419,59 @@ class V13ResearchScienceTest(unittest.TestCase):
                         "cand-"
                     )
                 )
+                third_triplet = orchestrator.run_fake_triplet(
+                    search_seed=42,
+                    round_index=3,
+                    drafts=(),
+                )
+                self.assertEqual(third_triplet[1].physical_call_count, 4)
+                self.assertIsNone(
+                    orchestrator.research_task_queues[
+                        ArmCode.B
+                    ].select_next()
+                )
+                matched_after_reuse = [
+                    item
+                    for item in broker.research_controllers[
+                        ArmCode.B
+                    ].memory_writer.head.beliefs
+                    if isinstance(item, DevelopmentalMechanismBeliefV2)
+                    and item.comparator_delta != NOT_AVAILABLE
+                ]
+                self.assertEqual(len(matched_after_reuse), 2)
+                self.assertEqual(
+                    matched_after_reuse[-1].exact_parent_candidate_id,
+                    matched_after_reuse[-1].exact_comparator_candidate_id,
+                )
+
+    def test_exact_root_control_reuse_requires_protocol_and_seed_match(
+        self,
+    ) -> None:
+        index = LineageIndexV1(owner_arm_instance_id="opaque-b")
+        record = lineage_record()
+        index.record(record)
+        self.assertEqual(
+            index.latest_exact_program(
+                record.mechanism_program_digest,
+                protocol_digest=PROTOCOL_DIGEST,
+                observation_seed="2026",
+            ),
+            record,
+        )
+        self.assertIsNone(
+            index.latest_exact_program(
+                record.mechanism_program_digest,
+                protocol_digest=PROTOCOL_DIGEST,
+                observation_seed="2027",
+            )
+        )
+        self.assertIsNone(
+            index.latest_exact_program(
+                record.mechanism_program_digest,
+                protocol_digest=sha256_digest({"protocol": "other"}),
+                observation_seed="2026",
+            )
+        )
 
     def test_every_non_matched_task_type_consumes_one_normal_round(self) -> None:
         task_cases = (
@@ -484,6 +540,35 @@ class V13ResearchScienceTest(unittest.TestCase):
                         )
                         self.assertEqual(
                             triplet[1].physical_call_count, 0
+                        )
+                        seed_records = [
+                            json.loads(path.read_text(encoding="utf-8"))
+                            for path in (
+                                orchestrator.layout.neutral_root
+                                / "artifacts"
+                            ).rglob("execution_seed_binding.v1.json")
+                        ]
+                        bound = next(
+                            item
+                            for item in seed_records
+                            if item["round_id"] == triplet[1].round_id
+                        )
+                        expected_seed = (
+                            required
+                            if str(required).isdigit()
+                            else "2026"
+                        )
+                        self.assertEqual(
+                            bound["execution_seed"], expected_seed
+                        )
+                        self.assertEqual(
+                            bound["required_seed_or_control"], required
+                        )
+                        self.assertEqual(
+                            bound["active_task_id"], task.task_id
+                        )
+                        self.assertEqual(
+                            bound["source_kind"], "ACTIVE_BOUND_TASK"
                         )
                         completed = next(
                             item

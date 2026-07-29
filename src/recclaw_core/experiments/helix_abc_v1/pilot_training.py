@@ -61,6 +61,12 @@ def pilot_training_profile_digest() -> str:
     return sha256_digest(pilot_training_profile())
 
 
+def bound_execution_seed(binding: CandidateExecutionBindingV3) -> int:
+    """Return the execution seed frozen into the candidate binding."""
+
+    return int(binding.search_seed)
+
+
 def training_model_for_primitives(primitives: Sequence[str]) -> str:
     values = set(str(item) for item in primitives)
     for mapping in pilot_training_profile()["supported_mappings"]:
@@ -162,6 +168,7 @@ class PilotTrainingLauncherV1:
             if campaign_mode
             else pilot_training_profile()
         )
+        execution_seed = bound_execution_seed(binding)
         epochs_requested = int(
             profile["fixed_canary_max_epochs"]
             if (
@@ -353,7 +360,7 @@ class PilotTrainingLauncherV1:
             "--runtime-release-digest",
             str(binding.runtime_release_digest),
             "--seed",
-            str(profile["ordinary_execution_seed"]),
+            str(execution_seed),
             "--start-confirmation-path",
             str(confirmation_path),
             "--start-gate-path",
@@ -564,7 +571,7 @@ class PilotTrainingLauncherV1:
                 "runner_abi": binding.runner_abi,
                 "runtime_binding_digest": runtime_binding.digest,
                 "runtime_release_digest": binding.runtime_release_digest,
-                "seed": int(profile["ordinary_execution_seed"]),
+                "seed": execution_seed,
                 "side_effect_audit_digest": confinement_audit["audit_digest"],
                 "training_backend_started": True,
                 "termination_class": termination_class,
@@ -693,7 +700,7 @@ class PilotTrainingLauncherV1:
             raw_output=raw_output,
             resource_accounting=resource_accounting,
             artifact_closure=artifact_closure,
-            seed=int(profile["ordinary_execution_seed"]),
+            seed=execution_seed,
         )
         _register(
             self._store,
@@ -721,6 +728,7 @@ class PilotTrainingLauncherV1:
 
 
 __all__ = [
+    "bound_execution_seed",
     "classify_training_termination",
     "PilotTrainingLauncherV1",
     "pilot_training_profile",

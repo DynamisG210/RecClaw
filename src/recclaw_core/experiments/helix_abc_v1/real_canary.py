@@ -262,6 +262,7 @@ class RealCanaryProposalBrokerV1:
     _context_by_consumer: dict[str, str]
     campaign_meta_runtime: Any | None = None
     producer_control_enabled: bool = True
+    ordinary_execution_seed: int = 2026
     call_prefix: str = ""
     phase_name: str = "Canary"
     adaptive_memory: bool = False
@@ -278,6 +279,7 @@ class RealCanaryProposalBrokerV1:
         adaptive_memory: bool = False,
         campaign_meta_runtime: Any | None = None,
         producer_control_enabled: bool = True,
+        ordinary_execution_seed: int = 2026,
         research_policy_override: Any | None = None,
         original_controller: Any | None = None,
         v13_mode: bool = False,
@@ -337,6 +339,7 @@ class RealCanaryProposalBrokerV1:
             _context_by_consumer={},
             campaign_meta_runtime=campaign_meta_runtime,
             producer_control_enabled=producer_control_enabled,
+            ordinary_execution_seed=int(ordinary_execution_seed),
             call_prefix=call_prefix,
             phase_name=phase_name,
             adaptive_memory=adaptive_memory,
@@ -645,6 +648,7 @@ class RealCanaryProposalBrokerV1:
         adaptive_memory: bool = True,
         campaign_meta_runtime: Any | None = None,
         producer_control_enabled: bool = True,
+        ordinary_execution_seed: int = 2026,
         research_policy_override: Any | None = None,
     ) -> "RealCanaryProposalBrokerV1":
         return cls.create(
@@ -655,6 +659,7 @@ class RealCanaryProposalBrokerV1:
             adaptive_memory=adaptive_memory,
             campaign_meta_runtime=campaign_meta_runtime,
             producer_control_enabled=producer_control_enabled,
+            ordinary_execution_seed=ordinary_execution_seed,
             research_policy_override=research_policy_override,
             original_controller=PinnedOriginalMainAdapterV1(
                 repository_root=repository_root,
@@ -1180,10 +1185,12 @@ class RealCanaryProposalBrokerV1:
         arm: ArmCode,
         proposal: CandidateProposalV4,
         protocol_digest: str,
+        observation_seed: str,
     ) -> Any | None:
         return self.lineage_indexes[arm].matched_comparator(
             proposal,
             protocol_digest=protocol_digest,
+            observation_seed=observation_seed,
         )
 
     def lineage_record_for(
@@ -1509,6 +1516,7 @@ class RealCanaryProposalBrokerV1:
             queued_comparator_program_digest=str(
                 root_report.mechanism_program_digest
             ),
+            observation_seed=str(self.ordinary_execution_seed),
         )
         discriminative_plan = (
             DiscriminativeExperimentPlanV1(

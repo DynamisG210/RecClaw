@@ -99,7 +99,7 @@ class OriginalMainSourceReleaseV1:
 
     def materialize(self) -> None:
         git_dir = self.repository_root / ".git"
-        if not git_dir.is_dir():
+        if not git_dir.exists():
             raise OriginalMainSourceError(
                 f"pinned Original Git object database unavailable: {git_dir}"
             )
@@ -107,7 +107,8 @@ class OriginalMainSourceReleaseV1:
             bound = subprocess.run(
                 [
                     "git",
-                    f"--git-dir={git_dir}",
+                    "-C",
+                    str(self.repository_root),
                     "rev-parse",
                     f"{ORIGINAL_MAIN_COMMIT}:{relative}",
                 ],
@@ -126,7 +127,8 @@ class OriginalMainSourceReleaseV1:
             completed = subprocess.run(
                 [
                     "git",
-                    f"--git-dir={git_dir}",
+                    "-C",
+                    str(self.repository_root),
                     "cat-file",
                     "blob",
                     blob_sha1,

@@ -1,22 +1,15 @@
 {
-  "active_stage": "V24_FIVE_ROUND_FULL_TRAINING_PILOT_RUNNING",
+  "active_stage": "V24_METHOD_REPAIR_BEFORE_FRESH_50R",
   "active_version": "V24",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "a52e52ebe2a88faabbb24ad8e5f21762aa9c249a",
+  "active_commit": "620ccb49ffc7f40146c14364cbddd3771780cf61",
   "active_contract_digest": "2f6309c0036375f897ad842d459011b1b0c849f35c790553cabbe5eebfa27968",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
   "active_backend_release": "TRAINING_RUNTIME_RELEASE_V16:2de9e64bee31f8d7c2e86ee381f37c734902f383f448d87e61c62617e3a73556",
-  "active_processes": [
-    {
-      "host": "gpu35",
-      "kind": "V24_FIVE_ROUND_FULL_TRAINING_PILOT",
-      "pid": 107064,
-      "search_seed": 9226
-    }
-  ],
-  "last_completed_checkpoint": "V24_IDENTITY_START_AUDIT_PASS_AND_FRESH_PILOT_LAUNCHED",
-  "next_automatic_action": "SUPERVISE_V24_TO_NATURAL_COMPLETION_THEN_RUN_INDEPENDENT_BEHAVIORAL_AUDIT",
+  "active_processes": [],
+  "last_completed_checkpoint": "V24_DIAGNOSED_NON_GO_P1_EXECUTION_SEED_BINDING_AND_TAIL_REWEIGHT_COLLAPSE",
+  "next_automatic_action": "COMPLETE_CURRENT_BYTE_METHOD_REPAIR_AND_M6I_REQUALIFICATION_THEN_FREEZE_ONE_FRESH_50R_EFFECT_PILOT",
   "round_progress": {
     "V24_backend_selection": {
       "gpu2_gpu1": "NOT_QUALIFIED_18427_MIB_OCCUPIED_5666_MIB_FREE_AND_GPU0_DEVICE_HANDLE_ERROR",
@@ -73,6 +66,54 @@
       "source_head": "a52e52ebe2a88faabbb24ad8e5f21762aa9c249a",
       "status": "FROZEN_PRE_OUTCOME",
       "wall_time_ms_per_arm_round": 1200000
+    },
+    "V24_five_round_execution": {
+      "broker_calls": 22,
+      "broker_failures": 0,
+      "credential_residue": false,
+      "execution_claims_finished": 15,
+      "guard_calls": 10,
+      "max_gpu_cost_microunits": 258303,
+      "max_gpu_device_time_ms": 929890,
+      "max_wall_time_ms": 965125,
+      "open_rounds": 0,
+      "output_root_immutable": true,
+      "rounds_closed": 15,
+      "rounds_per_arm": 5,
+      "search_seed": 9226,
+      "supervisor_exit_code": 1,
+      "supervisor_exit_reason": "POST_EXECUTION_AUDIT_SCHEMA_MISMATCH_AFTER_ALL_TRAINING_CLOSED",
+      "training_results_success": 15,
+      "triplet_barriers_closed": 5
+    },
+    "V24_audit_requalification": {
+      "auditor_commit": "620ccb49ffc7f40146c14364cbddd3771780cf61",
+      "broker_receipt_coverage": 22,
+      "neutral_projection_digest": "f00cbcdc71bd4b4cf4edd6de6876330c87fb379a6147e81c17097bbc73ff5ac7",
+      "real_snapshot_replay": "PASS",
+      "regression_tests": "19_PASS_13_SUBTESTS_PASS",
+      "remaining_action": "CURRENT_BYTE_METHOD_REPAIR_AND_FULL_M6I_REQUALIFICATION",
+      "root_cause": "NEUTRAL_AUDIT_EXPECTED_CANARY_EXIT_RECEIPT_DIGEST_BUT_LAB_SCHEMA_USES_RECEIPT_DIGEST",
+      "status": "COMPLETE_NON_GO"
+    },
+    "V24_method_diagnosis": {
+      "descriptive_arm_means": {
+        "A": 0.12516,
+        "B": 0.16604,
+        "C": 0.16658
+      },
+      "descriptive_b_minus_a": 0.04088,
+      "descriptive_c_minus_b": 0.00054,
+      "diagnosis_path": "docs/research_line/continuous_program/V24_FIVE_ROUND_METHOD_DIAGNOSIS.json",
+      "formal_effect_claim": false,
+      "p0": 0,
+      "p1": 2,
+      "p1_findings": [
+        "VALIDATION_TASK_SEEDS_2027_AND_2028_EXECUTED_AS_2026",
+        "BPR_TAIL_REWEIGHT_PADDING_INFINITY_COLLAPSED_REAL_ITEM_WEIGHTS"
+      ],
+      "status": "NON_GO_FOR_EFFECT_PILOT_PROMOTION",
+      "v24_root_modified": false
     },
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
@@ -140,10 +181,10 @@
       "verdict": "NON_GO"
     }
   },
-  "provider_calls": 25,
-  "training_executions": 8,
+  "provider_calls": 22,
+  "training_executions": 15,
   "P0": 0,
-  "P1": 0,
-  "P2": 1,
+  "P1": 2,
+  "P2": 5,
   "hard_stop": false
 }

@@ -8,6 +8,7 @@ real LLM or training backends.
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import subprocess
@@ -116,6 +117,7 @@ from .state_store import (
     ResourceDebitV1,
     SingleWriterExperimentStoreV1,
 )
+from .training_runtime_contracts import ExecutionSeedBindingV1
 
 
 class PreCanaryInvariantError(RuntimeError):
@@ -1582,7 +1584,6 @@ class ThreeArmPreCanaryOrchestratorV1:
             matched_plan = proposal.matched_control_plan
             matched = (
                 comparator_delta != NOT_AVAILABLE
-                and proposal.parent_candidate_id is not None
                 and matched_plan.comparator_candidate_id is not None
             )
             observation = "development_observation:" + event.digest
@@ -1593,7 +1594,12 @@ class ThreeArmPreCanaryOrchestratorV1:
                     matched_plan.mechanism_question_digest
                 ),
                 exact_parent_candidate_id=(
-                    proposal.parent_candidate_id if matched else None
+                    (
+                        proposal.parent_candidate_id
+                        or matched_plan.comparator_candidate_id
+                    )
+                    if matched
+                    else None
                 ),
                 exact_comparator_candidate_id=(
                     matched_plan.comparator_candidate_id
@@ -1715,8 +1721,220 @@ class ThreeArmPreCanaryOrchestratorV1:
             search_seed=search_seed,
             round_index=round_index,
         )
+        self._persist_triplet_behavioral_checkpoint(
+            search_seed=search_seed,
+            round_index=round_index,
+            ordered_results=ordered_results,
+        )
         self._completed[key] = ordered_results
         return ordered_results
+
+    def _persist_triplet_behavioral_checkpoint(
+        self,
+        *,
+        search_seed: int,
+        round_index: int,
+        ordered_results: tuple[ArmRoundResultV1, ...],
+    ) -> None:
+        """Persist private current-byte evidence before any final report."""
+
+        call_audit_reader = getattr(
+            self.broker, "call_sharing_audit", None
+        )
+        call_records = (
+            tuple(call_audit_reader().get("records", ()))
+            if call_audit_reader is not None
+            else ()
+        )
+        meta_runtime = getattr(
+            self.broker, "campaign_meta_runtime", None
+        )
+        private_digests: list[str] = []
+        result_digests: list[str] = []
+        terminal_counts: dict[str, int] = {}
+        for arm, result in zip(ArmCode, ordered_results, strict=True):
+            opaque_id = self.assignment.mapping[arm]
+            task_queue = self.research_task_queues.get(arm)
+            controller = getattr(
+                self.broker, "research_controllers", {}
+            ).get(arm)
+            lineage = getattr(
+                self.broker, "lineage_indexes", {}
+            ).get(arm)
+            seed_path = (
+                self.store.artifact_root
+                / "instances"
+                / opaque_id
+                / "audit"
+                / sha256_digest({"round_id": result.round_id})
+                / "execution_seed_binding.v1.json"
+            )
+            seed_binding: Mapping[str, Any] | str
+            if seed_path.exists():
+                seed_binding = canonical_value(
+                    json.loads(
+                        seed_path.read_text(encoding="utf-8")
+                    )
+                )
+            else:
+                seed_binding = "ABSENT_NO_EXECUTION"
+            private_payload = canonical_value(
+                {
+                    "schema": (
+                        "recclaw.m6i.arm-private-behavioral-checkpoint.v1"
+                    ),
+                    "experiment_id": self.contract.experiment_id,
+                    "opaque_arm_instance_id": opaque_id,
+                    "search_seed": int(search_seed),
+                    "round_index": int(round_index),
+                    "integrated_round": (
+                        self.integrated_state.round_projection(
+                            arm=arm,
+                            search_seed=search_seed,
+                            round_index=round_index,
+                        )
+                    ),
+                    "round_result": result.to_dict(),
+                    "execution_seed_binding": seed_binding,
+                    "call_identity_records": [
+                        record
+                        for record in call_records
+                        if record.get("owner", {}).get(
+                            "opaque_arm_instance_id"
+                        )
+                        == opaque_id
+                    ],
+                    "research_task_queue": (
+                        [item.to_dict() for item in task_queue.tasks]
+                        if task_queue is not None
+                        else []
+                    ),
+                    "research_task_queue_digest": (
+                        task_queue.digest
+                        if task_queue is not None
+                        else "ABSENT"
+                    ),
+                    "search_memory_head_digest": (
+                        controller.memory_writer.head.digest
+                        if controller is not None
+                        and controller.memory_writer.head is not None
+                        else "ABSENT"
+                    ),
+                    "lineage_digest": (
+                        lineage.digest
+                        if lineage is not None
+                        else "ABSENT"
+                    ),
+                    "meta_arm_private_context_digest": (
+                        meta_runtime.arm_private_context_digest(arm)
+                        if meta_runtime is not None
+                        and arm in {ArmCode.B, ArmCode.C}
+                        else "ABSENT"
+                    ),
+                }
+            )
+            private_digest = sha256_digest(private_payload)
+            private_record = {
+                **private_payload,
+                "checkpoint_digest": private_digest,
+            }
+            relative = (
+                f"behavioral_checkpoints/{search_seed}/"
+                f"{round_index:04d}.arm-private.v1.json"
+            )
+            roots = self.layout.arm(opaque_id)
+            target = roots.namespace("registry").joinpath(
+                *PurePosixPath(relative).parts
+            )
+            private_bytes = (
+                canonical_json_bytes(private_record) + b"\n"
+            )
+            if target.exists():
+                if target.read_bytes() != private_bytes:
+                    raise PreCanaryInvariantError(
+                        "Arm-private behavioral checkpoint changed"
+                    )
+            else:
+                ArmFilesystemCapabilityV1(roots).write_bytes(
+                    "registry",
+                    relative,
+                    private_bytes,
+                )
+            private_digests.append(private_digest)
+            result_digests.append(sha256_digest(result.to_dict()))
+            terminal_counts[result.terminal_class] = (
+                terminal_counts.get(result.terminal_class, 0) + 1
+            )
+
+        neutral_core = canonical_value(
+            {
+                "schema": (
+                    "recclaw.m6i.incremental-neutral-behavioral-"
+                    "checkpoint.v1"
+                ),
+                "experiment_id": self.contract.experiment_id,
+                "search_seed": int(search_seed),
+                "round_index": int(round_index),
+                "triplet_barrier_closed": True,
+                "private_checkpoint_digests": sorted(private_digests),
+                "round_result_digests": sorted(result_digests),
+                "terminal_class_counts": terminal_counts,
+                "physical_call_count": sum(
+                    item.physical_call_count for item in ordered_results
+                ),
+                "ordinary_execution_count": sum(
+                    item.ordinary_execution_count
+                    for item in ordered_results
+                ),
+                "training_backend_started_count": sum(
+                    item.training_backend_started
+                    for item in ordered_results
+                ),
+                "integrated_state_projection_digest": sha256_digest(
+                    self.integrated_state.audit_projection()
+                ),
+                "store_integrity_digest": sha256_digest(
+                    self.store.integrity_report()
+                ),
+            }
+        )
+        encoded = str(neutral_core).lower()
+        forbidden = (
+            "arm_code",
+            "arm_instance",
+            "assignment_key",
+            "candidate_id",
+            "metric",
+            "ndcg",
+            "treatment",
+        )
+        if any(token in encoded for token in forbidden):
+            raise PreCanaryInvariantError(
+                "neutral incremental checkpoint exposes an association"
+            )
+        neutral_record = {
+            **neutral_core,
+            "checkpoint_digest": sha256_digest(neutral_core),
+        }
+        self.store.register_artifact(
+            RegisterArtifactCommand(
+                round_id=None,
+                artifact_type=(
+                    "INCREMENTAL_NEUTRAL_BEHAVIORAL_CHECKPOINT_V1"
+                ),
+                relative_path=(
+                    "behavioral_checkpoints/"
+                    f"{sha256_digest({'search_seed': search_seed, 'round_index': round_index})}/"
+                    "triplet_checkpoint.v1.json"
+                ),
+                producer="M6IIncrementalBehavioralCheckpointWriterV1",
+                idempotency_key=(
+                    f"m6i:incremental-behavioral-checkpoint:"
+                    f"{search_seed}:{round_index}"
+                ),
+            ),
+            canonical_json_bytes(neutral_record) + b"\n",
+        )
 
     def _provider_usage_for_round(
         self,
@@ -2572,6 +2790,65 @@ class ThreeArmPreCanaryOrchestratorV1:
             base_binding=base_binding,
             eligible=action,
         )
+        source_kind = (
+            "ACTIVE_BOUND_TASK"
+            if active_task is not None
+            else (
+                "NORMAL_ROUTED_PROPOSAL"
+                if arm in {ArmCode.B, ArmCode.C}
+                else "ORIGINAL_CONTROLLER_PATH"
+            )
+        )
+        seed_binding = ExecutionSeedBindingV1(
+            {
+                "active_task_digest": (
+                    active_task.digest
+                    if active_task is not None
+                    else "ABSENT"
+                ),
+                "active_task_id": (
+                    active_task.task_id
+                    if active_task is not None
+                    else "ABSENT"
+                ),
+                "active_task_type": (
+                    active_task.task_type.value
+                    if active_task is not None
+                    else "ABSENT"
+                ),
+                "base_binding_digest": base_binding.digest,
+                "binding_digest": binding.digest,
+                "candidate_instance_id": candidate_instance_id,
+                "execution_seed": str(execution_seed),
+                "opaque_arm_instance_id": opaque_id,
+                "required_seed_or_control": (
+                    active_task.required_seed_or_control
+                    if active_task is not None
+                    else str(self.contract.ordinary_execution_seed)
+                ),
+                "round_id": str(binding.round_id),
+                "source_kind": source_kind,
+            }
+        )
+        seed_binding_artifact = self.store.register_artifact(
+            RegisterArtifactCommand(
+                round_id=str(binding.round_id),
+                artifact_type="EXECUTION_SEED_BINDING_V1",
+                relative_path=(
+                    f"instances/{opaque_id}/audit/"
+                    f"{sha256_digest({'round_id': str(binding.round_id)})}/"
+                    "execution_seed_binding.v1.json"
+                ),
+                producer="M6IExecutionSeedBindingWriterV1",
+                idempotency_key=(
+                    f"m6i:execution-seed-binding:{binding.round_id}"
+                ),
+            ),
+            canonical_json_bytes(seed_binding.to_dict()) + b"\n",
+        )
+        materialization_artifacts = (
+            materialization_artifacts + (seed_binding_artifact,)
+        )
         self._claim_runtime_execution(
             permit=permit,
             binding=binding,
@@ -2616,6 +2893,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                     arm=arm,
                     proposal=actual_proposal,
                     protocol_digest=protocol_digest,
+                    observation_seed=str(execution_seed),
                 )
                 if matched_comparator_for is not None
                 else None

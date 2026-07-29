@@ -211,6 +211,7 @@ class CommonTrainingExecutionGuardV1:
 
         raw_ok = (
             all(getattr(raw_output, key) == value for key, value in exact.items())
+            and seed == int(binding.search_seed)
             and raw_output.budget_digest == binding.budget_digest
             and raw_output.candidate_id == binding.candidate_id
             and raw_output.experiment_id == runtime_binding.experiment_id
@@ -223,7 +224,7 @@ class CommonTrainingExecutionGuardV1:
             and raw_output.partition_purpose
             == runtime_binding.partition_purpose
             and raw_output.protocol_digest == runtime_binding.protocol_digest
-            and raw_output.seed == seed
+            and raw_output.seed == int(binding.search_seed)
             and raw_output.training_config_budget_digest
             == runtime_binding.training_config_budget_digest
             and raw_output.filesystem_capability_digest

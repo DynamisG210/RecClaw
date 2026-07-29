@@ -1,0 +1,31 @@
+{
+  "activation_authority": "CONTINUOUS_PROGRAM_V24_METHOD_REPAIR",
+  "activation_boundary": "NEXT_FRESH_CAMPAIGN",
+  "authority": "NONE",
+  "candidate_contract": "CandidateProposalV4",
+  "checkpoint_id": "META_VNEXT_V20_PRODUCER_OPPORTUNITY_ACQUISITION",
+  "coefficient_action": "INHERIT_EXACT_V19_NO_COEFFICIENT_CHANGE",
+  "development_activation_decision_digest": "4f57afd74a84bc29c9579ace4ad0a33e50b4ef8193dda03f9e4b275ffd7f0032",
+  "evidence_class": "DEVELOPMENT_ONLY_POST_V24_METHOD_ITERATION",
+  "executable_profile_digest": "952ba027cb8dbfd8831fca6d33ce39db1aabd4dbc41534b089250e0dc1253b15",
+  "executable_profile_id": "BL_ICF_EXECUTABLE_PROFILE_V2",
+  "formal_acceptance": false,
+  "outcome_use_scope": "V24_DIAGNOSTIC_ONLY_NO_THRESHOLD_METRIC_SEED_OR_RESULT_STATE_REUSE",
+  "parent_checkpoint_resource": "meta_vnext_policy_checkpoint_v19.json",
+  "parent_checkpoint_sha256": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
+  "parent_policy_bundle_digest": "95923b800e89c4c4bfb994b5aa8a16069ac8429af056b456f01b42af4ab33744",
+  "pilot_outcomes_used": true,
+  "policy_bundle_digest": "f3d52f0d2cb6994cd4feee657b89cc5738a280c5fb97ac93253daa8ac81fe972",
+  "producer_opportunity_policy": {
+    "block_size": 8,
+    "coverage_role_count": 4,
+    "policy_digest": "53d320c940a7e3a0adb6f86f92ab6daf4cda3c0482e96e9e27d1987f1723f6df",
+    "policy_id": "META_PRODUCER_BLOCK8_COVER4_THEN_SCORE_V1",
+    "score_source": "EXACT_PARENT_META_V19_ORDER",
+    "selection": "FORCE_EACH_AVAILABLE_ROLE_ONCE_PER_BLOCK_BEFORE_SCORE_ONLY"
+  },
+  "schema": "recclaw.meta-vnext-policy-checkpoint.v3",
+  "shadow_only": false,
+  "success_metric_or_threshold_changed": false,
+  "v24_method_diagnosis_sha256": "9521e2ea0f21d9bf5e9714a7d82da8f7255a8f4bef2520382473fe4fea500145"
+}

@@ -57,6 +57,7 @@ from recclaw_core.experiments.helix_abc_v1.training_runtime_contracts import (
     TrainingRuntimeCompatibilityFixtureV1,
 )
 from recclaw_core.experiments.helix_abc_v1.pilot_training import (
+    bound_execution_seed,
     classify_training_termination,
 )
 from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (
@@ -429,6 +430,26 @@ class BrokerTrap:
 
 
 class M6RTrainingRuntimeTest(unittest.TestCase):
+    def test_training_execution_seed_is_bound_candidate_state(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            binding = build_training_binding_v3(
+                base_binding=CandidateExecutionBindingV2(
+                    {
+                        **base_binding_fixture(Path(raw)).to_dict(),
+                        "search_seed": 2028,
+                    }
+                ),
+                runtime_binding=runtime_binding_for(
+                    CandidateExecutionBindingV2(
+                        {
+                            **base_binding_fixture(Path(raw)).to_dict(),
+                            "search_seed": 2028,
+                        }
+                    )
+                ),
+            )
+        self.assertEqual(bound_execution_seed(binding), 2028)
+
     def test_fake_release_identity_is_unchanged(self) -> None:
         self.assertEqual(
             runtime_release_digest(),
@@ -989,6 +1010,37 @@ class M6RTrainingRuntimeTest(unittest.TestCase):
             fake_claim, envelope = close(tuple(chain))
             self.assertEqual(
                 fake_claim.decision,
+                TrainingClosureDecisionV1.REJECTED.value,
+            )
+            self.assertIsNone(envelope)
+
+            chain = close_chain(root / "binding-seed")
+            (
+                guard,
+                permit,
+                binding,
+                runtime_binding,
+                claim,
+                confirmation,
+                receipt,
+                raw_output,
+                accounting,
+                artifacts,
+            ) = chain
+            wrong_seed, envelope = guard.close_result(
+                permit=permit,
+                binding=binding,
+                runtime_binding=runtime_binding,
+                claim=claim,
+                confirmation=confirmation,
+                receipt=receipt,
+                raw_output=raw_output,
+                resource_accounting=accounting,
+                artifact_closure=artifacts,
+                seed=2027,
+            )
+            self.assertEqual(
+                wrong_seed.decision,
                 TrainingClosureDecisionV1.REJECTED.value,
             )
             self.assertIsNone(envelope)

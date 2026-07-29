@@ -182,6 +182,26 @@ class LineageIndexV1:
         ]
         return rows[-1] if rows else None
 
+    def latest_exact_program(
+        self,
+        mechanism_program_digest: str,
+        *,
+        protocol_digest: str,
+        observation_seed: str,
+    ) -> LineageRecordV1 | None:
+        """Return an exact successful Arm-private comparator observation."""
+
+        rows = [
+            item
+            for item in self.records
+            if item.mechanism_program_digest == mechanism_program_digest
+            and item.protocol_digest == protocol_digest
+            and item.observation_seed == observation_seed
+            and item.run_status in {"SUCCESS", "COMPLETED", "SMOKE_PASS"}
+            and item.metric_value is not None
+        ]
+        return rows[-1] if rows else None
+
     def mechanism_depth(self, parent_candidate_id: str | None) -> int:
         depth = 0
         current = parent_candidate_id
@@ -233,18 +253,30 @@ class LineageIndexV1:
         proposal: CandidateProposalV4,
         *,
         protocol_digest: str,
+        observation_seed: str,
     ) -> MatchedComparatorV1 | None:
         parent = self.exact_parent(
             proposal,
             protocol_digest=protocol_digest,
         )
-        if parent is None or parent.metric_value is None:
+        comparator = parent
+        if comparator is None:
+            planned_digest = (
+                proposal.matched_control_plan.comparator_program_digest
+            )
+            if planned_digest is not None:
+                comparator = self.latest_exact_program(
+                    planned_digest,
+                    protocol_digest=protocol_digest,
+                    observation_seed=observation_seed,
+                )
+        if comparator is None or comparator.metric_value is None:
             return None
         question_digest = sha256_digest(
             {
                 "changed_axis": proposal.mechanism_axis,
                 "mechanism_hypothesis": proposal.mechanism_hypothesis,
-                "parent_candidate_id": parent.proposal_candidate_id,
+                "parent_candidate_id": proposal.parent_candidate_id,
                 "protocol_digest": protocol_digest,
             }
         )
@@ -258,11 +290,11 @@ class LineageIndexV1:
         return MatchedComparatorV1(
             mechanism_question_digest=question_digest,
             primary_candidate_id=proposal.candidate_id,
-            comparator_candidate_id=parent.proposal_candidate_id,
-            comparator_program_digest=parent.mechanism_program_digest,
+            comparator_candidate_id=comparator.proposal_candidate_id,
+            comparator_program_digest=comparator.mechanism_program_digest,
             protocol_digest=protocol_digest,
             changed_axis=proposal.mechanism_axis,
-            comparator_metric=float(parent.metric_value),
+            comparator_metric=float(comparator.metric_value),
         )
 
 
@@ -396,6 +428,7 @@ def matched_control_plan(
     protocol_digest: str,
     queued_comparator_candidate_id: str | None = None,
     queued_comparator_program_digest: str | None = None,
+    observation_seed: str | None = None,
 ) -> MatchedControlPlanV1:
     question_digest = sha256_digest(
         {
@@ -413,24 +446,38 @@ def matched_control_plan(
         if parent_candidate_id is not None
         else None
     )
+    exact_control = (
+        lineage.latest_exact_program(
+            queued_comparator_program_digest,
+            protocol_digest=protocol_digest,
+            observation_seed=observation_seed,
+        )
+        if (
+            parent is None
+            and queued_comparator_program_digest is not None
+            and observation_seed is not None
+        )
+        else None
+    )
+    comparator = parent or exact_control
     return MatchedControlPlanV1(
         mechanism_question_digest=question_digest,
         primary_candidate_id=primary_candidate_id,
         comparator_candidate_id=(
-            parent.proposal_candidate_id
-            if parent is not None
+            comparator.proposal_candidate_id
+            if comparator is not None
             else queued_comparator_candidate_id
         ),
         comparator_program_digest=(
-            parent.mechanism_program_digest
-            if parent is not None
+            comparator.mechanism_program_digest
+            if comparator is not None
             else queued_comparator_program_digest
         ),
         protocol_digest=protocol_digest,
         changed_axis=changed_axis,
         plan_status=(
             "MATCHED_COMPARATOR_AVAILABLE"
-            if parent is not None
+            if comparator is not None
             else "QUEUE_MATCHED_CONTROL"
         ),
     )
