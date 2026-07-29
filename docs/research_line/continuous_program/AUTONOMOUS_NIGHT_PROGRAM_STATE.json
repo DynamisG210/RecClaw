@@ -1,21 +1,28 @@
 {
-  "active_stage": "V24_GPU35_BACKEND_RUNTIME_PREQUALIFICATION_IMPLEMENTATION",
+  "active_stage": "V24_GPU35_FIXED_BACKEND_CANARIES_NEXT",
   "active_version": "V24",
   "active_worktree": "/root/projects/RecClaw_m6i",
-  "active_commit": "13a03d4",
+  "active_commit": "327ef511f1bac70c905a3b99961ae46be8d4b443",
   "active_contract_digest": "d96259271fff6cf8380d0816dff44a2f583d6fc88ef914991dab1a983aa8b08c",
   "active_profile_digest": "f748b4b4b3103eadf2c3c262c14c4b779893255f2318bd99ebbf9f9eeee47536",
   "active_meta_checkpoint": "27e3118e178e4ebd45f54dd9b0e7239af9a1997d021fc648a800166bc52e2173",
-  "active_backend_release": null,
+  "active_backend_release": "TRAINING_RUNTIME_RELEASE_V16:2de9e64bee31f8d7c2e86ee381f37c734902f383f448d87e61c62617e3a73556",
   "active_processes": [],
-  "last_completed_checkpoint": "M6I_CURRENT_BYTE_FINAL_INDEPENDENT_AUDIT_PASS_AND_GPU35_SELECTED",
-  "next_automatic_action": "COMMIT_V24_PREQUALIFICATION_BYTES_THEN_FREEZE_RUNTIME_V16_AND_RUN_FIXED_BACKEND_CANARIES",
+  "last_completed_checkpoint": "V24_RUNTIME_V16_AND_PROFILE_ISOLATION_QUALIFICATION_PASS",
+  "next_automatic_action": "RUN_FIXED_BPR_LIGHTGCN_AND_COMPOSITIONAL_FULL_RECIPE_CANARIES_ON_IDLE_GPU35",
   "round_progress": {
     "V24_backend_selection": {
       "gpu2_gpu1": "NOT_QUALIFIED_18427_MIB_OCCUPIED_5666_MIB_FREE_AND_GPU0_DEVICE_HANDLE_ERROR",
       "gpu35_gpu0": "SELECTED_IDLE_RTX3080_10003_MIB_FREE",
       "selection_basis": "CURRENT_CONFORMANCE_REPRODUCIBILITY_AND_NO_EXTERNAL_JOB_INTERFERENCE",
       "selected_backend_root": "/NAS2020/Workspaces/DMGroup/tingrangan/recclaw_gpu35_backend_v4_m6i"
+    },
+    "V24_runtime_prequalification": {
+      "profile_and_isolation": "30_PASS_3_PREDECLARED_DESELECTED_3_SUBTESTS_PASS",
+      "provider_release_digest": "e010b25f4901a9eba1c2ac78cfe870c0e1a87fda15e7a310620f1ce6089c1e06",
+      "provider_response_schema_sha256": "5ff197c6b6d7d16a7d7ddf2218880c71edcb73af498f602547842ea3370d5b0c",
+      "runtime_release_digest": "2de9e64bee31f8d7c2e86ee381f37c734902f383f448d87e61c62617e3a73556",
+      "runtime_release_validation": "PASS"
     },
     "M6I_exact_scheduler": {
       "schedule_seeds": 100,
