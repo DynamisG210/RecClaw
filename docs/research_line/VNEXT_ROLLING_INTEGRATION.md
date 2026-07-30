@@ -6,6 +6,7 @@
 - RC0: `4306d9ba13157d3c9ed6b877d33558ba9a40c449`
 - Integration branch: `feat/research-line-vnext-integration`
 - Integration worktree: `/root/projects/RecClaw_research_line_vnext_integration`
+- BC Next Profile merge: `83eb440ab561ad787d5513cc6afc16507b99c3ab`
 
 The integration branch was created from RC0 with WSL-native Git. Existing
 worktrees, including Strategic Reset, are not integration inputs.
@@ -19,9 +20,13 @@ were integrated without rewriting their identities:
 2. `45a97f5082c1aebb0df0d74b9c8d812d27377157`
 3. `8580a41b357a96ff1d34ac44cd57a8e77c99ad3d`
 4. `824643c4155b85d7e12dffaf77827a0eda50aadf`
+5. `095a812c66367cf19544e8275cb0d57a5a067009`
+6. `5d986d1fe53645dcef31256c8db5f0de160c486e`
 
-No later BC commit and no A0 or D0 commit is accepted in this integration
-state.
+The last two commits were integrated through an explicit merge because G and
+BC had diverged at `824643c4155b85d7e12dffaf77827a0eda50aadf`.
+Their original identities and parent chain remain reachable unchanged. No A0
+or D0 commit is accepted in this integration state.
 
 ## RC0 to RC1 state
 
@@ -31,16 +36,19 @@ state.
 | Shared origin-blind package boundary | Integrated | Accepted BC package tests |
 | Mechanical RecBole qualification | Integrated | Positive one-epoch and negative interface fixtures |
 | Capability admission and registry | Integrated | Accepted deterministic admission tests |
-| G local orchestration | Integrated | Direct response to package, qualification, admission, and registry; no Provider or outcome |
+| BC Next Fresh Profile | Integrated | Deterministic profile and receipt tests plus accepted local vertical |
+| G local orchestration | Integrated | Package through Next Fresh Profile; no Provider or outcome |
 | A0 OpenSpec and Resolver runtime | Waiting | No accepted A0 implementation commit |
-| BC Next Fresh Profile | Waiting | No accepted Next Profile commit in the authorized intake set |
 | D0 TypedResearchEpisode runtime | Waiting | No accepted D0 implementation commit |
-| RC1 field freeze | Blocked | Requires the accepted vertical slice through deterministic Next Fresh Profile |
-| R1/R2 launchers | Blocked | Wave gates and owner runtimes above are incomplete |
+| RC1 field representation | Locally exercised | Full local vertical passes; formal RC1 designation remains external |
+| R1/R2 launchers | Blocked | A0/D0 and later Wave gates are incomplete |
 
 The local orchestration boundary intentionally ends at
-`VersionedCapabilityRegistry`. It does not build a profile, mutate the current
-campaign, call a Provider, consume an outcome, or create a scientific episode.
+`ProfileBuildReceiptV1`. It does not mutate the current campaign, call a
+Provider, consume an outcome, or create a scientific episode. The positive
+path performs one one-epoch development smoke; the negative path stops at
+`API_CONTRACT` with `INTERFACE`, leaves unit/smoke `NOT_RUN`, and records zero
+smoke executions.
 
 ## Commit intake checklist
 
@@ -58,9 +66,11 @@ campaign, call a Provider, consume an outcome, or create a scientific episode.
    the owner commit identities remain reachable unchanged.
 8. Resolve only G-owned conflicts locally. Return owner-internal conflicts as
    a minimal correction request.
-9. Run focused integration tests, then the relevant Research Line regression
-   set and structural lint.
-10. Review the final diff and history, create a clean local G commit, and
+9. Capture qualification, capability, registry, profile and profile-build
+   receipt identities for the integrated local vertical.
+10. Run focused integration tests, then the relevant Research Line regression
+    set and structural lint.
+11. Review the final diff and history, create a clean local G commit, and
     record accepted commits, checks, blockers, and the next intake condition.
 
 ## Conflict ownership

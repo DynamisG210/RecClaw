@@ -132,6 +132,7 @@ from .vnext_contracts import (
 )
 from .vnext_orchestration import (
     admit_local_qualification,
+    build_local_next_fresh_profile,
     qualify_local_innovation_candidate,
 )
 
@@ -220,6 +221,7 @@ __all__ = [
     "SharedImplementerPolicy",
     "admit_local_qualification",
     "admit_qualified_capability",
+    "build_local_next_fresh_profile",
     "build_shared_implementer_request",
     "build_binding_v2",
     "build_next_fresh_profile",

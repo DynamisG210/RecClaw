@@ -1,15 +1,14 @@
 """Thin local orchestration for accepted Research Line vNext components.
 
 This module only composes the RC0 contracts and accepted Innovation Spine
-entrypoints.  It deliberately stops before Next Fresh Profile construction
-and scientific outcome closure, whose owner implementations are not part of
-the accepted integration baseline yet.
+entrypoints.  It deliberately stops after deterministic Next Fresh Profile
+construction and before Provider execution or scientific outcome closure.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from .capability_admission import (
     VersionedCapabilityRegistry,
@@ -25,9 +24,15 @@ from .innovation_spine import (
     SharedImplementerPolicy,
     materialize_candidate_package,
 )
+from .next_fresh_profile import (
+    NextFreshProfileBuildManifest,
+    build_next_fresh_profile,
+)
 from .vnext_contracts import (
     CapabilityKindV1,
+    ExecutableProfileVNext,
     OpenResearchSpecV1,
+    ProfileBuildReceiptV1,
     QualifiedCapabilityV1,
 )
 
@@ -76,8 +81,10 @@ def admit_local_qualification(
     semantic_identity_ref: str,
     semantic_identity_digest: str,
     registry_version: str,
+    predecessor_registry_ref: str,
+    predecessor_registry_digest: str,
 ) -> tuple[QualifiedCapabilityV1, VersionedCapabilityRegistry]:
-    """Admit a passing receipt and build the initial registry version."""
+    """Admit a passing receipt and build its next registry version."""
 
     capability = admit_qualified_capability(
         spec,
@@ -91,8 +98,8 @@ def admit_local_qualification(
     )
     registry = VersionedCapabilityRegistry.build(
         registry_version=registry_version,
-        predecessor_registry_ref=None,
-        predecessor_registry_digest=None,
+        predecessor_registry_ref=predecessor_registry_ref,
+        predecessor_registry_digest=predecessor_registry_digest,
         protocol_ref=spec.protocol_ref,
         protocol_digest=spec.protocol_digest,
         capabilities=(capability,),
@@ -100,7 +107,47 @@ def admit_local_qualification(
     return capability, registry
 
 
+def build_local_next_fresh_profile(
+    registry: VersionedCapabilityRegistry,
+    *,
+    profile_version: str,
+    predecessor_profile_ref: str,
+    predecessor_profile_digest: str,
+    current_campaign_slate_ref: str,
+    current_campaign_slate_digest: str,
+    predecessor_executable_entries: Iterable[tuple[str, str, str]],
+    compatibility_requirements: Iterable[str],
+) -> tuple[
+    NextFreshProfileBuildManifest,
+    ExecutableProfileVNext,
+    ProfileBuildReceiptV1,
+]:
+    """Build a successor bound to the unchanged current-profile identity."""
+
+    manifest = NextFreshProfileBuildManifest(
+        profile_version=profile_version,
+        predecessor_profile_ref=predecessor_profile_ref,
+        predecessor_profile_digest=predecessor_profile_digest,
+        current_campaign_profile_ref=predecessor_profile_ref,
+        current_campaign_profile_digest=predecessor_profile_digest,
+        current_campaign_slate_ref=current_campaign_slate_ref,
+        current_campaign_slate_digest=current_campaign_slate_digest,
+        predecessor_executable_entries=tuple(
+            predecessor_executable_entries
+        ),
+        registry_ref=registry.registry_id,
+        registry_digest=registry.digest,
+        registry_version=registry.registry_version,
+        protocol_ref=registry.protocol_ref,
+        protocol_digest=registry.protocol_digest,
+        compatibility_requirements=tuple(compatibility_requirements),
+    )
+    profile, receipt = build_next_fresh_profile(manifest, registry)
+    return manifest, profile, receipt
+
+
 __all__ = [
     "admit_local_qualification",
+    "build_local_next_fresh_profile",
     "qualify_local_innovation_candidate",
 ]
