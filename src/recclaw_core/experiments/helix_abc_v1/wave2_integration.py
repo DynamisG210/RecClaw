@@ -180,6 +180,56 @@ class Wave2IntegrationHarnessV1:
         )
 
 
+D1_ACCEPTED_INTAKE = Wave2OwnerIntakeV1(
+    lane=Wave2OwnerLaneV1.D1_SCIENTIFIC_EPISODE_ADAPTER,
+    accepted_commit="9d4937f48a3f37bdc031888bb5fb19222b25de96",
+    parent_commit="5c6b064fa90f6d495e226831f0ec86fc9e89d391",
+    owner_file_manifest_sha256=(
+        "943d602d30bf4087742ee3463b0fabb7612bebbc1ffafa3e6ac818ec6811ffeb"
+    ),
+    targeted_tests_receipt_sha256=(
+        "1ab03383dd7451ae2a2ae9042c606bf3430decf1aca0c4e286425e957c7e3d43"
+    ),
+    structure_lint_receipt_sha256=(
+        "4ba243c0f613c873c8a3a2e3a37e427a36bf58206688ac984585d4e14e95a5fa"
+    ),
+    public_entrypoint=(
+        "recclaw_core.experiments.helix_abc_v1."
+        "scientific_episode_adapter:project_episode_to_mechanism_belief"
+    ),
+)
+
+F0_ACCEPTED_INTAKE = Wave2OwnerIntakeV1(
+    lane=Wave2OwnerLaneV1.F0_OPEN_META_INTERFACE,
+    accepted_commit="ea348c3d301672d8fe090fe76c14e1a7241862da",
+    parent_commit=WAVE1_ACCEPTED_COMMIT,
+    owner_file_manifest_sha256=(
+        "f0003649814872b4140f9880368646d423d3c79978f36040170a43c4435decb2"
+    ),
+    targeted_tests_receipt_sha256=(
+        "cc506f417fa6ea6a2a1d874cb32a354d470cafb00fa143d197b74c2223cb02ca"
+    ),
+    structure_lint_receipt_sha256=(
+        "04c2cb88d3a8acd984a37ca8dbd48317e9fac0a908335e76d9318bc5559e428c"
+    ),
+    public_entrypoint=(
+        "recclaw_core.experiments.helix_abc_v1.open_meta:__all__"
+    ),
+)
+
+
+def accepted_wave2_d1_f0_harness() -> Wave2IntegrationHarnessV1:
+    """Return the accepted D1/F0 ports while leaving E0 explicitly missing."""
+
+    harness = Wave2IntegrationHarnessV1()
+    for intake in (D1_ACCEPTED_INTAKE, F0_ACCEPTED_INTAKE):
+        harness = harness.attach(
+            intake,
+            observed_entrypoint=intake.public_entrypoint,
+        )
+    return harness
+
+
 _PREFREEZE_SHAPE: dict[str, Any] = {
     "schema": None,
     "wave1_base": {"commit": None, "tree": None},

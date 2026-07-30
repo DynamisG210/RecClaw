@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 
 from recclaw_core.experiments.helix_abc_v1 import (
+    D1_ACCEPTED_INTAKE,
+    F0_ACCEPTED_INTAKE,
     WAVE1_ACCEPTED_COMMIT,
     WAVE1_ACCEPTED_TREE,
     FrozenR1R2PrefreezeManifestV1,
@@ -17,6 +19,7 @@ from recclaw_core.experiments.helix_abc_v1 import (
     Wave2OwnerCorrectionRequired,
     Wave2OwnerIntakeV1,
     Wave2OwnerLaneV1,
+    accepted_wave2_d1_f0_harness,
     dry_run_r1_r2_launcher,
     load_prefreeze_manifest,
     prefreeze_missing_fields,
@@ -37,6 +40,9 @@ RC1_CANDIDATE = (
 )
 WAVE2_CHECKLIST = (
     ROOT / "docs" / "research_line" / "vnext" / "WAVE2_INTAKE_CHECKLIST.json"
+)
+INTAKE_RECEIPTS = (
+    ROOT / "docs" / "research_line" / "vnext" / "D1_F0_INTAKE_RECEIPTS.json"
 )
 WAVE2_MODULE = (
     ROOT
@@ -113,7 +119,15 @@ def test_wave1_candidate_manifest_binds_locally_accepted_identity() -> None:
         "independent_gate": "PASS",
         "required_boundaries_closed": 7,
     }
-    assert set(payload["wave2_owner_intakes"].values()) == {None}
+    assert payload["wave2_owner_intakes"]["e0_search_adapter"] is None
+    assert payload["wave2_owner_intakes"]["d1_scientific_episode_adapter"] == {
+        "accepted_commit": D1_ACCEPTED_INTAKE.accepted_commit,
+        "g_merge_commit": "3fe57ba8a1c50334907eb2878d70b8664e402617",
+    }
+    assert payload["wave2_owner_intakes"]["f0_open_meta_interface"] == {
+        "accepted_commit": F0_ACCEPTED_INTAKE.accepted_commit,
+        "g_merge_commit": "5489f73d196b29d1c6602d7f7ea14f9f417774e8",
+    }
     assert payload["external_actions"] == {
         "pushed": False,
         "released": False,
@@ -121,14 +135,26 @@ def test_wave1_candidate_manifest_binds_locally_accepted_identity() -> None:
     }
 
 
-def test_wave2_intake_checklist_is_frozen_without_accepted_owner_shas() -> None:
+def test_wave2_intake_checklist_records_only_accepted_d1_f0() -> None:
     payload = json.loads(WAVE2_CHECKLIST.read_bytes())
 
     assert payload["accepted_base_commit"] == WAVE1_ACCEPTED_COMMIT
     assert set(payload["lanes"]) == {lane.value for lane in Wave2OwnerLaneV1}
-    assert {
-        lane["accepted_intake"] for lane in payload["lanes"].values()
-    } == {None}
+    assert payload["lanes"]["E0_SEARCH_ADAPTER"]["accepted_intake"] is None
+    assert (
+        payload["lanes"]["D1_SCIENTIFIC_EPISODE_ADAPTER"]["accepted_intake"]
+        == {
+            **D1_ACCEPTED_INTAKE.canonical_dict(),
+            "g_merge_commit": "3fe57ba8a1c50334907eb2878d70b8664e402617",
+        }
+    )
+    assert (
+        payload["lanes"]["F0_OPEN_META_INTERFACE"]["accepted_intake"]
+        == {
+            **F0_ACCEPTED_INTAKE.canonical_dict(),
+            "g_merge_commit": "5489f73d196b29d1c6602d7f7ea14f9f417774e8",
+        }
+    )
     assert payload["required_accepted_intake_fields"] == [
         "accepted_commit",
         "parent_commit",
@@ -140,6 +166,43 @@ def test_wave2_intake_checklist_is_frozen_without_accepted_owner_shas() -> None:
     assert payload["merge_policy"] == (
         "preserve_owner_commit_and_parent_identity"
     )
+
+
+def test_d1_f0_intake_receipt_digests_bind_recorded_evidence() -> None:
+    payload = json.loads(INTAKE_RECEIPTS.read_bytes())
+    expected = {
+        "D1_SCIENTIFIC_EPISODE_ADAPTER": D1_ACCEPTED_INTAKE,
+        "F0_OPEN_META_INTERFACE": F0_ACCEPTED_INTAKE,
+    }
+
+    for lane, intake in expected.items():
+        receipt = payload[lane]
+        assert receipt["accepted_commit"] == intake.accepted_commit
+        assert receipt["parent_commit"] == intake.parent_commit
+        assert receipt["public_entrypoint"] == intake.public_entrypoint
+        assert (
+            sha256_digest(receipt["owner_file_manifest"])
+            == intake.owner_file_manifest_sha256
+        )
+        assert (
+            sha256_digest(receipt["targeted_tests_receipt"])
+            == intake.targeted_tests_receipt_sha256
+        )
+        assert (
+            sha256_digest(receipt["structure_lint_receipt"])
+            == intake.structure_lint_receipt_sha256
+        )
+
+
+def test_accepted_wave2_harness_keeps_only_e0_missing() -> None:
+    harness = accepted_wave2_d1_f0_harness()
+
+    assert harness.ready is False
+    assert harness.missing_lanes == (Wave2OwnerLaneV1.E0_SEARCH_ADAPTER,)
+    assert {intake.lane for intake in harness.intakes} == {
+        Wave2OwnerLaneV1.D1_SCIENTIFIC_EPISODE_ADAPTER,
+        Wave2OwnerLaneV1.F0_OPEN_META_INTERFACE,
+    }
 
 
 def test_wave2_module_has_no_owner_runtime_or_external_effect_imports() -> None:

@@ -1,0 +1,82 @@
+{
+  "D1_SCIENTIFIC_EPISODE_ADAPTER": {
+    "accepted_commit": "9d4937f48a3f37bdc031888bb5fb19222b25de96",
+    "owner_file_manifest": [
+      {
+        "blob": "55d1d52cbda10f90a83457b975bbfb4c37c1ca4e",
+        "mode": "100644",
+        "path": "docs/research_line/D1_SCIENTIFIC_EPISODE_ADAPTER.md"
+      },
+      {
+        "blob": "965900e8372de61311ea7557e206f6ca9b2d9c07",
+        "mode": "100644",
+        "path": "src/recclaw_core/experiments/helix_abc_v1/scientific_episode_adapter.py"
+      },
+      {
+        "blob": "06191007cd7e9ef68bc98d3c870fa3ca7d3c3a18",
+        "mode": "100644",
+        "path": "tests/experiments/helix_abc_v1/test_scientific_episode_adapter.py"
+      }
+    ],
+    "parent_commit": "5c6b064fa90f6d495e226831f0ec86fc9e89d391",
+    "public_entrypoint": "recclaw_core.experiments.helix_abc_v1.scientific_episode_adapter:project_episode_to_mechanism_belief",
+    "structure_lint_receipt": {
+      "accepted_commit": "9d4937f48a3f37bdc031888bb5fb19222b25de96",
+      "diff_check": "PASS",
+      "modified_files_py_compile": "PASS",
+      "owner_worktree_clean_after_checks": true,
+      "parent_commit": "5c6b064fa90f6d495e226831f0ec86fc9e89d391"
+    },
+    "targeted_tests_receipt": {
+      "accepted_commit": "9d4937f48a3f37bdc031888bb5fb19222b25de96",
+      "command": "PYTHONPATH=src /root/miniconda3/envs/recbole/bin/python -m pytest -q tests/experiments/helix_abc_v1/test_scientific_episode_adapter.py",
+      "exit_code": 0,
+      "parent_commit": "5c6b064fa90f6d495e226831f0ec86fc9e89d391",
+      "passed": 9,
+      "subtests_passed": 23
+    }
+  },
+  "F0_OPEN_META_INTERFACE": {
+    "accepted_commit": "ea348c3d301672d8fe090fe76c14e1a7241862da",
+    "owner_file_manifest": [
+      {
+        "blob": "ffa9f34645b6e6f4d2cae205063375b937cfb2a0",
+        "mode": "100644",
+        "path": "docs/research_line/vnext/F0_OPEN_META_GAP_MATRIX.md"
+      },
+      {
+        "blob": "42685b692d863e1afbb3d1b947dbe09d3d0cca74",
+        "mode": "100644",
+        "path": "src/recclaw_core/experiments/helix_abc_v1/open_meta.py"
+      },
+      {
+        "blob": "80ef359edd4eca31b1c3b85acce532909f188385",
+        "mode": "100644",
+        "path": "tests/experiments/helix_abc_v1/open_meta_fixtures.py"
+      },
+      {
+        "blob": "89b4e1a96933e97a1f4b699aa3a51bd46004fc85",
+        "mode": "100644",
+        "path": "tests/experiments/helix_abc_v1/test_open_meta_vnext.py"
+      }
+    ],
+    "parent_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+    "public_entrypoint": "recclaw_core.experiments.helix_abc_v1.open_meta:__all__",
+    "structure_lint_receipt": {
+      "accepted_commit": "ea348c3d301672d8fe090fe76c14e1a7241862da",
+      "diff_check": "PASS",
+      "modified_files_py_compile": "PASS",
+      "owner_worktree_clean_after_checks": true,
+      "parent_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8"
+    },
+    "targeted_tests_receipt": {
+      "accepted_commit": "ea348c3d301672d8fe090fe76c14e1a7241862da",
+      "command": "PYTHONPATH=src /root/miniconda3/envs/recbole/bin/python -m pytest -q tests/experiments/helix_abc_v1/test_open_meta_vnext.py",
+      "exit_code": 0,
+      "parent_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+      "passed": 8,
+      "subtests_passed": 0
+    }
+  },
+  "schema": "recclaw.research-line.wave2-d1-f0-intake-receipts.v1"
+}

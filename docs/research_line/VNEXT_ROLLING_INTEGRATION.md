@@ -12,6 +12,8 @@
 - Local Wave 1 accepted / RC1 candidate base:
   `4d493939bb1e118ae9c99c89e8b73077078c3ab8`
 - Candidate tree: `3fd503618a664025e8f7a4c751ffdb646787a3d7`
+- D1 accepted merge: `3fe57ba8a1c50334907eb2878d70b8664e402617`
+- F0 accepted merge: `5489f73d196b29d1c6602d7f7ea14f9f417774e8`
 
 The integration branch was created from RC0 with WSL-native Git. Existing
 worktrees, including Strategic Reset, are not integration inputs.
@@ -45,6 +47,17 @@ The accepted D0 lineage is:
 Both owner lineages were integrated through explicit merges from their RC0
 base. Their business files remain byte-identical to the accepted tips.
 
+Wave 2 accepted owner commits:
+
+- D1 `9d4937f48a3f37bdc031888bb5fb19222b25de96`, parent
+  `5c6b064fa90f6d495e226831f0ec86fc9e89d391`
+- F0 `ea348c3d301672d8fe090fe76c14e1a7241862da`, parent
+  `4d493939bb1e118ae9c99c89e8b73077078c3ab8`
+
+D1 and then F0 were integrated through explicit merge commits. Their owner
+files are unchanged. E0 remains outside the graph until an accepted tip and
+receipt arrive.
+
 ## RC0 to RC1 state
 
 | Boundary | State | Evidence or blocker |
@@ -58,7 +71,9 @@ base. Their business files remain byte-identical to the accepted tips.
 | D0 Episode closure | Integrated | Scientific Episode and engineering diagnostic permissions remain separate |
 | G local orchestration | Integrated | Open draft through Next Fresh Profile plus negative D0 diagnostic |
 | RC1 field representation | Local candidate accepted | Independent Wave 1 gate passed at exact commit `4d493939`; no tag, push or release |
-| Wave 2 owner adapters | Awaiting accepted SHAs | G has only a mechanical intake descriptor; no owner logic is present |
+| D1 Scientific Episode adapter | Integrated | Only D0-approved `MECHANISM_MEMORY` closures project to the existing belief contract |
+| F0 Open Meta interface | Integrated | Static, explicit-support Idea/Experiment policies plus canonical replay and future activation |
+| E0 Search Adapter | Awaiting accepted SHA | The mechanical harness reports E0 as its sole missing lane |
 | R1/R2 launcher | Dry-run boundary only | Complete canonical prefreeze identity is required; Provider and experiment execution are impossible through this boundary |
 
 The local orchestration boundary intentionally ends at
@@ -106,7 +121,8 @@ creates neither a `TypedResearchEpisodeV1` nor a scientific closure.
 The exact local candidate record is
 `docs/research_line/vnext/WAVE1_RC1_CANDIDATE.json`. It binds the accepted
 commit and tree, frozen authority hashes, merge identities, owner tips and
-the still-empty E0/D1/F0 intake slots. It is not a tag or release manifest.
+the accepted D1/F0 and still-empty E0 intake slots. It is not a tag or release
+manifest.
 
 ## Wave 2 owner intake checklist
 
@@ -133,10 +149,46 @@ It neither imports nor executes their implementations. An entrypoint mismatch
 produces only the lane, field, expected value and observed value for the owner
 to correct.
 
-No accepted SHA has yet been recorded for E0, D1 or F0. Uncommitted,
-unaccepted or cross-owner bytes are not intake.
+D1 and F0 are recorded with exact owner byte manifests, test receipts,
+structure receipts, public entrypoints and merge commits. E0 is the only
+unfilled intake. Uncommitted, unaccepted or cross-owner bytes are not intake.
 The machine-readable frozen checklist is
 `docs/research_line/vnext/WAVE2_INTAKE_CHECKLIST.json`.
+The receipt preimages are
+`docs/research_line/vnext/D1_F0_INTAKE_RECEIPTS.json`.
+
+## Canonical Wave 2 local identities
+
+- D1 success belief:
+  `9e8c48344e992f64ebc0b3bdb4ab9b769d5600de1ee743d702b0311a3fd3f250`
+- D1 mechanism-negative belief:
+  `d5a28c46d77abce37ae9c6292d5f3fa3f174a3af52fbac5da8dc1a8d3ed77d41`
+- F0 Idea decision:
+  `4f04690e315d8f8a0830487b7727578e29f59b4242f074be498bdc8c29a0f451`
+- F0 Experiment decision:
+  `b0284474665ddefab9128cdbc3d6fe1378d9a5ed56314df61ea6ec5c898f2d98`
+- F0 explicit out-of-support Experiment decision:
+  `745c5f1a84465935ce5ea9cf68d471352c6c1ff3b689f69b44998b771156d99d`
+- F0 Idea activation:
+  `83a41c6bc2aae0d94729d784c87c96542f5b4b58dfa994953bc4ef2d0f8aac9d`
+- F0 Experiment activation:
+  `00df12882874ec1d70fd509055b530a50f2784bdd728fc1fde4ec6cdf92e4bcd`
+- F0 replay dataset:
+  `d36199367d0de52660858be2c4d2f2e209cfaf439741a916be9f83aaedb044e7`
+
+D1 refuses identity drift, engineering/interface/package/runtime/resource,
+Provider, protocol, missing-outcome and inconclusive closures before any
+Search Memory write. Its output is the existing qualitative
+`DevelopmentalMechanismBeliefV1`; it does not create a
+`SearchUtilityEventV2` or numeric frontier observation.
+
+F0 keeps Idea and Experiment inputs, budgets, decisions and activation
+boundaries separate. Unsupported low-change/configuration-like ideas and
+capabilities outside the frozen slate return explicit `OUT_OF_SUPPORT`,
+`DEFER` and zero allocations. Both policies remain
+`RESEARCH_STATIC_VNEXT`; activation is only `NEXT_FRESH_CAMPAIGN` for Idea
+and `NEXT_ROUND` for Experiment, with `promotion_authorized = false` and no
+current-policy replacement.
 
 ## R1/R2 prefreeze and dry-run boundary
 
@@ -209,6 +261,7 @@ originating owner supplies the smallest reproducer and proposed correction.
 G applies the shared migration once, records it as RC1, and updates all
 integrated callers. G does not copy owner logic to bypass a conflict.
 
-The Wave 2 preparation adds no Producer, Search, Router, Runner, Evaluator,
-Interpreter, Meta or Guard implementation. It also adds no database, ledger,
-authority service, state machine, Broker, retry or cooldown behavior.
+The G-owned Wave 2 wiring adds no Producer, Search, Router, Runner, Evaluator,
+Interpreter, Meta learner or Guard implementation. Accepted F0 supplies only
+its static pre-learning owner interface. G adds no database, ledger, authority
+service, state machine, Broker, retry or cooldown behavior.
