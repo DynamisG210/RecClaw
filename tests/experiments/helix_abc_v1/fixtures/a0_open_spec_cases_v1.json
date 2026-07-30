@@ -1,0 +1,349 @@
+{
+  "bindings": {
+    "compatibility_requirements": [
+      "general collaborative filtering",
+      "pairwise input"
+    ],
+    "context_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+    "context_ref": "context:a0-canonical-fixture",
+    "current_profile_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+    "current_profile_ref": "profile:fixed-space-66",
+    "implementation_requirements": [
+      "RecBole general recommender interface",
+      "candidate-local package"
+    ],
+    "protocol_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+    "protocol_ref": "protocol:ml1m-general-cf:v1"
+  },
+  "environment": {
+    "available_dependencies": [
+      "python",
+      "recbole-runtime"
+    ],
+    "budget_limits": {
+      "implementation_units": 2
+    },
+    "current_capabilities": [
+      {
+        "capability_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+        "capability_ref": "capability:fixed-bpr",
+        "semantics_digest": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    ],
+    "current_profile_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+    "current_profile_ref": "profile:fixed-space-66",
+    "protocol_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+    "protocol_ref": "protocol:ml1m-general-cf:v1",
+    "protocol_requirements": [
+      "frozen dataset and split",
+      "full-sort NDCG@10",
+      "general collaborative filtering",
+      "offline top-n evaluation",
+      "pairwise input",
+      "train-only fitting"
+    ]
+  },
+  "producer_drafts": [
+    {
+      "compatibility_requirements": [
+        "general collaborative filtering",
+        "pairwise input"
+      ],
+      "competing_explanation": "The effect is only additional parameter capacity.",
+      "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+      "expected_evidence": [
+        "matched capacity control",
+        "representation ablation"
+      ],
+      "falsifier": "A capacity-matched control explains the full effect.",
+      "high_change_justification": "The core user-item representation is not expressible by the exact 66 mechanisms.",
+      "hypothesis": "A relation-conditioned representation improves sparse-user ranking.",
+      "implementation_requirements": [
+        "RecBole general recommender interface",
+        "candidate-local package"
+      ],
+      "matched_control_requirement": "Match parameter count with relation conditioning disabled.",
+      "mechanism_change": "Replace the core representation with relation-conditioned user and item states.",
+      "producer_role": "mechanism_composer",
+      "resolution_facts": {
+        "capability_diff": [
+          "relation-conditioned core representation"
+        ],
+        "high_change_dimensions": [
+          "CORE_REPRESENTATION"
+        ],
+        "requested_current_semantics_digest": null,
+        "required_budget": {
+          "implementation_units": 1
+        },
+        "required_dependencies": [
+          "recbole-runtime"
+        ]
+      }
+    },
+    {
+      "compatibility_requirements": [
+        "general collaborative filtering",
+        "pairwise input"
+      ],
+      "competing_explanation": "Any gain comes from a different regularization scale.",
+      "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+      "expected_evidence": [
+        "objective ablation",
+        "same-lineage matched comparator"
+      ],
+      "falsifier": "The objective ablation is indistinguishable from the parent.",
+      "high_change_justification": "The lineage requires a rewritten ranking objective rather than a parameter change.",
+      "hypothesis": "A counterfactual pairwise objective corrects the parent model's exposure bias.",
+      "implementation_requirements": [
+        "RecBole general recommender interface",
+        "candidate-local package"
+      ],
+      "matched_control_requirement": "Use the exact parent with equal training budget.",
+      "mechanism_change": "Replace the parent ranking objective with a counterfactual pairwise objective.",
+      "producer_role": "lineage_refiner",
+      "resolution_facts": {
+        "capability_diff": [
+          "counterfactual pairwise objective"
+        ],
+        "high_change_dimensions": [
+          "CORE_OBJECTIVE"
+        ],
+        "requested_current_semantics_digest": null,
+        "required_budget": {
+          "implementation_units": 1
+        },
+        "required_dependencies": [
+          "recbole-runtime"
+        ]
+      }
+    },
+    {
+      "compatibility_requirements": [
+        "general collaborative filtering",
+        "pairwise input"
+      ],
+      "competing_explanation": "The signal comes from propagation depth rather than typed relations.",
+      "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+      "expected_evidence": [
+        "relation-shuffled control",
+        "typed relation ablation"
+      ],
+      "falsifier": "Shuffling relation types preserves the predicted signature.",
+      "high_change_justification": "Typed relation operators cannot be represented by the exact 66 mechanisms.",
+      "hypothesis": "Typed user-item relations, rather than extra propagation, cause the improvement.",
+      "implementation_requirements": [
+        "RecBole general recommender interface",
+        "candidate-local package"
+      ],
+      "matched_control_requirement": "Match propagation depth while shuffling relation labels.",
+      "mechanism_change": "Introduce typed relation-specific interaction operators.",
+      "producer_role": "falsification_designer",
+      "resolution_facts": {
+        "capability_diff": [
+          "typed relation interaction operators"
+        ],
+        "high_change_dimensions": [
+          "CORE_RELATION",
+          "INTERACTION_STRUCTURE"
+        ],
+        "requested_current_semantics_digest": null,
+        "required_budget": {
+          "implementation_units": 1
+        },
+        "required_dependencies": [
+          "recbole-runtime"
+        ]
+      }
+    },
+    {
+      "compatibility_requirements": [
+        "general collaborative filtering",
+        "pairwise input"
+      ],
+      "competing_explanation": "The effect is reproducible by fixed residual propagation.",
+      "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+      "expected_evidence": [
+        "fixed propagation control",
+        "routing entropy signature"
+      ],
+      "falsifier": "A fixed propagation control matches the routed model.",
+      "high_change_justification": "A dynamically routed propagation structure is outside the exact 66 mechanisms.",
+      "hypothesis": "Dynamic propagation routing improves heterogeneous neighborhood use.",
+      "implementation_requirements": [
+        "RecBole general recommender interface",
+        "candidate-local package"
+      ],
+      "matched_control_requirement": "Match layers and parameters with fixed propagation routes.",
+      "mechanism_change": "Replace fixed graph propagation with a dynamically routed structure.",
+      "producer_role": "frontier_architect",
+      "resolution_facts": {
+        "capability_diff": [
+          "dynamic propagation router",
+          "routed model structure"
+        ],
+        "high_change_dimensions": [
+          "MODEL_STRUCTURE",
+          "PROPAGATION_MECHANISM"
+        ],
+        "requested_current_semantics_digest": null,
+        "required_budget": {
+          "implementation_units": 1
+        },
+        "required_dependencies": [
+          "recbole-runtime"
+        ]
+      }
+    }
+  ],
+  "resolution_cases": [
+    {
+      "draft": {
+        "compatibility_requirements": [
+          "general collaborative filtering",
+          "pairwise input"
+        ],
+        "competing_explanation": "The observed effect is sampling noise.",
+        "current_profile_expressibility_claim": "EXPRESSIBLE",
+        "expected_evidence": [
+          "frozen profile execution"
+        ],
+        "falsifier": "The frozen profile execution does not reproduce.",
+        "high_change_justification": "Not claimed because this is an exact current-profile capability.",
+        "hypothesis": "The exact frozen BPR capability remains informative.",
+        "implementation_requirements": [
+          "RecBole general recommender interface"
+        ],
+        "matched_control_requirement": "Use the frozen parent control.",
+        "mechanism_change": "Execute the exact frozen BPR capability.",
+        "producer_role": "lineage_refiner",
+        "resolution_facts": {
+          "capability_diff": [],
+          "high_change_dimensions": [],
+          "requested_current_semantics_digest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "required_budget": {},
+          "required_dependencies": [
+            "recbole-runtime"
+          ]
+        }
+      },
+      "expected_resolution": "SEARCH_READY",
+      "fixture_id": "a0-search-ready-exact-profile"
+    },
+    {
+      "draft_index": 3,
+      "expected_resolution": "INNOVATION_REQUIRED",
+      "fixture_id": "a0-innovation-outside-profile"
+    },
+    {
+      "draft": {
+        "compatibility_requirements": [
+          "general collaborative filtering",
+          "time split evaluation"
+        ],
+        "competing_explanation": "The apparent change comes from recency leakage.",
+        "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+        "expected_evidence": [
+          "time-ordered evaluation"
+        ],
+        "falsifier": "A frozen chronological split removes the effect.",
+        "high_change_justification": "The training mechanism is outside the exact 66 mechanisms.",
+        "hypothesis": "A temporal training curriculum improves next-period ranking.",
+        "implementation_requirements": [
+          "RecBole general recommender interface"
+        ],
+        "matched_control_requirement": "Use an identical time-ordered comparator.",
+        "mechanism_change": "Introduce a temporal curriculum in training.",
+        "producer_role": "frontier_architect",
+        "resolution_facts": {
+          "capability_diff": [
+            "temporal training curriculum"
+          ],
+          "high_change_dimensions": [
+            "TRAINING_PROCEDURE"
+          ],
+          "requested_current_semantics_digest": null,
+          "required_budget": {
+            "implementation_units": 1
+          },
+          "required_dependencies": [
+            "recbole-runtime"
+          ]
+        }
+      },
+      "expected_resolution": "DEFERRED_PROTOCOL_CHANGE",
+      "fixture_id": "a0-deferred-time-split"
+    },
+    {
+      "draft": {
+        "compatibility_requirements": [
+          "general collaborative filtering",
+          "pairwise input"
+        ],
+        "competing_explanation": "A standard interaction layer is sufficient.",
+        "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+        "expected_evidence": [
+          "matched interaction control"
+        ],
+        "falsifier": "The custom kernel does not change the signature.",
+        "high_change_justification": "The custom interaction kernel is outside the exact 66 mechanisms.",
+        "hypothesis": "A custom interaction kernel captures sparse cross-features.",
+        "implementation_requirements": [
+          "RecBole general recommender interface"
+        ],
+        "matched_control_requirement": "Match parameters with a standard interaction layer.",
+        "mechanism_change": "Replace the core interaction with a custom compiled kernel.",
+        "producer_role": "mechanism_composer",
+        "resolution_facts": {
+          "capability_diff": [
+            "custom compiled interaction kernel"
+          ],
+          "high_change_dimensions": [
+            "INTERACTION_STRUCTURE"
+          ],
+          "requested_current_semantics_digest": null,
+          "required_budget": {
+            "implementation_units": 1
+          },
+          "required_dependencies": [
+            "custom-kernel-runtime"
+          ]
+        }
+      },
+      "expected_resolution": "UNSUPPORTED",
+      "fixture_id": "a0-unsupported-dependency"
+    },
+    {
+      "draft": {
+        "compatibility_requirements": [
+          "general collaborative filtering",
+          "pairwise input"
+        ],
+        "competing_explanation": "The claimed change is only a learning-rate effect.",
+        "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+        "expected_evidence": [
+          "learning-rate sweep"
+        ],
+        "falsifier": "The learning-rate sweep reproduces the result.",
+        "high_change_justification": "The draft claims high change without a mechanism-level capability diff.",
+        "hypothesis": "A learning-rate adjustment improves ranking.",
+        "implementation_requirements": [
+          "RecBole general recommender interface"
+        ],
+        "matched_control_requirement": "Use the same model at the parent learning rate.",
+        "mechanism_change": "Change only the learning rate.",
+        "producer_role": "lineage_refiner",
+        "resolution_facts": {
+          "capability_diff": [],
+          "high_change_dimensions": [],
+          "requested_current_semantics_digest": null,
+          "required_budget": {},
+          "required_dependencies": []
+        }
+      },
+      "expected_resolution": "INVALID_SPEC",
+      "fixture_id": "a0-invalid-config-only-high-change"
+    }
+  ],
+  "schema": "recclaw.research-line.vnext.a0-canonical-fixtures.v1"
+}
