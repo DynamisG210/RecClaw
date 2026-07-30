@@ -20,6 +20,12 @@ from .contracts import (
 )
 from .controllers import OriginalControllerV1
 from .research_controller import ResearchLineControllerV1
+from .capability_admission import (
+    CapabilityAdmissionError,
+    CapabilityRegistryError,
+    VersionedCapabilityRegistry,
+    admit_qualified_capability,
+)
 from .common_execution_guard import CommonExecutionGuardV1
 from .evidence import NullEvidencePortV1
 from .fake_runner import (
@@ -112,7 +118,9 @@ __all__ = [
     "ArmPolicyV1",
     "CandidatePackageV1",
     "CandidateExecutionBindingV2",
+    "CapabilityAdmissionError",
     "CapabilityKindV1",
+    "CapabilityRegistryError",
     "CapabilityResolutionResultV1",
     "CapabilityResolutionV1",
     "ClaimExecutionCommand",
@@ -175,6 +183,8 @@ __all__ = [
     "TrustClass",
     "TypedResearchEpisodeV1",
     "VNextContractError",
+    "VersionedCapabilityRegistry",
+    "admit_qualified_capability",
     "build_binding_v2",
     "campaign_projection",
     "classify_execution_trust",
