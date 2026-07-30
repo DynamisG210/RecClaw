@@ -26,6 +26,22 @@ from .capability_admission import (
     VersionedCapabilityRegistry,
     admit_qualified_capability,
 )
+from .innovation_recbole_adapter import (
+    MechanicalQualificationRun,
+    MechanicalRecBoleAdapterError,
+    MechanicalRecBoleAdapterV1,
+    RecBoleQualificationFixture,
+    candidate_tree_identity,
+    snapshot_candidate_tree,
+)
+from .innovation_spine import (
+    InnovationSpineError,
+    MaterializedCandidate,
+    SharedImplementerPolicy,
+    build_shared_implementer_request,
+    materialize_candidate_package,
+    origin_blind_projection,
+)
 from .common_execution_guard import CommonExecutionGuardV1
 from .evidence import NullEvidencePortV1
 from .fake_runner import (
@@ -109,6 +125,10 @@ from .vnext_contracts import (
     TypedResearchEpisodeV1,
     VNextContractError,
 )
+from .vnext_orchestration import (
+    admit_local_qualification,
+    qualify_local_innovation_candidate,
+)
 
 __all__ = [
     "AcquisitionDecisionV1",
@@ -153,6 +173,10 @@ __all__ = [
     "MarkExecutionFinishedCommand",
     "MarkExecutionStartedCommand",
     "MaterializationReportV1",
+    "MaterializedCandidate",
+    "MechanicalQualificationRun",
+    "MechanicalRecBoleAdapterError",
+    "MechanicalRecBoleAdapterV1",
     "MetaPolicyModeV1",
     "NEXT_FRESH_CAMPAIGN",
     "NullEvidencePortV1",
@@ -175,6 +199,7 @@ __all__ = [
     "RegisterArtifactCommand",
     "ResearchFailureClassV1",
     "ResearchLineControllerV1",
+    "RecBoleQualificationFixture",
     "ResourceDebitV1",
     "ResourceCeilingsV1",
     "SingleWriterExperimentStoreV1",
@@ -184,7 +209,11 @@ __all__ = [
     "TypedResearchEpisodeV1",
     "VNextContractError",
     "VersionedCapabilityRegistry",
+    "InnovationSpineError",
+    "SharedImplementerPolicy",
+    "admit_local_qualification",
     "admit_qualified_capability",
+    "build_shared_implementer_request",
     "build_binding_v2",
     "campaign_projection",
     "classify_execution_trust",
@@ -197,9 +226,14 @@ __all__ = [
     "executable_profile",
     "executable_profile_digest",
     "instance_binding",
+    "candidate_tree_identity",
+    "materialize_candidate_package",
+    "origin_blind_projection",
+    "qualify_local_innovation_candidate",
     "register_materialization_artifacts",
     "register_raw_result_envelope",
     "runtime_release_contract",
     "runtime_release_digest",
+    "snapshot_candidate_tree",
     "verify_binding_v2",
 ]
