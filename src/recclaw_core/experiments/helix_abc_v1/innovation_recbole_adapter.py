@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 
-from .canonical import canonical_value, sha256_digest
+from .canonical import canonical_value, sha256_digest, validate_sha256
 from .vnext_contracts import (
     CandidatePackageV1,
+    OpenResearchSpecV1,
     QualificationCheckStatusV1,
     QualificationFailureClassV1,
     QualificationReceiptV1,
@@ -57,6 +58,8 @@ class RecBoleQualificationFixture:
     base_model_config: str
     seed: int
     checkpoint_dir: Path
+    runtime_identity_ref: str
+    runtime_identity_digest: str
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -83,6 +86,18 @@ class RecBoleQualificationFixture:
             )
         if not isinstance(self.seed, int) or isinstance(self.seed, bool):
             raise MechanicalRecBoleAdapterError("seed must be an integer")
+        if (
+            not isinstance(self.runtime_identity_ref, str)
+            or not self.runtime_identity_ref
+            or self.runtime_identity_ref != self.runtime_identity_ref.strip()
+        ):
+            raise MechanicalRecBoleAdapterError(
+                "runtime_identity_ref must be normalized and non-empty"
+            )
+        validate_sha256(
+            self.runtime_identity_digest,
+            field_name="runtime_identity_digest",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +201,53 @@ def _candidate_source_path(
     return source_path, class_name
 
 
+def _validate_package_bindings(
+    package: CandidatePackageV1,
+    research_spec: OpenResearchSpecV1,
+    fixture: RecBoleQualificationFixture,
+    candidate_root: Path,
+) -> dict[str, Any]:
+    if (
+        package.research_spec_ref != research_spec.spec_id
+        or package.research_spec_digest != research_spec.digest
+    ):
+        raise _stage_failure(
+            QualificationStageV1.STATIC_VALIDATION,
+            QualificationFailureClassV1.IMPLEMENTATION,
+            "PACKAGE_SPEC_BINDING_MISMATCH",
+            "CandidatePackageV1 does not bind the supplied OpenResearchSpecV1",
+        )
+    if (
+        package.protocol_ref != research_spec.protocol_ref
+        or package.protocol_digest != research_spec.protocol_digest
+    ):
+        raise _stage_failure(
+            QualificationStageV1.STATIC_VALIDATION,
+            QualificationFailureClassV1.PROTOCOL,
+            "PACKAGE_PROTOCOL_BINDING_MISMATCH",
+            "candidate package protocol differs from the research specification",
+        )
+    if (
+        package.runtime_identity_ref != fixture.runtime_identity_ref
+        or package.runtime_identity_digest != fixture.runtime_identity_digest
+    ):
+        raise _stage_failure(
+            QualificationStageV1.STATIC_VALIDATION,
+            QualificationFailureClassV1.RUNTIME,
+            "PACKAGE_RUNTIME_BINDING_MISMATCH",
+            "candidate package runtime differs from the qualifier runtime",
+        )
+    source_path, class_name = _candidate_source_path(package, candidate_root)
+    return {
+        "candidate_package_digest": package.digest,
+        "entrypoint_class": class_name,
+        "entrypoint_source": source_path.relative_to(candidate_root).as_posix(),
+        "protocol_digest": package.protocol_digest,
+        "research_spec_digest": package.research_spec_digest,
+        "runtime_identity_digest": package.runtime_identity_digest,
+    }
+
+
 def _validate_static_package(
     package: CandidatePackageV1,
     candidate_root: Path,
@@ -229,6 +291,30 @@ def _validate_static_package(
         "compiled_python_files": compiled_files,
         "source_tree_digest": source_digest,
     }
+
+
+def _assert_candidate_tree_unchanged(
+    candidate_root: Path,
+    *,
+    expected_manifest: tuple[dict[str, Any], ...],
+    stage: QualificationStageV1,
+) -> None:
+    try:
+        observed = snapshot_candidate_tree(candidate_root)
+    except Exception as error:
+        raise _stage_failure(
+            stage,
+            QualificationFailureClassV1.IMPLEMENTATION,
+            "CANDIDATE_TREE_UNREADABLE_AFTER_STAGE",
+            "candidate tree could not be re-read after qualification stage",
+        ) from error
+    if observed != expected_manifest:
+        raise _stage_failure(
+            stage,
+            QualificationFailureClassV1.IMPLEMENTATION,
+            "CANDIDATE_TREE_MUTATED_DURING_QUALIFICATION",
+            "qualification stage changed candidate-package bytes",
+        )
 
 
 def _load_candidate_class(
@@ -620,6 +706,7 @@ class MechanicalRecBoleAdapterV1:
         self,
         package: CandidatePackageV1,
         *,
+        research_spec: OpenResearchSpecV1,
         candidate_root: Path,
         fixture: RecBoleQualificationFixture,
         unit_check: Callable[[Any, Any, Any], None],
@@ -627,6 +714,10 @@ class MechanicalRecBoleAdapterV1:
         if not isinstance(package, CandidatePackageV1):
             raise MechanicalRecBoleAdapterError(
                 "package must be CandidatePackageV1"
+            )
+        if not isinstance(research_spec, OpenResearchSpecV1):
+            raise MechanicalRecBoleAdapterError(
+                "research_spec must be OpenResearchSpecV1"
             )
         if not callable(unit_check):
             raise MechanicalRecBoleAdapterError("unit_check must be callable")
@@ -637,8 +728,22 @@ class MechanicalRecBoleAdapterV1:
         smoke_executions = 0
         initial_manifest: tuple[dict[str, Any], ...] | None = None
         try:
+            binding_observation = _validate_package_bindings(
+                package,
+                research_spec,
+                fixture,
+                root,
+            )
             initial_manifest = snapshot_candidate_tree(root)
-            observations[stage.value] = _validate_static_package(package, root)
+            observations[stage.value] = {
+                **binding_observation,
+                **_validate_static_package(package, root),
+            }
+            _assert_candidate_tree_unchanged(
+                root,
+                expected_manifest=initial_manifest,
+                stage=stage,
+            )
 
             stage = QualificationStageV1.CONSTRUCTION
             runtime = _construct_runtime(package, root, fixture)
@@ -648,17 +753,37 @@ class MechanicalRecBoleAdapterV1:
                 "model_class": type(runtime["model"]).__name__,
                 "model_type": runtime["config"]["MODEL_TYPE"].name.lower(),
             }
+            _assert_candidate_tree_unchanged(
+                root,
+                expected_manifest=initial_manifest,
+                stage=stage,
+            )
 
             stage = QualificationStageV1.API_CONTRACT
             observations[stage.value] = _validate_api_contract(runtime)
+            _assert_candidate_tree_unchanged(
+                root,
+                expected_manifest=initial_manifest,
+                stage=stage,
+            )
 
             stage = QualificationStageV1.UNIT
             unit_check(runtime["model"], runtime["config"], runtime["dataset"])
             observations[stage.value] = {"shared_unit_check": "PASS"}
+            _assert_candidate_tree_unchanged(
+                root,
+                expected_manifest=initial_manifest,
+                stage=stage,
+            )
 
             stage = QualificationStageV1.ONE_EPOCH_SMOKE
             smoke_executions = 1
             observations[stage.value] = _one_epoch_smoke(runtime, fixture)
+            _assert_candidate_tree_unchanged(
+                root,
+                expected_manifest=initial_manifest,
+                stage=stage,
+            )
         except _QualificationStageFailure as error:
             failure = error
             stage = error.stage
@@ -666,14 +791,14 @@ class MechanicalRecBoleAdapterV1:
             failure = _generic_failure(stage, error)
         if initial_manifest is not None:
             try:
-                if snapshot_candidate_tree(root) != initial_manifest:
-                    raise MechanicalRecBoleAdapterError(
-                        "qualification mutated the candidate tree"
-                    )
-            except Exception as error:  # noqa: BLE001 - typed runtime closure.
-                if failure is None:
-                    stage = QualificationStageV1.ONE_EPOCH_SMOKE
-                    failure = _generic_failure(stage, error)
+                _assert_candidate_tree_unchanged(
+                    root,
+                    expected_manifest=initial_manifest,
+                    stage=stage,
+                )
+            except _QualificationStageFailure as tree_failure:
+                failure = tree_failure
+                stage = tree_failure.stage
         receipt, detail = _receipt(
             package,
             terminal_stage=stage,

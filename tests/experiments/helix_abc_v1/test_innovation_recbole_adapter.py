@@ -21,6 +21,8 @@ from recclaw_core.experiments.helix_abc_v1.runtime_release import (
 from recclaw_core.experiments.helix_abc_v1.vnext_contracts import (
     NO_MECHANISM_BELIEF_AUTHORITY,
     CandidatePackageV1,
+    CurrentProfileExpressibilityV1,
+    OpenResearchSpecV1,
     QualificationCheckStatusV1,
     QualificationFailureClassV1,
     QualificationStageV1,
@@ -40,17 +42,48 @@ def _recbole_root() -> Path:
     return Path(recbole.__file__).resolve().parents[1]
 
 
-def _package(candidate_root: Path, *, class_name: str) -> CandidatePackageV1:
+def _research_spec() -> OpenResearchSpecV1:
+    return OpenResearchSpecV1(
+        hypothesis="The local fixture should satisfy the frozen RecBole contract.",
+        mechanism_change="Use a candidate-local pairwise recommender entrypoint.",
+        competing_explanation="A pass may only reflect inherited BPR behavior.",
+        matched_control_requirement="Use the exact frozen BPR configuration.",
+        implementation_requirements=("Provide a GeneralRecommender entrypoint.",),
+        expected_evidence=("Produce development-only qualification receipts.",),
+        falsifier="Reject any fixture that fails the shared interface.",
+        compatibility_requirements=("RecBole 1.2.1 standard trainer.",),
+        protocol_ref="protocol:local-general-cf-development",
+        protocol_digest=sha256_digest({"fixture": "protocol"}),
+        context_ref="context:local-qualification-fixture",
+        context_digest=sha256_digest({"fixture": "context"}),
+        current_profile_ref="profile:fixed-space-v2",
+        current_profile_digest=sha256_digest({"fixture": "profile"}),
+        producer_role="mechanism_composer",
+        high_change_justification=(
+            "The fixture stands in for a candidate outside the frozen catalog."
+        ),
+        current_profile_expressibility_claim=(
+            CurrentProfileExpressibilityV1.NOT_EXPRESSIBLE
+        ),
+    )
+
+
+def _package(
+    candidate_root: Path,
+    *,
+    class_name: str,
+    research_spec: OpenResearchSpecV1,
+) -> CandidatePackageV1:
     candidate_root_ref = "fixture-root:" + candidate_root.name
     source_digest, root_digest = candidate_tree_identity(
         candidate_root,
         candidate_root_ref=candidate_root_ref,
     )
     return CandidatePackageV1(
-        research_spec_ref="open-spec:fixture-propagation",
-        research_spec_digest=sha256_digest({"fixture": "open-spec"}),
-        protocol_ref="protocol:local-general-cf-development",
-        protocol_digest=sha256_digest({"fixture": "protocol"}),
+        research_spec_ref=research_spec.spec_id,
+        research_spec_digest=research_spec.digest,
+        protocol_ref=research_spec.protocol_ref,
+        protocol_digest=research_spec.protocol_digest,
         source_tree_digest=source_digest,
         candidate_root_ref=candidate_root_ref,
         candidate_root_digest=root_digest,
@@ -84,6 +117,8 @@ def qualification_fixture(tmp_path: Path) -> RecBoleQualificationFixture:
         base_model_config="BPR",
         seed=20260730,
         checkpoint_dir=tmp_path / "checkpoints",
+        runtime_identity_ref="runtime:recclaw-frozen-recbole",
+        runtime_identity_digest=runtime_release_digest(),
     )
 
 
@@ -104,10 +139,16 @@ def test_real_recbole_vertical_slice_emits_development_only_receipt(
     tmp_path: Path,
 ) -> None:
     candidate_root = FIXTURE_ROOT / "valid_candidate"
-    package = _package(candidate_root, class_name="QualifiedFixtureModel")
+    research_spec = _research_spec()
+    package = _package(
+        candidate_root,
+        class_name="QualifiedFixtureModel",
+        research_spec=research_spec,
+    )
 
     result = MechanicalRecBoleAdapterV1().qualify(
         package,
+        research_spec=research_spec,
         candidate_root=candidate_root,
         fixture=qualification_fixture,
         unit_check=_shared_unit_check,
@@ -165,10 +206,16 @@ def test_invalid_input_fixture_stops_before_unit_and_smoke(
     qualification_fixture: RecBoleQualificationFixture,
 ) -> None:
     candidate_root = FIXTURE_ROOT / "invalid_candidate"
-    package = _package(candidate_root, class_name="InvalidInputFixtureModel")
+    research_spec = _research_spec()
+    package = _package(
+        candidate_root,
+        class_name="InvalidInputFixtureModel",
+        research_spec=research_spec,
+    )
 
     result = MechanicalRecBoleAdapterV1().qualify(
         package,
+        research_spec=research_spec,
         candidate_root=candidate_root,
         fixture=qualification_fixture,
         unit_check=_shared_unit_check,
