@@ -473,19 +473,20 @@ class VNextRC0ContractsTest(unittest.TestCase):
             replace(self.capability, current_campaign_ineligible=False)
 
     def test_episode_separates_engineering_failure_from_mechanism_evidence(self) -> None:
-        engineering = replace(
-            self.episode,
-            comparator_ref=None,
-            comparator_digest=None,
-            evidence_class=EpisodeEvidenceClassV1.ENGINEERING_ONLY,
-            experiment_executed=False,
-            mechanism_interpretation="NOT_ADJUDICATED",
-            failure_class=ResearchFailureClassV1.INTERFACE,
-            mechanism_negative_evidence=False,
-        )
-        self.assertIs(engineering.evidence_class, EpisodeEvidenceClassV1.ENGINEERING_ONLY)
-        with self.assertRaisesRegex(VNextContractError, "cannot become mechanism"):
-            replace(engineering, mechanism_negative_evidence=True)
+        with self.assertRaisesRegex(
+            VNextContractError,
+            "only an executed scientific comparison",
+        ):
+            replace(
+                self.episode,
+                comparator_ref=None,
+                comparator_digest=None,
+                evidence_class=EpisodeEvidenceClassV1.ENGINEERING_ONLY,
+                experiment_executed=False,
+                mechanism_interpretation="NOT_ADJUDICATED",
+                failure_class=ResearchFailureClassV1.INTERFACE,
+                mechanism_negative_evidence=False,
+            )
         with self.assertRaisesRegex(VNextContractError, "real compared experiment"):
             replace(
                 self.episode,
