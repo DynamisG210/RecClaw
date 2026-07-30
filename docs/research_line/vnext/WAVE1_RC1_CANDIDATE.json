@@ -42,7 +42,10 @@
       "accepted_commit": "9d4937f48a3f37bdc031888bb5fb19222b25de96",
       "g_merge_commit": "3fe57ba8a1c50334907eb2878d70b8664e402617"
     },
-    "e0_search_adapter": null,
+    "e0_search_adapter": {
+      "accepted_commit": "a07bd2ccf1effb11702a738668db0af7d83c47d2",
+      "g_merge_commit": "e6ac840a76fa8a50880df935bc93c0fb473b262d"
+    },
     "f0_open_meta_interface": {
       "accepted_commit": "ea348c3d301672d8fe090fe76c14e1a7241862da",
       "g_merge_commit": "5489f73d196b29d1c6602d7f7ea14f9f417774e8"

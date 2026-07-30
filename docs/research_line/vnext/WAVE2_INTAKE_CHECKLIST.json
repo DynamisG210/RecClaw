@@ -37,7 +37,18 @@
       "owner": "D1"
     },
     "E0_SEARCH_ADAPTER": {
-      "accepted_intake": null,
+      "accepted_intake": {
+        "accepted_commit": "a07bd2ccf1effb11702a738668db0af7d83c47d2",
+        "fixture_sha256": "1bebe835a9e079d33f0e5025912788ca2694128a1fb74b7278ccd0e532ced445",
+        "g_merge_commit": "e6ac840a76fa8a50880df935bc93c0fb473b262d",
+        "lane": "E0_SEARCH_ADAPTER",
+        "owner_file_manifest_sha256": "8f7934c997a4fa71816b0b2af2f9f8df9af989ab3199164db485bccdc87d5ab0",
+        "parent_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+        "public_entrypoint": "recclaw_core.experiments.helix_abc_v1.search_adapter:__all__",
+        "schema": "recclaw.research-line.wave2-owner-intake.v1",
+        "structure_lint_receipt_sha256": "96cdfb1a519760db31125b29c81d296a04d5c8ee6fc18eb60d9f3fbe9cabdd01",
+        "targeted_tests_receipt_sha256": "9e8cd269d3f4379f1759cdc3adde93d36fd252d0288a9400135cd28a19beeded"
+      },
       "owner": "E0"
     },
     "F0_OPEN_META_INTERFACE": {

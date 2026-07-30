@@ -217,12 +217,34 @@ F0_ACCEPTED_INTAKE = Wave2OwnerIntakeV1(
     ),
 )
 
+E0_ACCEPTED_INTAKE = Wave2OwnerIntakeV1(
+    lane=Wave2OwnerLaneV1.E0_SEARCH_ADAPTER,
+    accepted_commit="a07bd2ccf1effb11702a738668db0af7d83c47d2",
+    parent_commit=WAVE1_ACCEPTED_COMMIT,
+    owner_file_manifest_sha256=(
+        "8f7934c997a4fa71816b0b2af2f9f8df9af989ab3199164db485bccdc87d5ab0"
+    ),
+    targeted_tests_receipt_sha256=(
+        "9e8cd269d3f4379f1759cdc3adde93d36fd252d0288a9400135cd28a19beeded"
+    ),
+    structure_lint_receipt_sha256=(
+        "96cdfb1a519760db31125b29c81d296a04d5c8ee6fc18eb60d9f3fbe9cabdd01"
+    ),
+    public_entrypoint=(
+        "recclaw_core.experiments.helix_abc_v1.search_adapter:__all__"
+    ),
+)
 
-def accepted_wave2_d1_f0_harness() -> Wave2IntegrationHarnessV1:
-    """Return the accepted D1/F0 ports while leaving E0 explicitly missing."""
+
+def accepted_wave2_harness() -> Wave2IntegrationHarnessV1:
+    """Return the complete accepted E0/D1/F0 mechanical intake harness."""
 
     harness = Wave2IntegrationHarnessV1()
-    for intake in (D1_ACCEPTED_INTAKE, F0_ACCEPTED_INTAKE):
+    for intake in (
+        E0_ACCEPTED_INTAKE,
+        D1_ACCEPTED_INTAKE,
+        F0_ACCEPTED_INTAKE,
+    ):
         harness = harness.attach(
             intake,
             observed_entrypoint=intake.public_entrypoint,

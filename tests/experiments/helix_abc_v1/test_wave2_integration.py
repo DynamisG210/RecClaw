@@ -10,6 +10,7 @@ import pytest
 
 from recclaw_core.experiments.helix_abc_v1 import (
     D1_ACCEPTED_INTAKE,
+    E0_ACCEPTED_INTAKE,
     F0_ACCEPTED_INTAKE,
     WAVE1_ACCEPTED_COMMIT,
     WAVE1_ACCEPTED_TREE,
@@ -19,7 +20,7 @@ from recclaw_core.experiments.helix_abc_v1 import (
     Wave2OwnerCorrectionRequired,
     Wave2OwnerIntakeV1,
     Wave2OwnerLaneV1,
-    accepted_wave2_d1_f0_harness,
+    accepted_wave2_harness,
     dry_run_r1_r2_launcher,
     load_prefreeze_manifest,
     prefreeze_missing_fields,
@@ -43,6 +44,9 @@ WAVE2_CHECKLIST = (
 )
 INTAKE_RECEIPTS = (
     ROOT / "docs" / "research_line" / "vnext" / "D1_F0_INTAKE_RECEIPTS.json"
+)
+E0_INTAKE_RECEIPT = (
+    ROOT / "docs" / "research_line" / "vnext" / "E0_INTAKE_RECEIPT.json"
 )
 WAVE2_MODULE = (
     ROOT
@@ -119,7 +123,10 @@ def test_wave1_candidate_manifest_binds_locally_accepted_identity() -> None:
         "independent_gate": "PASS",
         "required_boundaries_closed": 7,
     }
-    assert payload["wave2_owner_intakes"]["e0_search_adapter"] is None
+    assert payload["wave2_owner_intakes"]["e0_search_adapter"] == {
+        "accepted_commit": E0_ACCEPTED_INTAKE.accepted_commit,
+        "g_merge_commit": "e6ac840a76fa8a50880df935bc93c0fb473b262d",
+    }
     assert payload["wave2_owner_intakes"]["d1_scientific_episode_adapter"] == {
         "accepted_commit": D1_ACCEPTED_INTAKE.accepted_commit,
         "g_merge_commit": "3fe57ba8a1c50334907eb2878d70b8664e402617",
@@ -135,12 +142,18 @@ def test_wave1_candidate_manifest_binds_locally_accepted_identity() -> None:
     }
 
 
-def test_wave2_intake_checklist_records_only_accepted_d1_f0() -> None:
+def test_wave2_intake_checklist_records_all_accepted_owner_lanes() -> None:
     payload = json.loads(WAVE2_CHECKLIST.read_bytes())
 
     assert payload["accepted_base_commit"] == WAVE1_ACCEPTED_COMMIT
     assert set(payload["lanes"]) == {lane.value for lane in Wave2OwnerLaneV1}
-    assert payload["lanes"]["E0_SEARCH_ADAPTER"]["accepted_intake"] is None
+    assert payload["lanes"]["E0_SEARCH_ADAPTER"]["accepted_intake"] == {
+        **E0_ACCEPTED_INTAKE.canonical_dict(),
+        "fixture_sha256": (
+            "1bebe835a9e079d33f0e5025912788ca2694128a1fb74b7278ccd0e532ced445"
+        ),
+        "g_merge_commit": "e6ac840a76fa8a50880df935bc93c0fb473b262d",
+    }
     assert (
         payload["lanes"]["D1_SCIENTIFIC_EPISODE_ADAPTER"]["accepted_intake"]
         == {
@@ -194,12 +207,33 @@ def test_d1_f0_intake_receipt_digests_bind_recorded_evidence() -> None:
         )
 
 
-def test_accepted_wave2_harness_keeps_only_e0_missing() -> None:
-    harness = accepted_wave2_d1_f0_harness()
+def test_e0_intake_receipt_digests_bind_recorded_evidence() -> None:
+    receipt = json.loads(E0_INTAKE_RECEIPT.read_bytes())
 
-    assert harness.ready is False
-    assert harness.missing_lanes == (Wave2OwnerLaneV1.E0_SEARCH_ADAPTER,)
+    assert receipt["accepted_commit"] == E0_ACCEPTED_INTAKE.accepted_commit
+    assert receipt["parent_commit"] == E0_ACCEPTED_INTAKE.parent_commit
+    assert receipt["public_entrypoint"] == E0_ACCEPTED_INTAKE.public_entrypoint
+    assert (
+        sha256_digest(receipt["owner_file_manifest"])
+        == E0_ACCEPTED_INTAKE.owner_file_manifest_sha256
+    )
+    assert (
+        sha256_digest(receipt["targeted_tests_receipt"])
+        == E0_ACCEPTED_INTAKE.targeted_tests_receipt_sha256
+    )
+    assert (
+        sha256_digest(receipt["structure_lint_receipt"])
+        == E0_ACCEPTED_INTAKE.structure_lint_receipt_sha256
+    )
+
+
+def test_accepted_wave2_harness_is_complete() -> None:
+    harness = accepted_wave2_harness()
+
+    assert harness.ready is True
+    assert harness.missing_lanes == ()
     assert {intake.lane for intake in harness.intakes} == {
+        Wave2OwnerLaneV1.E0_SEARCH_ADAPTER,
         Wave2OwnerLaneV1.D1_SCIENTIFIC_EPISODE_ADAPTER,
         Wave2OwnerLaneV1.F0_OPEN_META_INTERFACE,
     }

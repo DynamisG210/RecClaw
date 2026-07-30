@@ -1,0 +1,49 @@
+{
+  "accepted_commit": "a07bd2ccf1effb11702a738668db0af7d83c47d2",
+  "fixture_sha256": "1bebe835a9e079d33f0e5025912788ca2694128a1fb74b7278ccd0e532ced445",
+  "owner_file_manifest": [
+    {
+      "blob": "22f8a30d95c5421b0a024569765c2fd5b83e09a6",
+      "mode": "100644",
+      "path": "docs/research_line/vnext/E0_SEARCH_ADAPTER_GAP_MATRIX.md"
+    },
+    {
+      "blob": "1f815097ba1a12daffb0fc104d3d80b35b969204",
+      "mode": "100644",
+      "path": "docs/research_line/vnext/E0_SEARCH_ADAPTER_INTAKE.md"
+    },
+    {
+      "blob": "5cc4a7249fc16c88628b725735c4b426e13877d3",
+      "mode": "100644",
+      "path": "src/recclaw_core/experiments/helix_abc_v1/search_adapter.py"
+    },
+    {
+      "blob": "7b397155309a017c83666cb3f1acb687546dc744",
+      "mode": "100644",
+      "path": "tests/experiments/helix_abc_v1/fixtures/e0_search_adapter_cases_v1.json"
+    },
+    {
+      "blob": "7212ef655348416cde21f53f95cbb418b8369164",
+      "mode": "100644",
+      "path": "tests/experiments/helix_abc_v1/test_e0_search_adapter.py"
+    }
+  ],
+  "parent_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+  "public_entrypoint": "recclaw_core.experiments.helix_abc_v1.search_adapter:__all__",
+  "schema": "recclaw.research-line.wave2-e0-intake-receipt.v1",
+  "structure_lint_receipt": {
+    "accepted_commit": "a07bd2ccf1effb11702a738668db0af7d83c47d2",
+    "diff_check": "PASS",
+    "modified_files_py_compile": "PASS",
+    "owner_worktree_clean_after_checks": true,
+    "parent_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8"
+  },
+  "targeted_tests_receipt": {
+    "accepted_commit": "a07bd2ccf1effb11702a738668db0af7d83c47d2",
+    "command": "PYTHONPATH=src /root/miniconda3/envs/recbole/bin/python -m pytest -q tests/experiments/helix_abc_v1/test_e0_search_adapter.py",
+    "exit_code": 0,
+    "parent_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+    "passed": 7,
+    "subtests_passed": 0
+  }
+}
