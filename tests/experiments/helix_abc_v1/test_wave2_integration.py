@@ -20,6 +20,7 @@ from recclaw_core.experiments.helix_abc_v1 import (
     WAVE1_ACCEPTED_COMMIT,
     WAVE1_ACCEPTED_TREE,
     FrozenR1R2PrefreezeManifestV2,
+    FrozenR1R2PrefreezeManifestV3,
     Wave2IntegrationError,
     Wave2IntegrationHarnessV1,
     Wave2OwnerCorrectionRequired,
@@ -102,15 +103,23 @@ def _complete_manifest() -> dict[str, Any]:
         if value is not None:
             return value
         if path == "shared_proposal_call.token_budget":
-            return 4096
+            return 6000
         if path == "shared_proposal_call.call_count":
-            return 1
+            return 8
         if path == "shared_proposal_call.granularity":
-            return "PER_PROPOSAL"
+            return "ONE_PREASSIGNED_PRODUCER_ROLE_ONE_PROPOSAL_PER_CALL"
         if path == "provider_identity.endpoint_support_status":
-            return "VERIFIED_FOR_R1"
+            return "VERIFIED_EXACT_GPT_5_4_FRESH_OPEN_SPEC_SCHEMA"
         if path == "provider_identity.credential_identity_present":
             return True
+        if path == "provider_identity.authentication_status":
+            return "VERIFIED"
+        if path == "provider_identity.probe_call_count":
+            return 1
+        if path == "provider_identity.returned_model":
+            return "gpt-5.4"
+        if path == "provider_identity.schema_probe_status":
+            return "PASS"
         if path == "provider_identity.model_digest":
             return GPT_5_4_MODEL_DIGEST
         if path.endswith("_digest"):
@@ -366,33 +375,19 @@ def test_checked_in_prefreeze_template_keeps_unknown_identities_unset() -> None:
     }
 
 
-def test_complete_prefreeze_dry_run_is_deterministic_and_provider_free(
-    tmp_path: Path,
-) -> None:
-    payload = _complete_manifest()
-    path = tmp_path / "prefreeze.json"
-    digest = _write_canonical(path, payload)
+def test_blocked_prefreeze_dry_run_is_fail_closed_and_provider_free() -> None:
+    raw = PREFREEZE_MANIFEST.read_bytes()
+    digest = bytes_sha256(raw)
 
-    loaded = load_prefreeze_manifest(path, expected_digest=digest)
-    first = dry_run_r1_r2_launcher(path, expected_digest=digest)
-    second = dry_run_r1_r2_launcher(path, expected_digest=digest)
-
-    assert isinstance(loaded, FrozenR1R2PrefreezeManifestV2)
-    assert loaded.digest == digest
-    assert first == second
-    assert first["provider_calls"] == 0
-    assert first["gpu_runs"] == 0
-    assert first["experiment_runs"] == 0
-    assert first["outcomes_consumed"] == 0
-    assert first["held_out_reads"] == 0
-    assert first["roots_created"] == 0
-    assert first["databases_created"] == 0
-    assert first["launch_authorized"] is False
-    assert first["r1_r2_isolation_verified"] is True
-    assert (
-        first["r1_gate_result_slots"]
-        == "UNPOPULATED_REAL_R1_RECEIPTS_ONLY"
-    )
+    for _ in range(2):
+        with pytest.raises(
+            Wave2IntegrationError,
+            match="provider_identity.returned_model",
+        ):
+            dry_run_r1_r2_launcher(
+                PREFREEZE_MANIFEST,
+                expected_digest=digest,
+            )
 
 
 def test_prefreeze_fails_closed_on_missing_required_identity(
@@ -430,7 +425,7 @@ def test_prefreeze_fails_closed_on_r1_r2_identity_collision() -> None:
     payload["r2_identity"]["seed_ref"] = payload["r1_identity"]["seed_ref"]
 
     with pytest.raises(Wave2IntegrationError, match="must be isolated"):
-        FrozenR1R2PrefreezeManifestV2(payload=payload)
+        FrozenR1R2PrefreezeManifestV3(payload=payload)
 
 
 @pytest.mark.parametrize(
@@ -526,21 +521,31 @@ def test_checked_in_prefreeze_is_canonical_and_fail_closed() -> None:
     assert canonical_json_bytes(payload) == raw
     assert payload["accepted_wave2"]["commit"] == WAVE2_ACCEPTED_COMMIT
     assert payload["provider_identity"]["model_name"] == "gpt-5.4"
-    assert payload["provider_identity"]["credential_identity_present"] is False
+    assert payload["provider_identity"]["credential_identity_present"] is True
+    assert (
+        payload["provider_identity"]["endpoint_support_status"]
+        == "BLOCKED_EXACT_FRESH_OPEN_SPEC_SCHEMA_UNSUPPORTED"
+    )
+    assert payload["provider_identity"]["schema_probe_status"] == "BLOCKED"
+    assert payload["provider_identity"]["probe_call_count"] == 1
+    assert payload["provider_identity"]["returned_model"] is None
     assert payload["r1_gate"]["result_slots"] == {
         "fresh_spec_receipt_refs": [],
         "producer_role_receipt_refs": [],
         "qualified_capability_receipt_refs": [],
         "real_mechanism_change_receipt_refs": [],
     }
-    with pytest.raises(Wave2IntegrationError, match="unresolved required fields"):
+    with pytest.raises(
+        Wave2IntegrationError,
+        match="provider_identity.returned_model",
+    ):
         load_prefreeze_manifest(
             PREFREEZE_MANIFEST,
             expected_digest=bytes_sha256(raw),
         )
 
 
-def test_blocked_receipt_binds_manifest_and_records_zero_side_effects() -> None:
+def test_blocked_receipt_binds_manifest_and_records_exact_probe_side_effects() -> None:
     manifest_raw = PREFREEZE_MANIFEST.read_bytes()
     receipt_raw = PREFREEZE_BLOCKED_RECEIPT.read_bytes()
     receipt = json.loads(receipt_raw)
@@ -549,27 +554,39 @@ def test_blocked_receipt_binds_manifest_and_records_zero_side_effects() -> None:
     assert receipt["manifest_digest"] == bytes_sha256(manifest_raw)
     assert receipt["status"] == "BLOCKED_PREFREEZE"
     assert receipt["r1_prefreeze_ready_receipt_emitted"] is False
-    assert set(receipt["side_effects"].values()) == {0}
-    assert receipt["observed_authorized_evidence"]["credential_material_read"] is False
-    assert {
-        blocker["code"] for blocker in receipt["blockers"]
-    } == {
-        "FRESH_OPEN_R1_CALL_CONTRACT_UNFROZEN",
-        "FRESH_OPEN_R1_PROVIDER_RELEASE_UNVERIFIED",
-        "PREOUTCOME_SCIENTIFIC_POLICIES_UNFROZEN",
-        "R1_R2_FRESH_IDENTITIES_UNFROZEN",
-        "R1_R2_RUNTIME_IDENTITY_UNFROZEN",
+    assert receipt["r1_worker_launch_authorized"] is False
+    assert receipt["physical_provider_calls"] == 1
+    assert receipt["retry_count"] == 0
+    assert receipt["schema_relaxation"] == "FORBIDDEN"
+    assert receipt["replacement_probe"] == "FORBIDDEN_WITHIN_THIS_PREFREEZE"
+    assert receipt["side_effects"] == {
+        "provider_calls": 1,
+        "probe_private_roots_created": 1,
+        "candidate_roots_created": 0,
+        "databases_created": 0,
+        "experiment_runs": 0,
+        "fresh_r1_training_runs": 0,
+        "verification_fixture_one_epoch_runs": 3,
+        "candidate_admissions": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
     }
-    manifest = json.loads(manifest_raw)
-    recorded_fields = {
-        field
-        for blocker in receipt["blockers"]
-        for field in blocker["fields"]
-    }
-    assert recorded_fields == set(prefreeze_missing_fields(manifest)) | {
-        "provider_identity.credential_identity_present",
+    assert receipt["probe_classification"] == (
+        "HTTP_400_EXACT_SCHEMA_KEYWORD_UNSUPPORTED"
+    )
+    assert receipt["null_manifest_fields"] == [
+        "provider_identity.returned_model"
+    ]
+    assert receipt["blocked_fields"] == [
+        "provider_identity.authentication_status",
         "provider_identity.endpoint_support_status",
-    }
+        "provider_identity.returned_model",
+        "provider_identity.schema_probe_status",
+    ]
+    manifest = json.loads(manifest_raw)
+    assert list(prefreeze_missing_fields(manifest)) == receipt[
+        "null_manifest_fields"
+    ]
     assert not (
         PREFREEZE_BLOCKED_RECEIPT.parent / "R1_PREFREEZE_READY_RECEIPT.json"
     ).exists()

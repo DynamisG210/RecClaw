@@ -11,12 +11,40 @@
     "held_out_absent": true,
     "missingness_policy_digest": null,
     "missingness_policy_ref": null,
+    "qualification_gate_digest": null,
+    "qualification_gate_ref": null,
     "threshold_policy_digest": null,
     "threshold_policy_ref": null
   },
+  "open_spec_contract": {
+    "contract_digest": null,
+    "contract_ref": null,
+    "fixed_catalog_candidate_allowed": false,
+    "producer_adapter_digest": null,
+    "producer_adapter_ref": null,
+    "producer_rewrite_forbidden": true,
+    "producer_roles": [
+      "mechanism_composer",
+      "lineage_refiner",
+      "falsification_designer",
+      "frontier_architect"
+    ],
+    "required_resolution": "INNOVATION_REQUIRED",
+    "resolution_results": [
+      "SEARCH_READY",
+      "INNOVATION_REQUIRED",
+      "DEFERRED_PROTOCOL_CHANGE",
+      "UNSUPPORTED",
+      "INVALID_SPEC"
+    ],
+    "resolver_digest": null,
+    "resolver_ref": null
+  },
   "provider_identity": {
+    "authentication_status": null,
     "call_entrypoint_digest": null,
     "call_entrypoint_ref": null,
+    "credential_config_digest": null,
     "credential_identity_digest": null,
     "credential_identity_present": null,
     "endpoint_digest": null,
@@ -24,8 +52,13 @@
     "endpoint_support_status": null,
     "model_digest": null,
     "model_name": "gpt-5.4",
+    "probe_call_count": null,
     "release_digest": null,
-    "release_ref": null
+    "release_ref": null,
+    "returned_model": null,
+    "schema_probe_receipt_digest": null,
+    "schema_probe_receipt_ref": null,
+    "schema_probe_status": null
   },
   "r1_gate": {
     "requirements": {
@@ -34,10 +67,12 @@
         "INTERACTION",
         "PROPAGATION"
       ],
-      "minimum_fresh_specs": 4,
-      "minimum_producer_roles": 2,
-      "minimum_qualified": 2,
-      "minimum_real_mechanism_changes": 1
+      "minimum_fresh_specs_per_side": 4,
+      "minimum_producer_roles_per_side": 2,
+      "minimum_qualified_per_side": 2,
+      "minimum_real_mechanism_changes": 1,
+      "negative_fixture_required": true,
+      "scope": "PER_SIDE_EXCEPT_REAL_MECHANISM_OVERALL"
     },
     "result_slots": {
       "fresh_spec_receipt_refs": [],
@@ -47,6 +82,8 @@
     }
   },
   "r1_identity": {
+    "candidate_namespace_digest": null,
+    "candidate_namespace_ref": null,
     "db_digest": null,
     "db_ref": null,
     "lineage_digest": null,
@@ -55,6 +92,8 @@
     "memory_namespace_ref": null,
     "outcome_namespace_digest": null,
     "outcome_namespace_ref": null,
+    "package_namespace_digest": null,
+    "package_namespace_ref": null,
     "root_digest": null,
     "root_ref": null,
     "seed_digest": null,
@@ -65,6 +104,8 @@
     "side_b_identity_ref": null
   },
   "r2_identity": {
+    "candidate_namespace_digest": null,
+    "candidate_namespace_ref": null,
     "db_digest": null,
     "db_ref": null,
     "lineage_digest": null,
@@ -73,6 +114,8 @@
     "memory_namespace_ref": null,
     "outcome_namespace_digest": null,
     "outcome_namespace_ref": null,
+    "package_namespace_digest": null,
+    "package_namespace_ref": null,
     "root_digest": null,
     "root_ref": null,
     "seed_digest": null,
@@ -84,17 +127,23 @@
     "runtime_digest": null,
     "runtime_ref": null
   },
-  "schema": "recclaw.research-line.r1-r2-prefreeze-manifest.v2",
+  "schema": "recclaw.research-line.r1-r2-prefreeze-manifest.v3",
   "shared_implementation": {
     "implementer_digest": null,
     "implementer_ref": null,
     "manual_candidate_patch_forbidden": true,
+    "origin_blind_projection_digest": null,
+    "origin_blind_projection_ref": null,
     "qualification_evidence_class": "DEVELOPMENT_ONLY",
     "qualifier_digest": null,
     "qualifier_ref": null
   },
   "shared_proposal_call": {
     "call_count": null,
+    "call_schedule_digest": null,
+    "call_schedule_ref": null,
+    "content_not_json_action": "TERMINAL_CONSUME_PREASSIGNED_SLOT",
+    "expected_proposals_per_call": 1,
     "failure_rule_digest": null,
     "failure_rule_ref": null,
     "granularity": null,
@@ -102,12 +151,15 @@
     "prompt_digest": null,
     "prompt_ref": null,
     "proposal_budget_per_side": 8,
+    "replacement_call": "FORBIDDEN",
     "response_contract_digest": null,
     "response_contract_ref": null,
     "retry_count": 0,
+    "schema_relaxation": "FORBIDDEN",
     "shared_call_contract_digest": null,
     "side_a_call_contract_digest": null,
     "side_b_call_contract_digest": null,
+    "successful_response_selection": "FORBIDDEN",
     "token_budget": null,
     "tool_digest": null,
     "tool_ref": null

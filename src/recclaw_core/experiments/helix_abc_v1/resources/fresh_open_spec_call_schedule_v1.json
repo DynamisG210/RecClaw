@@ -1,0 +1,42 @@
+{
+  "call_count_per_side": 8,
+  "expected_proposals_per_call": 1,
+  "granularity": "ONE_PREASSIGNED_PRODUCER_ROLE_ONE_PROPOSAL_PER_CALL",
+  "proposal_budget_per_side": 8,
+  "role_schedule": [
+    {
+      "logical_slot_id": "slot-01",
+      "producer_role": "mechanism_composer"
+    },
+    {
+      "logical_slot_id": "slot-02",
+      "producer_role": "lineage_refiner"
+    },
+    {
+      "logical_slot_id": "slot-03",
+      "producer_role": "falsification_designer"
+    },
+    {
+      "logical_slot_id": "slot-04",
+      "producer_role": "frontier_architect"
+    },
+    {
+      "logical_slot_id": "slot-05",
+      "producer_role": "mechanism_composer"
+    },
+    {
+      "logical_slot_id": "slot-06",
+      "producer_role": "lineage_refiner"
+    },
+    {
+      "logical_slot_id": "slot-07",
+      "producer_role": "falsification_designer"
+    },
+    {
+      "logical_slot_id": "slot-08",
+      "producer_role": "frontier_architect"
+    }
+  ],
+  "side_policy": "A_AND_B_USE_THE_EXACT_SAME_CALL_CONTRACT_AND_ROLE_SCHEDULE",
+  "token_budget_per_call": 6000
+}

@@ -28,9 +28,10 @@ WAVE2_ACCEPTED_TREE_ARCHIVE_SHA256 = (
 WAVE2_GATE_RECEIPT_SHA256 = (
     "fcb431c0ae8738f243ba10021770a2c507bee2b6d8454df622c2dc05700332eb"
 )
-PREFREEZE_SCHEMA = "recclaw.research-line.r1-r2-prefreeze-manifest.v2"
-DRY_RUN_RECEIPT_SCHEMA = "recclaw.research-line.r1-r2-dry-run-receipt.v2"
-BLOCKED_RECEIPT_SCHEMA = "recclaw.research-line.prefreeze-blocked-receipt.v1"
+PREFREEZE_SCHEMA = "recclaw.research-line.r1-r2-prefreeze-manifest.v3"
+DRY_RUN_RECEIPT_SCHEMA = "recclaw.research-line.r1-r2-dry-run-receipt.v3"
+BLOCKED_RECEIPT_SCHEMA = "recclaw.research-line.prefreeze-blocked-receipt.v2"
+READY_RECEIPT_SCHEMA = "recclaw.research-line.r1-prefreeze-ready-receipt.v1"
 OWNER_INTAKE_SCHEMA = "recclaw.research-line.wave2-owner-intake.v1"
 GPT_5_4_MODEL_DIGEST = (
     "568d98474c084e840c6ddf03e03aa9ce82b577fef2912412546cfca2b278d99b"
@@ -292,15 +293,42 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "release_digest": None,
         "model_name": None,
         "model_digest": None,
+        "returned_model": None,
+        "authentication_status": None,
+        "credential_config_digest": None,
         "credential_identity_digest": None,
         "credential_identity_present": None,
+        "schema_probe_receipt_ref": None,
+        "schema_probe_receipt_digest": None,
+        "schema_probe_status": None,
+        "probe_call_count": None,
+    },
+    "open_spec_contract": {
+        "contract_ref": None,
+        "contract_digest": None,
+        "producer_adapter_ref": None,
+        "producer_adapter_digest": None,
+        "resolver_ref": None,
+        "resolver_digest": None,
+        "producer_roles": None,
+        "resolution_results": None,
+        "required_resolution": None,
+        "fixed_catalog_candidate_allowed": None,
+        "producer_rewrite_forbidden": None,
     },
     "shared_proposal_call": {
         "granularity": None,
         "token_budget": None,
         "call_count": None,
+        "expected_proposals_per_call": None,
+        "call_schedule_ref": None,
+        "call_schedule_digest": None,
         "failure_rule_ref": None,
         "failure_rule_digest": None,
+        "content_not_json_action": None,
+        "replacement_call": None,
+        "schema_relaxation": None,
+        "successful_response_selection": None,
         "prompt_ref": None,
         "prompt_digest": None,
         "tool_ref": None,
@@ -319,6 +347,8 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "implementer_digest": None,
         "qualifier_ref": None,
         "qualifier_digest": None,
+        "origin_blind_projection_ref": None,
+        "origin_blind_projection_digest": None,
         "manual_candidate_patch_forbidden": None,
         "qualification_evidence_class": None,
     },
@@ -335,6 +365,10 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "root_digest": None,
         "db_ref": None,
         "db_digest": None,
+        "candidate_namespace_ref": None,
+        "candidate_namespace_digest": None,
+        "package_namespace_ref": None,
+        "package_namespace_digest": None,
         "side_a_identity_ref": None,
         "side_a_identity_digest": None,
         "side_b_identity_ref": None,
@@ -353,6 +387,10 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "root_digest": None,
         "db_ref": None,
         "db_digest": None,
+        "candidate_namespace_ref": None,
+        "candidate_namespace_digest": None,
+        "package_namespace_ref": None,
+        "package_namespace_digest": None,
     },
     "evidence_policy": {
         "held_out_absent": None,
@@ -362,14 +400,18 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "threshold_policy_digest": None,
         "analysis_plan_ref": None,
         "analysis_plan_digest": None,
+        "qualification_gate_ref": None,
+        "qualification_gate_digest": None,
     },
     "r1_gate": {
         "requirements": {
-            "minimum_fresh_specs": None,
-            "minimum_producer_roles": None,
-            "minimum_qualified": None,
+            "scope": None,
+            "minimum_fresh_specs_per_side": None,
+            "minimum_producer_roles_per_side": None,
+            "minimum_qualified_per_side": None,
             "minimum_real_mechanism_changes": None,
             "accepted_change_kinds": None,
+            "negative_fixture_required": None,
         },
         "result_slots": {
             "fresh_spec_receipt_refs": None,
@@ -454,6 +496,13 @@ def proposal_call_contract_digest(payload: Mapping[str, Any]) -> str:
             },
             "proposal_call": {
                 "call_count": proposal["call_count"],
+                "call_schedule_digest": proposal["call_schedule_digest"],
+                "content_not_json_action": proposal[
+                    "content_not_json_action"
+                ],
+                "expected_proposals_per_call": proposal[
+                    "expected_proposals_per_call"
+                ],
                 "failure_rule_digest": proposal["failure_rule_digest"],
                 "granularity": proposal["granularity"],
                 "no_retry": proposal["no_retry"],
@@ -461,10 +510,15 @@ def proposal_call_contract_digest(payload: Mapping[str, Any]) -> str:
                 "proposal_budget_per_side": proposal[
                     "proposal_budget_per_side"
                 ],
+                "replacement_call": proposal["replacement_call"],
                 "response_contract_digest": proposal[
                     "response_contract_digest"
                 ],
                 "retry_count": proposal["retry_count"],
+                "schema_relaxation": proposal["schema_relaxation"],
+                "successful_response_selection": proposal[
+                    "successful_response_selection"
+                ],
                 "token_budget": proposal["token_budget"],
                 "tool_digest": proposal["tool_digest"],
             },
@@ -489,6 +543,14 @@ _ISOLATION_REF_PAIRS = (
     ("r1_identity.memory_namespace_ref", "r2_identity.memory_namespace_ref"),
     ("r1_identity.root_ref", "r2_identity.root_ref"),
     ("r1_identity.db_ref", "r2_identity.db_ref"),
+    (
+        "r1_identity.candidate_namespace_ref",
+        "r2_identity.candidate_namespace_ref",
+    ),
+    (
+        "r1_identity.package_namespace_ref",
+        "r2_identity.package_namespace_ref",
+    ),
 )
 _ISOLATION_DIGEST_PAIRS = tuple(
     (left.replace("_ref", "_digest"), right.replace("_ref", "_digest"))
@@ -497,7 +559,7 @@ _ISOLATION_DIGEST_PAIRS = tuple(
 
 
 @dataclass(frozen=True, slots=True)
-class FrozenR1R2PrefreezeManifestV2:
+class FrozenR1R2PrefreezeManifestV3:
     """Complete, canonical pre-outcome identity admitted by the dry-run launcher."""
 
     payload: Mapping[str, Any]
@@ -539,46 +601,69 @@ class FrozenR1R2PrefreezeManifestV2:
                     f"{path} must not use an unresolved identity marker"
                 )
         fixed_values = {
-            "provider_identity.endpoint_support_status": "VERIFIED_FOR_R1",
+            "provider_identity.endpoint_support_status": (
+                "VERIFIED_EXACT_GPT_5_4_FRESH_OPEN_SPEC_SCHEMA"
+            ),
             "provider_identity.model_name": "gpt-5.4",
             "provider_identity.model_digest": GPT_5_4_MODEL_DIGEST,
+            "provider_identity.returned_model": "gpt-5.4",
+            "provider_identity.authentication_status": "VERIFIED",
             "provider_identity.credential_identity_present": True,
+            "provider_identity.schema_probe_status": "PASS",
+            "provider_identity.probe_call_count": 1,
+            "open_spec_contract.producer_roles": [
+                "mechanism_composer",
+                "lineage_refiner",
+                "falsification_designer",
+                "frontier_architect",
+            ],
+            "open_spec_contract.resolution_results": [
+                "SEARCH_READY",
+                "INNOVATION_REQUIRED",
+                "DEFERRED_PROTOCOL_CHANGE",
+                "UNSUPPORTED",
+                "INVALID_SPEC",
+            ],
+            "open_spec_contract.required_resolution": "INNOVATION_REQUIRED",
+            "open_spec_contract.fixed_catalog_candidate_allowed": False,
+            "open_spec_contract.producer_rewrite_forbidden": True,
+            "shared_proposal_call.granularity": (
+                "ONE_PREASSIGNED_PRODUCER_ROLE_ONE_PROPOSAL_PER_CALL"
+            ),
+            "shared_proposal_call.token_budget": 6000,
+            "shared_proposal_call.call_count": 8,
+            "shared_proposal_call.expected_proposals_per_call": 1,
             "shared_proposal_call.no_retry": True,
             "shared_proposal_call.retry_count": 0,
             "shared_proposal_call.proposal_budget_per_side": 8,
+            "shared_proposal_call.content_not_json_action": (
+                "TERMINAL_CONSUME_PREASSIGNED_SLOT"
+            ),
+            "shared_proposal_call.replacement_call": "FORBIDDEN",
+            "shared_proposal_call.schema_relaxation": "FORBIDDEN",
+            "shared_proposal_call.successful_response_selection": "FORBIDDEN",
             "shared_implementation.manual_candidate_patch_forbidden": True,
             "shared_implementation.qualification_evidence_class": "DEVELOPMENT_ONLY",
             "evidence_policy.held_out_absent": True,
-            "r1_gate.requirements.minimum_fresh_specs": 4,
-            "r1_gate.requirements.minimum_producer_roles": 2,
-            "r1_gate.requirements.minimum_qualified": 2,
+            "r1_gate.requirements.scope": (
+                "PER_SIDE_EXCEPT_REAL_MECHANISM_OVERALL"
+            ),
+            "r1_gate.requirements.minimum_fresh_specs_per_side": 4,
+            "r1_gate.requirements.minimum_producer_roles_per_side": 2,
+            "r1_gate.requirements.minimum_qualified_per_side": 2,
             "r1_gate.requirements.minimum_real_mechanism_changes": 1,
             "r1_gate.requirements.accepted_change_kinds": [
                 "STRUCTURAL",
                 "INTERACTION",
                 "PROPAGATION",
             ],
+            "r1_gate.requirements.negative_fixture_required": True,
         }
         for path, expected in fixed_values.items():
             observed = _value_at(normalized, path)
             if observed != expected:
                 raise Wave2IntegrationError(
                     f"{path} must remain frozen at {expected!r}"
-                )
-        for field_name in ("granularity", "failure_rule_ref"):
-            if not str(normalized["shared_proposal_call"][field_name]).strip():
-                raise Wave2IntegrationError(
-                    f"shared_proposal_call.{field_name} must be non-empty"
-                )
-        for field_name in ("token_budget", "call_count"):
-            observed = normalized["shared_proposal_call"][field_name]
-            if (
-                isinstance(observed, bool)
-                or not isinstance(observed, int)
-                or observed <= 0
-            ):
-                raise Wave2IntegrationError(
-                    f"shared_proposal_call.{field_name} must be a positive integer"
                 )
         for r1_path, r2_path in (
             *_ISOLATION_REF_PAIRS,
@@ -612,6 +697,14 @@ class FrozenR1R2PrefreezeManifestV2:
         )
         if len(set(side_refs)) != 2:
             raise Wave2IntegrationError("R1 A/B fresh identities must differ")
+        side_digests = (
+            normalized["r1_identity"]["side_a_identity_digest"],
+            normalized["r1_identity"]["side_b_identity_digest"],
+        )
+        if len(set(side_digests)) != 2:
+            raise Wave2IntegrationError(
+                "R1 A/B fresh identity digests must differ"
+            )
         for slot, values in normalized["r1_gate"]["result_slots"].items():
             if not isinstance(values, list) or values:
                 raise Wave2IntegrationError(
@@ -632,7 +725,7 @@ def load_prefreeze_manifest(
     path: Path,
     *,
     expected_digest: str,
-) -> FrozenR1R2PrefreezeManifestV2:
+) -> FrozenR1R2PrefreezeManifestV3:
     """Load exactly one canonical manifest and bind it to its expected digest."""
 
     expected = validate_sha256(expected_digest, field_name="expected_digest")
@@ -649,7 +742,245 @@ def load_prefreeze_manifest(
         raise Wave2IntegrationError(
             "prefreeze manifest bytes are not canonical and digest-stable"
         )
-    return FrozenR1R2PrefreezeManifestV2(payload=payload)
+    manifest = FrozenR1R2PrefreezeManifestV3(payload=payload)
+    repo_root = path.resolve().parents[3]
+    _verify_prefreeze_resource_bindings(
+        repo_root=repo_root,
+        payload=manifest.payload,
+    )
+    return manifest
+
+
+def _repo_resource(
+    *,
+    repo_root: Path,
+    ref: str,
+) -> tuple[Path, tuple[str, ...]]:
+    prefix = "repo:"
+    if not ref.startswith(prefix):
+        raise Wave2IntegrationError(
+            f"prefreeze local resource ref must start with {prefix!r}"
+        )
+    relative, marker, fragment = ref[len(prefix) :].partition("#")
+    candidate = (repo_root / relative).resolve()
+    try:
+        candidate.relative_to(repo_root)
+    except ValueError as exc:
+        raise Wave2IntegrationError(
+            "prefreeze resource ref escapes the repository"
+        ) from exc
+    if not candidate.is_file():
+        raise Wave2IntegrationError(
+            f"prefreeze resource ref does not exist: {relative}"
+        )
+    fragment_parts = tuple(
+        part for part in fragment.split("/") if part
+    ) if marker else ()
+    return candidate, fragment_parts
+
+
+def _verify_repo_digest_binding(
+    *,
+    repo_root: Path,
+    ref: str,
+    digest: str,
+) -> None:
+    resource, fragment = _repo_resource(repo_root=repo_root, ref=ref)
+    if not fragment:
+        observed = bytes_sha256(resource.read_bytes())
+    else:
+        try:
+            value: Any = json.loads(resource.read_bytes())
+            for part in fragment:
+                value = value[part]
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+        ) as exc:
+            raise Wave2IntegrationError(
+                f"prefreeze JSON resource fragment is invalid: {ref}"
+            ) from exc
+        observed = sha256_digest(value)
+    if observed != digest:
+        raise Wave2IntegrationError(
+            f"prefreeze resource digest mismatch for {ref}"
+        )
+
+
+def _verify_prefreeze_resource_bindings(
+    *,
+    repo_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    raw_or_fragment_pairs = (
+        ("runtime_identity.runtime_ref", "runtime_identity.runtime_digest"),
+        (
+            "runtime_identity.dependency_lock_ref",
+            "runtime_identity.dependency_lock_digest",
+        ),
+        (
+            "shared_proposal_call.call_schedule_ref",
+            "shared_proposal_call.call_schedule_digest",
+        ),
+        (
+            "shared_proposal_call.failure_rule_ref",
+            "shared_proposal_call.failure_rule_digest",
+        ),
+        (
+            "shared_proposal_call.prompt_ref",
+            "shared_proposal_call.prompt_digest",
+        ),
+        (
+            "shared_proposal_call.tool_ref",
+            "shared_proposal_call.tool_digest",
+        ),
+        (
+            "shared_proposal_call.response_contract_ref",
+            "shared_proposal_call.response_contract_digest",
+        ),
+        (
+            "provider_identity.schema_probe_receipt_ref",
+            "provider_identity.schema_probe_receipt_digest",
+        ),
+        (
+            "evidence_policy.missingness_policy_ref",
+            "evidence_policy.missingness_policy_digest",
+        ),
+        (
+            "evidence_policy.threshold_policy_ref",
+            "evidence_policy.threshold_policy_digest",
+        ),
+        (
+            "evidence_policy.analysis_plan_ref",
+            "evidence_policy.analysis_plan_digest",
+        ),
+        (
+            "evidence_policy.qualification_gate_ref",
+            "evidence_policy.qualification_gate_digest",
+        ),
+    )
+    identity_names = (
+        "lineage",
+        "seed",
+        "outcome_namespace",
+        "memory_namespace",
+        "root",
+        "db",
+        "candidate_namespace",
+        "package_namespace",
+    )
+    identity_pairs = tuple(
+        (
+            f"{phase}_identity.{name}_ref",
+            f"{phase}_identity.{name}_digest",
+        )
+        for phase in ("r1", "r2")
+        for name in identity_names
+    ) + (
+        (
+            "r1_identity.side_a_identity_ref",
+            "r1_identity.side_a_identity_digest",
+        ),
+        (
+            "r1_identity.side_b_identity_ref",
+            "r1_identity.side_b_identity_digest",
+        ),
+    )
+    for ref_path, digest_path in (*raw_or_fragment_pairs, *identity_pairs):
+        _verify_repo_digest_binding(
+            repo_root=repo_root,
+            ref=_value_at(payload, ref_path),
+            digest=_value_at(payload, digest_path),
+        )
+
+    release_path, release_fragment = _repo_resource(
+        repo_root=repo_root,
+        ref=payload["provider_identity"]["release_ref"],
+    )
+    if release_fragment:
+        raise Wave2IntegrationError(
+            "provider release ref must bind the complete release resource"
+        )
+    try:
+        release = json.loads(release_path.read_bytes())
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Wave2IntegrationError(
+            "provider release resource is invalid"
+        ) from exc
+    release_digest = release.get("release_digest")
+    release_preimage = dict(release)
+    release_preimage.pop("release_digest", None)
+    if (
+        release_digest != payload["provider_identity"]["release_digest"]
+        or sha256_digest(release_preimage) != release_digest
+        or release.get("endpoint_digest")
+        != payload["provider_identity"]["endpoint_digest"]
+        or release.get("model") != "gpt-5.4"
+        or release.get("response_schema_digest")
+        != payload["shared_proposal_call"]["response_contract_digest"]
+        or release.get("retry_count") != 0
+        or release.get("request_mode") != "SINGLE_JSON_SCHEMA_NO_TOOLS"
+    ):
+        raise Wave2IntegrationError(
+            "provider release resource differs from the frozen call contract"
+        )
+
+    probe_path, probe_fragment = _repo_resource(
+        repo_root=repo_root,
+        ref=payload["provider_identity"]["schema_probe_receipt_ref"],
+    )
+    if probe_fragment:
+        raise Wave2IntegrationError(
+            "provider probe receipt ref must bind the complete receipt"
+        )
+    probe = json.loads(probe_path.read_bytes())
+    required_probe_values = {
+        "status": "PASS",
+        "physical_provider_calls": 1,
+        "retry_count": 0,
+        "authentication_status": "VERIFIED",
+        "model_requested": "gpt-5.4",
+        "returned_model": "gpt-5.4",
+        "endpoint_digest": payload["provider_identity"]["endpoint_digest"],
+        "credential_config_digest": payload["provider_identity"][
+            "credential_config_digest"
+        ],
+        "credential_identity_digest": payload["provider_identity"][
+            "credential_identity_digest"
+        ],
+        "provider_release_digest": payload["provider_identity"][
+            "release_digest"
+        ],
+        "response_schema_digest": payload["shared_proposal_call"][
+            "response_contract_digest"
+        ],
+        "sensitive_values_persisted": False,
+        "sensitive_headers_persisted": False,
+        "research_candidates_generated": 0,
+        "open_specs_projected": 0,
+        "resolver_calls": 0,
+        "candidate_roots_created": 0,
+        "candidate_admissions": 0,
+        "training_runs": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+    }
+    for field_name, expected_value in required_probe_values.items():
+        if probe.get(field_name) != expected_value:
+            raise Wave2IntegrationError(
+                f"provider probe receipt does not prove {field_name}"
+            )
+    if probe.get("blocked_fields") != []:
+        raise Wave2IntegrationError(
+            "provider probe receipt retains unresolved fields"
+        )
+
+
+# Import compatibility for the accepted G validator name.  The manifest schema
+# itself is v3 and the v3 class above is the only implementation.
+FrozenR1R2PrefreezeManifestV2 = FrozenR1R2PrefreezeManifestV3
 
 
 def dry_run_r1_r2_launcher(
@@ -677,5 +1008,56 @@ def dry_run_r1_r2_launcher(
             "databases_created": 0,
             "r1_gate_result_slots": "UNPOPULATED_REAL_R1_RECEIPTS_ONLY",
             "launch_authorized": False,
+        }
+    )
+
+
+def r1_prefreeze_ready_receipt(
+    path: Path,
+    *,
+    expected_digest: str,
+) -> dict[str, Any]:
+    """Emit the sole precondition for an independent R1 worker launch."""
+
+    manifest = load_prefreeze_manifest(path, expected_digest=expected_digest)
+    provider = manifest.payload["provider_identity"]
+    proposal = manifest.payload["shared_proposal_call"]
+    return canonical_value(
+        {
+            "schema": READY_RECEIPT_SCHEMA,
+            "status": "R1_PREFREEZE_READY",
+            "manifest_ref": path.name,
+            "manifest_digest": manifest.digest,
+            "accepted_wave2_commit": WAVE2_ACCEPTED_COMMIT,
+            "accepted_wave2_tree": WAVE2_ACCEPTED_TREE,
+            "provider_probe_receipt_ref": provider[
+                "schema_probe_receipt_ref"
+            ],
+            "provider_probe_receipt_digest": provider[
+                "schema_probe_receipt_digest"
+            ],
+            "provider_probe_status": provider["schema_probe_status"],
+            "provider_probe_call_count": provider["probe_call_count"],
+            "model": provider["model_name"],
+            "returned_model": provider["returned_model"],
+            "shared_call_contract_digest": proposal[
+                "shared_call_contract_digest"
+            ],
+            "side_a_call_contract_digest": proposal[
+                "side_a_call_contract_digest"
+            ],
+            "side_b_call_contract_digest": proposal[
+                "side_b_call_contract_digest"
+            ],
+            "r1_worker_launch_authorized": True,
+            "r2_launch_authorized": False,
+            "training_started": False,
+            "candidate_admission_performed": False,
+            "outcomes_consumed": 0,
+            "held_out_reads": 0,
+            "claim_ceiling": "DEVELOPMENT_ONLY",
+            "authorization_scope": (
+                "INDEPENDENT_R1_WORKER_MAY_START_EXACT_FROZEN_R1_ONLY"
+            ),
         }
     )

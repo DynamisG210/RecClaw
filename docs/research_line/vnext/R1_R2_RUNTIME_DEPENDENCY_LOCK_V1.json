@@ -1,0 +1,33 @@
+{
+  "dependency_identity": {
+    "pip_freeze_all_c_sorted_line_count": 83,
+    "pip_freeze_all_c_sorted_sha256": "3f84db7313da2159eed4b05109330cee593076d2a309f9a9dea0663a0ec80e71",
+    "recbole_distribution": "editable-git-7b02be5ec80a88310f2d04a27a82adfcbb5dc211",
+    "requirements_search_space_sha256": "1d9d6da93d40c89c7103ad8ecb1ee2aa6a45d894ade98ec03a30741c946f0bc4",
+    "selected_versions": {
+      "jsonschema": "4.26.0",
+      "numpy": "1.26.4",
+      "pytest": "9.1.1",
+      "recbole": "1.2.1",
+      "scipy": "1.15.3",
+      "torch": "2.10.0+cu128"
+    }
+  },
+  "recbole_source_identity": {
+    "git_commit": "7b02be5ec80a88310f2d04a27a82adfcbb5dc211",
+    "git_tree": "ca6386c4121ce2aae478ced7e136894ac1d7c218",
+    "source_file_count_excluding_pycache": 256,
+    "source_manifest_sha256": "4478f9c3636d2c2c624ef802f2b2c7f38d662ebfd505e11b47a7904f43401f41",
+    "tracked_recbole_diff_sha256": "d8d2a7bb41754133ddde2e9f06b143fe7c8730fab13f5db7f7acc5c583873b97"
+  },
+  "runtime_identity": {
+    "cuda_available_at_freeze": true,
+    "cuda_runtime": "12.8",
+    "machine": "x86_64",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_executable_ref": "/root/miniconda3/envs/recbole/bin/python3.10",
+    "python_executable_sha256": "d99cded726bcf8b1576305ef425915fc7009c40325ecc2659553ab1c94997938",
+    "python_version": "3.10.20"
+  },
+  "schema": "recclaw.research-line.r1-r2-runtime-dependency-lock.v1"
+}

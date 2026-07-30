@@ -1,0 +1,7 @@
+{
+  "request_mode": "SINGLE_JSON_SCHEMA_NO_TOOLS",
+  "tool_choice": "NONE",
+  "tools": [],
+  "transport_assertion": "LabApiCanaryBrokerV1.call_with_session sends no tools field",
+  "web_access": "FORBIDDEN"
+}

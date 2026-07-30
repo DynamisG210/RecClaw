@@ -221,6 +221,7 @@ from .wave2_integration import (
     GPT_5_4_MODEL_DIGEST,
     OWNER_INTAKE_SCHEMA,
     PREFREEZE_SCHEMA,
+    READY_RECEIPT_SCHEMA,
     WAVE1_ACCEPTED_COMMIT,
     WAVE1_ACCEPTED_TREE,
     WAVE2_ACCEPTED_COMMIT,
@@ -228,6 +229,7 @@ from .wave2_integration import (
     WAVE2_ACCEPTED_TREE_ARCHIVE_SHA256,
     WAVE2_GATE_RECEIPT_SHA256,
     FrozenR1R2PrefreezeManifestV2,
+    FrozenR1R2PrefreezeManifestV3,
     Wave2IntegrationError,
     Wave2IntegrationHarnessV1,
     Wave2OwnerCorrectionRequired,
@@ -238,6 +240,7 @@ from .wave2_integration import (
     load_prefreeze_manifest,
     prefreeze_missing_fields,
     proposal_call_contract_digest,
+    r1_prefreeze_ready_receipt,
 )
 
 __all__ = [
@@ -294,6 +297,7 @@ __all__ = [
     "FrozenComparisonIdentityV1",
     "FrozenExperimentSlateV1",
     "FrozenR1R2PrefreezeManifestV2",
+    "FrozenR1R2PrefreezeManifestV3",
     "GateStatus",
     "GPT_5_4_MODEL_DIGEST",
     "HIGH_CHANGE_DIMENSIONS",
@@ -334,6 +338,7 @@ __all__ = [
     "ProducerExecutionModeV1",
     "ProposalGenerationSessionV1",
     "PREFREEZE_SCHEMA",
+    "READY_RECEIPT_SCHEMA",
     "PackageOwnedLauncherV1",
     "QualificationCheckStatusV1",
     "QualificationFailureClassV1",
@@ -425,6 +430,7 @@ __all__ = [
     "project_open_producer_draft",
     "prefreeze_missing_fields",
     "proposal_call_contract_digest",
+    "r1_prefreeze_ready_receipt",
     "predecessor_executable_entries",
     "qualify_local_innovation_candidate",
     "register_materialization_artifacts",

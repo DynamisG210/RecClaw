@@ -1,0 +1,47 @@
+{
+  "analysis_plan": {
+    "a_b_interpretation": "SYMMETRIC_INDEPENDENT_REPLICATION_LANES_NOT_A_TREATMENT_EFFECT_TEST",
+    "candidate_flow": "ALL_VALID_PREASSIGNED_SLOTS_IN_CALL_ORDER_NO_POST_HOC_SELECTION",
+    "claim_ceiling": "DEVELOPMENT_ONLY_ENGINEERING_QUALIFICATION",
+    "denominator_per_side": 8,
+    "primary_endpoints": [
+      "fresh_open_spec_count",
+      "distinct_producer_role_count",
+      "qualified_capability_count",
+      "real_mechanism_change_count"
+    ],
+    "r1_success_rule": "BOTH_SIDES_MEET_ALL_FROZEN_THRESHOLDS_AND_SHARED_NEGATIVE_FIXTURE_FAILS_AT_EXPECTED_STAGE",
+    "r2_authorization_rule": "R2_REQUIRES_SEPARATE_POST_R1_REVIEW_AND_FRESH_CAMPAIGN_LAUNCH_AUTHORIZATION",
+    "reporting": "EXACT_COUNTS_AND_FAILURE_CLASSES_NO_EFFECT_SIZE_OR_SCIENTIFIC_OUTCOME_CLAIM"
+  },
+  "missingness_policy": {
+    "content_not_json": "MISSING_CONSUMED_SLOT_NO_RETRY",
+    "infrastructure_failure": "MISSING_CONSUMED_SLOT_NOT_CANDIDATE_QUALITY",
+    "no_imputation": true,
+    "no_replacement_calls": true,
+    "no_success_cherry_pick": true,
+    "provider_denominator": "ALL_8_PREASSIGNED_CALLS_PER_SIDE",
+    "schema_failure": "MISSING_CONSUMED_SLOT_NO_RETRY"
+  },
+  "qualification_gate": {
+    "catalog_fallback_allowed": false,
+    "evidence_class": "DEVELOPMENT_ONLY",
+    "manual_candidate_patch_forbidden": true,
+    "negative_fixture_required": true,
+    "resolver_required": "INNOVATION_REQUIRED",
+    "shared_implementer_required": true,
+    "shared_qualifier_required": true
+  },
+  "threshold_policy": {
+    "accepted_change_kinds": [
+      "STRUCTURAL",
+      "INTERACTION",
+      "PROPAGATION"
+    ],
+    "minimum_fresh_specs_per_side": 4,
+    "minimum_producer_roles_per_side": 2,
+    "minimum_qualified_capabilities_per_side": 2,
+    "minimum_real_mechanism_changes_overall": 1,
+    "threshold_adjustment_after_any_response_or_outcome": "FORBIDDEN"
+  }
+}

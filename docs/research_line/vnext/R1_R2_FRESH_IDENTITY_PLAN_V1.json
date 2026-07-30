@@ -1,0 +1,98 @@
+{
+  "freshness_assertions": {
+    "legacy_attempt_identity_reuse": false,
+    "legacy_candidate_reuse": false,
+    "legacy_database_reuse": false,
+    "legacy_memory_reuse": false,
+    "legacy_outcome_reuse": false,
+    "legacy_root_reuse": false,
+    "sealed_artifact_mutation": false
+  },
+  "r1": {
+    "candidate_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/candidates",
+    "coordinator_db": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/state/r1_coordinator.sqlite3",
+    "lineage": "recclaw-fresh-r1-lineage-v1:source=fbcb410e9bdf5052ed48a7e54152eca3917c8dd9",
+    "memory_namespace": "recclaw-fresh-r1-qualification-memory-v1",
+    "outcome_namespace": "recclaw-fresh-r1-development-closures-v1",
+    "package_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/packages",
+    "root": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1",
+    "seed_plan": {
+      "qualification_seed_by_slot_side_a": [
+        41101,
+        41102,
+        41103,
+        41104,
+        41105,
+        41106,
+        41107,
+        41108
+      ],
+      "qualification_seed_by_slot_side_b": [
+        42101,
+        42102,
+        42103,
+        42104,
+        42105,
+        42106,
+        42107,
+        42108
+      ],
+      "side_a_proposal_seed_by_slot": [
+        41001,
+        41002,
+        41003,
+        41004,
+        41005,
+        41006,
+        41007,
+        41008
+      ],
+      "side_b_proposal_seed_by_slot": [
+        42001,
+        42002,
+        42003,
+        42004,
+        42005,
+        42006,
+        42007,
+        42008
+      ]
+    },
+    "side_a": {
+      "candidate_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_a/candidates",
+      "db": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_a/state.sqlite3",
+      "identity": "recclaw-fresh-r1-side-a-v1",
+      "memory_namespace": "recclaw-fresh-r1-side-a-qualification-memory-v1",
+      "origin_field_excluded_from_implementer_and_qualifier": true,
+      "outcome_namespace": "recclaw-fresh-r1-side-a-development-closures-v1",
+      "package_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_a/packages",
+      "root": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_a"
+    },
+    "side_b": {
+      "candidate_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_b/candidates",
+      "db": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_b/state.sqlite3",
+      "identity": "recclaw-fresh-r1-side-b-v1",
+      "memory_namespace": "recclaw-fresh-r1-side-b-qualification-memory-v1",
+      "origin_field_excluded_from_implementer_and_qualifier": true,
+      "outcome_namespace": "recclaw-fresh-r1-side-b-development-closures-v1",
+      "package_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_b/packages",
+      "root": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/side_b"
+    }
+  },
+  "r2": {
+    "candidate_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r2_profile_growth_v1/candidates",
+    "db": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r2_profile_growth_v1/state/r2.sqlite3",
+    "lineage": "recclaw-fresh-r2-lineage-v1:source=fbcb410e9bdf5052ed48a7e54152eca3917c8dd9:r1-registry-receipt-required-at-r2-launch",
+    "memory_namespace": "recclaw-fresh-r2-scientific-memory-v1",
+    "outcome_namespace": "recclaw-fresh-r2-experiment-outcomes-v1",
+    "package_namespace": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r2_profile_growth_v1/packages",
+    "root": "planned-posix-path:/root/projects/RecClaw_r1_r2_runs/fresh_r2_profile_growth_v1",
+    "seed_plan": {
+      "profile_build_seed": 51001,
+      "search_seed": 51002,
+      "training_seed": 51003
+    }
+  },
+  "root_creation_before_r1_ready": "FORBIDDEN",
+  "schema": "recclaw.research-line.r1-r2-fresh-identity-plan.v1"
+}
