@@ -1,0 +1,45 @@
+{
+  "accepted_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+  "accepted_tree": "3fd503618a664025e8f7a4c751ffdb646787a3d7",
+  "authority": {
+    "actual_status_audit_sha256": "95ffc098fdbe3bd3e7e9032835d2439c5ae3be7d6ba9dc607d57b2b48ff0d5b4",
+    "workflow_and_ownership_sha256": "15aa7cbd025eee936e4b11c8a1f919f674cfaeca23ee8623aa0e6494ac6dbb56"
+  },
+  "external_actions": {
+    "pushed": false,
+    "released": false,
+    "tagged": false
+  },
+  "integration_merges": {
+    "a0": "f06e0c868f9b5088855f01cae8bd4f33c92746a0",
+    "bc": "83eb440ab561ad787d5513cc6afc16507b99c3ab",
+    "d0": "b7fc787688c528084e3f100d4000b71d00e057a2"
+  },
+  "owner_byte_identities": {
+    "a0": {
+      "accepted_tip": "35cdcb55fc1bb69ff3770fdb8338462b0dce99a0",
+      "accepted_tree": "76fadf8bf7ce4f2fb20984e5d59c7c070558f76b"
+    },
+    "bc": {
+      "accepted_tip": "5d986d1fe53645dcef31256c8db5f0de160c486e",
+      "accepted_tree": "46c16e537406c02b198824d7a0c8a93dcbdfc5bf"
+    },
+    "d0": {
+      "accepted_tip": "5c6b064fa90f6d495e226831f0ec86fc9e89d391",
+      "accepted_tree": "70caaa2e5bbe56b6978ac358235fe2702173b73c"
+    }
+  },
+  "rc0": "4306d9ba13157d3c9ed6b877d33558ba9a40c449",
+  "schema": "recclaw.research-line.wave1-rc1-candidate.v1",
+  "status": "LOCAL_WAVE1_ACCEPTED_RC1_CANDIDATE",
+  "wave1_gate": {
+    "canonical_integrated_test": "2 passed",
+    "independent_gate": "PASS",
+    "required_boundaries_closed": 7
+  },
+  "wave2_owner_intakes": {
+    "d1_scientific_episode_adapter": null,
+    "e0_search_adapter": null,
+    "f0_open_meta_interface": null
+  }
+}

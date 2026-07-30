@@ -1,0 +1,107 @@
+{
+  "evidence_policy": {
+    "analysis_plan_digest": null,
+    "analysis_plan_ref": null,
+    "held_out_absent": true,
+    "missingness_policy_digest": null,
+    "missingness_policy_ref": null
+  },
+  "provider_identity": {
+    "credential_identity_digest": null,
+    "endpoint_digest": null,
+    "endpoint_ref": null,
+    "model_digest": null,
+    "model_ref": null
+  },
+  "r1_gate": {
+    "requirements": {
+      "accepted_change_kinds": [
+        "STRUCTURAL",
+        "INTERACTION",
+        "PROPAGATION"
+      ],
+      "minimum_fresh_specs": 4,
+      "minimum_producer_roles": 2,
+      "minimum_qualified": 2,
+      "minimum_real_mechanism_changes": 1
+    },
+    "result_slots": {
+      "fresh_spec_receipt_refs": [],
+      "producer_role_receipt_refs": [],
+      "qualified_capability_receipt_refs": [],
+      "real_mechanism_change_receipt_refs": []
+    }
+  },
+  "r1_identity": {
+    "db_digest": null,
+    "db_ref": null,
+    "lineage_digest": null,
+    "lineage_ref": null,
+    "memory_namespace_digest": null,
+    "memory_namespace_ref": null,
+    "outcome_namespace_digest": null,
+    "outcome_namespace_ref": null,
+    "root_digest": null,
+    "root_ref": null,
+    "seed_digest": null,
+    "seed_ref": null,
+    "side_a_identity_digest": null,
+    "side_a_identity_ref": null,
+    "side_b_identity_digest": null,
+    "side_b_identity_ref": null
+  },
+  "r2_identity": {
+    "db_digest": null,
+    "db_ref": null,
+    "lineage_digest": null,
+    "lineage_ref": null,
+    "memory_namespace_digest": null,
+    "memory_namespace_ref": null,
+    "outcome_namespace_digest": null,
+    "outcome_namespace_ref": null,
+    "root_digest": null,
+    "root_ref": null,
+    "seed_digest": null,
+    "seed_ref": null
+  },
+  "runtime_identity": {
+    "dependency_lock_digest": null,
+    "dependency_lock_ref": null,
+    "runtime_digest": null,
+    "runtime_ref": null
+  },
+  "schema": "recclaw.research-line.r1-r2-prefreeze-manifest.v1",
+  "shared_implementation": {
+    "implementer_digest": null,
+    "implementer_ref": null,
+    "manual_candidate_patch_forbidden": true,
+    "qualification_evidence_class": "DEVELOPMENT_ONLY",
+    "qualifier_digest": null,
+    "qualifier_ref": null
+  },
+  "shared_proposal_call": {
+    "call_count": null,
+    "failure_rule_digest": null,
+    "failure_rule_ref": null,
+    "granularity": null,
+    "no_retry": true,
+    "prompt_digest": null,
+    "prompt_ref": null,
+    "proposal_budget_per_side": 8,
+    "response_contract_digest": null,
+    "response_contract_ref": null,
+    "token_budget": null,
+    "tool_digest": null,
+    "tool_ref": null
+  },
+  "source_identity": {
+    "commit": null,
+    "schema_digest": null,
+    "schema_ref": null,
+    "tree_digest": null
+  },
+  "wave1_base": {
+    "commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+    "tree": "3fd503618a664025e8f7a4c751ffdb646787a3d7"
+  }
+}

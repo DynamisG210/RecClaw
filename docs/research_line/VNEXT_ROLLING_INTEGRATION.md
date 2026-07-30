@@ -9,6 +9,9 @@
 - BC Next Profile merge: `83eb440ab561ad787d5513cc6afc16507b99c3ab`
 - A0 OpenSpec merge: `f06e0c868f9b5088855f01cae8bd4f33c92746a0`
 - D0 Episode closure merge: `b7fc787688c528084e3f100d4000b71d00e057a2`
+- Local Wave 1 accepted / RC1 candidate base:
+  `4d493939bb1e118ae9c99c89e8b73077078c3ab8`
+- Candidate tree: `3fd503618a664025e8f7a4c751ffdb646787a3d7`
 
 The integration branch was created from RC0 with WSL-native Git. Existing
 worktrees, including Strategic Reset, are not integration inputs.
@@ -54,8 +57,9 @@ base. Their business files remain byte-identical to the accepted tips.
 | A0 OpenSpec and Resolver runtime | Integrated | Four-role projection and five deterministic results; no catalog fallback |
 | D0 Episode closure | Integrated | Scientific Episode and engineering diagnostic permissions remain separate |
 | G local orchestration | Integrated | Open draft through Next Fresh Profile plus negative D0 diagnostic |
-| RC1 field representation | Locally exercised | Full Wave 1 local vertical passes; formal designation remains external |
-| R1/R2 launchers | Not started | Provider, outcome and later Wave authority are outside this integration |
+| RC1 field representation | Local candidate accepted | Independent Wave 1 gate passed at exact commit `4d493939`; no tag, push or release |
+| Wave 2 owner adapters | Awaiting accepted SHAs | G has only a mechanical intake descriptor; no owner logic is present |
+| R1/R2 launcher | Dry-run boundary only | Complete canonical prefreeze identity is required; Provider and experiment execution are impossible through this boundary |
 
 The local orchestration boundary intentionally ends at
 `ProfileBuildReceiptV1`. It does not mutate the current campaign, call a
@@ -99,7 +103,73 @@ creates neither a `TypedResearchEpisodeV1` nor a scientific closure.
 7. Current profile and slate bytes remain unchanged; the new capability is
    ineligible until `NEXT_FRESH_CAMPAIGN`.
 
-## Commit intake checklist
+The exact local candidate record is
+`docs/research_line/vnext/WAVE1_RC1_CANDIDATE.json`. It binds the accepted
+commit and tree, frozen authority hashes, merge identities, owner tips and
+the still-empty E0/D1/F0 intake slots. It is not a tag or release manifest.
+
+## Wave 2 owner intake checklist
+
+Each E0, D1 or F0 intake must arrive from the supervisor with all of the
+following fields before G attaches it:
+
+1. The exact accepted commit SHA and its declared parent SHA.
+2. A clean owner worktree at that exact tip.
+3. The exact owner file surface and a SHA-256 manifest binding those bytes.
+4. A SHA-256 receipt for the owner-targeted tests at the exact accepted tip.
+5. A SHA-256 receipt for the owner structural lint at that exact tip.
+6. One canonical public `module:attribute` entrypoint.
+7. Evidence that the accepted commit descends from RC0 or the declared
+   already-accepted owner parent.
+8. A diff review showing no G-owned launcher, orchestration or shared schema
+   migration and no forbidden Provider/outcome/held-out or state surface.
+
+G records those values in `Wave2OwnerIntakeV1`, verifies the owner byte
+surface before and after integration, and preserves the owner commit and
+parent identities through an explicit merge whenever G and the owner have
+diverged. `Wave2IntegrationHarnessV1` only records the three future ports:
+E0 Search Adapter, D1 Scientific Episode adapter and F0 Open Meta interface.
+It neither imports nor executes their implementations. An entrypoint mismatch
+produces only the lane, field, expected value and observed value for the owner
+to correct.
+
+No accepted SHA has yet been recorded for E0, D1 or F0. Uncommitted,
+unaccepted or cross-owner bytes are not intake.
+The machine-readable frozen checklist is
+`docs/research_line/vnext/WAVE2_INTAKE_CHECKLIST.json`.
+
+## R1/R2 prefreeze and dry-run boundary
+
+`docs/research_line/vnext/R1_R2_PREFREEZE_TEMPLATE.json` is intentionally
+incomplete. Unknown source, runtime, schema, prompt, tool, endpoint, model,
+credential-identity, seed, namespace, root and DB identities remain `null`;
+G does not invent them. Before any launch authority can be considered, one
+copy must be completed and serialized as canonical, digest-stable JSON.
+
+The G loader fails closed unless the caller supplies that one file and its
+exact SHA-256 digest and every required identity is present. It freezes:
+
+- one shared A/B model identity and proposal-call contract, including
+  granularity, token budget, call count, failure rules and no retry;
+- proposal budget `8` per side;
+- fresh A/B identity plus isolated R1/R2 lineage, seed, outcome namespace,
+  memory namespace, root and DB references;
+- held-out absence, shared Implementer and Qualifier identities, manual
+  candidate patch prohibition and `DEVELOPMENT_ONLY` qualification;
+- missingness and analysis-plan identities before outcomes.
+
+The current launcher operation is deterministic dry-run validation only. Its
+receipt always records zero Provider calls, zero experiment runs, zero
+outcomes consumed and `launch_authorized = false`.
+
+The R1 gate reserves empty receipt slots for at least four fresh specs from at
+least two Producer roles, at least two qualified capabilities, and at least
+one real `STRUCTURAL`, `INTERACTION` or `PROPAGATION` change. Prefreeze files
+must keep those slots empty. Smoke, mock or development fixtures cannot
+populate them; only later real R1 receipts may be evaluated by an accepted
+owner boundary.
+
+## General commit intake checklist
 
 1. Record the supervisor-accepted commit SHA and owner lane.
 2. Verify the commit exists and is a descendant of RC0.
@@ -130,8 +200,15 @@ creates neither a `TypedResearchEpisodeV1` nor a scientific closure.
 | Implementer, package, RecBole adapter, Qualifier, admission, registry, Next Profile internals | BC |
 | Episode closure, failure/evidence classification and memory authority | D0 |
 | Public exports, shared schema migration, old-entry migration, orchestration, launchers and end-to-end wiring | G |
+| Search Adapter implementation | E0 |
+| Scientific Episode adapter implementation | D1 |
+| Open Meta interface implementation | F0 |
 
 If runtime evidence requires an RC0 semantic or representation change, the
 originating owner supplies the smallest reproducer and proposed correction.
 G applies the shared migration once, records it as RC1, and updates all
 integrated callers. G does not copy owner logic to bypass a conflict.
+
+The Wave 2 preparation adds no Producer, Search, Router, Runner, Evaluator,
+Interpreter, Meta or Guard implementation. It also adds no database, ledger,
+authority service, state machine, Broker, retry or cooldown behavior.

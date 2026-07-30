@@ -1,0 +1,48 @@
+{
+  "accepted_base_commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
+  "conflict_policy": {
+    "g_may_resolve": [
+      "public_exports",
+      "shared_schema_migration",
+      "orchestrator",
+      "launcher",
+      "integration_tests"
+    ],
+    "owner_correction_required": "owner_internal_interface_or_business_logic"
+  },
+  "forbidden_intake_surfaces": [
+    "provider_call",
+    "outcome",
+    "held_out",
+    "owner_logic_reimplementation",
+    "database_or_ledger_service",
+    "authority_or_state_service",
+    "broker",
+    "retry",
+    "cooldown"
+  ],
+  "lanes": {
+    "D1_SCIENTIFIC_EPISODE_ADAPTER": {
+      "accepted_intake": null,
+      "owner": "D1"
+    },
+    "E0_SEARCH_ADAPTER": {
+      "accepted_intake": null,
+      "owner": "E0"
+    },
+    "F0_OPEN_META_INTERFACE": {
+      "accepted_intake": null,
+      "owner": "F0"
+    }
+  },
+  "merge_policy": "preserve_owner_commit_and_parent_identity",
+  "required_accepted_intake_fields": [
+    "accepted_commit",
+    "parent_commit",
+    "owner_file_manifest_sha256",
+    "targeted_tests_receipt_sha256",
+    "structure_lint_receipt_sha256",
+    "public_entrypoint"
+  ],
+  "schema": "recclaw.research-line.wave2-intake-checklist.v1"
+}
