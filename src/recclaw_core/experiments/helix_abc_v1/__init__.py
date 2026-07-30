@@ -42,6 +42,11 @@ from .materialization import (
     register_materialization_artifacts,
     verify_binding_v2,
 )
+from .next_fresh_profile import (
+    NextFreshProfileBuildError,
+    NextFreshProfileBuildManifest,
+    build_next_fresh_profile,
+)
 from .runtime_contracts import (
     CandidateExecutionBindingV2,
     CommonDecision,
@@ -155,6 +160,8 @@ __all__ = [
     "MaterializationReportV1",
     "MetaPolicyModeV1",
     "NEXT_FRESH_CAMPAIGN",
+    "NextFreshProfileBuildError",
+    "NextFreshProfileBuildManifest",
     "NullEvidencePortV1",
     "OpenResearchSpecV1",
     "OpenRoundCommand",
@@ -186,6 +193,7 @@ __all__ = [
     "VersionedCapabilityRegistry",
     "admit_qualified_capability",
     "build_binding_v2",
+    "build_next_fresh_profile",
     "campaign_projection",
     "classify_execution_trust",
     "common_release_projection",
