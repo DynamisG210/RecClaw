@@ -1,0 +1,70 @@
+{
+  "fixture_id": "e0-search-adapter-canonical-v1",
+  "fixture_version": "1.0.0",
+  "campaigns": {
+    "current": "campaign:e0-current-fixed-66",
+    "next_fresh": "campaign:e0-next-fresh-67"
+  },
+  "current_profile": {
+    "profile_ref": "BL_ICF_EXECUTABLE_PROFILE_V2",
+    "profile_digest": "952ba027cb8dbfd8831fca6d33ce39db1aabd4dbc41534b089250e0dc1253b15",
+    "canonical_bytes_sha256": "a8f44e5ebeb8aa9dc3a96c26b849e65bd8f458c83dbe818b97774ca8f55e4e38",
+    "canonical_byte_length": 31995,
+    "executable_count": 66,
+    "bpr_count": 24,
+    "lightgcn_count": 42
+  },
+  "experiment_budget": {
+    "candidate_slots": 67,
+    "selected_experiments": 1,
+    "training_runs": 1
+  },
+  "positive_cases": [
+    {
+      "fixture_id": "current-search-ready",
+      "expected_idea_route": "SEARCH",
+      "expected_current_selectable": true,
+      "expected_next_selectable": true
+    },
+    {
+      "fixture_id": "qualified-next-fresh",
+      "expected_idea_route": "INNOVATION",
+      "expected_current_selectable": false,
+      "expected_next_selectable": true,
+      "expected_selected_origin": "QUALIFIED_REGISTRY"
+    }
+  ],
+  "negative_cases": [
+    {
+      "fixture_id": "unqualified-open-spec",
+      "expected_idea_route": "INNOVATION",
+      "expected_current_selectable": false
+    },
+    {
+      "fixture_id": "unsupported-open-spec",
+      "expected_idea_route": "BLOCKED",
+      "expected_current_selectable": false
+    },
+    {
+      "fixture_id": "deferred-protocol-change",
+      "expected_idea_route": "BLOCKED",
+      "expected_disposition": "DEFER",
+      "expected_current_selectable": false
+    },
+    {
+      "fixture_id": "invalid-open-spec",
+      "expected_idea_route": "BLOCKED",
+      "expected_disposition": "REJECT",
+      "expected_current_selectable": false
+    },
+    {
+      "fixture_id": "qualified-current-campaign",
+      "expected_current_selectable": false
+    },
+    {
+      "fixture_id": "qualified-exact-66-fallback",
+      "expected_next_selectable": false,
+      "expected_reason": "qualified capability cannot silently fall back to the fixed 66"
+    }
+  ]
+}
