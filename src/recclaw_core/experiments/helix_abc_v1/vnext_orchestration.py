@@ -2,13 +2,14 @@
 
 This module only composes the RC0 contracts and accepted Innovation Spine
 entrypoints.  It deliberately stops after deterministic Next Fresh Profile
-construction and before Provider execution or scientific outcome closure.
+construction and engineering diagnostics, before Provider execution or any
+outcome-bearing scientific closure.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .capability_admission import (
     VersionedCapabilityRegistry,
@@ -28,13 +29,67 @@ from .next_fresh_profile import (
     NextFreshProfileBuildManifest,
     build_next_fresh_profile,
 )
+from .open_spec import (
+    project_candidate_proposal_v4,
+    project_open_producer_draft,
+    resolve_capability,
+)
+from .research_contracts import CandidateProposalV4
+from .scientific_episode import (
+    FrozenComparisonIdentityV1,
+    ScientificEpisodeClosureV1,
+    close_scientific_episode,
+)
 from .vnext_contracts import (
+    CapabilityResolutionV1,
     CapabilityKindV1,
     ExecutableProfileVNext,
     OpenResearchSpecV1,
     ProfileBuildReceiptV1,
+    QualificationStatusV1,
     QualifiedCapabilityV1,
+    ResearchFailureClassV1,
+    VNextContractError,
 )
+
+
+def resolve_candidate_proposal_v4(
+    proposal: CandidateProposalV4,
+    *,
+    bindings: Mapping[str, Any],
+    environment: Mapping[str, Any],
+    required_dependencies: Sequence[str] = (),
+    required_budget: Mapping[str, int] | None = None,
+) -> tuple[OpenResearchSpecV1, CapabilityResolutionV1]:
+    """Project and resolve one existing frozen-profile Producer proposal."""
+
+    spec, facts = project_candidate_proposal_v4(
+        proposal,
+        bindings=bindings,
+        required_dependencies=required_dependencies,
+        required_budget=required_budget,
+    )
+    return spec, resolve_capability(
+        spec,
+        resolution_facts=facts,
+        environment=environment,
+    )
+
+
+def resolve_open_producer_draft(
+    draft: Mapping[str, Any],
+    *,
+    bindings: Mapping[str, Any],
+    environment: Mapping[str, Any],
+) -> tuple[OpenResearchSpecV1, CapabilityResolutionV1]:
+    """Project and resolve one high-change draft from a frozen Producer role."""
+
+    spec, facts = project_open_producer_draft(draft, bindings=bindings)
+    return spec, resolve_capability(
+        spec,
+        resolution_facts=facts,
+        environment=environment,
+    )
 
 
 def qualify_local_innovation_candidate(
@@ -146,8 +201,41 @@ def build_local_next_fresh_profile(
     return manifest, profile, receipt
 
 
+def close_local_qualification_diagnostic(
+    comparison_identity: FrozenComparisonIdentityV1,
+    qualification: MechanicalQualificationRun,
+    *,
+    failure_class: ResearchFailureClassV1,
+) -> ScientificEpisodeClosureV1:
+    """Route one failed qualification only to D0 engineering diagnostics."""
+
+    receipt = qualification.receipt
+    if receipt.status is not QualificationStatusV1.FAIL:
+        raise VNextContractError(
+            "passing qualification without outcome creates no Episode or "
+            "scientific closure"
+        )
+    if receipt.failure_class.value != failure_class.value:
+        raise VNextContractError(
+            "qualification and diagnostic failure classes must match"
+        )
+    return close_scientific_episode(
+        comparison_identity=comparison_identity,
+        failure_class=failure_class,
+        episode=None,
+        observed_outcome_ref=None,
+        observed_outcome_digest=None,
+        qualification_receipt=receipt,
+        failure_detail_ref=receipt.failure_detail_ref,
+        failure_detail_digest=receipt.failure_detail_digest,
+    )
+
+
 __all__ = [
     "admit_local_qualification",
     "build_local_next_fresh_profile",
+    "close_local_qualification_diagnostic",
     "qualify_local_innovation_candidate",
+    "resolve_candidate_proposal_v4",
+    "resolve_open_producer_draft",
 ]
