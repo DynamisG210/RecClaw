@@ -69,9 +69,11 @@ class QualificationFailureClassV1(str, Enum):
     NONE = "NONE"
     IMPLEMENTATION = "IMPLEMENTATION"
     INTERFACE = "INTERFACE"
+    PACKAGE = "PACKAGE"
     RUNTIME = "RUNTIME"
     PROTOCOL = "PROTOCOL"
     RESOURCE = "RESOURCE"
+    PROVIDER = "PROVIDER"
     INCONCLUSIVE = "INCONCLUSIVE"
 
 
@@ -89,9 +91,13 @@ class ResearchFailureClassV1(str, Enum):
     MECHANISM = "MECHANISM"
     IMPLEMENTATION = "IMPLEMENTATION"
     INTERFACE = "INTERFACE"
+    PACKAGE = "PACKAGE"
     RUNTIME = "RUNTIME"
     PROTOCOL = "PROTOCOL"
     RESOURCE = "RESOURCE"
+    PROVIDER = "PROVIDER"
+    OUTCOME_MISSING = "OUTCOME_MISSING"
+    IDENTITY_DRIFT = "IDENTITY_DRIFT"
     INCONCLUSIVE = "INCONCLUSIVE"
 
 
@@ -691,9 +697,13 @@ _ENGINEERING_FAILURES = frozenset(
     {
         ResearchFailureClassV1.IMPLEMENTATION,
         ResearchFailureClassV1.INTERFACE,
+        ResearchFailureClassV1.PACKAGE,
         ResearchFailureClassV1.RUNTIME,
         ResearchFailureClassV1.PROTOCOL,
         ResearchFailureClassV1.RESOURCE,
+        ResearchFailureClassV1.PROVIDER,
+        ResearchFailureClassV1.OUTCOME_MISSING,
+        ResearchFailureClassV1.IDENTITY_DRIFT,
     }
 )
 _SCIENTIFIC_EVIDENCE_CLASSES = frozenset(
@@ -784,14 +794,10 @@ class TypedResearchEpisodeV1(_CanonicalVNextContract):
                 "QualificationReceipt cannot be used as scientific effect evidence"
             )
         if self.failure_class in _ENGINEERING_FAILURES:
-            if (
-                self.evidence_class is not EpisodeEvidenceClassV1.ENGINEERING_ONLY
-                or self.mechanism_interpretation != "NOT_ADJUDICATED"
-                or self.mechanism_negative_evidence
-            ):
-                raise VNextContractError(
-                    "engineering/interface/runtime failures cannot become mechanism evidence"
-                )
+            raise VNextContractError(
+                "TypedResearchEpisode describes only an executed scientific comparison; "
+                "non-scientific failures belong in the diagnostic closure"
+            )
         elif self.failure_class is ResearchFailureClassV1.MECHANISM:
             if (
                 not self.experiment_executed
