@@ -1,17 +1,31 @@
 {
+  "accepted_wave2": {
+    "commit": "56d3156f53d17d4d850368ce7a093fa368957d81",
+    "gate_receipt_sha256": "fcb431c0ae8738f243ba10021770a2c507bee2b6d8454df622c2dc05700332eb",
+    "git_tree": "30b239b7ac85cd8de176d4b719b327ba02b96e0b",
+    "tree_archive_sha256": "f25d901a5493399c247f2e205a834c485ab52a32756cfc6fa97b97fe1d021ba7"
+  },
   "evidence_policy": {
     "analysis_plan_digest": null,
     "analysis_plan_ref": null,
     "held_out_absent": true,
     "missingness_policy_digest": null,
-    "missingness_policy_ref": null
+    "missingness_policy_ref": null,
+    "threshold_policy_digest": null,
+    "threshold_policy_ref": null
   },
   "provider_identity": {
+    "call_entrypoint_digest": null,
+    "call_entrypoint_ref": null,
     "credential_identity_digest": null,
+    "credential_identity_present": null,
     "endpoint_digest": null,
     "endpoint_ref": null,
+    "endpoint_support_status": null,
     "model_digest": null,
-    "model_ref": null
+    "model_name": "gpt-5.4",
+    "release_digest": null,
+    "release_ref": null
   },
   "r1_gate": {
     "requirements": {
@@ -70,7 +84,7 @@
     "runtime_digest": null,
     "runtime_ref": null
   },
-  "schema": "recclaw.research-line.r1-r2-prefreeze-manifest.v1",
+  "schema": "recclaw.research-line.r1-r2-prefreeze-manifest.v2",
   "shared_implementation": {
     "implementer_digest": null,
     "implementer_ref": null,
@@ -90,18 +104,12 @@
     "proposal_budget_per_side": 8,
     "response_contract_digest": null,
     "response_contract_ref": null,
+    "retry_count": 0,
+    "shared_call_contract_digest": null,
+    "side_a_call_contract_digest": null,
+    "side_b_call_contract_digest": null,
     "token_budget": null,
     "tool_digest": null,
     "tool_ref": null
-  },
-  "source_identity": {
-    "commit": null,
-    "schema_digest": null,
-    "schema_ref": null,
-    "tree_digest": null
-  },
-  "wave1_base": {
-    "commit": "4d493939bb1e118ae9c99c89e8b73077078c3ab8",
-    "tree": "3fd503618a664025e8f7a4c751ffdb646787a3d7"
   }
 }

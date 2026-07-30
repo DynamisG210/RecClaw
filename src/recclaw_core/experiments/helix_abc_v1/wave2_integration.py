@@ -13,19 +13,35 @@ from .canonical import (
     bytes_sha256,
     canonical_json_bytes,
     canonical_value,
+    sha256_digest,
     validate_sha256,
 )
 
 
 WAVE1_ACCEPTED_COMMIT = "4d493939bb1e118ae9c99c89e8b73077078c3ab8"
 WAVE1_ACCEPTED_TREE = "3fd503618a664025e8f7a4c751ffdb646787a3d7"
-PREFREEZE_SCHEMA = "recclaw.research-line.r1-r2-prefreeze-manifest.v1"
-DRY_RUN_RECEIPT_SCHEMA = "recclaw.research-line.r1-r2-dry-run-receipt.v1"
+WAVE2_ACCEPTED_COMMIT = "56d3156f53d17d4d850368ce7a093fa368957d81"
+WAVE2_ACCEPTED_TREE = "30b239b7ac85cd8de176d4b719b327ba02b96e0b"
+WAVE2_ACCEPTED_TREE_ARCHIVE_SHA256 = (
+    "f25d901a5493399c247f2e205a834c485ab52a32756cfc6fa97b97fe1d021ba7"
+)
+WAVE2_GATE_RECEIPT_SHA256 = (
+    "fcb431c0ae8738f243ba10021770a2c507bee2b6d8454df622c2dc05700332eb"
+)
+PREFREEZE_SCHEMA = "recclaw.research-line.r1-r2-prefreeze-manifest.v2"
+DRY_RUN_RECEIPT_SCHEMA = "recclaw.research-line.r1-r2-dry-run-receipt.v2"
+BLOCKED_RECEIPT_SCHEMA = "recclaw.research-line.prefreeze-blocked-receipt.v1"
 OWNER_INTAKE_SCHEMA = "recclaw.research-line.wave2-owner-intake.v1"
+GPT_5_4_MODEL_DIGEST = (
+    "568d98474c084e840c6ddf03e03aa9ce82b577fef2912412546cfca2b278d99b"
+)
 
 _GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
 _ENTRYPOINT_RE = re.compile(
     r"[a-zA-Z_][a-zA-Z0-9_.]*:[a-zA-Z_][a-zA-Z0-9_]*"
+)
+_UNRESOLVED_IDENTITY_MARKERS = frozenset(
+    {"NULL", "TBD", "UNKNOWN", "UNRESOLVED", "UNSET"}
 )
 
 
@@ -254,12 +270,11 @@ def accepted_wave2_harness() -> Wave2IntegrationHarnessV1:
 
 _PREFREEZE_SHAPE: dict[str, Any] = {
     "schema": None,
-    "wave1_base": {"commit": None, "tree": None},
-    "source_identity": {
+    "accepted_wave2": {
         "commit": None,
-        "tree_digest": None,
-        "schema_ref": None,
-        "schema_digest": None,
+        "git_tree": None,
+        "tree_archive_sha256": None,
+        "gate_receipt_sha256": None,
     },
     "runtime_identity": {
         "runtime_ref": None,
@@ -268,11 +283,17 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "dependency_lock_digest": None,
     },
     "provider_identity": {
+        "call_entrypoint_ref": None,
+        "call_entrypoint_digest": None,
         "endpoint_ref": None,
         "endpoint_digest": None,
-        "model_ref": None,
+        "endpoint_support_status": None,
+        "release_ref": None,
+        "release_digest": None,
+        "model_name": None,
         "model_digest": None,
         "credential_identity_digest": None,
+        "credential_identity_present": None,
     },
     "shared_proposal_call": {
         "granularity": None,
@@ -287,7 +308,11 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "response_contract_ref": None,
         "response_contract_digest": None,
         "no_retry": None,
+        "retry_count": None,
         "proposal_budget_per_side": None,
+        "shared_call_contract_digest": None,
+        "side_a_call_contract_digest": None,
+        "side_b_call_contract_digest": None,
     },
     "shared_implementation": {
         "implementer_ref": None,
@@ -333,6 +358,8 @@ _PREFREEZE_SHAPE: dict[str, Any] = {
         "held_out_absent": None,
         "missingness_policy_ref": None,
         "missingness_policy_digest": None,
+        "threshold_policy_ref": None,
+        "threshold_policy_digest": None,
         "analysis_plan_ref": None,
         "analysis_plan_digest": None,
     },
@@ -409,6 +436,42 @@ def prefreeze_missing_fields(payload: Mapping[str, Any]) -> tuple[str, ...]:
     )
 
 
+def proposal_call_contract_digest(payload: Mapping[str, Any]) -> str:
+    """Bind every provider/call field that must be identical across R1 A/B."""
+
+    provider = payload["provider_identity"]
+    proposal = payload["shared_proposal_call"]
+    return sha256_digest(
+        {
+            "provider": {
+                "credential_identity_digest": provider[
+                    "credential_identity_digest"
+                ],
+                "endpoint_digest": provider["endpoint_digest"],
+                "model_digest": provider["model_digest"],
+                "model_name": provider["model_name"],
+                "release_digest": provider["release_digest"],
+            },
+            "proposal_call": {
+                "call_count": proposal["call_count"],
+                "failure_rule_digest": proposal["failure_rule_digest"],
+                "granularity": proposal["granularity"],
+                "no_retry": proposal["no_retry"],
+                "prompt_digest": proposal["prompt_digest"],
+                "proposal_budget_per_side": proposal[
+                    "proposal_budget_per_side"
+                ],
+                "response_contract_digest": proposal[
+                    "response_contract_digest"
+                ],
+                "retry_count": proposal["retry_count"],
+                "token_budget": proposal["token_budget"],
+                "tool_digest": proposal["tool_digest"],
+            },
+        }
+    )
+
+
 _DIGEST_PATHS = tuple(
     path
     for path in _leaf_paths(_PREFREEZE_SHAPE)
@@ -427,10 +490,14 @@ _ISOLATION_REF_PAIRS = (
     ("r1_identity.root_ref", "r2_identity.root_ref"),
     ("r1_identity.db_ref", "r2_identity.db_ref"),
 )
+_ISOLATION_DIGEST_PAIRS = tuple(
+    (left.replace("_ref", "_digest"), right.replace("_ref", "_digest"))
+    for left, right in _ISOLATION_REF_PAIRS
+)
 
 
 @dataclass(frozen=True, slots=True)
-class FrozenR1R2PrefreezeManifestV1:
+class FrozenR1R2PrefreezeManifestV2:
     """Complete, canonical pre-outcome identity admitted by the dry-run launcher."""
 
     payload: Mapping[str, Any]
@@ -446,14 +513,20 @@ class FrozenR1R2PrefreezeManifestV1:
             )
         if normalized["schema"] != PREFREEZE_SCHEMA:
             raise Wave2IntegrationError("unsupported prefreeze manifest schema")
-        if normalized["wave1_base"] != {
-            "commit": WAVE1_ACCEPTED_COMMIT,
-            "tree": WAVE1_ACCEPTED_TREE,
+        if normalized["accepted_wave2"] != {
+            "commit": WAVE2_ACCEPTED_COMMIT,
+            "git_tree": WAVE2_ACCEPTED_TREE,
+            "tree_archive_sha256": WAVE2_ACCEPTED_TREE_ARCHIVE_SHA256,
+            "gate_receipt_sha256": WAVE2_GATE_RECEIPT_SHA256,
         }:
-            raise Wave2IntegrationError("Wave 1 accepted base identity mismatch")
+            raise Wave2IntegrationError("accepted Wave 2 source identity mismatch")
         _git_object(
-            normalized["source_identity"]["commit"],
-            field_name="source_identity.commit",
+            normalized["accepted_wave2"]["commit"],
+            field_name="accepted_wave2.commit",
+        )
+        _git_object(
+            normalized["accepted_wave2"]["git_tree"],
+            field_name="accepted_wave2.git_tree",
         )
         for path in _DIGEST_PATHS:
             validate_sha256(_value_at(normalized, path), field_name=path)
@@ -461,8 +534,17 @@ class FrozenR1R2PrefreezeManifestV1:
             value = _value_at(normalized, path)
             if not isinstance(value, str) or not value.strip():
                 raise Wave2IntegrationError(f"{path} must be a non-empty identity ref")
+            if value.strip().upper() in _UNRESOLVED_IDENTITY_MARKERS:
+                raise Wave2IntegrationError(
+                    f"{path} must not use an unresolved identity marker"
+                )
         fixed_values = {
+            "provider_identity.endpoint_support_status": "VERIFIED_FOR_R1",
+            "provider_identity.model_name": "gpt-5.4",
+            "provider_identity.model_digest": GPT_5_4_MODEL_DIGEST,
+            "provider_identity.credential_identity_present": True,
             "shared_proposal_call.no_retry": True,
+            "shared_proposal_call.retry_count": 0,
             "shared_proposal_call.proposal_budget_per_side": 8,
             "shared_implementation.manual_candidate_patch_forbidden": True,
             "shared_implementation.qualification_evidence_class": "DEVELOPMENT_ONLY",
@@ -498,11 +580,32 @@ class FrozenR1R2PrefreezeManifestV1:
                 raise Wave2IntegrationError(
                     f"shared_proposal_call.{field_name} must be a positive integer"
                 )
-        for r1_path, r2_path in _ISOLATION_REF_PAIRS:
+        for r1_path, r2_path in (
+            *_ISOLATION_REF_PAIRS,
+            *_ISOLATION_DIGEST_PAIRS,
+        ):
             if _value_at(normalized, r1_path) == _value_at(normalized, r2_path):
                 raise Wave2IntegrationError(
                     f"{r1_path} and {r2_path} must be isolated"
                 )
+        shared_call_digest = normalized["shared_proposal_call"][
+            "shared_call_contract_digest"
+        ]
+        expected_call_digest = proposal_call_contract_digest(normalized)
+        if shared_call_digest != expected_call_digest:
+            raise Wave2IntegrationError(
+                "shared proposal call contract digest does not bind the "
+                "frozen provider and call fields"
+            )
+        side_call_digests = (
+            normalized["shared_proposal_call"]["side_a_call_contract_digest"],
+            normalized["shared_proposal_call"]["side_b_call_contract_digest"],
+        )
+        if side_call_digests != (shared_call_digest, shared_call_digest):
+            raise Wave2IntegrationError(
+                "R1 A/B model, granularity, token budget, call count, prompt, "
+                "tool, response contract, and failure rule must be identical"
+            )
         side_refs = (
             normalized["r1_identity"]["side_a_identity_ref"],
             normalized["r1_identity"]["side_b_identity_ref"],
@@ -529,7 +632,7 @@ def load_prefreeze_manifest(
     path: Path,
     *,
     expected_digest: str,
-) -> FrozenR1R2PrefreezeManifestV1:
+) -> FrozenR1R2PrefreezeManifestV2:
     """Load exactly one canonical manifest and bind it to its expected digest."""
 
     expected = validate_sha256(expected_digest, field_name="expected_digest")
@@ -546,7 +649,7 @@ def load_prefreeze_manifest(
         raise Wave2IntegrationError(
             "prefreeze manifest bytes are not canonical and digest-stable"
         )
-    return FrozenR1R2PrefreezeManifestV1(payload=payload)
+    return FrozenR1R2PrefreezeManifestV2(payload=payload)
 
 
 def dry_run_r1_r2_launcher(
@@ -563,11 +666,15 @@ def dry_run_r1_r2_launcher(
             "mode": "LOCAL_DETERMINISTIC_DRY_RUN",
             "manifest_ref": path.name,
             "manifest_digest": manifest.digest,
-            "wave1_base_commit": WAVE1_ACCEPTED_COMMIT,
+            "accepted_wave2_commit": WAVE2_ACCEPTED_COMMIT,
             "r1_r2_isolation_verified": True,
             "provider_calls": 0,
+            "gpu_runs": 0,
             "experiment_runs": 0,
             "outcomes_consumed": 0,
+            "held_out_reads": 0,
+            "roots_created": 0,
+            "databases_created": 0,
             "r1_gate_result_slots": "UNPOPULATED_REAL_R1_RECEIPTS_ONLY",
             "launch_authorized": False,
         }
