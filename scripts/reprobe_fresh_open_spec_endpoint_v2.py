@@ -105,6 +105,8 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     V7_SESSION_ID,
     v7_physical_root,
     validate_prefreeze_v7,
+    prefreeze_v8_runtime_spec,
+    validate_v8_exact_snapshot_pair,
 )
 from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
     V4_UNIQUENESS_CONTRACT_DIGEST,
@@ -1364,6 +1366,8 @@ class _V5PostBrokerContractFailure(ValueError):
 def _prefreeze_diagnostic_contract(version: int) -> dict[str, Any]:
     """Select identity/ceiling; V5--V7 share one transport path."""
 
+    if version == 8:
+        return prefreeze_v8_runtime_spec()
     if version == 5:
         return {
             "label": "V5",
@@ -1428,6 +1432,7 @@ def _classify_v5_failure(
     *,
     error: Exception,
     row: sqlite3.Row,
+    version: int = 5,
 ) -> dict[str, Any]:
     provider_receipt = json.loads(str(row["receipt_json"]))
     error_detail = (
@@ -1444,7 +1449,10 @@ def _classify_v5_failure(
     error_type = row["error_type"]
     cause_names = _cause_type_names(error)
     reason_codes = {
-        item["reason_code"] for item in diagnostic_reason_vocabulary()
+        item["reason_code"]
+        for item in diagnostic_reason_vocabulary(
+            include_returned_model_identity=version >= 8
+        )
     }
     response_reason: str | None = None
     if error_type in {"RESPONSE_CONTRACT_ERROR", "SCHEMA_VALIDATION_FAILURE"}:
@@ -1537,7 +1545,7 @@ def _prefreeze_top_receipt(
         "status": status,
         "attempt_id": contract_config["attempt_id"],
         "diagnostic_slot_id": contract_config["slot_id"],
-        "model_requested": MODEL,
+        "model_requested": contract_config["requested_model"],
         "returned_model": returned_model,
         "authentication_status": "VERIFIED" if success else "UNVERIFIED",
         "provider_schema_support_status": "VERIFIED" if success else "UNVERIFIED",
@@ -1583,9 +1591,14 @@ def _prefreeze_top_receipt(
             else [
                 "endpoint_authentication",
                 (
-                    "exact_gpt_5_4_returned_model"
-                    if version == 5
-                    else "exact_requested_alias_returned_snapshot_pair"
+                    contract_config.get(
+                        "blocked_identity_field",
+                        (
+                            "exact_gpt_5_4_returned_model"
+                            if version == 5
+                            else "exact_requested_alias_returned_snapshot_pair"
+                        ),
+                    )
                 ),
                 "v4_provider_schema_support",
                 "local_semantic_equivalence",
@@ -1593,7 +1606,13 @@ def _prefreeze_top_receipt(
         ),
         "r1_worker_launch_authorized": False,
     }
-    if version >= 6:
+    identity_receipt_fields = contract_config.get("identity_receipt_fields")
+    if identity_receipt_fields is not None:
+        receipt.update(identity_receipt_fields)
+        receipt["exact_model_pair_status"] = (
+            "VERIFIED" if success else "UNVERIFIED"
+        )
+    elif version >= 6:
         receipt.update(
             {
                 "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
@@ -1601,8 +1620,10 @@ def _prefreeze_top_receipt(
                 "exact_model_pair_status": "VERIFIED" if success else "UNVERIFIED",
             }
         )
-    if version == 7:
-        receipt["diagnostic_token_ceiling"] = V7_DIAGNOSTIC_TOKEN_CEILING
+    if "diagnostic_token_ceiling" in contract_config:
+        receipt["diagnostic_token_ceiling"] = contract_config[
+            "diagnostic_token_ceiling"
+        ]
     return receipt
 
 
@@ -1649,6 +1670,7 @@ def _main_prefreeze_diagnostic(version: int) -> int:
         if contract[field] != observed:
             raise SystemExit(f"{label} Provider identity mismatch: {field}")
     request_payload = exact_v4_probe_request_payload(ROOT)
+    request_payload["model"] = contract_config["requested_model"]
     request_payload["max_tokens"] = contract_config["token_ceiling"]
     if sha256_digest(request_payload) != contract["request_payload_digest"]:
         raise SystemExit(f"{label} physical request payload differs from manifest")
@@ -1673,11 +1695,17 @@ def _main_prefreeze_diagnostic(version: int) -> int:
                 physical_root,
                 schema_path=ROOT / V4_PROVIDER_SCHEMA_REL,
                 config_path=config_path,
-                model=MODEL,
+                model=contract_config["requested_model"],
                 max_total_tokens_per_call=6000,
                 timeout_ms=900_000,
-                release_manifest_path=ROOT / V4_RELEASE_REL,
+                release_manifest_path=(
+                    None if version >= 8 else ROOT / V4_RELEASE_REL
+                ),
             )
+            if version >= 8 and broker.release.release_digest != manifest[
+                "provider_release_contract"
+            ]["transport_release_contract_digest"]:
+                raise SystemExit(f"{label} Broker release identity mismatch")
             schema_digest = _validate_sqlite_schema(
                 broker._connection,  # noqa: SLF001 - required schema proof
                 expected_digest=manifest["bounded_retry"][
@@ -1695,13 +1723,25 @@ def _main_prefreeze_diagnostic(version: int) -> int:
                 raise _V5PostBrokerContractFailure("RETURNED_MODEL_MISMATCH")
             if version >= 6:
                 try:
-                    validate_v6_exact_model_pair(
-                        requested_model_alias=MODEL,
-                        returned_model=result.returned_model,
-                    )
+                    if version >= 8:
+                        validate_v8_exact_snapshot_pair(
+                            requested_model=contract_config[
+                                "requested_model"
+                            ],
+                            returned_model=result.returned_model,
+                        )
+                    else:
+                        validate_v6_exact_model_pair(
+                            requested_model_alias=MODEL,
+                            returned_model=result.returned_model,
+                        )
                 except Exception as error:
                     raise _V5PostBrokerContractFailure(
-                        "RETURNED_MODEL_PAIR_MISMATCH"
+                        (
+                            "RETURNED_MODEL_SNAPSHOT_MISMATCH"
+                            if version >= 8
+                            else "RETURNED_MODEL_PAIR_MISMATCH"
+                        )
                     ) from error
             if canonical_value(result.response) != canonical_value(sentinel):
                 raise _V5PostBrokerContractFailure(
@@ -1794,7 +1834,9 @@ def _main_prefreeze_diagnostic(version: int) -> int:
                 raise SystemExit(
                     f"{label} local receipt failure stopped before retry"
                 ) from error
-            evidence = _classify_v5_failure(error=error, row=row)
+            evidence = _classify_v5_failure(
+                error=error, row=row, version=version
+            )
             retry = evidence["retry_eligible"] and ordinal < 3
             local_contract_failure = isinstance(error, V4LocalUniquenessError)
             termination = (
@@ -1882,6 +1924,9 @@ def _main_prefreeze_diagnostic(version: int) -> int:
 
 
 def main() -> int:
+    if "--v8" in sys.argv:
+        sys.argv.remove("--v8")
+        return _main_prefreeze_diagnostic(8)
     if "--v7" in sys.argv:
         sys.argv.remove("--v7")
         return _main_prefreeze_diagnostic(7)

@@ -169,6 +169,74 @@ def test_single_schema_request_and_create_once_replay(
             assert b"private-test-key" not in artifact.read_bytes()
 
 
+@pytest.mark.parametrize("returned_model", [None, "", "   ", 54, []])
+def test_returned_model_must_be_explicit_non_empty_string(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    returned_model: object,
+) -> None:
+    envelope: dict[str, object] = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {"proposals": [{"mechanism_id": "m1"}]}
+                    )
+                }
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+        },
+    }
+    if returned_model is not None:
+        envelope["model"] = returned_model
+
+    monkeypatch.setattr(
+        "recclaw_core.experiments.helix_abc_v1."
+        "lab_api_broker.urlrequest.urlopen",
+        lambda *_args, **_kwargs: _Response(envelope),
+    )
+    private_root = tmp_path / "private"
+    broker = LabApiCanaryBrokerV1(
+        private_root,
+        schema_path=_schema(tmp_path / "schema.json"),
+        config_path=_config(tmp_path / "llm_api.toml"),
+        model="gpt-5.4-2026-03-05",
+        max_total_tokens_per_call=100,
+        timeout_ms=10_000,
+    )
+    try:
+        with pytest.raises(CanaryBrokerError):
+            broker.call_with_session(
+                logical_call_id="strict-returned-model",
+                proposal_generation_session_id="strict-model-session",
+                prompt="Return one proposal.",
+                expected_proposal_count=1,
+                max_total_tokens=50,
+            )
+        row = broker._connection.execute(
+            "SELECT status,error_type,error_detail_json,response_json,"
+            "returned_model FROM calls"
+        ).fetchone()
+        assert tuple(row) == (
+            "FAILED",
+            "RESPONSE_CONTRACT_ERROR",
+            '{"reason_code":"RETURNED_MODEL_TYPE_OR_EMPTY"}',
+            None,
+            None,
+        )
+    finally:
+        broker.close()
+    for artifact in private_root.rglob("*"):
+        if artifact.is_file():
+            content = artifact.read_bytes()
+            assert b"private-test-key" not in content
+            assert b"Return one proposal" not in content
+
+
 def test_transport_failure_is_terminal_and_not_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

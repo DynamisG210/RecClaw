@@ -63,8 +63,32 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (
     provider_free_v7_dry_run,
     validate_prefreeze_v7,
     verify_v6_seal,
+    V7_SEALED_DIGESTS,
+    V8_AUTH_REL,
+    V8_ATTEMPT_RECEIPT_REL,
+    V8_BLOCKED_REL,
+    V8_DIAGNOSTIC_TOKEN_CEILING,
+    V8_MANIFEST_REL,
+    V8_MODEL_SNAPSHOT,
+    V8_POLICY_REL,
+    V8_PRIVATE_ROOT,
+    V8_READY_REL,
+    V8_RELEASE_REL,
+    exact_v8_probe_request_payload,
+    expected_prefreeze_v8_manifest,
+    expected_v8_provider_release,
+    expected_v8_retry_policy,
+    provider_free_v8_dry_run,
+    prefreeze_v8_runtime_spec,
+    validate_prefreeze_v8,
+    validate_v8_exact_snapshot_pair,
+    verify_v7_seal,
 )
-from scripts.reprobe_fresh_open_spec_endpoint_v2 import _classify_v5_failure
+from scripts.build_r1_r2_prefreeze_v5_artifacts import _contract
+from scripts.reprobe_fresh_open_spec_endpoint_v2 import (
+    _classify_v5_failure,
+    _prefreeze_diagnostic_contract,
+)
 from recclaw_core.experiments.helix_abc_v1.wave2_integration import (
     Wave2IntegrationError,
 )
@@ -620,3 +644,223 @@ def test_checked_in_v7_outcome_is_terminal_exact_pair_mismatch() -> None:
     finally:
         connection.close()
     assert row == (1, "SUCCESS", None, 2408, V6_REQUESTED_MODEL_ALIAS)
+
+
+def test_v7_sealed_artifacts_remain_exact_bytes_for_v8() -> None:
+    observed = verify_v7_seal(ROOT)
+    for relative, digest in V7_SEALED_DIGESTS.items():
+        assert observed[relative.as_posix()] == digest
+        assert bytes_sha256((ROOT / relative).read_bytes()) == digest
+
+
+def test_v8_exact_snapshot_pair_has_no_alias_or_pattern_acceptance() -> None:
+    validate_v8_exact_snapshot_pair(
+        requested_model=V8_MODEL_SNAPSHOT,
+        returned_model=V8_MODEL_SNAPSHOT,
+    )
+    for requested, returned in (
+        ("gpt-5.4", V8_MODEL_SNAPSHOT),
+        (V8_MODEL_SNAPSHOT, "gpt-5.4"),
+        (V8_MODEL_SNAPSHOT, "gpt-5.4-2026-03-06"),
+        (V8_MODEL_SNAPSHOT + " ", V8_MODEL_SNAPSHOT),
+    ):
+        with pytest.raises(Wave2IntegrationError):
+            validate_v8_exact_snapshot_pair(
+                requested_model=requested,
+                returned_model=returned,
+            )
+
+
+def test_v8_changes_only_authorized_snapshot_identity_and_derived_digests() -> None:
+    v7 = json.loads((ROOT / V7_MANIFEST_REL).read_bytes())
+    v8 = expected_prefreeze_v8_manifest(ROOT)
+    exact7 = dict(v7["exact_provider_contract"])
+    exact8 = dict(v8["exact_provider_contract"])
+    unchanged = (
+        "endpoint_digest",
+        "credential_config_digest",
+        "credential_identity_digest",
+        "response_schema_digest",
+        "sentinel_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "request_mode",
+        "temperature",
+        "token_budget",
+    )
+    for field in unchanged:
+        assert exact8[field] == exact7[field]
+    assert exact8["model"] == V8_MODEL_SNAPSHOT
+    assert exact8["requested_model_literal"] == V8_MODEL_SNAPSHOT
+    assert exact8["required_returned_snapshot"] == V8_MODEL_SNAPSHOT
+    payload = exact_v8_probe_request_payload(ROOT)
+    assert payload["model"] == V8_MODEL_SNAPSHOT
+    assert payload["max_tokens"] == V8_DIAGNOSTIC_TOKEN_CEILING == 6000
+    assert "tools" not in payload and "functions" not in payload
+    assert v8["response_contract_equivalence"] == v7[
+        "response_contract_equivalence"
+    ]
+    assert v8["preserved_scientific_identity"] == v7[
+        "preserved_scientific_identity"
+    ]
+    future7 = dict(v7["future_r1_scientific_contract"])
+    future8 = dict(v8["future_r1_scientific_contract"])
+    for field in (
+        "requested_model_literal",
+        "required_returned_snapshot",
+        "shared_call_contract_digest",
+        "side_a_call_contract_digest",
+        "side_b_call_contract_digest",
+    ):
+        future7.pop(field, None)
+        future8.pop(field, None)
+    assert future8 == future7
+
+
+@pytest.mark.parametrize(
+    "field,mutated",
+    [
+        ("requested_model_literal", "gpt-5.4"),
+        ("required_returned_snapshot", "gpt-5.4"),
+        ("endpoint_digest", "0" * 64),
+        ("credential_config_digest", "1" * 64),
+        ("credential_identity_digest", "2" * 64),
+        ("response_schema_digest", "3" * 64),
+        ("local_uniqueness_contract_digest", "4" * 64),
+        ("prompt_digest", "5" * 64),
+        ("tool_policy_digest", "6" * 64),
+        ("diagnostic_token_budget", 5999),
+        ("future_r1_token_budget_per_call", 5999),
+        ("future_r1_call_count_per_side", 7),
+        ("future_r1_proposal_budget_per_side", 7),
+    ],
+)
+def test_v8_release_digest_is_sensitive_to_every_identity_binding(
+    field: str, mutated: object
+) -> None:
+    release = expected_v8_provider_release(ROOT)
+    expected_digest = release.pop("release_digest")
+    changed = deepcopy(release)
+    changed[field] = mutated
+    assert sha256_digest(release) == expected_digest
+    assert sha256_digest(changed) != expected_digest
+
+
+def test_v8_policy_keeps_all_contract_identity_failures_terminal() -> None:
+    policy = expected_v8_retry_policy(ROOT)
+    vocabulary = {
+        item["reason_code"]: item for item in policy[
+            "response_contract_reason_vocabulary"
+        ]
+    }
+    assert vocabulary["RETURNED_MODEL_TYPE_OR_EMPTY"]["retry_eligible"] == (
+        "FALSE_TERMINAL_RESPONSE_CONTRACT"
+    )
+    assert policy["exact_snapshot_identity_failure"]["retry_eligible"] is False
+    assert policy["diagnostic_slot"]["maximum_total_physical_attempts"] == 3
+    assert policy["diagnostic_slot"][
+        "deterministic_backoff_ms_after_failure"
+    ] == [1000, 3000]
+
+
+def test_v8_builder_and_probe_consume_one_shared_version_spec() -> None:
+    expected = prefreeze_v8_runtime_spec()
+    assert _contract(8) == expected
+    assert _prefreeze_diagnostic_contract(8) == expected
+
+
+def test_v8_missing_returned_model_reason_is_terminal_in_probe_policy() -> None:
+    evidence = _classify_v5_failure(
+        error=ValueError("must-not-be-persisted"),
+        row=_row(
+            error_type="RESPONSE_CONTRACT_ERROR",
+            http_status=200,
+            error_detail={"reason_code": "RETURNED_MODEL_TYPE_OR_EMPTY"},
+        ),
+        version=8,
+    )
+    assert evidence["classification"] == (
+        "HTTP_200_RESPONSE_CONTRACT_RETURNED_MODEL_TYPE_OR_EMPTY"
+    )
+    assert evidence["retry_eligible"] is False
+
+
+def test_checked_in_v8_contract_artifacts_are_exact_and_provider_free() -> None:
+    for relative in (V8_RELEASE_REL, V8_POLICY_REL, V8_MANIFEST_REL, V8_AUTH_REL):
+        assert (ROOT / relative).is_file()
+    manifest = validate_prefreeze_v8(ROOT)
+    dry_run = provider_free_v8_dry_run(ROOT)
+    assert manifest == expected_prefreeze_v8_manifest(ROOT)
+    assert dry_run["status"] == (
+        "PASS_PROVIDER_FREE_V8_EXACT_SNAPSHOT_REQUEST"
+    )
+    assert dry_run["provider_calls"] == 0
+    assert dry_run["training_runs"] == 0
+    assert dry_run["candidate_qualifications"] == 0
+    assert dry_run["candidate_admissions"] == 0
+    assert dry_run["outcomes_consumed"] == 0
+    assert dry_run["held_out_reads"] == 0
+
+
+def test_v8_outcome_is_three_transient_503s_exhausted_and_side_effect_free() -> None:
+    attempt_path = ROOT / V8_ATTEMPT_RECEIPT_REL
+    blocked_path = ROOT / V8_BLOCKED_REL
+    assert attempt_path.is_file()
+    assert blocked_path.is_file()
+    assert not (ROOT / V8_READY_REL).exists()
+    receipt = json.loads(attempt_path.read_bytes())
+    blocked = json.loads(blocked_path.read_bytes())
+    assert receipt["status"] == "BLOCKED"
+    assert receipt["physical_provider_calls"] == 3
+    assert receipt["retry_count"] == 2
+    assert receipt["final_classification"] == (
+        "HTTP_503_TRANSIENT_PROVIDER_ERROR"
+    )
+    assert receipt["termination_reason"] == "TRANSIENT_ATTEMPTS_EXHAUSTED"
+    assert receipt["response_contract_reason_code"] is None
+    assert [item["backoff_ms_after_attempt"] for item in receipt["physical_attempts"]] == [
+        1000,
+        3000,
+        0,
+    ]
+    assert all(
+        item["classification"] == "HTTP_503_TRANSIENT_PROVIDER_ERROR"
+        and item["http_status"] == 503
+        and item["returned_model"] is None
+        for item in receipt["physical_attempts"]
+    )
+    assert blocked["status"] == "BLOCKED_PREFREEZE_V8"
+    assert blocked["r1_worker_launch_authorized"] is False
+    for ordinal in (1, 2, 3):
+        connection = sqlite3.connect(
+            V8_PRIVATE_ROOT
+            / f"physical_attempt_{ordinal:02d}"
+            / "broker.sqlite3"
+        )
+        try:
+            row = connection.execute(
+                "SELECT COUNT(*),status,error_type,error_detail_json,"
+                "response_json,returned_model FROM calls"
+            ).fetchone()
+        finally:
+            connection.close()
+        assert row == (
+            1,
+            "FAILED",
+            "HTTP_503",
+            '{"http_status":503}',
+            None,
+            None,
+        )
+    for field in (
+        "research_candidates_generated",
+        "open_specs_projected",
+        "resolver_calls",
+        "candidate_roots_created",
+        "candidate_qualifications",
+        "candidate_admissions",
+        "training_runs",
+        "outcomes_consumed",
+        "held_out_reads",
+    ):
+        assert receipt[field] == 0

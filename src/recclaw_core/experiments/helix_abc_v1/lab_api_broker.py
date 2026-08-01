@@ -44,6 +44,7 @@ class LabApiResponseFailureReasonV1(str, Enum):
     USAGE_SHAPE = "USAGE_SHAPE"
     TOKEN_USAGE_TYPE = "TOKEN_USAGE_TYPE"
     TOKEN_CEILING = "TOKEN_CEILING"
+    RETURNED_MODEL_TYPE_OR_EMPTY = "RETURNED_MODEL_TYPE_OR_EMPTY"
 
 
 class LabApiResponseContractError(ValueError):
@@ -796,7 +797,11 @@ class LabApiCanaryBrokerV1:
             "output_tokens": output_tokens,
             "total_tokens": total_tokens,
         }
-        returned_model = str(envelope.get("model") or self.model)
+        returned_model = envelope.get("model")
+        if not isinstance(returned_model, str) or not returned_model.strip():
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.RETURNED_MODEL_TYPE_OR_EMPTY
+            )
         return response, usage, returned_model
 
     def _persist_failure(

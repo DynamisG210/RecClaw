@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .canonical import bytes_sha256, canonical_json_bytes, canonical_value, sha256_digest
-from .lab_api_broker import LabApiResponseFailureReasonV1
+from .lab_api_broker import (
+    LabApiBrokerReleaseV1,
+    LabApiResponseFailureReasonV1,
+)
 from .prefreeze_v2 import (
     DOC_ROOT_REL,
     SQLITE_CALL_COLUMNS,
@@ -85,6 +88,9 @@ V5_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V5_DRY_RUN_RECEIPT.json"
 V5_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V5_VERIFICATION_RECEIPT.json"
 BROKER_SOURCE_REL = Path(
     "src/recclaw_core/experiments/helix_abc_v1/lab_api_broker.py"
+)
+V5_ACCEPTED_BROKER_SOURCE_DIGEST = (
+    "3e255e71e128011e6533b259fcb3455da378b9ecb398862aed3d5eac8ae00441"
 )
 
 V5_SEALED_DIGESTS: dict[Path, str] = {
@@ -167,6 +173,45 @@ V7_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
 V7_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V7_DRY_RUN_RECEIPT.json"
 V7_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V7_VERIFICATION_RECEIPT.json"
 
+V7_HEAD = "f6c376410162921f60ee1025c1c2703c5d423768"
+V7_PARENT = "6d10e44baf73824d6e69770e4632aea38eb79de4"
+V7_TREE = "fad96fc6ca0315da787aeea40de657189a0bb12a"
+V7_SEALED_DIGESTS: dict[Path, str] = {
+    V7_RELEASE_REL: "98df1e6aeb165dda576a9550a1582b62c53ef21135dc27fc577d0e8b1e64ffba",
+    V7_POLICY_REL: "2da21f872d4edc97a179dfb56e494c98d60be2f48188eab9d1cb3deacd1418c2",
+    V7_MANIFEST_REL: "e006f409810994f360a7ffcb2e0a40a9c6a206ee9853c635a10dea6cf0e7f01e",
+    V7_AUTH_REL: "e61b156963af5febab5cebb85c8ea7e36234385020c23a33a275ea64d725939c",
+    V7_DRY_RUN_REL: "229478a68cbbe20ca63c901b40edd20e8be58f094b4e516b3ceee936e272f794",
+    V7_ATTEMPT_RECEIPT_REL: "412611f8a6d0a63ac7db7524b31fbd32aba2dc042a887edab845bd6bd3b134d8",
+    V7_BLOCKED_REL: "c2f41adfd99cbf50b75de33bea21374c5897af0e180a14afb35440a8d02caa88",
+}
+
+V8_MODEL_SNAPSHOT = "gpt-5.4-2026-03-05"
+V8_DIAGNOSTIC_TOKEN_CEILING = 6000
+V8_ATTEMPT_ID = "recclaw-r1-r2-prefreeze-v8-20260801"
+V8_LOGICAL_CALL_ID = "fresh-open-spec-prefreeze-v8-exact-snapshot-slot"
+V8_SESSION_ID = "fresh-open-spec-prefreeze-v8-exact-snapshot-slot-session"
+V8_PRIVATE_ROOT = Path("/root/projects/RecClaw_r1_prefreeze_probe_v8_private")
+V8_RELEASE_REL = DOC_ROOT_REL / "FRESH_OPEN_SPEC_PROVIDER_RELEASE_V8.json"
+V8_POLICY_REL = DOC_ROOT_REL / "R1_PROVIDER_RETRY_POLICY_V8.json"
+V8_MANIFEST_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_MANIFEST_V8.json"
+V8_AUTH_REL = DOC_ROOT_REL / "PREFREEZE_V8_AUTHORIZATION.json"
+V8_ATTEMPT_RECEIPT_REL = (
+    DOC_ROOT_REL / "FRESH_OPEN_SPEC_ENDPOINT_ATTEMPT_RECEIPT_V8.json"
+)
+V8_BLOCKED_REL = DOC_ROOT_REL / "PREFREEZE_V8_BLOCKED_RECEIPT.json"
+V8_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
+V8_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V8_DRY_RUN_RECEIPT.json"
+V8_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V8_VERIFICATION_RECEIPT.json"
+V8_ATTEMPT_RECEIPT_SCHEMA = (
+    "recclaw.research-line.prefreeze-v8-provider-attempt-receipt.v1"
+)
+V8_BLOCKED_SCHEMA = "recclaw.research-line.prefreeze-v8-blocked-receipt.v1"
+V8_READY_SCHEMA = "recclaw.research-line.r1-prefreeze-ready-receipt.v8"
+V8_VERIFICATION_SCHEMA = (
+    "recclaw.research-line.prefreeze-v8-verification-receipt.v1"
+)
+
 
 def _repo_ref(relative: Path) -> str:
     return relative.as_posix()
@@ -212,7 +257,9 @@ def verify_v4_seal(repo_root: Path) -> dict[str, str]:
     }
 
 
-def diagnostic_reason_vocabulary() -> list[dict[str, str]]:
+def diagnostic_reason_vocabulary(
+    *, include_returned_model_identity: bool = False
+) -> list[dict[str, str]]:
     stages = {
         "ENVELOPE_JSON_DECODE": "HTTP200_ENVELOPE_DECODE",
         "ENVELOPE_SHAPE": "HTTP200_ENVELOPE_SHAPE",
@@ -227,8 +274,15 @@ def diagnostic_reason_vocabulary() -> list[dict[str, str]]:
         "TOKEN_USAGE_TYPE": "HTTP200_TOKEN_USAGE_TYPE",
         "TOKEN_CEILING": "HTTP200_TOKEN_CEILING",
     }
+    if include_returned_model_identity:
+        stages["RETURNED_MODEL_TYPE_OR_EMPTY"] = (
+            "HTTP200_RETURNED_MODEL_IDENTITY"
+        )
     enum_values = {item.value for item in LabApiResponseFailureReasonV1}
-    if set(stages) != enum_values:
+    expected_enum_values = set(stages)
+    if not include_returned_model_identity:
+        expected_enum_values.add("RETURNED_MODEL_TYPE_OR_EMPTY")
+    if expected_enum_values != enum_values:
         raise Wave2IntegrationError("V5 reason vocabulary differs from Broker enum")
     return [
         {
@@ -322,9 +376,7 @@ def expected_prefreeze_v5_manifest(repo_root: Path) -> dict[str, Any]:
         "engineering_observability_change": {
             "only_change": "ALLOWLISTED_CONTENT_FREE_HTTP200_PARSE_REASON",
             "broker_source_ref": _repo_ref(BROKER_SOURCE_REL),
-            "broker_source_digest": bytes_sha256(
-                (repo_root / BROKER_SOURCE_REL).read_bytes()
-            ),
+            "broker_source_digest": V5_ACCEPTED_BROKER_SOURCE_DIGEST,
             "reason_vocabulary": diagnostic_reason_vocabulary(),
             "reason_vocabulary_digest": sha256_digest(
                 diagnostic_reason_vocabulary()
@@ -496,9 +548,13 @@ def verify_v5_seal(repo_root: Path) -> dict[str, str]:
             raise Wave2IntegrationError(
                 f"sealed V5 bytes changed: {relative.as_posix()}"
             )
-    broker_digest = bytes_sha256((repo_root / BROKER_SOURCE_REL).read_bytes())
-    if broker_digest != "3e255e71e128011e6533b259fcb3455da378b9ecb398862aed3d5eac8ae00441":
-        raise Wave2IntegrationError("accepted V5 Broker source bytes changed")
+    accepted_broker_digest = _read_json(repo_root / V5_MANIFEST_REL)[
+        "engineering_observability_change"
+    ]["broker_source_digest"]
+    if (
+        accepted_broker_digest != V5_ACCEPTED_BROKER_SOURCE_DIGEST
+    ):
+        raise Wave2IntegrationError("accepted V5 Broker source identity changed")
     return {
         relative.as_posix(): digest
         for relative, digest in V5_SEALED_DIGESTS.items()
@@ -1106,6 +1162,476 @@ def provider_free_v7_dry_run(repo_root: Path) -> dict[str, Any]:
     }
 
 
+def v8_physical_root(ordinal: int) -> Path:
+    if ordinal not in {1, 2, 3}:
+        raise Wave2IntegrationError("V8 physical attempt ordinal must be 1..3")
+    return V8_PRIVATE_ROOT / f"physical_attempt_{ordinal:02d}"
+
+
+def verify_v7_seal(repo_root: Path) -> dict[str, str]:
+    """Verify accepted V1--V7 artifacts without freezing mutable runtime code."""
+
+    verified = verify_v4_seal(repo_root)
+    for sealed in (V5_SEALED_DIGESTS, V6_SEALED_DIGESTS, V7_SEALED_DIGESTS):
+        for relative, digest in sealed.items():
+            path = repo_root / relative
+            if not path.is_file() or bytes_sha256(path.read_bytes()) != digest:
+                raise Wave2IntegrationError(
+                    f"sealed predecessor bytes changed: {relative.as_posix()}"
+                )
+            verified[relative.as_posix()] = digest
+    return verified
+
+
+def exact_v8_probe_request_payload(repo_root: Path) -> dict[str, Any]:
+    payload = exact_v4_probe_request_payload(repo_root)
+    payload["model"] = V8_MODEL_SNAPSHOT
+    payload["max_tokens"] = V8_DIAGNOSTIC_TOKEN_CEILING
+    return payload
+
+
+def exact_v8_probe_request_payload_digest(repo_root: Path) -> str:
+    return sha256_digest(exact_v8_probe_request_payload(repo_root))
+
+
+def validate_v8_exact_snapshot_pair(
+    *, requested_model: str, returned_model: str
+) -> None:
+    if requested_model != V8_MODEL_SNAPSHOT:
+        raise Wave2IntegrationError("V8 requested snapshot mismatch")
+    if returned_model != V8_MODEL_SNAPSHOT:
+        raise Wave2IntegrationError("V8 returned snapshot mismatch")
+
+
+def expected_v8_broker_release(repo_root: Path) -> dict[str, Any]:
+    v7 = _read_json(repo_root / V7_MANIFEST_REL)
+    exact = v7["exact_provider_contract"]
+    payload = {
+        "endpoint_digest": exact["endpoint_digest"],
+        "max_total_tokens_per_call": V8_DIAGNOSTIC_TOKEN_CEILING,
+        "model": V8_MODEL_SNAPSHOT,
+        "request_mode": "SINGLE_JSON_SCHEMA_NO_TOOLS",
+        "response_schema_digest": exact["response_schema_digest"],
+        "retry_count": 0,
+        "temperature": 0.0,
+        "timeout_ms": 900_000,
+        "transport": "HTTPS_CHAT_COMPLETIONS_V1",
+    }
+    release = LabApiBrokerReleaseV1(
+        **payload, release_digest=sha256_digest(payload)
+    )
+    release.verify()
+    return release.to_dict()
+
+
+def expected_v8_provider_release(repo_root: Path) -> dict[str, Any]:
+    verify_v7_seal(repo_root)
+    release = deepcopy(_read_json(repo_root / V7_RELEASE_REL))
+    release.pop("release_digest")
+    release.pop("requested_model_alias")
+    broker_release = expected_v8_broker_release(repo_root)
+    release.update(
+        {
+            "schema": "recclaw.research-line.provider-release-contract.v8",
+            "requested_model_literal": V8_MODEL_SNAPSHOT,
+            "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+            "request_and_return_matching": "TWO_EXACT_LITERAL_EQUALITIES",
+            "alias_request_or_fallback": "FORBIDDEN",
+            "transport_release_ref": "INLINE_LAB_API_BROKER_RELEASE_V1_V8",
+            "transport_release_artifact_digest": bytes_sha256(
+                canonical_json_bytes(broker_release)
+            ),
+            "transport_release_contract_digest": broker_release[
+                "release_digest"
+            ],
+            "broker_source_digest": bytes_sha256(
+                (repo_root / BROKER_SOURCE_REL).read_bytes()
+            ),
+        }
+    )
+    identity_preimage = {
+        key: release[key]
+        for key in (
+            "requested_model_literal",
+            "required_returned_snapshot",
+            "endpoint_digest",
+            "credential_config_digest",
+            "credential_identity_digest",
+            "response_schema_digest",
+            "local_uniqueness_contract_digest",
+            "prompt_digest",
+            "tool_policy_digest",
+            "request_mode",
+            "temperature",
+            "diagnostic_token_budget",
+            "transport_max_total_tokens_per_call",
+            "future_r1_token_budget_per_call",
+            "future_r1_call_count_per_side",
+            "future_r1_proposal_budget_per_side",
+        )
+    }
+    release["model_identity_contract_digest"] = sha256_digest(
+        identity_preimage
+    )
+    return {**release, "release_digest": sha256_digest(release)}
+
+
+def expected_v8_retry_policy(repo_root: Path) -> dict[str, Any]:
+    verify_v7_seal(repo_root)
+    policy = deepcopy(_read_json(repo_root / V7_POLICY_REL))
+    policy["schema"] = "recclaw.research-line.r1-provider-retry-policy.v8"
+    policy["inherited_v7_policy_ref"] = _repo_ref(V7_POLICY_REL)
+    policy["inherited_v7_policy_digest"] = V7_SEALED_DIGESTS[V7_POLICY_REL]
+    policy.pop("inherited_v6_policy_ref", None)
+    policy.pop("inherited_v6_policy_digest", None)
+    policy["diagnostic_slot"]["slot_id"] = (
+        "PREFREEZE_V8_EXACT_SNAPSHOT_REQUEST"
+    )
+    policy["response_contract_reason_vocabulary"] = (
+        diagnostic_reason_vocabulary(include_returned_model_identity=True)
+    )
+    policy.pop("exact_model_pair_failure", None)
+    policy["exact_snapshot_identity_failure"] = {
+        "failure_class": "RETURNED_MODEL_SNAPSHOT_MISMATCH",
+        "retry_eligible": False,
+        "manual_patch": "FORBIDDEN",
+        "successful_response_selection": "FORBIDDEN",
+        "candidate_admission": "FORBIDDEN",
+        "mechanism_negative_evidence": False,
+    }
+    return policy
+
+
+def expected_prefreeze_v8_manifest(repo_root: Path) -> dict[str, Any]:
+    verify_v7_seal(repo_root)
+    v7 = _read_json(repo_root / V7_MANIFEST_REL)
+    release = expected_v8_provider_release(repo_root)
+    policy = expected_v8_retry_policy(repo_root)
+    manifest = deepcopy(v7)
+    manifest["schema"] = "recclaw.research-line.r1-r2-prefreeze-attempt.v8"
+    manifest["attempt_identity"] = {
+        "attempt_id": V8_ATTEMPT_ID,
+        "base_commit": V7_HEAD,
+        "base_parent": V7_PARENT,
+        "base_tree": V7_TREE,
+        "pre_outcome": True,
+        "distinct_from_v1_v2_v3_v4_v5_v6_v7_attempts": True,
+        "old_attempt_call_session_db_identity_reuse": False,
+    }
+    manifest["sealed_predecessor_evidence"] = {
+        "v7_manifest_digest": V7_SEALED_DIGESTS[V7_MANIFEST_REL],
+        "v7_attempt_digest": V7_SEALED_DIGESTS[V7_ATTEMPT_RECEIPT_REL],
+        "v7_blocked_digest": V7_SEALED_DIGESTS[V7_BLOCKED_REL],
+        "v1_v2_v3_v4_v5_v6_v7_preservation": (
+            "SEALED_WORKING_AND_COMMITTED_BYTES_IDENTICAL"
+        ),
+    }
+    manifest.pop("authorized_v7_infrastructure_alignment", None)
+    manifest["authorized_v8_protocol_change"] = {
+        "only_scientific_contract_delta": (
+            "EXACT_SNAPSHOT_REQUEST_AND_EXACT_SAME_SNAPSHOT_RETURN"
+        ),
+        "requested_model_literal": V8_MODEL_SNAPSHOT,
+        "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+        "alias_allowlist_prefix_regex_startswith_or_fallback": "FORBIDDEN",
+        "endpoint_schema_prompt_sentinel_tools_temperature_budgets_unchanged": True,
+    }
+    manifest["provider_returned_model_evidence"] = {
+        "source": "PROVIDER_ENVELOPE_MODEL_FIELD_ONLY",
+        "missing_non_string_or_empty_reason": (
+            "RETURNED_MODEL_TYPE_OR_EMPTY"
+        ),
+        "missing_non_string_or_empty_retry_eligible": False,
+        "request_model_fallback_for_identity_proof": "FORBIDDEN",
+        "broker_source_ref": _repo_ref(BROKER_SOURCE_REL),
+        "broker_source_digest": release["broker_source_digest"],
+    }
+    manifest["provider_release_contract"] = release
+    exact = manifest["exact_provider_contract"]
+    exact.pop("requested_model_alias", None)
+    exact.update(
+        {
+            "model": V8_MODEL_SNAPSHOT,
+            "model_digest": sha256_digest({"model": V8_MODEL_SNAPSHOT}),
+            "requested_model_literal": V8_MODEL_SNAPSHOT,
+            "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+            "model_identity_pair_digest": sha256_digest(
+                {
+                    "requested_model_literal": V8_MODEL_SNAPSHOT,
+                    "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+                }
+            ),
+            "transport_provider_release_digest": release[
+                "transport_release_contract_digest"
+            ],
+            "provider_release_ref": _repo_ref(V8_RELEASE_REL),
+            "provider_release_artifact_digest": bytes_sha256(
+                canonical_json_bytes(release)
+            ),
+            "provider_release_digest": release["release_digest"],
+            "request_payload_digest": exact_v8_probe_request_payload_digest(
+                repo_root
+            ),
+            "token_budget": V8_DIAGNOSTIC_TOKEN_CEILING,
+            "logical_call_id": V8_LOGICAL_CALL_ID,
+            "proposal_generation_session_id": V8_SESSION_ID,
+            "diagnostic_slot_id": "PREFREEZE_V8_EXACT_SNAPSHOT_REQUEST",
+        }
+    )
+    identities = []
+    for ordinal in (1, 2, 3):
+        private_digest = sha256_digest(
+            {"path": v8_physical_root(ordinal).as_posix()}
+        )
+        identities.append(
+            {
+                "ordinal": ordinal,
+                "physical_attempt_identity_digest": sha256_digest(
+                    {
+                        "attempt_id": V8_ATTEMPT_ID,
+                        "diagnostic_slot": (
+                            "PREFREEZE_V8_EXACT_SNAPSHOT_REQUEST"
+                        ),
+                        "ordinal": ordinal,
+                        "private_root_digest": private_digest,
+                    }
+                ),
+                "private_root_digest": private_digest,
+            }
+        )
+    manifest["bounded_retry"].update(
+        {
+            "policy_ref": _repo_ref(V8_POLICY_REL),
+            "policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+            "physical_attempt_identities": identities,
+        }
+    )
+    future = manifest["future_r1_scientific_contract"]
+    inherited_shared = future["shared_call_contract_digest"]
+    shared = sha256_digest(
+        {
+            "inherited_v7_shared_call_contract_digest": inherited_shared,
+            "v8_provider_release_contract_digest": release["release_digest"],
+        }
+    )
+    future.update(
+        {
+            "requested_model_literal": V8_MODEL_SNAPSHOT,
+            "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+            "shared_call_contract_digest": shared,
+            "side_a_call_contract_digest": shared,
+            "side_b_call_contract_digest": shared,
+        }
+    )
+    manifest.pop("inherited_v6_scientific_contract_digest", None)
+    manifest.pop("v7_scientific_contract_digest", None)
+    manifest["inherited_v7_scientific_contract_digest"] = sha256_digest(
+        v7["future_r1_scientific_contract"]
+    )
+    manifest["v8_scientific_contract_digest"] = sha256_digest(future)
+    manifest["r1_worker_launch_authorized"] = False
+    return manifest
+
+
+def expected_v8_authorization(repo_root: Path) -> dict[str, Any]:
+    manifest = expected_prefreeze_v8_manifest(repo_root)
+    policy = expected_v8_retry_policy(repo_root)
+    release = expected_v8_provider_release(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v8-authorization.v1",
+        "status": "AUTHORIZED_ONE_V8_EXACT_SNAPSHOT_DIAGNOSTIC_SLOT",
+        "attempt_id": V8_ATTEMPT_ID,
+        "manifest_ref": _repo_ref(V8_MANIFEST_REL),
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "retry_policy_ref": _repo_ref(V8_POLICY_REL),
+        "retry_policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+        "provider_release_ref": _repo_ref(V8_RELEASE_REL),
+        "provider_release_artifact_digest": bytes_sha256(
+            canonical_json_bytes(release)
+        ),
+        "provider_release_contract_digest": release["release_digest"],
+        "broker_source_digest": release["broker_source_digest"],
+        "requested_model_literal": V8_MODEL_SNAPSHOT,
+        "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+        "diagnostic_token_ceiling": V8_DIAGNOSTIC_TOKEN_CEILING,
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "maximum_physical_attempts": 3,
+        "maximum_retry_count": 2,
+        "deterministic_backoff_ms": [1000, 3000],
+        "provider_calls_before_authorization": 0,
+        "candidate_training_outcome_held_out_before_authorization": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def validate_prefreeze_v8(repo_root: Path) -> dict[str, Any]:
+    verify_v7_seal(repo_root)
+    release = _load_exact(
+        repo_root / V8_RELEASE_REL, expected_v8_provider_release(repo_root)
+    )
+    policy = _load_exact(
+        repo_root / V8_POLICY_REL, expected_v8_retry_policy(repo_root)
+    )
+    manifest = _load_exact(
+        repo_root / V8_MANIFEST_REL, expected_prefreeze_v8_manifest(repo_root)
+    )
+    _load_exact(repo_root / V8_AUTH_REL, expected_v8_authorization(repo_root))
+    exact = manifest["exact_provider_contract"]
+    validate_v8_exact_snapshot_pair(
+        requested_model=exact["requested_model_literal"],
+        returned_model=exact["required_returned_snapshot"],
+    )
+    if (
+        exact["request_payload_digest"]
+        != exact_v8_probe_request_payload_digest(repo_root)
+        or exact["provider_release_digest"] != release["release_digest"]
+        or release["diagnostic_token_budget"] != 6000
+        or release["transport_max_total_tokens_per_call"] != 6000
+        or release["future_r1_token_budget_per_call"] != 6000
+    ):
+        raise Wave2IntegrationError("V8 exact payload/release/budget changed")
+    v7 = _read_json(repo_root / V7_MANIFEST_REL)
+    allowed_exact_delta = {
+        "model",
+        "model_digest",
+        "requested_model_alias",
+        "requested_model_literal",
+        "required_returned_snapshot",
+        "model_identity_pair_digest",
+        "transport_provider_release_digest",
+        "provider_release_ref",
+        "provider_release_artifact_digest",
+        "provider_release_digest",
+        "request_payload_digest",
+        "logical_call_id",
+        "proposal_generation_session_id",
+        "diagnostic_slot_id",
+    }
+    if {
+        key: value for key, value in exact.items() if key not in allowed_exact_delta
+    } != {
+        key: value
+        for key, value in v7["exact_provider_contract"].items()
+        if key not in allowed_exact_delta
+    }:
+        raise Wave2IntegrationError("V8 changed an unauthorized Provider field")
+    v7_future = deepcopy(v7["future_r1_scientific_contract"])
+    v8_future = deepcopy(manifest["future_r1_scientific_contract"])
+    for field in (
+        "requested_model_literal",
+        "required_returned_snapshot",
+        "shared_call_contract_digest",
+        "side_a_call_contract_digest",
+        "side_b_call_contract_digest",
+    ):
+        v7_future.pop(field, None)
+        v8_future.pop(field, None)
+    if (
+        v8_future != v7_future
+        or manifest["response_contract_equivalence"]
+        != v7["response_contract_equivalence"]
+        or manifest["preserved_scientific_identity"]
+        != v7["preserved_scientific_identity"]
+    ):
+        raise Wave2IntegrationError("V8 changed the preserved R1 contract")
+    future = manifest["future_r1_scientific_contract"]
+    if (
+        future["proposal_slots_per_side"] != 8
+        or future["proposal_denominator_per_side"] != 8
+        or future["side_a_call_contract_digest"]
+        != future["shared_call_contract_digest"]
+        or future["side_b_call_contract_digest"]
+        != future["shared_call_contract_digest"]
+    ):
+        raise Wave2IntegrationError("V8 A/B symmetry or denominator changed")
+    if (
+        policy["response_contract_reason_vocabulary"]
+        != diagnostic_reason_vocabulary(include_returned_model_identity=True)
+        or policy["exact_snapshot_identity_failure"]["retry_eligible"] is not False
+        or policy["diagnostic_slot"]["maximum_total_physical_attempts"] != 3
+        or policy["diagnostic_slot"]["deterministic_backoff_ms_after_failure"]
+        != [1000, 3000]
+    ):
+        raise Wave2IntegrationError("V8 terminal/retry policy changed")
+    if any(manifest["pre_outcome_counters"].values()):
+        raise Wave2IntegrationError("Prefreeze V8 is not pre-outcome")
+    return manifest
+
+
+def provider_free_v8_dry_run(repo_root: Path) -> dict[str, Any]:
+    manifest = validate_prefreeze_v8(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v8-dry-run-receipt.v1",
+        "status": "PASS_PROVIDER_FREE_V8_EXACT_SNAPSHOT_REQUEST",
+        "attempt_id": V8_ATTEMPT_ID,
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "v1_v2_v3_v4_v5_v6_v7_seals_verified": True,
+        "exact_snapshot_request_and_return_verified": True,
+        "provider_envelope_model_required_without_fallback": True,
+        "endpoint_schema_prompt_sentinel_tools_temperature_verified_unchanged": True,
+        "diagnostic_transport_future_ceiling_equal_6000": True,
+        "future_r1_ab_slots_denominator_seed_threshold_analysis_verified": True,
+        "local_uniqueness_before_projection_and_downstream_verified": True,
+        "response_contract_and_identity_failures_terminal_verified": True,
+        "provider_calls": 0,
+        "training_runs": 0,
+        "candidate_qualifications": 0,
+        "candidate_admissions": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def prefreeze_v8_runtime_spec() -> dict[str, Any]:
+    """One shared V8 delta consumed by builder, probe, and finalizer."""
+
+    return {
+        "label": "V8",
+        "attempt_id": V8_ATTEMPT_ID,
+        "attempt_rel": V8_ATTEMPT_RECEIPT_REL,
+        "attempt_schema": V8_ATTEMPT_RECEIPT_SCHEMA,
+        "auth_rel": V8_AUTH_REL,
+        "blocked_rel": V8_BLOCKED_REL,
+        "blocked_schema": V8_BLOCKED_SCHEMA,
+        "diagnostic_token_ceiling": V8_DIAGNOSTIC_TOKEN_CEILING,
+        "token_ceiling": V8_DIAGNOSTIC_TOKEN_CEILING,
+        "dry_run_rel": V8_DRY_RUN_REL,
+        "manifest_rel": V8_MANIFEST_REL,
+        "policy_rel": V8_POLICY_REL,
+        "private_root": V8_PRIVATE_ROOT,
+        "ready_rel": V8_READY_REL,
+        "ready_schema": V8_READY_SCHEMA,
+        "release_rel": V8_RELEASE_REL,
+        "verification_rel": V8_VERIFICATION_REL,
+        "verification_schema": V8_VERIFICATION_SCHEMA,
+        "validate": validate_prefreeze_v8,
+        "dry_run": provider_free_v8_dry_run,
+        "requested_model": V8_MODEL_SNAPSHOT,
+        "required_returned_model": V8_MODEL_SNAPSHOT,
+        "identity_receipt_fields": {
+            "requested_model_literal": V8_MODEL_SNAPSHOT,
+            "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+        },
+        "blocked_identity_field": "exact_snapshot_request_and_return",
+        "pass_classification": (
+            "PASS_EXACT_GPT_5_4_2026_03_05_REQUEST_RETURN_AUTH_SCHEMA"
+        ),
+        "pass_status": "PASS_PROVIDER_FREE_V8_EXACT_SNAPSHOT_REQUEST",
+        "verify_predecessor": verify_v7_seal,
+        "expected_policy": expected_v8_retry_policy,
+        "expected_manifest": expected_prefreeze_v8_manifest,
+        "expected_authorization": expected_v8_authorization,
+        "expected_release": expected_v8_provider_release,
+        "logical_call_id": V8_LOGICAL_CALL_ID,
+        "session_id": V8_SESSION_ID,
+        "slot_id": "PREFREEZE_V8_EXACT_SNAPSHOT_REQUEST",
+        "physical_root": v8_physical_root,
+    }
+
+
 __all__ = [
     "BROKER_SOURCE_REL",
     "V5_ATTEMPT_ID",
@@ -1189,4 +1715,37 @@ __all__ = [
     "v7_physical_root",
     "validate_prefreeze_v7",
     "verify_v6_seal",
+    "V7_SEALED_DIGESTS",
+    "V8_ATTEMPT_ID",
+    "V8_ATTEMPT_RECEIPT_REL",
+    "V8_ATTEMPT_RECEIPT_SCHEMA",
+    "V8_AUTH_REL",
+    "V8_BLOCKED_REL",
+    "V8_BLOCKED_SCHEMA",
+    "V8_DIAGNOSTIC_TOKEN_CEILING",
+    "V8_DRY_RUN_REL",
+    "V8_LOGICAL_CALL_ID",
+    "V8_MANIFEST_REL",
+    "V8_MODEL_SNAPSHOT",
+    "V8_POLICY_REL",
+    "V8_PRIVATE_ROOT",
+    "V8_READY_REL",
+    "V8_READY_SCHEMA",
+    "V8_RELEASE_REL",
+    "V8_SESSION_ID",
+    "V8_VERIFICATION_REL",
+    "V8_VERIFICATION_SCHEMA",
+    "exact_v8_probe_request_payload",
+    "exact_v8_probe_request_payload_digest",
+    "expected_prefreeze_v8_manifest",
+    "expected_v8_authorization",
+    "expected_v8_broker_release",
+    "expected_v8_provider_release",
+    "expected_v8_retry_policy",
+    "prefreeze_v8_runtime_spec",
+    "provider_free_v8_dry_run",
+    "v8_physical_root",
+    "validate_prefreeze_v8",
+    "validate_v8_exact_snapshot_pair",
+    "verify_v7_seal",
 ]

@@ -88,12 +88,15 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     expected_v7_provider_release,
     expected_v7_retry_policy,
     provider_free_v7_dry_run,
+    prefreeze_v8_runtime_spec,
     validate_prefreeze_v7,
     verify_v6_seal,
 )
 
 
 def _contract(version: int) -> dict[str, Any]:
+    if version == 8:
+        return prefreeze_v8_runtime_spec()
     if version == 5:
         return {
             "label": "V5",
@@ -316,7 +319,13 @@ def _load_attempt(version: int) -> tuple[dict[str, Any], dict[str, Any]]:
         "outcomes_consumed": 0,
         "held_out_reads": 0,
     }
-    if version >= 6:
+    identity_receipt_fields = contract.get("identity_receipt_fields")
+    if identity_receipt_fields is not None:
+        fixed.update(identity_receipt_fields)
+        fixed["provider_release_digest"] = manifest[
+            "exact_provider_contract"
+        ]["provider_release_digest"]
+    elif version >= 6:
         fixed.update(
             {
                 "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
@@ -326,8 +335,10 @@ def _load_attempt(version: int) -> tuple[dict[str, Any], dict[str, Any]]:
                 ]["provider_release_digest"],
             }
         )
-    if version == 7:
-        fixed["diagnostic_token_ceiling"] = V7_DIAGNOSTIC_TOKEN_CEILING
+    if "diagnostic_token_ceiling" in contract:
+        fixed["diagnostic_token_ceiling"] = contract[
+            "diagnostic_token_ceiling"
+        ]
     for field, expected in fixed.items():
         if receipt.get(field) != expected:
             raise SystemExit(f"{label} attempt receipt does not prove {field}")
@@ -343,7 +354,10 @@ def _load_attempt(version: int) -> tuple[dict[str, Any], dict[str, Any]]:
         raise SystemExit(f"{label} physical attempt count/retry count is invalid")
     identities = manifest["bounded_retry"]["physical_attempt_identities"]
     reason_codes = {
-        item["reason_code"] for item in diagnostic_reason_vocabulary()
+        item["reason_code"]
+        for item in diagnostic_reason_vocabulary(
+            include_returned_model_identity=version >= 8
+        )
     }
     envelopes: set[str] = set()
     prior_digest: str | None = None
@@ -620,7 +634,6 @@ def _finalize(version: int) -> int:
             verification_path.read_bytes()
         ),
         "model": contract["requested_model"],
-        "requested_model_alias": contract["requested_model"],
         "returned_model": contract["required_returned_model"],
         "required_returned_snapshot": contract["required_returned_model"],
         "diagnostic_token_ceiling": contract.get("diagnostic_token_ceiling"),
@@ -642,6 +655,11 @@ def _finalize(version: int) -> int:
             "INDEPENDENT_R1_WORKER_MAY_START_EXACT_FROZEN_R1_ONLY"
         ),
     }
+    identity_fields = contract.get("identity_receipt_fields")
+    if identity_fields is None:
+        ready["requested_model_alias"] = contract["requested_model"]
+    else:
+        ready.update(identity_fields)
     _write_once(ROOT / contract["ready_rel"], ready)
     print(
         json.dumps(
@@ -665,7 +683,7 @@ def main() -> int:
     )
     parser.add_argument("--pytest-passed", type=int, default=0)
     parser.add_argument("--pytest-skipped", type=int, default=0)
-    parser.add_argument("--version", type=int, choices=(5, 6, 7), default=5)
+    parser.add_argument("--version", type=int, choices=(5, 6, 7, 8), default=5)
     args = parser.parse_args()
     if args.action == "prepare":
         return _prepare(args.version)
