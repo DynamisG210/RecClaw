@@ -15,6 +15,8 @@ from recclaw_core.experiments.helix_abc_v1.fresh_r1 import (
     IMPLEMENTATION_TOKEN_CEILING,
     PROPOSAL_TOKEN_CEILING,
     PROTOCOL_REQUIREMENTS,
+    RECBole_ROOT,
+    SEARCH_DATASET_ROOT,
     _materialize_and_qualify,
     call_contract_for_side,
     derive_fresh_r1_proposal_schema,
@@ -30,7 +32,11 @@ from recclaw_core.experiments.helix_abc_v1.open_spec import (
     frozen_search_bindings,
     project_open_producer_draft,
 )
+from recclaw_core.experiments.helix_abc_v1.training_filesystem import (
+    build_training_filesystem_capability,
+)
 from recclaw_core.experiments.helix_abc_v1.vnext_contracts import (
+    QualificationStageV1,
     QualificationStatusV1,
 )
 
@@ -50,6 +56,77 @@ def _strict_proposal_schema() -> dict[str, object]:
         (RESOURCE_ROOT / "fresh_r1_proposal_schema_delta_v1.json").read_bytes()
     )
     return derive_fresh_r1_proposal_schema(base, delta)
+
+
+def _interface_spec() -> object:
+    draft = {
+        "producer_role": "mechanism_composer",
+        "hypothesis": "A trainable score offset changes pairwise ranking behavior.",
+        "mechanism_change": "Add a candidate-local trainable score interaction.",
+        "competing_explanation": "The result comes only from inherited BPR.",
+        "matched_control_requirement": "Compare against BPR with the same seed.",
+        "implementation_requirements": [
+            "RecBole GeneralRecommender entrypoint",
+            "Override all scoring and loss methods",
+        ],
+        "expected_evidence": ["Scores and loss differ from matched BPR."],
+        "falsifier": "Reject when scores and loss equal inherited BPR.",
+        "compatibility_requirements": [
+            "general collaborative filtering",
+            "pairwise input",
+        ],
+        "high_change_justification": (
+            "Adds a trainable interaction absent from the catalog."
+        ),
+        "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+        "resolution_facts": {
+            "requested_current_semantics_digest": None,
+            "capability_diff": ["trainable score interaction"],
+            "high_change_dimensions": ["INTERACTION_STRUCTURE"],
+            "required_dependencies": ["recbole-runtime", "torch"],
+            "required_budget": {
+                "implementation_token_ceiling": 20_000,
+                "qualification_gpu_minutes": 10,
+                "qualification_wall_minutes": 30,
+            },
+        },
+    }
+    spec, _facts = project_open_producer_draft(
+        draft,
+        bindings=frozen_search_bindings(
+            context_ref="fresh-r1-r2-prefreeze-context-v1",
+            context_digest=sha256_digest({"fixture": "corrected-r1"}),
+        ),
+    )
+    return spec
+
+
+def _implementation(source: str) -> dict[str, object]:
+    return {
+        "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
+        "files": [
+            {"path": "recclaw_ext/__init__.py", "content": "# fresh\n"},
+            {"path": "recclaw_ext/candidate.py", "content": source},
+        ],
+        "implementation_summary": "Trainable score interaction fixture.",
+    }
+
+
+def _qualify_source(tmp_path: Path, *, label: str, source: str):
+    return _materialize_and_qualify(
+        repo_root=ROOT,
+        side_root=tmp_path / label,
+        slot_id="slot-01",
+        seed=20260801,
+        spec=_interface_spec(),
+        implementation=_implementation(source),
+        implementation_prompt_digest=bytes_sha256(
+            (RESOURCE_ROOT / "fresh_r1_implementer_prompt_v1.txt").read_bytes()
+        ),
+        tool_policy_digest=bytes_sha256(
+            (RESOURCE_ROOT / "fresh_open_spec_tool_policy_v1.json").read_bytes()
+        ),
+    )
 
 
 def test_formal_implementation_schema_is_strict_and_candidate_local() -> None:
@@ -161,93 +238,137 @@ def test_corrected_provider_schema_rejects_paraphrase_and_accepts_exact_tokens()
         jsonschema.validate(paraphrased, schema)
 
 
-def test_blind_id_root_materializes_and_enters_mechanical_qualifier(
+@pytest.mark.parametrize(
+    ("label", "initialization", "loss_term"),
+    [
+        (
+            "config_index",
+            "self.width = int(config['embedding_size'])\n"
+            "        self.fresh_scale = torch.nn.Parameter("
+            "torch.tensor(1.0 / self.width))",
+            "self.fresh_scale.square()",
+        ),
+        (
+            "literal_default",
+            "self.temperature = 0.125\n"
+            "        self.fresh_scale = torch.nn.Parameter("
+            "torch.tensor(self.temperature))",
+            "self.fresh_scale.square()",
+        ),
+        (
+            "initialized_regularizer",
+            "self.reg_loss = EmbLoss()\n"
+            "        self.fresh_scale = torch.nn.Parameter(torch.tensor(0.125))",
+            "self.fresh_scale.square() + 1e-8 * self.reg_loss("
+            "self.user_embedding(interaction[self.USER_ID]))",
+        ),
+    ],
+)
+def test_real_recbole_interface_contract_materializes_and_qualifies(
     tmp_path: Path,
+    label: str,
+    initialization: str,
+    loss_term: str,
 ) -> None:
-    draft = {
-        "producer_role": "mechanism_composer",
-        "hypothesis": "A trainable score offset changes pairwise ranking behavior.",
-        "mechanism_change": "Add a candidate-local trainable score interaction.",
-        "competing_explanation": "The result comes only from inherited BPR.",
-        "matched_control_requirement": "Compare against BPR with the same seed.",
-        "implementation_requirements": [
-            "RecBole GeneralRecommender entrypoint",
-            "Override all scoring and loss methods",
-        ],
-        "expected_evidence": ["Scores and loss differ from matched BPR."],
-        "falsifier": "Reject when scores and loss equal inherited BPR.",
-        "compatibility_requirements": [
-            "general collaborative filtering",
-            "pairwise input",
-        ],
-        "high_change_justification": "Adds a trainable interaction absent from the catalog.",
-        "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
-        "resolution_facts": {
-            "requested_current_semantics_digest": None,
-            "capability_diff": ["trainable score interaction"],
-            "high_change_dimensions": ["INTERACTION_STRUCTURE"],
-            "required_dependencies": ["recbole-runtime", "torch"],
-            "required_budget": {
-                "implementation_token_ceiling": 20_000,
-                "qualification_gpu_minutes": 10,
-                "qualification_wall_minutes": 30,
-            },
-        },
-    }
-    spec, _facts = project_open_producer_draft(
-        draft,
-        bindings=frozen_search_bindings(
-            context_ref="fresh-r1-r2-prefreeze-context-v1",
-            context_digest=sha256_digest({"fixture": "corrected-r1"}),
-        ),
+    source = (
+        "import torch\n"
+        "from recbole.model.general_recommender.bpr import BPR\n"
+        "from recbole.model.loss import EmbLoss\n\n"
+        "class FreshCandidateModel(BPR):\n"
+        "    def __init__(self, config, dataset):\n"
+        "        super().__init__(config, dataset)\n"
+        f"        {initialization}\n\n"
+        "    def calculate_loss(self, interaction):\n"
+        f"        return super().calculate_loss(interaction) + {loss_term}\n\n"
+        "    def predict(self, interaction):\n"
+        "        return super().predict(interaction) + self.fresh_scale\n\n"
+        "    def full_sort_predict(self, interaction):\n"
+        "        return super().full_sort_predict(interaction) + self.fresh_scale\n"
     )
-    implementation = {
-        "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
-        "files": [
-            {"path": "recclaw_ext/__init__.py", "content": "# fresh\n"},
-            {
-                "path": "recclaw_ext/candidate.py",
-                "content": (
-                    "import torch\n"
-                    "from recbole.model.general_recommender.bpr import BPR\n\n"
-                    "class FreshCandidateModel(BPR):\n"
-                    "    def __init__(self, config, dataset):\n"
-                    "        super().__init__(config, dataset)\n"
-                    "        self.fresh_scale = torch.nn.Parameter(torch.tensor(0.125))\n\n"
-                    "    def calculate_loss(self, interaction):\n"
-                    "        return super().calculate_loss(interaction) + self.fresh_scale.square()\n\n"
-                    "    def predict(self, interaction):\n"
-                    "        return super().predict(interaction) + self.fresh_scale\n\n"
-                    "    def full_sort_predict(self, interaction):\n"
-                    "        return super().full_sort_predict(interaction) + self.fresh_scale\n"
-                ),
-            },
-        ],
-        "implementation_summary": "Trainable score interaction fixture.",
-    }
-    materialized, qualification, behavior = _materialize_and_qualify(
-        repo_root=ROOT,
-        side_root=tmp_path / "side_a",
-        slot_id="slot-01",
-        seed=20260801,
-        spec=spec,
-        implementation=implementation,
-        implementation_prompt_digest=bytes_sha256(
-            (RESOURCE_ROOT / "fresh_r1_implementer_prompt_v1.txt").read_bytes()
-        ),
-        tool_policy_digest=bytes_sha256(
-            (RESOURCE_ROOT / "fresh_open_spec_tool_policy_v1.json").read_bytes()
-        ),
+    materialized, qualification, behavior = _qualify_source(
+        tmp_path,
+        label=label,
+        source=source,
     )
     candidate_root = (
         tmp_path
-        / "side_a/candidates/slot-01"
+        / label
+        / "candidates/slot-01"
         / str(materialized.shared_request["blind_candidate_id"])
     )
     assert candidate_root.is_dir()
     assert candidate_root.name == materialized.shared_request["blind_candidate_id"]
     assert qualification.receipt.status is QualificationStatusV1.PASS
     assert behavior["probe_status"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("label", "source_fragment", "expected_stage", "exception_type"),
+    [
+        (
+            "config_get",
+            "self.fresh_scale = torch.nn.Parameter("
+            "torch.tensor(float(config.get('scale', 0.125))))",
+            QualificationStageV1.CONSTRUCTION,
+            "ATTRIBUTEERROR",
+        ),
+        (
+            "float_none",
+            "self.fresh_scale = torch.nn.Parameter("
+            "torch.tensor(float(config['candidate_scale'])))",
+            QualificationStageV1.CONSTRUCTION,
+            "TYPEERROR",
+        ),
+        (
+            "uninitialized_attribute",
+            "self.fresh_scale = torch.nn.Parameter(torch.tensor(0.125))",
+            QualificationStageV1.API_CONTRACT,
+            "ATTRIBUTEERROR",
+        ),
+    ],
+)
+def test_real_qualifier_reproduces_observed_recbole_interface_failures(
+    tmp_path: Path,
+    label: str,
+    source_fragment: str,
+    expected_stage: QualificationStageV1,
+    exception_type: str,
+) -> None:
+    invalid_loss = (
+        "self.reg_loss(self.user_embedding(interaction[self.USER_ID]))"
+        if label == "uninitialized_attribute"
+        else "self.fresh_scale.square()"
+    )
+    source = (
+        "import torch\n"
+        "from recbole.model.general_recommender.bpr import BPR\n\n"
+        "class FreshCandidateModel(BPR):\n"
+        "    def __init__(self, config, dataset):\n"
+        "        super().__init__(config, dataset)\n"
+        f"        {source_fragment}\n\n"
+        "    def calculate_loss(self, interaction):\n"
+        f"        return super().calculate_loss(interaction) + {invalid_loss}\n\n"
+        "    def predict(self, interaction):\n"
+        "        return super().predict(interaction) + self.fresh_scale\n\n"
+        "    def full_sort_predict(self, interaction):\n"
+        "        return super().full_sort_predict(interaction) + self.fresh_scale\n"
+    )
+    materialized, qualification, behavior = _qualify_source(
+        tmp_path,
+        label=label,
+        source=source,
+    )
+    candidate_root = (
+        tmp_path
+        / label
+        / "candidates/slot-01"
+        / str(materialized.shared_request["blind_candidate_id"])
+    )
+    assert candidate_root.is_dir()
+    assert qualification.receipt.status is QualificationStatusV1.FAIL
+    assert qualification.receipt.stage is expected_stage
+    assert qualification.failure_detail["reason_code"] == exception_type
+    assert behavior == {}
 
 
 def test_proposal_and_implementer_ceilings_are_fixed_and_ab_symmetric() -> None:
@@ -275,3 +396,25 @@ def test_proposal_and_implementer_ceilings_are_fixed_and_ab_symmetric() -> None:
     assert implementation["side_a"] == implementation["side_b"]
     assert proposal["side_a"]["token_ceiling"] == 6000
     assert implementation["side_a"]["token_ceiling"] == 20_000
+
+
+def test_training_checkpoint_is_inside_real_worker_capability(
+    tmp_path: Path,
+) -> None:
+    side_root = tmp_path / "side_a"
+    result_root = side_root / "experiments/slot-01-matched-bpr/worker"
+    checkpoint_root = result_root / "checkpoints"
+    runtime_view = side_root / "experiments/slot-01-matched-bpr/runtime_view"
+    for path in (side_root, result_root, checkpoint_root, runtime_view):
+        path.mkdir(parents=True, exist_ok=True)
+    capability = build_training_filesystem_capability(
+        instance_private_root=side_root,
+        result_root=result_root,
+        checkpoint_root=checkpoint_root,
+        project_root=runtime_view,
+        recbole_root=RECBole_ROOT,
+        dataset_root=SEARCH_DATASET_ROOT,
+    )
+    assert Path(capability.checkpoint_root).is_relative_to(
+        Path(capability.result_root)
+    )

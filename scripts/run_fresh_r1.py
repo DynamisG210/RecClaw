@@ -28,7 +28,7 @@ def main() -> int:
         default=(
             ROOT
             / "docs/research_line/vnext/"
-            "R1_FRESH_CORRECTED_CANONICAL_RECEIPT.json"
+            "R1_FRESH_TRAINING_FILESYSTEM_FIX_V3_CANONICAL_RECEIPT.json"
         ),
     )
     parser.add_argument("--preflight", action="store_true")

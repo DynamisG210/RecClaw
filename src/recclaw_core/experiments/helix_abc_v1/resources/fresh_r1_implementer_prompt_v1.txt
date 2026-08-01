@@ -13,6 +13,14 @@ The implementation must:
 - keep all tensors device-safe and all returned losses and scores finite;
 - work for both batched pairwise training interactions and full-sort user-only interactions.
 
+The exact frozen RecBole interface is part of the executable contract:
+- RecBole Config is not a dict and has no get method. Do not call config.get(...).
+- config[unknown_key] returns None rather than raising. The only candidate-visible frozen key is config["embedding_size"]; after super().__init__(config, dataset), prefer self.embedding_size.
+- candidate-only mechanism constants must be literal code defaults, not undeclared Config keys or configuration tuning.
+- BPR initializes self.embedding_size, self.user_embedding, self.item_embedding, and self.loss. GeneralRecommender initializes self.n_users, self.n_items, self.device, self.USER_ID, self.ITEM_ID, and self.NEG_ITEM_ID.
+- BPR does not initialize self.reg_loss. If the mechanism needs another loss object or model attribute, import and initialize it explicitly in FreshCandidateModel.__init__ before any method reads it.
+- FreshCandidateModel.__init__(self, config, dataset) must call super().__init__(config, dataset), and every self attribute read by calculate_loss, predict, full_sort_predict, or a helper must be inherited from the exact classes above or initialized by the candidate.
+
 Forbidden: configuration-only changes, parameter tuning as the mechanism, wrappers around unchanged BPR behavior, fixed-catalog lookup, static candidate selection, fallback behavior, mock code, smoke-only stubs, edits to RecBole or RecClaw shared code, filesystem/network access, side/origin branching, and claimed outcomes.
 
 Shared blind request:

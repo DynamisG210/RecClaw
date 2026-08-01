@@ -71,9 +71,9 @@ from .vnext_contracts import (
 )
 
 
-ACCEPTED_COMMIT = "dd75f8f50d1c9e26593bf60171a9b3019ad6420b"
-ACCEPTED_PARENT = "ce9104ac67993ea5184ef4337403954ee50b543e"
-ACCEPTED_TREE = "1d27dbae709d9cdad5f66869b5769c344f2c10d1"
+ACCEPTED_COMMIT = "e43bb78acbfbe1e616cc320cf9ff6b55b2144286"
+ACCEPTED_PARENT = "dd75f8f50d1c9e26593bf60171a9b3019ad6420b"
+ACCEPTED_TREE = "b058b17cd1c35e68b2402444b66cfd01deb9ff07"
 READY_SHA256 = "aede1d9fbbded5b0145e4ff48ff6d7d19d2bdbb40959dfe73c61fa5bb8cf8de9"
 MANIFEST_SHA256 = "b021e49d24d3b1cbe8d9cec52fc902351d46f975b34d31bf18d32ecfe2941a9a"
 MODEL = "gpt-5.4"
@@ -85,7 +85,7 @@ MAX_PHYSICAL_ATTEMPTS = 3
 CONTEXT_REF = "fresh-r1-r2-prefreeze-context-v1"
 CONTEXT_DIGEST = "4965758687e260c490e4f103910cf683d6d3b695c631d67ee27e0385c5704bce"
 R1_ROOT = Path(
-    "/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_corrected_v1"
+    "/root/projects/RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3"
 )
 SEALED_R1_RECEIPT = Path(
     "/root/projects/RecClaw_fresh_r1/docs/research_line/vnext/"
@@ -100,6 +100,20 @@ SEALED_R1_EXTERNAL_RECEIPT = Path(
 )
 SEALED_R1_EXTERNAL_RECEIPT_SHA256 = (
     "446d53611bdcc21d685b080bcf1be158d124a75973d93ed390511817c64bbdda"
+)
+SEALED_CORRECTED_R1_RECEIPT = Path(
+    "/root/projects/RecClaw_fresh_r1/docs/research_line/vnext/"
+    "R1_FRESH_CORRECTED_CANONICAL_RECEIPT.json"
+)
+SEALED_CORRECTED_R1_RECEIPT_SHA256 = (
+    "c3c7bee005d06539474020af72dd79c8ca9d818818c7cea09de80278c3e7f4df"
+)
+SEALED_CORRECTED_R1_EXTERNAL_RECEIPT = Path(
+    "/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_corrected_v1/"
+    "R1_CANONICAL_RECEIPT.json"
+)
+SEALED_CORRECTED_R1_EXTERNAL_RECEIPT_SHA256 = (
+    "a45ad3a13147acdd5b14f9988b28d4d789dce6b2e2d5b27d4803756ed9607431"
 )
 SEARCH_DATA_ROOT = Path("/root/projects/RecClaw_campaign_dataset_v1/search")
 SEARCH_DATASET_ROOT = SEARCH_DATA_ROOT / "ml-1m"
@@ -155,7 +169,7 @@ ROLE_INSTRUCTIONS = {
     ),
 }
 
-CORRECTED_RUN_IDENTITY = "fresh-r1-corrected-v1"
+CORRECTED_RUN_IDENTITY = "fresh-r1-training-filesystem-fix-v3"
 
 
 class FreshR1Error(RuntimeError):
@@ -295,6 +309,12 @@ def verify_formal_identity(repo_root: Path) -> dict[str, Any]:
         "ready_sha256": bytes_sha256(ready_path.read_bytes()),
         "manifest_sha256": bytes_sha256(manifest_path.read_bytes()),
         "python_sha256": bytes_sha256(PYTHON_EXECUTABLE.read_bytes()),
+        "sealed_corrected_r1_external_receipt_sha256": bytes_sha256(
+            SEALED_CORRECTED_R1_EXTERNAL_RECEIPT.read_bytes()
+        ),
+        "sealed_corrected_r1_receipt_sha256": bytes_sha256(
+            SEALED_CORRECTED_R1_RECEIPT.read_bytes()
+        ),
         "sealed_r1_external_receipt_sha256": bytes_sha256(
             SEALED_R1_EXTERNAL_RECEIPT.read_bytes()
         ),
@@ -309,6 +329,10 @@ def verify_formal_identity(repo_root: Path) -> dict[str, Any]:
         "ready_sha256": READY_SHA256,
         "manifest_sha256": MANIFEST_SHA256,
         "python_sha256": "d99cded726bcf8b1576305ef425915fc7009c40325ecc2659553ab1c94997938",
+        "sealed_corrected_r1_external_receipt_sha256": (
+            SEALED_CORRECTED_R1_EXTERNAL_RECEIPT_SHA256
+        ),
+        "sealed_corrected_r1_receipt_sha256": SEALED_CORRECTED_R1_RECEIPT_SHA256,
         "sealed_r1_external_receipt_sha256": SEALED_R1_EXTERNAL_RECEIPT_SHA256,
         "sealed_r1_receipt_sha256": SEALED_R1_RECEIPT_SHA256,
         "credential_config_digest": manifest["exact_provider_contract"][
@@ -772,7 +796,8 @@ def run_development_training(
     source_sha256: str,
 ) -> dict[str, Any]:
     run_root = side_root / "experiments" / run_id
-    checkpoint_dir = run_root / "checkpoints"
+    result_root = run_root / "worker"
+    checkpoint_dir = result_root / "checkpoints"
     runtime_view = run_root / "runtime_view"
     runtime_view.mkdir(parents=True)
     _symlink_new(repo_root / "scripts", runtime_view / "scripts")
@@ -781,7 +806,6 @@ def run_development_training(
         _symlink_new(candidate_root / "recclaw_ext", runtime_view / "recclaw_ext")
     else:
         _symlink_new(repo_root / "recclaw_ext", runtime_view / "recclaw_ext")
-    result_root = run_root / "worker"
     capability = build_training_filesystem_capability(
         instance_private_root=side_root,
         result_root=result_root,
@@ -1631,10 +1655,12 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
                 "policy_digest": manifest["bounded_retry"]["policy_digest"],
             },
             "prior_sealed_r1_failure_interpretation": (
-                "GENERIC_ORCHESTRATION_INTERFACE_FAILURE_WITH_NO_MECHANISM_OUTCOME"
+                "GENERIC_ORCHESTRATION_AND_IMPLEMENTER_INTERFACE_FAILURES_"
+                "WITH_NO_MECHANISM_OUTCOME"
             ),
             "schema": (
-                "recclaw.research-line.fresh-r1-corrected-canonical-receipt.v1"
+                "recclaw.research-line.fresh-r1-training-filesystem-fix-v3-"
+                "canonical-receipt.v1"
             ),
             "side_records": records,
             "status": status,
