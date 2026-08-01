@@ -83,6 +83,22 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (
     validate_prefreeze_v8,
     validate_v8_exact_snapshot_pair,
     verify_v7_seal,
+    V8_SEALED_DIGESTS,
+    V9_AUTH_REL,
+    V9_ATTEMPT_RECEIPT_REL,
+    V9_BLOCKED_REL,
+    V9_MANIFEST_REL,
+    V9_POLICY_REL,
+    V9_PRIVATE_ROOT,
+    V9_READY_REL,
+    V9_RELEASE_REL,
+    expected_prefreeze_v9_manifest,
+    expected_v9_provider_release,
+    expected_v9_retry_policy,
+    prefreeze_v9_runtime_spec,
+    provider_free_v9_dry_run,
+    validate_prefreeze_v9,
+    verify_v8_seal,
 )
 from scripts.build_r1_r2_prefreeze_v5_artifacts import _contract
 from scripts.reprobe_fresh_open_spec_endpoint_v2 import (
@@ -834,6 +850,161 @@ def test_v8_outcome_is_three_transient_503s_exhausted_and_side_effect_free() -> 
     for ordinal in (1, 2, 3):
         connection = sqlite3.connect(
             V8_PRIVATE_ROOT
+            / f"physical_attempt_{ordinal:02d}"
+            / "broker.sqlite3"
+        )
+        try:
+            row = connection.execute(
+                "SELECT COUNT(*),status,error_type,error_detail_json,"
+                "response_json,returned_model FROM calls"
+            ).fetchone()
+        finally:
+            connection.close()
+        assert row == (
+            1,
+            "FAILED",
+            "HTTP_503",
+            '{"http_status":503}',
+            None,
+            None,
+        )
+    for field in (
+        "research_candidates_generated",
+        "open_specs_projected",
+        "resolver_calls",
+        "candidate_roots_created",
+        "candidate_qualifications",
+        "candidate_admissions",
+        "training_runs",
+        "outcomes_consumed",
+        "held_out_reads",
+    ):
+        assert receipt[field] == 0
+
+
+def test_v8_sealed_artifacts_remain_exact_bytes_for_v9() -> None:
+    observed = verify_v8_seal(ROOT)
+    for relative, digest in V8_SEALED_DIGESTS.items():
+        assert observed[relative.as_posix()] == digest
+        assert bytes_sha256((ROOT / relative).read_bytes()) == digest
+
+
+def test_v9_is_only_availability_identity_and_derived_digest_delta() -> None:
+    v8 = json.loads((ROOT / V8_MANIFEST_REL).read_bytes())
+    v9 = expected_prefreeze_v9_manifest(ROOT)
+    exact8 = dict(v8["exact_provider_contract"])
+    exact9 = dict(v9["exact_provider_contract"])
+    for field in (
+        "model",
+        "requested_model_literal",
+        "required_returned_snapshot",
+        "model_identity_pair_digest",
+        "transport_provider_release_digest",
+        "endpoint_digest",
+        "credential_config_digest",
+        "credential_identity_digest",
+        "response_schema_digest",
+        "sentinel_digest",
+        "request_payload_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "request_mode",
+        "temperature",
+        "token_budget",
+    ):
+        assert exact9[field] == exact8[field]
+    assert v9["future_r1_scientific_contract"] == v8[
+        "future_r1_scientific_contract"
+    ]
+    assert v9["response_contract_equivalence"] == v8[
+        "response_contract_equivalence"
+    ]
+    assert v9["preserved_scientific_identity"] == v8[
+        "preserved_scientific_identity"
+    ]
+    assert v9["provider_returned_model_evidence"] == v8[
+        "provider_returned_model_evidence"
+    ]
+    assert v9["authorized_v9_availability_recheck"][
+        "scientific_contract_change"
+    ] is False
+    assert v9["authorized_v9_availability_recheck"][
+        "v10_or_unbounded_retry_authorized"
+    ] is False
+
+
+def test_v9_release_and_policy_change_only_version_predecessor_identity() -> None:
+    release8 = expected_v8_provider_release(ROOT)
+    release9 = expected_v9_provider_release(ROOT)
+    for value in (release8, release9):
+        value.pop("schema", None)
+        value.pop("release_digest", None)
+        value.pop("availability_predecessor", None)
+    assert release9 == release8
+    policy8 = expected_v8_retry_policy(ROOT)
+    policy9 = expected_v9_retry_policy(ROOT)
+    for value in (policy8, policy9):
+        value.pop("schema", None)
+        value.pop("inherited_v7_policy_ref", None)
+        value.pop("inherited_v7_policy_digest", None)
+        value.pop("inherited_v8_policy_ref", None)
+        value.pop("inherited_v8_policy_digest", None)
+        value["diagnostic_slot"].pop("slot_id", None)
+    assert policy9 == policy8
+
+
+def test_v9_builder_and_probe_consume_one_shared_version_spec() -> None:
+    expected = prefreeze_v9_runtime_spec()
+    assert _contract(9) == expected
+    assert _prefreeze_diagnostic_contract(9) == expected
+
+
+def test_checked_in_v9_contract_artifacts_are_exact_and_provider_free() -> None:
+    for relative in (V9_RELEASE_REL, V9_POLICY_REL, V9_MANIFEST_REL, V9_AUTH_REL):
+        assert (ROOT / relative).is_file()
+    manifest = validate_prefreeze_v9(ROOT)
+    dry_run = provider_free_v9_dry_run(ROOT)
+    assert manifest == expected_prefreeze_v9_manifest(ROOT)
+    assert dry_run["status"] == "PASS_PROVIDER_FREE_V9_AVAILABILITY_RECHECK"
+    assert dry_run["provider_calls"] == 0
+    assert dry_run["training_runs"] == 0
+    assert dry_run["candidate_qualifications"] == 0
+    assert dry_run["candidate_admissions"] == 0
+    assert dry_run["outcomes_consumed"] == 0
+    assert dry_run["held_out_reads"] == 0
+
+
+def test_v9_outcome_is_hard_resource_block_after_three_transient_503s() -> None:
+    attempt_path = ROOT / V9_ATTEMPT_RECEIPT_REL
+    blocked_path = ROOT / V9_BLOCKED_REL
+    assert attempt_path.is_file()
+    assert blocked_path.is_file()
+    assert not (ROOT / V9_READY_REL).exists()
+    receipt = json.loads(attempt_path.read_bytes())
+    blocked = json.loads(blocked_path.read_bytes())
+    assert receipt["status"] == "BLOCKED"
+    assert receipt["physical_provider_calls"] == 3
+    assert receipt["retry_count"] == 2
+    assert receipt["final_classification"] == (
+        "HTTP_503_TRANSIENT_PROVIDER_ERROR"
+    )
+    assert receipt["termination_reason"] == "TRANSIENT_ATTEMPTS_EXHAUSTED"
+    assert [item["backoff_ms_after_attempt"] for item in receipt["physical_attempts"]] == [
+        1000,
+        3000,
+        0,
+    ]
+    assert all(
+        item["classification"] == "HTTP_503_TRANSIENT_PROVIDER_ERROR"
+        and item["http_status"] == 503
+        and item["returned_model"] is None
+        for item in receipt["physical_attempts"]
+    )
+    assert blocked["status"] == "HARD_BLOCKED_RESOURCE_PROVIDER_UNAVAILABLE"
+    assert blocked["r1_worker_launch_authorized"] is False
+    for ordinal in (1, 2, 3):
+        connection = sqlite3.connect(
+            V9_PRIVATE_ROOT
             / f"physical_attempt_{ordinal:02d}"
             / "broker.sqlite3"
         )

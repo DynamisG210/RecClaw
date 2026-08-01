@@ -89,12 +89,15 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     expected_v7_retry_policy,
     provider_free_v7_dry_run,
     prefreeze_v8_runtime_spec,
+    prefreeze_v9_runtime_spec,
     validate_prefreeze_v7,
     verify_v6_seal,
 )
 
 
 def _contract(version: int) -> dict[str, Any]:
+    if version == 9:
+        return prefreeze_v9_runtime_spec()
     if version == 8:
         return prefreeze_v8_runtime_spec()
     if version == 5:
@@ -512,9 +515,16 @@ def _finalize(version: int) -> int:
     if attempt["status"] == "BLOCKED":
         if (ROOT / contract["ready_rel"]).exists():
             raise SystemExit(f"{label} READY exists; refusing BLOCKED finalization")
+        blocked_status = f"BLOCKED_PREFREEZE_{label}"
+        if (
+            contract.get("hard_blocked_on_transient_exhaustion") is True
+            and attempt["termination_reason"]
+            == "TRANSIENT_ATTEMPTS_EXHAUSTED"
+        ):
+            blocked_status = "HARD_BLOCKED_RESOURCE_PROVIDER_UNAVAILABLE"
         blocked = {
             "schema": contract["blocked_schema"],
-            "status": f"BLOCKED_PREFREEZE_{label}",
+            "status": blocked_status,
             "attempt_id": contract["attempt_id"],
             "manifest_ref": contract["manifest_rel"].name,
             "manifest_digest": bytes_sha256(
@@ -582,7 +592,7 @@ def _finalize(version: int) -> int:
                         "physical_provider_calls"
                     ],
                     f"retry_count_v{version}": attempt["retry_count"],
-                    "status": f"BLOCKED_PREFREEZE_{label}",
+                    "status": blocked_status,
                 },
                 sort_keys=True,
             )
@@ -683,7 +693,9 @@ def main() -> int:
     )
     parser.add_argument("--pytest-passed", type=int, default=0)
     parser.add_argument("--pytest-skipped", type=int, default=0)
-    parser.add_argument("--version", type=int, choices=(5, 6, 7, 8), default=5)
+    parser.add_argument(
+        "--version", type=int, choices=(5, 6, 7, 8, 9), default=5
+    )
     args = parser.parse_args()
     if args.action == "prepare":
         return _prepare(args.version)
