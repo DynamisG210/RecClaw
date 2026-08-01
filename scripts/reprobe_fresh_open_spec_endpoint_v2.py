@@ -52,12 +52,29 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v2 import (  # noqa: E402
     V3_LOGICAL_CALL_ID,
     V3_PRIVATE_ROOT,
     V3_SESSION_ID,
+    V4_ATTEMPT_ID,
+    V4_ATTEMPT_RECEIPT_REL,
+    V4_ATTEMPT_RECEIPT_SCHEMA,
+    V4_AUTH_REL,
+    V4_LOGICAL_CALL_ID,
+    V4_PRIVATE_ROOT,
+    V4_PROVIDER_SCHEMA_REL,
+    V4_RELEASE_REL,
+    V4_SESSION_ID,
+    exact_v4_probe_request_payload_digest,
     exact_probe_request_payload,
     exact_probe_request_payload_digest,
     schema_probe_prompt,
     validate_prefreeze_v2,
     validate_prefreeze_v3,
+    validate_prefreeze_v4,
     v3_physical_root,
+    v4_physical_root,
+)
+from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
+    V4_UNIQUENESS_CONTRACT_DIGEST,
+    V4LocalUniquenessError,
+    validate_v4_response_contract,
 )
 
 
@@ -465,7 +482,10 @@ def _classify_v3_failure(
     error_type = row["error_type"]
     cause_names = _cause_type_names(error)
     unique_items = http_status == 400 and _contains_unique_items(error_detail)
-    if semantic_after_success:
+    if isinstance(error, V4LocalUniquenessError):
+        classification = "LOCAL_ARRAY_UNIQUENESS_CONTRACT_FAILURE"
+        retry_eligible = False
+    elif semantic_after_success:
         classification = "SEMANTIC_RESPONSE_CONTRACT_FAILURE"
         retry_eligible = False
     elif unique_items:
@@ -511,7 +531,11 @@ def _classify_v3_failure(
         classification = (
             "CONTENT_NOT_JSON"
             if "JSONDecodeError" in cause_names
-            else "JSON_OR_SEMANTIC_RESPONSE_CONTRACT_FAILURE"
+            else (
+                "HTTP_200_RESPONSE_CONTRACT_VALUE_ERROR"
+                if "ValueError" in cause_names
+                else "JSON_OR_SEMANTIC_RESPONSE_CONTRACT_FAILURE"
+            )
         )
         retry_eligible = False
     else:
@@ -862,7 +886,442 @@ def _main_v3() -> int:
     raise SystemExit("V3 bounded retry loop reached an impossible state")
 
 
+def _v4_top_receipt(
+    *,
+    manifest: dict[str, Any],
+    attempts: list[dict[str, Any]],
+    status: str,
+    final_classification: str,
+    termination_reason: str,
+    returned_model: str | None,
+    response_digest: str | None,
+) -> dict[str, Any]:
+    success = status == "PASS"
+    return {
+        "schema": V4_ATTEMPT_RECEIPT_SCHEMA,
+        "status": status,
+        "attempt_id": V4_ATTEMPT_ID,
+        "diagnostic_slot_id": "PREFREEZE_V4_SCHEMA_QUALIFICATION",
+        "model_requested": MODEL,
+        "returned_model": returned_model,
+        "authentication_status": "VERIFIED" if success else "UNVERIFIED",
+        "provider_schema_support_status": (
+            "VERIFIED" if success else "UNVERIFIED"
+        ),
+        "local_semantic_equivalence_status": (
+            "VERIFIED" if success else "UNVERIFIED"
+        ),
+        "endpoint_digest": manifest["exact_provider_contract"][
+            "endpoint_digest"
+        ],
+        "credential_config_digest": manifest["exact_provider_contract"][
+            "credential_config_digest"
+        ],
+        "credential_identity_digest": manifest[
+            "exact_provider_contract"
+        ]["credential_identity_digest"],
+        "provider_release_digest": manifest["exact_provider_contract"][
+            "provider_release_digest"
+        ],
+        "response_schema_digest": manifest["exact_provider_contract"][
+            "response_schema_digest"
+        ],
+        "local_uniqueness_contract_digest": (
+            V4_UNIQUENESS_CONTRACT_DIGEST
+        ),
+        "sentinel_digest": manifest["exact_provider_contract"][
+            "sentinel_digest"
+        ],
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "response_digest": response_digest,
+        "physical_attempts": attempts,
+        "physical_provider_calls": len(attempts),
+        "retry_count": max(0, len(attempts) - 1),
+        "final_classification": final_classification,
+        "termination_reason": termination_reason,
+        "first_valid_response_accepted": success,
+        "successful_response_selection": False,
+        "extra_call_after_valid_response": False,
+        "same_diagnostic_slot": True,
+        "same_request_payload_and_envelope_digest": True,
+        "sensitive_values_persisted": False,
+        "sensitive_headers_persisted": False,
+        **_zero_side_effects(),
+        "candidate_qualifications": 0,
+        "blocked_fields": (
+            []
+            if success
+            else [
+                "endpoint_authentication",
+                "exact_gpt_5_4_returned_model",
+                "v4_provider_schema_support",
+                "local_semantic_equivalence",
+            ]
+        ),
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def _write_v4_checkpoint(receipt: dict[str, Any]) -> None:
+    (ROOT / V4_ATTEMPT_RECEIPT_REL).write_bytes(
+        canonical_json_bytes(receipt)
+    )
+
+
+def _refine_existing_v4_receipt(
+    *,
+    manifest: dict[str, Any],
+    private_root: Path,
+) -> int:
+    """Refine the already-persisted terminal class without a Provider call."""
+
+    receipt_path = ROOT / V4_ATTEMPT_RECEIPT_REL
+    if not receipt_path.is_file():
+        raise SystemExit("V4 refinement requires the existing attempt receipt")
+    receipt = json.loads(receipt_path.read_bytes())
+    attempts = receipt.get("physical_attempts")
+    if (
+        receipt.get("status") != "BLOCKED"
+        or not isinstance(attempts, list)
+        or len(attempts) != 1
+    ):
+        raise SystemExit("V4 refinement only admits the one-call blocked receipt")
+    db_path = v4_physical_root(1) / "broker.sqlite3"
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            "SELECT error_type, error_detail_json, receipt_json FROM calls"
+        ).fetchall()
+    finally:
+        connection.close()
+    if len(rows) != 1:
+        raise SystemExit("V4 refinement requires exactly one SQLite call row")
+    row = rows[0]
+    detail = json.loads(str(row["error_detail_json"]))
+    provider_receipt = json.loads(str(row["receipt_json"]))
+    if (
+        row["error_type"] != "RESPONSE_CONTRACT_ERROR"
+        or detail.get("exception_type") != "ValueError"
+        or provider_receipt.get("http_status") != 200
+        or attempts[0].get("classification")
+        != "JSON_OR_SEMANTIC_RESPONSE_CONTRACT_FAILURE"
+    ):
+        raise SystemExit("V4 refinement evidence does not match the admitted case")
+    entry = dict(attempts[0])
+    entry["classification"] = "HTTP_200_RESPONSE_CONTRACT_VALUE_ERROR"
+    entry["provider_error_type"] = "RESPONSE_CONTRACT_ERROR"
+    entry["provider_exception_type"] = "ValueError"
+    preimage = dict(entry)
+    preimage.pop("attempt_digest", None)
+    entry["attempt_digest"] = sha256_digest(preimage)
+    refined = {
+        **receipt,
+        "physical_attempts": [entry],
+        "final_classification": "HTTP_200_RESPONSE_CONTRACT_VALUE_ERROR",
+        "termination_reason": "DETERMINISTIC_TERMINAL_FAILURE",
+        "response_contract_subtype_detail": (
+            "UNAVAILABLE_BROKER_PERSISTED_EXCEPTION_TYPE_ONLY"
+        ),
+    }
+    receipt_path.write_bytes(canonical_json_bytes(refined))
+    print(
+        json.dumps(
+            {
+                "classification": refined["final_classification"],
+                "physical_provider_calls": 1,
+                "receipt_sha256": bytes_sha256(receipt_path.read_bytes()),
+                "retry_count": 0,
+                "status": "BLOCKED_REFINED_FROM_EXISTING_SQLITE_ONLY",
+            },
+            sort_keys=True,
+        )
+    )
+    return 2
+
+
+def _main_v4() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--llm-api-config", type=Path)
+    parser.add_argument("--private-root", type=Path, required=True)
+    parser.add_argument("--refine-existing", action="store_true")
+    args = parser.parse_args()
+
+    manifest = validate_prefreeze_v4(ROOT)
+    private_root = args.private_root.resolve()
+    if private_root != V4_PRIVATE_ROOT:
+        raise SystemExit("V4 private-root identity mismatch")
+    if args.refine_existing:
+        if not private_root.is_dir():
+            raise SystemExit("V4 refinement requires the existing private root")
+        return _refine_existing_v4_receipt(
+            manifest=manifest,
+            private_root=private_root,
+        )
+    if private_root.exists():
+        raise SystemExit("V4 private root already exists; no second V4 run")
+    if (ROOT / V4_ATTEMPT_RECEIPT_REL).exists():
+        raise SystemExit("V4 attempt receipt already exists; no second V4 run")
+    if not (ROOT / V4_AUTH_REL).is_file():
+        raise SystemExit("V4 pre-outcome authorization is missing")
+    if args.llm_api_config is None:
+        raise SystemExit("--llm-api-config is required for the V4 Provider call")
+
+    config_path = args.llm_api_config.resolve()
+    base_url, api_key = load_lab_api_credentials(config_path)
+    credential = _credential_identity(
+        config_path,
+        base_url=base_url,
+        api_key=api_key,
+    )
+    del api_key
+    contract = manifest["exact_provider_contract"]
+    for field, observed in (
+        ("endpoint_digest", credential["endpoint_digest"]),
+        ("credential_config_digest", credential["config_bytes_sha256"]),
+        (
+            "credential_identity_digest",
+            credential["credential_identity_digest"],
+        ),
+    ):
+        if contract[field] != observed:
+            raise SystemExit(f"V4 Provider identity mismatch: {field}")
+    if exact_v4_probe_request_payload_digest(ROOT) != contract[
+        "request_payload_digest"
+    ]:
+        raise SystemExit("V4 physical request payload changed")
+
+    sentinel = json.loads((ROOT / SENTINEL_REL).read_bytes())
+    provider_schema = json.loads((ROOT / V4_PROVIDER_SCHEMA_REL).read_bytes())
+    attempts: list[dict[str, Any]] = []
+    prior_attempt_digest: str | None = None
+    backoffs = (1000, 3000)
+    for ordinal in (1, 2, 3):
+        attempt_identity = manifest["bounded_retry"][
+            "physical_attempt_identities"
+        ][ordinal - 1]
+        physical_root = v4_physical_root(ordinal)
+        if ordinal > 1:
+            time.sleep(backoffs[ordinal - 2] / 1000)
+        started_ns = time.monotonic_ns()
+        broker: LabApiCanaryBrokerV1 | None = None
+        result = None
+        try:
+            broker = LabApiCanaryBrokerV1(
+                physical_root,
+                schema_path=ROOT / V4_PROVIDER_SCHEMA_REL,
+                config_path=config_path,
+                model=MODEL,
+                max_total_tokens_per_call=6000,
+                timeout_ms=900_000,
+                release_manifest_path=ROOT / V4_RELEASE_REL,
+            )
+            schema_digest = _validate_sqlite_schema(
+                broker._connection,  # noqa: SLF001 - required schema proof
+                expected_digest=manifest["bounded_retry"][
+                    "sqlite_calls_schema_digest"
+                ],
+            )
+            result = broker.call_with_session(
+                logical_call_id=V4_LOGICAL_CALL_ID,
+                proposal_generation_session_id=V4_SESSION_ID,
+                prompt=schema_probe_prompt(ROOT),
+                expected_proposal_count=1,
+                max_total_tokens=PROBE_TOKEN_CEILING,
+            )
+            if result.returned_model != MODEL:
+                raise CanaryBrokerError(
+                    "V4 returned a model other than exact gpt-5.4"
+                )
+            if canonical_value(result.response) != canonical_value(sentinel):
+                raise CanaryBrokerError(
+                    "V4 response differed from the frozen sentinel"
+                )
+            validate_v4_response_contract(
+                result.response,
+                provider_schema=provider_schema,
+            )
+            broker._connection.row_factory = sqlite3.Row  # noqa: SLF001
+            success_row = broker._connection.execute(  # noqa: SLF001
+                "SELECT receipt_json FROM calls WHERE logical_call_id=?",
+                (V4_LOGICAL_CALL_ID,),
+            ).fetchone()
+            if success_row is None:
+                raise SystemExit("V4 successful call receipt row is missing")
+            success_provider_receipt = json.loads(
+                str(success_row["receipt_json"])
+            )
+            ended_ns = time.monotonic_ns()
+            entry = _attempt_chain_entry(
+                entry={
+                    "ordinal": ordinal,
+                    **attempt_identity,
+                    "logical_call_id": V4_LOGICAL_CALL_ID,
+                    "request_payload_digest": contract[
+                        "request_payload_digest"
+                    ],
+                    "request_envelope_digest": result.request_digest,
+                    "sqlite_calls_schema_digest": schema_digest,
+                    "monotonic_start_ns": started_ns,
+                    "monotonic_end_ns": ended_ns,
+                    "classification": (
+                        "PASS_EXACT_GPT_5_4_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+                    ),
+                    "http_status": 200,
+                    "retry_eligible": False,
+                    "backoff_ms_after_attempt": 0,
+                    "termination_reason": (
+                        "FIRST_VALID_LOCAL_EQUIVALENT_RESPONSE_ACCEPTED"
+                    ),
+                    "returned_model": result.returned_model,
+                    "response_digest": result.response_digest,
+                    "provider_receipt_digest": success_provider_receipt[
+                        "receipt_digest"
+                    ],
+                    "broker_outcome_digest": None,
+                    "provider_error_detail_digest": None,
+                    "local_uniqueness_contract_digest": (
+                        V4_UNIQUENESS_CONTRACT_DIGEST
+                    ),
+                    "local_uniqueness_status": "PASS",
+                },
+                prior_attempt_digest=prior_attempt_digest,
+            )
+            attempts.append(entry)
+            receipt = _v4_top_receipt(
+                manifest=manifest,
+                attempts=attempts,
+                status="PASS",
+                final_classification=entry["classification"],
+                termination_reason=entry["termination_reason"],
+                returned_model=result.returned_model,
+                response_digest=result.response_digest,
+            )
+            _write_v4_checkpoint(receipt)
+            print(
+                json.dumps(
+                    {
+                        "classification": entry["classification"],
+                        "physical_provider_calls": len(attempts),
+                        "receipt_sha256": bytes_sha256(
+                            (ROOT / V4_ATTEMPT_RECEIPT_REL).read_bytes()
+                        ),
+                        "retry_count": len(attempts) - 1,
+                        "status": "PASS",
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
+        except Exception as error:
+            if broker is None:
+                raise
+            broker._connection.row_factory = sqlite3.Row  # noqa: SLF001
+            row = broker._connection.execute(  # noqa: SLF001
+                "SELECT logical_call_id, request_digest, response_digest, "
+                "returned_model, status, error_type, error_detail_json, "
+                "receipt_json, outcome_json FROM calls WHERE logical_call_id=?",
+                (V4_LOGICAL_CALL_ID,),
+            ).fetchone()
+            if row is None:
+                raise SystemExit(
+                    "V4 local receipt failure stopped before retry"
+                ) from error
+            evidence = _classify_v3_failure(
+                error=error,
+                row=row,
+                semantic_after_success=(result is not None),
+            )
+            retry = evidence["retry_eligible"] and ordinal < 3
+            local_contract_failure = isinstance(
+                error,
+                V4LocalUniquenessError,
+            )
+            termination = (
+                "RETRY_SCHEDULED"
+                if retry
+                else (
+                    "LOCAL_RESPONSE_CONTRACT_TERMINAL_FAILURE"
+                    if local_contract_failure
+                    else (
+                        "TRANSIENT_ATTEMPTS_EXHAUSTED"
+                        if evidence["retry_eligible"]
+                        else "DETERMINISTIC_TERMINAL_FAILURE"
+                    )
+                )
+            )
+            ended_ns = time.monotonic_ns()
+            entry = _attempt_chain_entry(
+                entry={
+                    "ordinal": ordinal,
+                    **attempt_identity,
+                    "logical_call_id": V4_LOGICAL_CALL_ID,
+                    "request_payload_digest": contract[
+                        "request_payload_digest"
+                    ],
+                    "request_envelope_digest": row["request_digest"],
+                    "sqlite_calls_schema_digest": manifest[
+                        "bounded_retry"
+                    ]["sqlite_calls_schema_digest"],
+                    "monotonic_start_ns": started_ns,
+                    "monotonic_end_ns": ended_ns,
+                    **evidence,
+                    "backoff_ms_after_attempt": (
+                        backoffs[ordinal - 1] if retry else 0
+                    ),
+                    "termination_reason": termination,
+                    "returned_model": row["returned_model"],
+                    "response_digest": row["response_digest"],
+                    "local_uniqueness_contract_digest": (
+                        V4_UNIQUENESS_CONTRACT_DIGEST
+                    ),
+                    "local_uniqueness_status": (
+                        "FAIL" if local_contract_failure else "NOT_REACHED"
+                    ),
+                },
+                prior_attempt_digest=prior_attempt_digest,
+            )
+            attempts.append(entry)
+            prior_attempt_digest = entry["attempt_digest"]
+            status = "IN_PROGRESS" if retry else "BLOCKED"
+            receipt = _v4_top_receipt(
+                manifest=manifest,
+                attempts=attempts,
+                status=status,
+                final_classification=entry["classification"],
+                termination_reason=termination,
+                returned_model=None,
+                response_digest=None,
+            )
+            _write_v4_checkpoint(receipt)
+            if not retry:
+                print(
+                    json.dumps(
+                        {
+                            "classification": entry["classification"],
+                            "physical_provider_calls": len(attempts),
+                            "receipt_sha256": bytes_sha256(
+                                (ROOT / V4_ATTEMPT_RECEIPT_REL).read_bytes()
+                            ),
+                            "retry_count": len(attempts) - 1,
+                            "status": "BLOCKED",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 2
+        finally:
+            if broker is not None:
+                broker.close()
+    raise SystemExit("V4 bounded retry loop reached an impossible state")
+
+
 def main() -> int:
+    if "--v4" in sys.argv:
+        sys.argv.remove("--v4")
+        return _main_v4()
     if "--v3" in sys.argv:
         sys.argv.remove("--v3")
         return _main_v3()
