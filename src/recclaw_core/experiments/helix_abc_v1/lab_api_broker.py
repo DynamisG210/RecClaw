@@ -10,6 +10,7 @@ import sqlite3
 import ssl
 import time
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping
 from urllib import error as urlerror
@@ -26,6 +27,31 @@ from .broker_process import (
 )
 from .canonical import canonical_json_bytes, sha256_digest, validate_sha256
 from .canary_broker import CanaryBrokerCallV1, CanaryBrokerError
+
+
+class LabApiResponseFailureReasonV1(str, Enum):
+    """Allowlisted, content-free HTTP-200 response failure reasons."""
+
+    ENVELOPE_JSON_DECODE = "ENVELOPE_JSON_DECODE"
+    ENVELOPE_SHAPE = "ENVELOPE_SHAPE"
+    CHOICES_SHAPE = "CHOICES_SHAPE"
+    CHOICE_SHAPE = "CHOICE_SHAPE"
+    MESSAGE_SHAPE = "MESSAGE_SHAPE"
+    MESSAGE_CONTENT_TYPE_OR_EMPTY = "MESSAGE_CONTENT_TYPE_OR_EMPTY"
+    CONTENT_JSON_DECODE = "CONTENT_JSON_DECODE"
+    SCHEMA_VALIDATION = "SCHEMA_VALIDATION"
+    PROPOSAL_COUNT = "PROPOSAL_COUNT"
+    USAGE_SHAPE = "USAGE_SHAPE"
+    TOKEN_USAGE_TYPE = "TOKEN_USAGE_TYPE"
+    TOKEN_CEILING = "TOKEN_CEILING"
+
+
+class LabApiResponseContractError(ValueError):
+    """Typed response failure whose public value is an allowlisted code only."""
+
+    def __init__(self, reason: LabApiResponseFailureReasonV1) -> None:
+        self.reason = reason
+        super().__init__(reason.value)
 
 
 def validate_provider_strict_schema(
@@ -500,7 +526,16 @@ class LabApiCanaryBrokerV1:
                 http_status = int(raw_response.status)
                 raw_bytes = raw_response.read()
             latency_ms = int((time.monotonic() - started) * 1000)
-            envelope = json.loads(raw_bytes)
+            try:
+                envelope = json.loads(raw_bytes)
+            except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.ENVELOPE_JSON_DECODE
+                ) from error
+            if not isinstance(envelope, Mapping):
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.ENVELOPE_SHAPE
+                )
             response, usage, returned_model = self._parse_response(
                 envelope=envelope,
                 expected_proposal_count=expected_proposal_count,
@@ -509,13 +544,7 @@ class LabApiCanaryBrokerV1:
         except urlerror.HTTPError as error:
             http_status = int(error.code)
             latency_ms = int((time.monotonic() - started) * 1000)
-            raw_error = error.read(16_384).decode(
-                "utf-8", errors="replace"
-            )
-            try:
-                provider_error: Any = json.loads(raw_error)
-            except json.JSONDecodeError:
-                provider_error = raw_error
+            error.read(16_384)
             receipt, outcome = self._persist_failure(
                 logical_call_id=logical_call_id,
                 proposal_generation_session_id=(
@@ -523,7 +552,7 @@ class LabApiCanaryBrokerV1:
                 ),
                 request_digest=request_digest,
                 error_type=f"HTTP_{error.code}",
-                error_detail={"provider_error": provider_error},
+                error_detail={"http_status": http_status},
                 http_status=http_status,
                 latency_ms=latency_ms,
             )
@@ -574,7 +603,7 @@ class LabApiCanaryBrokerV1:
                 physical_call_count=1,
                 wall_time_ms=latency_ms,
             ) from error
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+        except LabApiResponseContractError as error:
             latency_ms = int((time.monotonic() - started) * 1000)
             receipt, outcome = self._persist_failure(
                 logical_call_id=logical_call_id,
@@ -583,7 +612,7 @@ class LabApiCanaryBrokerV1:
                 ),
                 request_digest=request_digest,
                 error_type="RESPONSE_CONTRACT_ERROR",
-                error_detail={"exception_type": type(error).__name__},
+                error_detail={"reason_code": error.reason.value},
                 http_status=http_status,
                 latency_ms=latency_ms,
             )
@@ -603,7 +632,11 @@ class LabApiCanaryBrokerV1:
                 ),
                 request_digest=request_digest,
                 error_type="SCHEMA_VALIDATION_FAILURE",
-                error_detail={"exception_type": type(error).__name__},
+                error_detail={
+                    "reason_code": (
+                        LabApiResponseFailureReasonV1.SCHEMA_VALIDATION.value
+                    )
+                },
                 http_status=http_status,
                 latency_ms=latency_ms,
             )
@@ -683,10 +716,19 @@ class LabApiCanaryBrokerV1:
     ) -> tuple[Mapping[str, Any], dict[str, int], str]:
         choices = envelope.get("choices")
         if not isinstance(choices, list) or len(choices) != 1:
-            raise ValueError("API response requires exactly one choice")
-        message = choices[0].get("message")
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.CHOICES_SHAPE
+            )
+        choice = choices[0]
+        if not isinstance(choice, Mapping):
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.CHOICE_SHAPE
+            )
+        message = choice.get("message")
         if not isinstance(message, Mapping):
-            raise ValueError("API response omitted its message")
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.MESSAGE_SHAPE
+            )
         content = message.get("content")
         if isinstance(content, list):
             content = "".join(
@@ -695,41 +737,59 @@ class LabApiCanaryBrokerV1:
                 if isinstance(item, Mapping)
             )
         if not isinstance(content, str) or not content.strip():
-            raise ValueError("API response content is empty")
-        response = json.loads(content)
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.MESSAGE_CONTENT_TYPE_OR_EMPTY
+            )
+        try:
+            response = json.loads(content)
+        except json.JSONDecodeError as error:
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.CONTENT_JSON_DECODE
+            ) from error
         jsonschema.validate(response, self.schema)
         proposals = response.get("proposals")
         if (
             not isinstance(proposals, list)
             or len(proposals) != expected_proposal_count
         ):
-            raise ValueError("API response has the wrong proposal count")
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.PROPOSAL_COUNT
+            )
         raw_usage = envelope.get("usage")
         if not isinstance(raw_usage, Mapping):
-            raise ValueError("API response omitted token usage")
-        input_tokens = int(
-            raw_usage.get(
-                "prompt_tokens", raw_usage.get("input_tokens", 0)
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.USAGE_SHAPE
             )
-        )
-        output_tokens = int(
-            raw_usage.get(
-                "completion_tokens", raw_usage.get("output_tokens", 0)
+        try:
+            input_tokens = int(
+                raw_usage.get(
+                    "prompt_tokens", raw_usage.get("input_tokens", 0)
+                )
             )
-        )
-        total_tokens = int(
-            raw_usage.get(
-                "total_tokens", input_tokens + output_tokens
+            output_tokens = int(
+                raw_usage.get(
+                    "completion_tokens", raw_usage.get("output_tokens", 0)
+                )
             )
-        )
-        prompt_details = raw_usage.get("prompt_tokens_details")
-        cached_input_tokens = (
-            int(prompt_details.get("cached_tokens", 0))
-            if isinstance(prompt_details, Mapping)
-            else int(raw_usage.get("cached_input_tokens", 0))
-        )
+            total_tokens = int(
+                raw_usage.get(
+                    "total_tokens", input_tokens + output_tokens
+                )
+            )
+            prompt_details = raw_usage.get("prompt_tokens_details")
+            cached_input_tokens = (
+                int(prompt_details.get("cached_tokens", 0))
+                if isinstance(prompt_details, Mapping)
+                else int(raw_usage.get("cached_input_tokens", 0))
+            )
+        except (TypeError, ValueError, OverflowError) as error:
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.TOKEN_USAGE_TYPE
+            ) from error
         if total_tokens < 1 or total_tokens > effective_ceiling:
-            raise ValueError("API response token debit exceeds its ceiling")
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.TOKEN_CEILING
+            )
         usage = {
             "cached_input_tokens": cached_input_tokens,
             "input_tokens": input_tokens,
@@ -882,5 +942,7 @@ __all__ = [
     "LabApiBrokerReleaseV1",
     "LabApiCallReceiptV1",
     "LabApiCanaryBrokerV1",
+    "LabApiResponseContractError",
+    "LabApiResponseFailureReasonV1",
     "load_lab_api_credentials",
 ]

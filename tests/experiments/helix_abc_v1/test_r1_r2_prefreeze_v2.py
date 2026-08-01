@@ -146,7 +146,7 @@ def test_v2_reprobe_script_has_one_provider_call_and_no_candidate_path() -> None
         if isinstance(node, ast.ImportFrom) and node.module is not None
     }
 
-    assert len(calls) == 3
+    assert len(calls) == 4
     assert not any(
         name.endswith(
             (

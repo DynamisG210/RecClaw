@@ -257,8 +257,8 @@ def test_v4_probe_orders_local_contract_before_any_downstream_use() -> None:
         if isinstance(node, ast.ImportFrom) and node.module is not None
     }
 
-    assert len(local_calls) == 1
-    assert len(provider_calls) == 3
+    assert len(local_calls) == 2
+    assert len(provider_calls) == 4
     assert not any(
         name.endswith(
             (

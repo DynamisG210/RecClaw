@@ -71,6 +71,18 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v2 import (  # noqa: E402
     v3_physical_root,
     v4_physical_root,
 )
+from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
+    V5_ATTEMPT_ID,
+    V5_ATTEMPT_RECEIPT_REL,
+    V5_ATTEMPT_RECEIPT_SCHEMA,
+    V5_AUTH_REL,
+    V5_LOGICAL_CALL_ID,
+    V5_PRIVATE_ROOT,
+    V5_SESSION_ID,
+    diagnostic_reason_vocabulary,
+    v5_physical_root,
+    validate_prefreeze_v5,
+)
 from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
     V4_UNIQUENESS_CONTRACT_DIGEST,
     V4LocalUniquenessError,
@@ -1318,7 +1330,445 @@ def _main_v4() -> int:
     raise SystemExit("V4 bounded retry loop reached an impossible state")
 
 
+class _V5PostBrokerContractFailure(ValueError):
+    """Content-free code for a terminal check after Broker success."""
+
+    def __init__(self, reason_code: str) -> None:
+        self.reason_code = reason_code
+        super().__init__(reason_code)
+
+
+def _classify_v5_failure(
+    *,
+    error: Exception,
+    row: sqlite3.Row,
+) -> dict[str, Any]:
+    provider_receipt = json.loads(str(row["receipt_json"]))
+    error_detail = (
+        json.loads(str(row["error_detail_json"]))
+        if row["error_detail_json"] is not None
+        else None
+    )
+    outcome = (
+        json.loads(str(row["outcome_json"]))
+        if row["outcome_json"] is not None
+        else None
+    )
+    http_status = provider_receipt.get("http_status")
+    error_type = row["error_type"]
+    cause_names = _cause_type_names(error)
+    reason_codes = {
+        item["reason_code"] for item in diagnostic_reason_vocabulary()
+    }
+    response_reason: str | None = None
+    if error_type in {"RESPONSE_CONTRACT_ERROR", "SCHEMA_VALIDATION_FAILURE"}:
+        if (
+            not isinstance(error_detail, dict)
+            or set(error_detail) != {"reason_code"}
+            or error_detail["reason_code"] not in reason_codes
+        ):
+            raise SystemExit(
+                "V5 Broker response failure lacks one allowlisted reason code"
+            ) from error
+        response_reason = str(error_detail["reason_code"])
+
+    if isinstance(error, V4LocalUniquenessError):
+        classification = "LOCAL_ARRAY_UNIQUENESS_CONTRACT_FAILURE"
+        retry_eligible = False
+    elif isinstance(error, _V5PostBrokerContractFailure):
+        classification = error.reason_code
+        retry_eligible = False
+    elif response_reason == "CONTENT_JSON_DECODE":
+        classification = "CONTENT_NOT_JSON"
+        retry_eligible = False
+    elif response_reason is not None:
+        classification = f"HTTP_200_RESPONSE_CONTRACT_{response_reason}"
+        retry_eligible = False
+    elif http_status == 408:
+        classification = "HTTP_408"
+        retry_eligible = True
+    elif http_status == 429:
+        classification = "HTTP_429"
+        retry_eligible = True
+    elif http_status is not None and http_status >= 500:
+        classification = f"HTTP_{http_status}_TRANSIENT_PROVIDER_ERROR"
+        retry_eligible = True
+    elif http_status in {401, 403}:
+        classification = f"HTTP_{http_status}_AUTH"
+        retry_eligible = False
+    elif http_status is not None and 400 <= http_status < 500:
+        classification = (
+            "HTTP_400_SCHEMA_CONTRACT"
+            if http_status == 400
+            else "OTHER_DETERMINISTIC_HTTP_4XX"
+        )
+        retry_eligible = False
+    elif error_type == "TIMEOUT":
+        classification = "NETWORK_TIMEOUT"
+        retry_eligible = True
+    elif error_type == "TRANSPORT_ERROR" and cause_names.intersection(
+        {"ConnectionResetError", "ConnectionAbortedError", "BrokenPipeError"}
+    ):
+        classification = "NETWORK_RESET"
+        retry_eligible = True
+    elif error_type == "TRANSPORT_ERROR":
+        classification = "OTHER_TRANSPORT_FAILURE"
+        retry_eligible = False
+    else:
+        classification = "UNCLASSIFIED_TERMINAL_PROVIDER_FAILURE"
+        retry_eligible = False
+    return {
+        "classification": classification,
+        "retry_eligible": retry_eligible,
+        "http_status": http_status,
+        "response_contract_reason_code": response_reason,
+        "provider_receipt_digest": provider_receipt.get("receipt_digest"),
+        "broker_outcome_digest": (
+            outcome.get("outcome_digest") if outcome is not None else None
+        ),
+        "provider_error_detail_digest": (
+            sha256_digest(error_detail) if error_detail is not None else None
+        ),
+    }
+
+
+def _v5_top_receipt(
+    *,
+    manifest: dict[str, Any],
+    attempts: list[dict[str, Any]],
+    status: str,
+    final_classification: str,
+    termination_reason: str,
+    returned_model: str | None,
+    response_digest: str | None,
+    response_contract_reason_code: str | None,
+) -> dict[str, Any]:
+    success = status == "PASS"
+    return {
+        "schema": V5_ATTEMPT_RECEIPT_SCHEMA,
+        "status": status,
+        "attempt_id": V5_ATTEMPT_ID,
+        "diagnostic_slot_id": "PREFREEZE_V5_OBSERVABILITY_DIAGNOSTIC",
+        "model_requested": MODEL,
+        "returned_model": returned_model,
+        "authentication_status": "VERIFIED" if success else "UNVERIFIED",
+        "provider_schema_support_status": "VERIFIED" if success else "UNVERIFIED",
+        "local_semantic_equivalence_status": "VERIFIED" if success else "UNVERIFIED",
+        "endpoint_digest": manifest["exact_provider_contract"]["endpoint_digest"],
+        "credential_config_digest": manifest["exact_provider_contract"][
+            "credential_config_digest"
+        ],
+        "credential_identity_digest": manifest["exact_provider_contract"][
+            "credential_identity_digest"
+        ],
+        "provider_release_digest": manifest["exact_provider_contract"][
+            "provider_release_digest"
+        ],
+        "response_schema_digest": manifest["exact_provider_contract"][
+            "response_schema_digest"
+        ],
+        "local_uniqueness_contract_digest": V4_UNIQUENESS_CONTRACT_DIGEST,
+        "sentinel_digest": manifest["exact_provider_contract"]["sentinel_digest"],
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "response_digest": response_digest,
+        "response_contract_reason_code": response_contract_reason_code,
+        "physical_attempts": attempts,
+        "physical_provider_calls": len(attempts),
+        "retry_count": max(0, len(attempts) - 1),
+        "final_classification": final_classification,
+        "termination_reason": termination_reason,
+        "first_valid_response_accepted": success,
+        "successful_response_selection": False,
+        "extra_call_after_valid_response": False,
+        "same_diagnostic_slot": True,
+        "same_request_payload_and_envelope_digest": True,
+        "sensitive_values_persisted": False,
+        "sensitive_headers_persisted": False,
+        "raw_response_or_provider_body_persisted_on_failure": False,
+        **_zero_side_effects(),
+        "candidate_qualifications": 0,
+        "blocked_fields": (
+            []
+            if success
+            else [
+                "endpoint_authentication",
+                "exact_gpt_5_4_returned_model",
+                "v4_provider_schema_support",
+                "local_semantic_equivalence",
+            ]
+        ),
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def _write_v5_checkpoint(receipt: dict[str, Any]) -> None:
+    """Persist before any retry; local failure prevents another Provider call."""
+
+    (ROOT / V5_ATTEMPT_RECEIPT_REL).write_bytes(canonical_json_bytes(receipt))
+
+
+def _main_v5() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--llm-api-config", type=Path, required=True)
+    parser.add_argument("--private-root", type=Path, required=True)
+    args = parser.parse_args()
+
+    manifest = validate_prefreeze_v5(ROOT)
+    private_root = args.private_root.resolve()
+    if private_root != V5_PRIVATE_ROOT:
+        raise SystemExit("V5 private-root identity mismatch")
+    if private_root.exists():
+        raise SystemExit("V5 private root already exists; no second V5 run")
+    if (ROOT / V5_ATTEMPT_RECEIPT_REL).exists():
+        raise SystemExit("V5 attempt receipt already exists; no second V5 run")
+    if not (ROOT / V5_AUTH_REL).is_file():
+        raise SystemExit("V5 pre-outcome authorization is missing")
+
+    config_path = args.llm_api_config.resolve()
+    base_url, api_key = load_lab_api_credentials(config_path)
+    credential = _credential_identity(
+        config_path,
+        base_url=base_url,
+        api_key=api_key,
+    )
+    del api_key
+    contract = manifest["exact_provider_contract"]
+    for field, observed in (
+        ("endpoint_digest", credential["endpoint_digest"]),
+        ("credential_config_digest", credential["config_bytes_sha256"]),
+        ("credential_identity_digest", credential["credential_identity_digest"]),
+    ):
+        if contract[field] != observed:
+            raise SystemExit(f"V5 Provider identity mismatch: {field}")
+    if exact_v4_probe_request_payload_digest(ROOT) != contract[
+        "request_payload_digest"
+    ]:
+        raise SystemExit("V5 physical request payload changed from V4")
+
+    sentinel = json.loads((ROOT / SENTINEL_REL).read_bytes())
+    provider_schema = json.loads((ROOT / V4_PROVIDER_SCHEMA_REL).read_bytes())
+    attempts: list[dict[str, Any]] = []
+    prior_attempt_digest: str | None = None
+    backoffs = (1000, 3000)
+    for ordinal in (1, 2, 3):
+        attempt_identity = manifest["bounded_retry"][
+            "physical_attempt_identities"
+        ][ordinal - 1]
+        physical_root = v5_physical_root(ordinal)
+        if ordinal > 1:
+            time.sleep(backoffs[ordinal - 2] / 1000)
+        started_ns = time.monotonic_ns()
+        broker: LabApiCanaryBrokerV1 | None = None
+        result = None
+        try:
+            broker = LabApiCanaryBrokerV1(
+                physical_root,
+                schema_path=ROOT / V4_PROVIDER_SCHEMA_REL,
+                config_path=config_path,
+                model=MODEL,
+                max_total_tokens_per_call=6000,
+                timeout_ms=900_000,
+                release_manifest_path=ROOT / V4_RELEASE_REL,
+            )
+            schema_digest = _validate_sqlite_schema(
+                broker._connection,  # noqa: SLF001 - required schema proof
+                expected_digest=manifest["bounded_retry"][
+                    "sqlite_calls_schema_digest"
+                ],
+            )
+            result = broker.call_with_session(
+                logical_call_id=V5_LOGICAL_CALL_ID,
+                proposal_generation_session_id=V5_SESSION_ID,
+                prompt=schema_probe_prompt(ROOT),
+                expected_proposal_count=1,
+                max_total_tokens=PROBE_TOKEN_CEILING,
+            )
+            if result.returned_model != MODEL:
+                raise _V5PostBrokerContractFailure("RETURNED_MODEL_MISMATCH")
+            if canonical_value(result.response) != canonical_value(sentinel):
+                raise _V5PostBrokerContractFailure(
+                    "SENTINEL_SEMANTIC_MISMATCH"
+                )
+            validate_v4_response_contract(
+                result.response,
+                provider_schema=provider_schema,
+            )
+            broker._connection.row_factory = sqlite3.Row  # noqa: SLF001
+            success_row = broker._connection.execute(  # noqa: SLF001
+                "SELECT receipt_json FROM calls WHERE logical_call_id=?",
+                (V5_LOGICAL_CALL_ID,),
+            ).fetchone()
+            if success_row is None:
+                raise SystemExit("V5 successful call receipt row is missing")
+            success_provider_receipt = json.loads(str(success_row["receipt_json"]))
+            ended_ns = time.monotonic_ns()
+            entry = _attempt_chain_entry(
+                entry={
+                    "ordinal": ordinal,
+                    **attempt_identity,
+                    "logical_call_id": V5_LOGICAL_CALL_ID,
+                    "request_payload_digest": contract["request_payload_digest"],
+                    "request_envelope_digest": result.request_digest,
+                    "sqlite_calls_schema_digest": schema_digest,
+                    "monotonic_start_ns": started_ns,
+                    "monotonic_end_ns": ended_ns,
+                    "classification": (
+                        "PASS_EXACT_GPT_5_4_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+                    ),
+                    "http_status": 200,
+                    "retry_eligible": False,
+                    "backoff_ms_after_attempt": 0,
+                    "termination_reason": (
+                        "FIRST_VALID_LOCAL_EQUIVALENT_RESPONSE_ACCEPTED"
+                    ),
+                    "returned_model": result.returned_model,
+                    "response_digest": result.response_digest,
+                    "response_contract_reason_code": None,
+                    "provider_receipt_digest": success_provider_receipt[
+                        "receipt_digest"
+                    ],
+                    "broker_outcome_digest": None,
+                    "provider_error_detail_digest": None,
+                    "local_uniqueness_contract_digest": (
+                        V4_UNIQUENESS_CONTRACT_DIGEST
+                    ),
+                    "local_uniqueness_status": "PASS",
+                },
+                prior_attempt_digest=prior_attempt_digest,
+            )
+            attempts.append(entry)
+            receipt = _v5_top_receipt(
+                manifest=manifest,
+                attempts=attempts,
+                status="PASS",
+                final_classification=entry["classification"],
+                termination_reason=entry["termination_reason"],
+                returned_model=result.returned_model,
+                response_digest=result.response_digest,
+                response_contract_reason_code=None,
+            )
+            _write_v5_checkpoint(receipt)
+            print(
+                json.dumps(
+                    {
+                        "classification": entry["classification"],
+                        "physical_provider_calls": len(attempts),
+                        "receipt_sha256": bytes_sha256(
+                            (ROOT / V5_ATTEMPT_RECEIPT_REL).read_bytes()
+                        ),
+                        "retry_count": len(attempts) - 1,
+                        "status": "PASS",
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
+        except Exception as error:
+            if broker is None:
+                raise
+            broker._connection.row_factory = sqlite3.Row  # noqa: SLF001
+            row = broker._connection.execute(  # noqa: SLF001
+                "SELECT logical_call_id, request_digest, response_digest, "
+                "returned_model, status, error_type, error_detail_json, "
+                "receipt_json, outcome_json FROM calls WHERE logical_call_id=?",
+                (V5_LOGICAL_CALL_ID,),
+            ).fetchone()
+            if row is None:
+                raise SystemExit(
+                    "V5 local receipt failure stopped before retry"
+                ) from error
+            evidence = _classify_v5_failure(error=error, row=row)
+            retry = evidence["retry_eligible"] and ordinal < 3
+            local_contract_failure = isinstance(error, V4LocalUniquenessError)
+            termination = (
+                "RETRY_SCHEDULED"
+                if retry
+                else (
+                    "LOCAL_RESPONSE_CONTRACT_TERMINAL_FAILURE"
+                    if local_contract_failure
+                    else (
+                        "TRANSIENT_ATTEMPTS_EXHAUSTED"
+                        if evidence["retry_eligible"]
+                        else "DETERMINISTIC_TERMINAL_FAILURE"
+                    )
+                )
+            )
+            ended_ns = time.monotonic_ns()
+            entry = _attempt_chain_entry(
+                entry={
+                    "ordinal": ordinal,
+                    **attempt_identity,
+                    "logical_call_id": V5_LOGICAL_CALL_ID,
+                    "request_payload_digest": contract["request_payload_digest"],
+                    "request_envelope_digest": row["request_digest"],
+                    "sqlite_calls_schema_digest": manifest["bounded_retry"][
+                        "sqlite_calls_schema_digest"
+                    ],
+                    "monotonic_start_ns": started_ns,
+                    "monotonic_end_ns": ended_ns,
+                    **evidence,
+                    "backoff_ms_after_attempt": (
+                        backoffs[ordinal - 1] if retry else 0
+                    ),
+                    "termination_reason": termination,
+                    "returned_model": row["returned_model"],
+                    "response_digest": row["response_digest"],
+                    "local_uniqueness_contract_digest": (
+                        V4_UNIQUENESS_CONTRACT_DIGEST
+                    ),
+                    "local_uniqueness_status": (
+                        "FAIL" if local_contract_failure else "NOT_REACHED"
+                    ),
+                },
+                prior_attempt_digest=prior_attempt_digest,
+            )
+            attempts.append(entry)
+            prior_attempt_digest = entry["attempt_digest"]
+            status = "IN_PROGRESS" if retry else "BLOCKED"
+            receipt = _v5_top_receipt(
+                manifest=manifest,
+                attempts=attempts,
+                status=status,
+                final_classification=entry["classification"],
+                termination_reason=termination,
+                returned_model=None,
+                response_digest=None,
+                response_contract_reason_code=entry[
+                    "response_contract_reason_code"
+                ],
+            )
+            _write_v5_checkpoint(receipt)
+            if not retry:
+                print(
+                    json.dumps(
+                        {
+                            "classification": entry["classification"],
+                            "physical_provider_calls": len(attempts),
+                            "receipt_sha256": bytes_sha256(
+                                (ROOT / V5_ATTEMPT_RECEIPT_REL).read_bytes()
+                            ),
+                            "response_contract_reason_code": entry[
+                                "response_contract_reason_code"
+                            ],
+                            "retry_count": len(attempts) - 1,
+                            "status": "BLOCKED",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 2
+        finally:
+            if broker is not None:
+                broker.close()
+    raise SystemExit("V5 bounded retry loop reached an impossible state")
+
+
 def main() -> int:
+    if "--v5" in sys.argv:
+        sys.argv.remove("--v5")
+        return _main_v5()
     if "--v4" in sys.argv:
         sys.argv.remove("--v4")
         return _main_v4()
