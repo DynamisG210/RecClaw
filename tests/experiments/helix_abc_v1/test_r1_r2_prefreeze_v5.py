@@ -117,6 +117,18 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (
     validate_prefreeze_v10,
     validate_v10_route_snapshot_pair,
     verify_v9_seal,
+    V11_AUTH_REL,
+    V11_ATTEMPT_RECEIPT_REL,
+    V11_MANIFEST_REL,
+    V11_POLICY_REL,
+    V11_PRIVATE_ROOT,
+    V11_READY_REL,
+    V11_RELEASE_REL,
+    expected_prefreeze_v11_manifest,
+    prefreeze_v11_runtime_spec,
+    provider_free_v11_dry_run,
+    validate_prefreeze_v11,
+    verify_v10_seal,
 )
 from scripts.build_r1_r2_prefreeze_v5_artifacts import _contract
 from scripts.reprobe_fresh_open_spec_endpoint_v2 import (
@@ -129,6 +141,16 @@ from recclaw_core.experiments.helix_abc_v1.wave2_integration import (
 
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def _assert_shared_ready_is_not_for_attempt(
+    *, ready_rel: Path, attempt_rel: Path
+) -> None:
+    ready_path = ROOT / ready_rel
+    if ready_path.exists():
+        ready = json.loads(ready_path.read_bytes())
+        attempt = json.loads((ROOT / attempt_rel).read_bytes())
+        assert ready["attempt_id"] != attempt["attempt_id"]
 
 
 def _row(
@@ -295,7 +317,9 @@ def test_checked_in_v5_outcome_is_one_call_model_mismatch_and_side_effect_free()
     blocked_path = ROOT / V5_BLOCKED_REL
     assert receipt_path.is_file()
     assert blocked_path.is_file()
-    assert not (ROOT / V5_READY_REL).exists()
+    _assert_shared_ready_is_not_for_attempt(
+        ready_rel=V5_READY_REL, attempt_rel=V5_ATTEMPT_RECEIPT_REL
+    )
     receipt = json.loads(receipt_path.read_bytes())
     blocked = json.loads(blocked_path.read_bytes())
     assert receipt_path.read_bytes() == bytes(
@@ -508,7 +532,9 @@ def test_checked_in_v6_outcome_is_terminal_token_ceiling_and_side_effect_free() 
     blocked_path = ROOT / V6_BLOCKED_REL
     assert attempt_path.is_file()
     assert blocked_path.is_file()
-    assert not (ROOT / V6_READY_REL).exists()
+    _assert_shared_ready_is_not_for_attempt(
+        ready_rel=V6_READY_REL, attempt_rel=V6_ATTEMPT_RECEIPT_REL
+    )
     receipt = json.loads(attempt_path.read_bytes())
     blocked = json.loads(blocked_path.read_bytes())
     assert receipt["status"] == "BLOCKED"
@@ -640,7 +666,9 @@ def test_checked_in_v7_outcome_is_terminal_exact_pair_mismatch() -> None:
     blocked_path = ROOT / V7_BLOCKED_REL
     assert attempt_path.is_file()
     assert blocked_path.is_file()
-    assert not (ROOT / V7_READY_REL).exists()
+    _assert_shared_ready_is_not_for_attempt(
+        ready_rel=V7_READY_REL, attempt_rel=V7_ATTEMPT_RECEIPT_REL
+    )
     receipt = json.loads(attempt_path.read_bytes())
     blocked = json.loads(blocked_path.read_bytes())
     attempt = receipt["physical_attempts"][0]
@@ -841,7 +869,9 @@ def test_v8_outcome_is_three_transient_503s_exhausted_and_side_effect_free() -> 
     blocked_path = ROOT / V8_BLOCKED_REL
     assert attempt_path.is_file()
     assert blocked_path.is_file()
-    assert not (ROOT / V8_READY_REL).exists()
+    _assert_shared_ready_is_not_for_attempt(
+        ready_rel=V8_READY_REL, attempt_rel=V8_ATTEMPT_RECEIPT_REL
+    )
     receipt = json.loads(attempt_path.read_bytes())
     blocked = json.loads(blocked_path.read_bytes())
     assert receipt["status"] == "BLOCKED"
@@ -997,7 +1027,9 @@ def test_v9_outcome_is_hard_resource_block_after_three_transient_503s() -> None:
     blocked_path = ROOT / V9_BLOCKED_REL
     assert attempt_path.is_file()
     assert blocked_path.is_file()
-    assert not (ROOT / V9_READY_REL).exists()
+    _assert_shared_ready_is_not_for_attempt(
+        ready_rel=V9_READY_REL, attempt_rel=V9_ATTEMPT_RECEIPT_REL
+    )
     receipt = json.loads(attempt_path.read_bytes())
     blocked = json.loads(blocked_path.read_bytes())
     assert receipt["status"] == "BLOCKED"
@@ -1186,7 +1218,9 @@ def test_v10_outcome_is_terminal_actual_envelope_alias_mismatch() -> None:
     blocked_path = ROOT / V10_BLOCKED_REL
     assert attempt_path.is_file()
     assert blocked_path.is_file()
-    assert not (ROOT / V10_READY_REL).exists()
+    _assert_shared_ready_is_not_for_attempt(
+        ready_rel=V10_READY_REL, attempt_rel=V10_ATTEMPT_RECEIPT_REL
+    )
     receipt = json.loads(attempt_path.read_bytes())
     blocked = json.loads(blocked_path.read_bytes())
     attempt = receipt["physical_attempts"][0]
@@ -1225,6 +1259,90 @@ def test_v10_outcome_is_terminal_actual_envelope_alias_mismatch() -> None:
         V10_REQUEST_MODEL_ALIAS,
         "05cc80fa34c99145955dc41075b4f3cb9c33013f034cfcbafc1778ec4b742064",
     )
+    for field in (
+        "research_candidates_generated",
+        "open_specs_projected",
+        "resolver_calls",
+        "candidate_roots_created",
+        "candidate_qualifications",
+        "candidate_admissions",
+        "training_runs",
+        "outcomes_consumed",
+        "held_out_reads",
+    ):
+        assert receipt[field] == 0
+
+
+def test_v11_uses_shared_functional_gate_and_nonblocking_model_metadata() -> None:
+    expected = prefreeze_v11_runtime_spec()
+    assert _contract(11) == expected
+    assert _prefreeze_diagnostic_contract(11) == expected
+    assert expected["requested_model"] == "gpt-5.4"
+    assert expected["enforce_returned_model"] is False
+    assert expected["required_returned_model"] is None
+
+
+def test_v11_preserves_open_research_target_and_rejects_degradation() -> None:
+    verify_v10_seal(ROOT)
+    for relative in (
+        V11_RELEASE_REL,
+        V11_POLICY_REL,
+        V11_MANIFEST_REL,
+        V11_AUTH_REL,
+    ):
+        assert (ROOT / relative).is_file()
+    manifest = validate_prefreeze_v11(ROOT)
+    dry_run = provider_free_v11_dry_run(ROOT)
+    assert manifest == expected_prefreeze_v11_manifest(ROOT)
+    future = manifest["future_r1_scientific_contract"]
+    assert future["proposal_slots_per_side"] == 8
+    assert future["proposal_denominator_per_side"] == 8
+    assert future["fixed_66_or_static_candidate_fallback"] == "FORBIDDEN"
+    assert future["shared_origin_blind_implementer_qualifier"] is True
+    assert dry_run["open_research_target_preserved"] is True
+    assert dry_run["no_fixed_66_tuning_static_or_fallback_degradation"] is True
+    assert dry_run["provider_calls"] == 0
+
+
+def test_v11_real_probe_closes_functional_and_local_contract_chain() -> None:
+    receipt_path = ROOT / V11_ATTEMPT_RECEIPT_REL
+    assert receipt_path.is_file()
+    receipt = json.loads(receipt_path.read_bytes())
+    assert receipt["status"] == "PASS"
+    assert receipt["model_requested"] == "gpt-5.4"
+    assert isinstance(receipt["returned_model"], str)
+    assert receipt["returned_model"].strip()
+    assert receipt["returned_model_evidence_policy"] == (
+        "OBSERVED_METADATA_NON_BLOCKING"
+    )
+    assert receipt["physical_provider_calls"] == 1
+    assert receipt["retry_count"] == 0
+    assert receipt["physical_attempts"][0]["http_status"] == 200
+    assert receipt["physical_attempts"][0]["local_uniqueness_status"] == "PASS"
+    assert receipt["final_classification"] == (
+        "PASS_GPT_5_4_FUNCTIONAL_SCHEMA_AND_LOCAL_CONTRACT"
+    )
+    ready = json.loads((ROOT / V11_READY_REL).read_bytes())
+    assert ready["status"] == "R1_PREFREEZE_READY"
+    assert ready["r1_worker_launch_authorized"] is True
+    assert ready["returned_model"] == receipt["returned_model"]
+    assert ready["downstream_task_opening_acceptance_criteria"] == [
+        "FUNCTION_IS_REAL_AND_RUNNABLE",
+        "END_TO_END_RESULT_CHAIN_IS_REAL_AND_VALID",
+        "IMPLEMENTATION_PRECISELY_SERVES_RECCLAW_RESEARCH_TARGET_AND_REQUIRED_EFFECT",
+        "NO_FIXED_66_CONFIG_TUNING_STATIC_CANDIDATE_LOW_CHANGE_WRAPPER_FALLBACK_OR_MOCK_SMOKE_SUBSTITUTION",
+    ]
+    connection = sqlite3.connect(
+        V11_PRIVATE_ROOT / "physical_attempt_01" / "broker.sqlite3"
+    )
+    try:
+        row = connection.execute(
+            "SELECT COUNT(*),status,error_type,total_tokens FROM calls"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row[0:3] == (1, "SUCCESS", None)
+    assert 0 < row[3] <= 6000
     for field in (
         "research_candidates_generated",
         "open_specs_projected",

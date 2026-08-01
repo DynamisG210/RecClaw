@@ -273,6 +273,35 @@ V10_VERIFICATION_REL = (
     DOC_ROOT_REL / "PREFREEZE_V10_VERIFICATION_RECEIPT.json"
 )
 
+V10_HEAD = "1af05904230485f82b503adc051ae3b1b6833b47"
+V10_PARENT = "042dc4d3d42595d768425d7e5dc53a05faa10ef1"
+V10_TREE = "536ce93fa1649075006abc07dd9a06b0a551a662"
+V10_SEALED_DIGESTS: dict[Path, str] = {
+    V10_RELEASE_REL: "ee247da7f36ff3d2343372824119ee271cbbfa1e645c488c3d6ee2c678f0a663",
+    V10_POLICY_REL: "73ab615411fbf78a56f92f14a827322ec4d8e2f6a768bfea34c529dc859f68c6",
+    V10_MANIFEST_REL: "0ac93391930fbd751ea23435f37b06d3faa54bd9e3ee8e2bccb82d67b50aaa59",
+    V10_AUTH_REL: "d7ef5194bbe7ad05e4728a44be9a62b394d816fdc6537296f13a03521040fb63",
+    V10_DRY_RUN_REL: "fc1889beda4d04585abf450e6ad1a561cf00b0ea7b5b043bfa5d26f7ab8a89f9",
+    V10_ATTEMPT_RECEIPT_REL: "90a6751835f1f3a46409fe3b5d894f579ebc4d980829f77e41c62baaa6618189",
+    V10_BLOCKED_REL: "0801cde765050c881f3995d1d5ab7609696273aaf20351c263722f6e65b8eed4",
+}
+
+V11_ATTEMPT_ID = "recclaw-r1-r2-prefreeze-v11-20260801"
+V11_LOGICAL_CALL_ID = "fresh-open-spec-prefreeze-v11-engineering-validation-slot"
+V11_SESSION_ID = "fresh-open-spec-prefreeze-v11-engineering-validation-session"
+V11_PRIVATE_ROOT = Path("/root/projects/RecClaw_r1_prefreeze_probe_v11_private")
+V11_RELEASE_REL = DOC_ROOT_REL / "FRESH_OPEN_SPEC_PROVIDER_RELEASE_V11.json"
+V11_POLICY_REL = DOC_ROOT_REL / "R1_PROVIDER_RETRY_POLICY_V11.json"
+V11_MANIFEST_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_MANIFEST_V11.json"
+V11_AUTH_REL = DOC_ROOT_REL / "PREFREEZE_V11_AUTHORIZATION.json"
+V11_ATTEMPT_RECEIPT_REL = (
+    DOC_ROOT_REL / "FRESH_OPEN_SPEC_ENDPOINT_ATTEMPT_RECEIPT_V11.json"
+)
+V11_BLOCKED_REL = DOC_ROOT_REL / "PREFREEZE_V11_BLOCKED_RECEIPT.json"
+V11_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
+V11_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V11_DRY_RUN_RECEIPT.json"
+V11_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V11_VERIFICATION_RECEIPT.json"
+
 
 def _repo_ref(relative: Path) -> str:
     return relative.as_posix()
@@ -2426,6 +2455,356 @@ def prefreeze_v10_runtime_spec() -> dict[str, Any]:
     return spec
 
 
+def v11_physical_root(ordinal: int) -> Path:
+    if ordinal not in {1, 2, 3}:
+        raise Wave2IntegrationError("V11 physical attempt ordinal must be 1..3")
+    return V11_PRIVATE_ROOT / f"physical_attempt_{ordinal:02d}"
+
+
+def verify_v10_seal(repo_root: Path) -> dict[str, str]:
+    verified = verify_v9_seal(repo_root)
+    for relative, digest in V10_SEALED_DIGESTS.items():
+        path = repo_root / relative
+        if not path.is_file() or bytes_sha256(path.read_bytes()) != digest:
+            raise Wave2IntegrationError(
+                f"sealed V10 bytes changed: {relative.as_posix()}"
+            )
+        verified[relative.as_posix()] = digest
+    return verified
+
+
+def expected_v11_provider_release(repo_root: Path) -> dict[str, Any]:
+    """Bind the supported gpt-5.4 route; returned model is observation only."""
+
+    verify_v10_seal(repo_root)
+    release = deepcopy(_read_json(repo_root / V10_RELEASE_REL))
+    release.pop("release_digest")
+    release.pop("model_identity_contract_digest")
+    release.pop("routing_correction_predecessor", None)
+    release.pop("required_returned_snapshot", None)
+    release.update(
+        {
+            "schema": "recclaw.research-line.provider-release-contract.v11",
+            "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+            "request_and_return_matching": "EXACT_REQUEST_ROUTE_ONLY",
+            "returned_model_evidence_policy": "OBSERVED_METADATA_NON_BLOCKING",
+            "alias_request_or_fallback": "EXACT_GPT_5_4_REQUEST_NO_FALLBACK",
+            "engineering_predecessor": {
+                "v10_release_digest": V10_SEALED_DIGESTS[V10_RELEASE_REL],
+                "v10_attempt_digest": V10_SEALED_DIGESTS[
+                    V10_ATTEMPT_RECEIPT_REL
+                ],
+                "v10_blocked_digest": V10_SEALED_DIGESTS[V10_BLOCKED_REL],
+                "v10_functional_http_status": 200,
+            },
+        }
+    )
+    identity_fields = {
+        key: release[key]
+        for key in _MODEL_IDENTITY_BINDING_FIELDS
+        if key != "required_returned_snapshot"
+    }
+    identity_fields["returned_model_evidence_policy"] = release[
+        "returned_model_evidence_policy"
+    ]
+    release["model_identity_contract_digest"] = sha256_digest(identity_fields)
+    return {**release, "release_digest": sha256_digest(release)}
+
+
+def expected_v11_retry_policy(repo_root: Path) -> dict[str, Any]:
+    verify_v10_seal(repo_root)
+    policy = deepcopy(_read_json(repo_root / V10_POLICY_REL))
+    policy["schema"] = "recclaw.research-line.r1-provider-retry-policy.v11"
+    policy.pop("inherited_v9_policy_ref", None)
+    policy.pop("inherited_v9_policy_digest", None)
+    policy["inherited_v10_policy_ref"] = _repo_ref(V10_POLICY_REL)
+    policy["inherited_v10_policy_digest"] = V10_SEALED_DIGESTS[V10_POLICY_REL]
+    policy["diagnostic_slot"]["slot_id"] = (
+        "PREFREEZE_V11_ENGINEERING_VALIDATION"
+    )
+    return policy
+
+
+def expected_prefreeze_v11_manifest(repo_root: Path) -> dict[str, Any]:
+    verify_v10_seal(repo_root)
+    v10 = _read_json(repo_root / V10_MANIFEST_REL)
+    release = expected_v11_provider_release(repo_root)
+    policy = expected_v11_retry_policy(repo_root)
+    manifest = deepcopy(v10)
+    manifest["schema"] = "recclaw.research-line.r1-r2-prefreeze-attempt.v11"
+    manifest["attempt_identity"] = {
+        "attempt_id": V11_ATTEMPT_ID,
+        "base_commit": V10_HEAD,
+        "base_parent": V10_PARENT,
+        "base_tree": V10_TREE,
+        "pre_outcome": True,
+        "distinct_from_v1_through_v10_attempts": True,
+        "old_attempt_call_session_db_identity_reuse": False,
+    }
+    manifest["sealed_predecessor_evidence"] = {
+        "v10_manifest_digest": V10_SEALED_DIGESTS[V10_MANIFEST_REL],
+        "v10_attempt_digest": V10_SEALED_DIGESTS[V10_ATTEMPT_RECEIPT_REL],
+        "v10_blocked_digest": V10_SEALED_DIGESTS[V10_BLOCKED_REL],
+        "v1_through_v10_preservation": (
+            "SEALED_WORKING_AND_COMMITTED_BYTES_IDENTICAL"
+        ),
+    }
+    manifest.pop("authorized_v10_model_routing_correction", None)
+    manifest["authorized_v11_engineering_validation"] = {
+        "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+        "returned_model_evidence_policy": "OBSERVED_METADATA_NON_BLOCKING",
+        "functional_gates": [
+            "REAL_PROVIDER_ROUTE_EXECUTES",
+            "STRICT_SCHEMA_AND_LOCAL_SEMANTICS_PASS",
+            "OPEN_RESEARCH_TARGET_PRESERVED",
+            "NO_FIXED_66_TUNING_STATIC_OR_FALLBACK_DEGRADATION",
+        ],
+        "candidate_training_outcome_held_out": "FORBIDDEN_IN_PREFREEZE",
+    }
+    manifest["downstream_task_opening_acceptance_criteria"] = [
+        "FUNCTION_IS_REAL_AND_RUNNABLE",
+        "END_TO_END_RESULT_CHAIN_IS_REAL_AND_VALID",
+        "IMPLEMENTATION_PRECISELY_SERVES_RECCLAW_RESEARCH_TARGET_AND_REQUIRED_EFFECT",
+        "NO_FIXED_66_CONFIG_TUNING_STATIC_CANDIDATE_LOW_CHANGE_WRAPPER_FALLBACK_OR_MOCK_SMOKE_SUBSTITUTION",
+    ]
+    manifest["provider_release_contract"] = release
+    exact = manifest["exact_provider_contract"]
+    exact.pop("required_returned_snapshot", None)
+    exact.pop("model_identity_pair_digest", None)
+    exact.update(
+        {
+            "model": V10_REQUEST_MODEL_ALIAS,
+            "model_digest": sha256_digest({"model": V10_REQUEST_MODEL_ALIAS}),
+            "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+            "returned_model_evidence_policy": "OBSERVED_METADATA_NON_BLOCKING",
+            "provider_release_ref": _repo_ref(V11_RELEASE_REL),
+            "provider_release_artifact_digest": bytes_sha256(
+                canonical_json_bytes(release)
+            ),
+            "provider_release_digest": release["release_digest"],
+            "request_payload_digest": exact_v10_probe_request_payload_digest(
+                repo_root
+            ),
+            "logical_call_id": V11_LOGICAL_CALL_ID,
+            "proposal_generation_session_id": V11_SESSION_ID,
+            "diagnostic_slot_id": "PREFREEZE_V11_ENGINEERING_VALIDATION",
+        }
+    )
+    identities = []
+    for ordinal in (1, 2, 3):
+        private_digest = sha256_digest(
+            {"path": v11_physical_root(ordinal).as_posix()}
+        )
+        identities.append(
+            {
+                "ordinal": ordinal,
+                "physical_attempt_identity_digest": sha256_digest(
+                    {
+                        "attempt_id": V11_ATTEMPT_ID,
+                        "diagnostic_slot": "PREFREEZE_V11_ENGINEERING_VALIDATION",
+                        "ordinal": ordinal,
+                        "private_root_digest": private_digest,
+                    }
+                ),
+                "private_root_digest": private_digest,
+            }
+        )
+    manifest["bounded_retry"].update(
+        {
+            "policy_ref": _repo_ref(V11_POLICY_REL),
+            "policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+            "physical_attempt_identities": identities,
+        }
+    )
+    future = manifest["future_r1_scientific_contract"]
+    future.pop("required_returned_snapshot", None)
+    future["returned_model_evidence_policy"] = "OBSERVED_METADATA_NON_BLOCKING"
+    shared = sha256_digest(
+        {
+            "inherited_v10_shared_call_contract_digest": future[
+                "shared_call_contract_digest"
+            ],
+            "v11_provider_release_contract_digest": release["release_digest"],
+        }
+    )
+    future["shared_call_contract_digest"] = shared
+    future["side_a_call_contract_digest"] = shared
+    future["side_b_call_contract_digest"] = shared
+    manifest["inherited_v10_scientific_contract_digest"] = sha256_digest(
+        v10["future_r1_scientific_contract"]
+    )
+    manifest["v11_scientific_contract_digest"] = sha256_digest(future)
+    manifest["r1_worker_launch_authorized"] = False
+    return manifest
+
+
+def expected_v11_authorization(repo_root: Path) -> dict[str, Any]:
+    manifest = expected_prefreeze_v11_manifest(repo_root)
+    policy = expected_v11_retry_policy(repo_root)
+    release = expected_v11_provider_release(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v11-authorization.v1",
+        "status": "AUTHORIZED_ONE_V11_ENGINEERING_VALIDATION_SLOT",
+        "attempt_id": V11_ATTEMPT_ID,
+        "manifest_ref": _repo_ref(V11_MANIFEST_REL),
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "retry_policy_ref": _repo_ref(V11_POLICY_REL),
+        "retry_policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+        "provider_release_ref": _repo_ref(V11_RELEASE_REL),
+        "provider_release_artifact_digest": bytes_sha256(
+            canonical_json_bytes(release)
+        ),
+        "provider_release_contract_digest": release["release_digest"],
+        "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+        "returned_model_evidence_policy": "OBSERVED_METADATA_NON_BLOCKING",
+        "diagnostic_token_ceiling": V8_DIAGNOSTIC_TOKEN_CEILING,
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "maximum_physical_attempts": 3,
+        "maximum_retry_count": 2,
+        "deterministic_backoff_ms": [1000, 3000],
+        "provider_calls_before_authorization": 0,
+        "candidate_training_outcome_held_out_before_authorization": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def validate_prefreeze_v11(repo_root: Path) -> dict[str, Any]:
+    verify_v10_seal(repo_root)
+    _load_exact(
+        repo_root / V11_RELEASE_REL, expected_v11_provider_release(repo_root)
+    )
+    policy = _load_exact(
+        repo_root / V11_POLICY_REL, expected_v11_retry_policy(repo_root)
+    )
+    manifest = _load_exact(
+        repo_root / V11_MANIFEST_REL, expected_prefreeze_v11_manifest(repo_root)
+    )
+    _load_exact(
+        repo_root / V11_AUTH_REL, expected_v11_authorization(repo_root)
+    )
+    v10 = _read_json(repo_root / V10_MANIFEST_REL)
+    if (
+        manifest["preserved_scientific_identity"]
+        != v10["preserved_scientific_identity"]
+        or manifest["response_contract_equivalence"]
+        != v10["response_contract_equivalence"]
+    ):
+        raise Wave2IntegrationError("V11 changed the research implementation target")
+    future10 = deepcopy(v10["future_r1_scientific_contract"])
+    future11 = deepcopy(manifest["future_r1_scientific_contract"])
+    for value in (future10, future11):
+        value.pop("required_returned_snapshot", None)
+        value.pop("returned_model_evidence_policy", None)
+        value.pop("shared_call_contract_digest", None)
+        value.pop("side_a_call_contract_digest", None)
+        value.pop("side_b_call_contract_digest", None)
+    if future10 != future11:
+        raise Wave2IntegrationError("V11 changed the functional R1 comparison")
+    if (
+        manifest["future_r1_scientific_contract"][
+            "fixed_66_or_static_candidate_fallback"
+        ]
+        != "FORBIDDEN"
+        or any(manifest["pre_outcome_counters"].values())
+    ):
+        raise Wave2IntegrationError("V11 degraded or crossed the pre-outcome gate")
+    policy10 = deepcopy(_read_json(repo_root / V10_POLICY_REL))
+    policy11 = deepcopy(policy)
+    for value in (policy10, policy11):
+        value.pop("schema", None)
+        value.pop("inherited_v9_policy_ref", None)
+        value.pop("inherited_v9_policy_digest", None)
+        value.pop("inherited_v10_policy_ref", None)
+        value.pop("inherited_v10_policy_digest", None)
+        value["diagnostic_slot"].pop("slot_id", None)
+    if policy10 != policy11:
+        raise Wave2IntegrationError("V11 changed retry semantics")
+    return manifest
+
+
+def provider_free_v11_dry_run(repo_root: Path) -> dict[str, Any]:
+    manifest = validate_prefreeze_v11(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v11-dry-run-receipt.v1",
+        "status": "PASS_PROVIDER_FREE_V11_ENGINEERING_VALIDATION",
+        "attempt_id": V11_ATTEMPT_ID,
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "v1_through_v10_seals_verified": True,
+        "gpt_5_4_route_fixed": True,
+        "returned_model_metadata_non_blocking": True,
+        "strict_schema_and_local_uniqueness_fail_closed": True,
+        "open_research_target_preserved": True,
+        "no_fixed_66_tuning_static_or_fallback_degradation": True,
+        "provider_calls": 0,
+        "training_runs": 0,
+        "candidate_qualifications": 0,
+        "candidate_admissions": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def prefreeze_v11_runtime_spec() -> dict[str, Any]:
+    spec = prefreeze_v10_runtime_spec()
+    spec.update(
+        {
+            "label": "V11",
+            "attempt_id": V11_ATTEMPT_ID,
+            "attempt_rel": V11_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": (
+                "recclaw.research-line.prefreeze-v11-provider-attempt-receipt.v1"
+            ),
+            "auth_rel": V11_AUTH_REL,
+            "blocked_rel": V11_BLOCKED_REL,
+            "blocked_schema": (
+                "recclaw.research-line.prefreeze-v11-blocked-receipt.v1"
+            ),
+            "dry_run_rel": V11_DRY_RUN_REL,
+            "manifest_rel": V11_MANIFEST_REL,
+            "policy_rel": V11_POLICY_REL,
+            "private_root": V11_PRIVATE_ROOT,
+            "ready_rel": V11_READY_REL,
+            "ready_schema": (
+                "recclaw.research-line.r1-prefreeze-ready-receipt.v11"
+            ),
+            "release_rel": V11_RELEASE_REL,
+            "verification_rel": V11_VERIFICATION_REL,
+            "verification_schema": (
+                "recclaw.research-line.prefreeze-v11-verification-receipt.v1"
+            ),
+            "validate": validate_prefreeze_v11,
+            "dry_run": provider_free_v11_dry_run,
+            "requested_model": V10_REQUEST_MODEL_ALIAS,
+            "required_returned_model": None,
+            "enforce_returned_model": False,
+            "identity_receipt_fields": {
+                "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+                "returned_model_evidence_policy": "OBSERVED_METADATA_NON_BLOCKING",
+            },
+            "blocked_identity_field": "gpt_5_4_route_and_functional_contract",
+            "pass_classification": (
+                "PASS_GPT_5_4_FUNCTIONAL_SCHEMA_AND_LOCAL_CONTRACT"
+            ),
+            "pass_status": "PASS_PROVIDER_FREE_V11_ENGINEERING_VALIDATION",
+            "verify_predecessor": verify_v10_seal,
+            "expected_policy": expected_v11_retry_policy,
+            "expected_manifest": expected_prefreeze_v11_manifest,
+            "expected_authorization": expected_v11_authorization,
+            "expected_release": expected_v11_provider_release,
+            "logical_call_id": V11_LOGICAL_CALL_ID,
+            "session_id": V11_SESSION_ID,
+            "slot_id": "PREFREEZE_V11_ENGINEERING_VALIDATION",
+            "physical_root": v11_physical_root,
+            "hard_blocked_on_transient_exhaustion": False,
+        }
+    )
+    spec.pop("validate_model_pair", None)
+    return spec
+
+
 __all__ = [
     "BROKER_SOURCE_REL",
     "V5_ATTEMPT_ID",
@@ -2593,4 +2972,27 @@ __all__ = [
     "validate_prefreeze_v10",
     "validate_v10_route_snapshot_pair",
     "verify_v9_seal",
+    "V10_SEALED_DIGESTS",
+    "V11_ATTEMPT_ID",
+    "V11_ATTEMPT_RECEIPT_REL",
+    "V11_AUTH_REL",
+    "V11_BLOCKED_REL",
+    "V11_DRY_RUN_REL",
+    "V11_LOGICAL_CALL_ID",
+    "V11_MANIFEST_REL",
+    "V11_POLICY_REL",
+    "V11_PRIVATE_ROOT",
+    "V11_READY_REL",
+    "V11_RELEASE_REL",
+    "V11_SESSION_ID",
+    "V11_VERIFICATION_REL",
+    "expected_prefreeze_v11_manifest",
+    "expected_v11_authorization",
+    "expected_v11_provider_release",
+    "expected_v11_retry_policy",
+    "prefreeze_v11_runtime_spec",
+    "provider_free_v11_dry_run",
+    "v11_physical_root",
+    "validate_prefreeze_v11",
+    "verify_v10_seal",
 ]

@@ -313,4 +313,6 @@ def test_checked_in_v4_outcome_is_bounded_and_side_effect_free() -> None:
             "final_classification"
         ]
         assert blocked["r1_worker_launch_authorized"] is False
-    assert not ((ROOT / V4_BLOCKED_REL).exists() and (ROOT / V4_READY_REL).exists())
+    if (ROOT / V4_READY_REL).exists():
+        ready = json.loads((ROOT / V4_READY_REL).read_bytes())
+        assert ready["attempt_id"] != receipt["attempt_id"]

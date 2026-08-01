@@ -91,12 +91,15 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     prefreeze_v8_runtime_spec,
     prefreeze_v9_runtime_spec,
     prefreeze_v10_runtime_spec,
+    prefreeze_v11_runtime_spec,
     validate_prefreeze_v7,
     verify_v6_seal,
 )
 
 
 def _contract(version: int) -> dict[str, Any]:
+    if version == 11:
+        return prefreeze_v11_runtime_spec()
     if version == 10:
         return prefreeze_v10_runtime_spec()
     if version == 9:
@@ -435,8 +438,11 @@ def _load_attempt(version: int) -> tuple[dict[str, Any], dict[str, Any]]:
             != contract["pass_classification"]
             or final.get("termination_reason")
             != "FIRST_VALID_LOCAL_EQUIVALENT_RESPONSE_ACCEPTED"
-            or receipt.get("returned_model")
-            != contract["required_returned_model"]
+            or (
+                contract.get("enforce_returned_model", True)
+                and receipt.get("returned_model")
+                != contract["required_returned_model"]
+            )
             or receipt.get("authentication_status") != "VERIFIED"
             or receipt.get("local_semantic_equivalence_status") != "VERIFIED"
             or receipt.get("blocked_fields") != []
@@ -647,8 +653,7 @@ def _finalize(version: int) -> int:
             verification_path.read_bytes()
         ),
         "model": contract["requested_model"],
-        "returned_model": contract["required_returned_model"],
-        "required_returned_snapshot": contract["required_returned_model"],
+        "returned_model": attempt["returned_model"],
         "diagnostic_token_ceiling": contract.get("diagnostic_token_ceiling"),
         "authentication_status": "VERIFIED",
         "provider_schema_support": "VERIFIED",
@@ -673,6 +678,14 @@ def _finalize(version: int) -> int:
         ready["requested_model_alias"] = contract["requested_model"]
     else:
         ready.update(identity_fields)
+    if contract.get("enforce_returned_model", True):
+        ready["required_returned_snapshot"] = contract[
+            "required_returned_model"
+        ]
+    if "downstream_task_opening_acceptance_criteria" in manifest:
+        ready["downstream_task_opening_acceptance_criteria"] = manifest[
+            "downstream_task_opening_acceptance_criteria"
+        ]
     _write_once(ROOT / contract["ready_rel"], ready)
     print(
         json.dumps(
@@ -697,7 +710,7 @@ def main() -> int:
     parser.add_argument("--pytest-passed", type=int, default=0)
     parser.add_argument("--pytest-skipped", type=int, default=0)
     parser.add_argument(
-        "--version", type=int, choices=(5, 6, 7, 8, 9, 10), default=5
+        "--version", type=int, choices=(5, 6, 7, 8, 9, 10, 11), default=5
     )
     args = parser.parse_args()
     if args.action == "prepare":

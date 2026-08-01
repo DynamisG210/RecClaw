@@ -108,6 +108,7 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     prefreeze_v8_runtime_spec,
     prefreeze_v9_runtime_spec,
     prefreeze_v10_runtime_spec,
+    prefreeze_v11_runtime_spec,
     validate_v8_exact_snapshot_pair,
 )
 from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
@@ -1368,6 +1369,8 @@ class _V5PostBrokerContractFailure(ValueError):
 def _prefreeze_diagnostic_contract(version: int) -> dict[str, Any]:
     """Select identity/ceiling; V5--V7 share one transport path."""
 
+    if version == 11:
+        return prefreeze_v11_runtime_spec()
     if version == 10:
         return prefreeze_v10_runtime_spec()
     if version == 9:
@@ -1615,9 +1618,14 @@ def _prefreeze_top_receipt(
     identity_receipt_fields = contract_config.get("identity_receipt_fields")
     if identity_receipt_fields is not None:
         receipt.update(identity_receipt_fields)
-        receipt["exact_model_pair_status"] = (
-            "VERIFIED" if success else "UNVERIFIED"
-        )
+        if contract_config.get("enforce_returned_model", True):
+            receipt["exact_model_pair_status"] = (
+                "VERIFIED" if success else "UNVERIFIED"
+            )
+        else:
+            receipt["requested_model_route_status"] = (
+                "VERIFIED" if success else "UNVERIFIED"
+            )
     elif version >= 6:
         receipt.update(
             {
@@ -1727,7 +1735,9 @@ def _main_prefreeze_diagnostic(version: int) -> int:
             )
             if version == 5 and result.returned_model != MODEL:
                 raise _V5PostBrokerContractFailure("RETURNED_MODEL_MISMATCH")
-            if version >= 6:
+            if version >= 6 and contract_config.get(
+                "enforce_returned_model", True
+            ):
                 try:
                     if version >= 8:
                         contract_config["validate_model_pair"](
@@ -1930,6 +1940,9 @@ def _main_prefreeze_diagnostic(version: int) -> int:
 
 
 def main() -> int:
+    if "--v11" in sys.argv:
+        sys.argv.remove("--v11")
+        return _main_prefreeze_diagnostic(11)
     if "--v10" in sys.argv:
         sys.argv.remove("--v10")
         return _main_prefreeze_diagnostic(10)
