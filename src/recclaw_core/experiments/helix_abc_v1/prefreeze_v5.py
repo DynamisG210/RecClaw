@@ -23,6 +23,7 @@ from .prefreeze_v2 import (
     V4_RELEASE_REL,
     V4_VALIDATOR_REL,
     V4_VALID_FIXTURE_REL,
+    exact_v4_probe_request_payload,
     verify_v1_seal,
     verify_v2_seal,
     verify_v3_seal,
@@ -127,6 +128,44 @@ V6_BLOCKED_REL = DOC_ROOT_REL / "PREFREEZE_V6_BLOCKED_RECEIPT.json"
 V6_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
 V6_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V6_DRY_RUN_RECEIPT.json"
 V6_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V6_VERIFICATION_RECEIPT.json"
+
+V6_HEAD = "6d10e44baf73824d6e69770e4632aea38eb79de4"
+V6_PARENT = "d0fd84ce8174a4bfc913d98e1d0fa58e7480f363"
+V6_TREE = "46666c6af830e2e4aafdea8e17be0a99bdf2ee6c"
+V6_SEALED_DIGESTS: dict[Path, str] = {
+    V6_RELEASE_REL: "d480d615096e5a62bfa22f89407ef160012657df3230a0aeade9401ce2453f44",
+    V6_POLICY_REL: "58e6cf43c7c85f08cdefa0d05ee9e71526db0e9fa239dae4f86bfc05ea294194",
+    V6_MANIFEST_REL: "b9afcfbe38f3f2a5ecb013f477a0181776dd9314739868b761843d53a7ff57f2",
+    V6_AUTH_REL: "3e0d884569836a84678f12800ef8105e2450f60a70a4d25c996cbe5e99529907",
+    V6_DRY_RUN_REL: "3f0f5bee76266b71a49ebcfd3583e6c49277a0ddc0fdd6fa189d75d74116e6a5",
+    V6_ATTEMPT_RECEIPT_REL: "c721e773ee0e06f49d62ad7c3d91ab4208a1c8c9b10eb44fc6f404ad5198a801",
+    V6_BLOCKED_REL: "5072e2b73e2e3e53e9546a3cf56970fe0e6f360aa43e91d29ed339c38d2e25b4",
+}
+
+V7_ATTEMPT_ID = "recclaw-r1-r2-prefreeze-v7-20260801"
+V7_DIAGNOSTIC_TOKEN_CEILING = 6000
+V7_ATTEMPT_RECEIPT_SCHEMA = (
+    "recclaw.research-line.prefreeze-v7-provider-attempt-receipt.v1"
+)
+V7_BLOCKED_SCHEMA = "recclaw.research-line.prefreeze-v7-blocked-receipt.v1"
+V7_READY_SCHEMA = "recclaw.research-line.r1-prefreeze-ready-receipt.v7"
+V7_VERIFICATION_SCHEMA = (
+    "recclaw.research-line.prefreeze-v7-verification-receipt.v1"
+)
+V7_LOGICAL_CALL_ID = "fresh-open-spec-prefreeze-v7-ceiling-alignment-slot"
+V7_SESSION_ID = "fresh-open-spec-prefreeze-v7-ceiling-alignment-slot-session"
+V7_PRIVATE_ROOT = Path("/root/projects/RecClaw_r1_prefreeze_probe_v7_private")
+V7_RELEASE_REL = DOC_ROOT_REL / "FRESH_OPEN_SPEC_PROVIDER_RELEASE_V7.json"
+V7_POLICY_REL = DOC_ROOT_REL / "R1_PROVIDER_RETRY_POLICY_V7.json"
+V7_MANIFEST_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_MANIFEST_V7.json"
+V7_AUTH_REL = DOC_ROOT_REL / "PREFREEZE_V7_AUTHORIZATION.json"
+V7_ATTEMPT_RECEIPT_REL = (
+    DOC_ROOT_REL / "FRESH_OPEN_SPEC_ENDPOINT_ATTEMPT_RECEIPT_V7.json"
+)
+V7_BLOCKED_REL = DOC_ROOT_REL / "PREFREEZE_V7_BLOCKED_RECEIPT.json"
+V7_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
+V7_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V7_DRY_RUN_RECEIPT.json"
+V7_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V7_VERIFICATION_RECEIPT.json"
 
 
 def _repo_ref(relative: Path) -> str:
@@ -800,6 +839,273 @@ def provider_free_v6_dry_run(repo_root: Path) -> dict[str, Any]:
     }
 
 
+def v7_physical_root(ordinal: int) -> Path:
+    if ordinal not in {1, 2, 3}:
+        raise Wave2IntegrationError("V7 physical attempt ordinal must be 1..3")
+    return V7_PRIVATE_ROOT / f"physical_attempt_{ordinal:02d}"
+
+
+def verify_v6_seal(repo_root: Path) -> dict[str, str]:
+    verify_v5_seal(repo_root)
+    for relative, digest in V6_SEALED_DIGESTS.items():
+        path = repo_root / relative
+        if not path.is_file() or bytes_sha256(path.read_bytes()) != digest:
+            raise Wave2IntegrationError(
+                f"sealed V6 bytes changed: {relative.as_posix()}"
+            )
+    return {
+        relative.as_posix(): digest
+        for relative, digest in V6_SEALED_DIGESTS.items()
+    }
+
+
+def exact_v7_probe_request_payload_digest(repo_root: Path) -> str:
+    payload = exact_v4_probe_request_payload(repo_root)
+    payload["max_tokens"] = V7_DIAGNOSTIC_TOKEN_CEILING
+    return sha256_digest(payload)
+
+
+def expected_v7_provider_release(repo_root: Path) -> dict[str, Any]:
+    verify_v6_seal(repo_root)
+    release = deepcopy(_read_json(repo_root / V6_RELEASE_REL))
+    release.pop("release_digest")
+    release["schema"] = "recclaw.research-line.provider-release-contract.v7"
+    release["diagnostic_token_budget"] = V7_DIAGNOSTIC_TOKEN_CEILING
+    return {**release, "release_digest": sha256_digest(release)}
+
+
+def expected_v7_retry_policy(repo_root: Path) -> dict[str, Any]:
+    verify_v6_seal(repo_root)
+    policy = deepcopy(_read_json(repo_root / V6_POLICY_REL))
+    policy["schema"] = "recclaw.research-line.r1-provider-retry-policy.v7"
+    policy.pop("inherited_v5_policy_ref", None)
+    policy.pop("inherited_v5_policy_digest", None)
+    policy["inherited_v6_policy_ref"] = _repo_ref(V6_POLICY_REL)
+    policy["inherited_v6_policy_digest"] = V6_SEALED_DIGESTS[V6_POLICY_REL]
+    policy["diagnostic_slot"]["slot_id"] = (
+        "PREFREEZE_V7_DIAGNOSTIC_CEILING_ALIGNMENT"
+    )
+    return policy
+
+
+def expected_prefreeze_v7_manifest(repo_root: Path) -> dict[str, Any]:
+    verify_v6_seal(repo_root)
+    v6 = _read_json(repo_root / V6_MANIFEST_REL)
+    release = expected_v7_provider_release(repo_root)
+    policy = expected_v7_retry_policy(repo_root)
+    manifest = deepcopy(v6)
+    manifest["schema"] = "recclaw.research-line.r1-r2-prefreeze-attempt.v7"
+    manifest["attempt_identity"] = {
+        "attempt_id": V7_ATTEMPT_ID,
+        "base_commit": V6_HEAD,
+        "base_parent": V6_PARENT,
+        "base_tree": V6_TREE,
+        "pre_outcome": True,
+        "distinct_from_v1_v2_v3_v4_v5_v6_attempts": True,
+        "old_attempt_call_session_db_identity_reuse": False,
+    }
+    manifest["sealed_predecessor_evidence"] = {
+        "v6_manifest_digest": V6_SEALED_DIGESTS[V6_MANIFEST_REL],
+        "v6_attempt_digest": V6_SEALED_DIGESTS[V6_ATTEMPT_RECEIPT_REL],
+        "v6_blocked_digest": V6_SEALED_DIGESTS[V6_BLOCKED_REL],
+        "v1_v2_v3_v4_v5_v6_preservation": (
+            "SEALED_WORKING_AND_COMMITTED_BYTES_IDENTICAL"
+        ),
+    }
+    manifest["authorized_v7_infrastructure_alignment"] = {
+        "decision": "CONTRACT_EQUIVALENT_INFRASTRUCTURE_FIX",
+        "only_contract_delta": (
+            "DIAGNOSTIC_TOKEN_CEILING_2000_TO_FROZEN_6000"
+        ),
+        "prior_diagnostic_token_ceiling": 2000,
+        "diagnostic_token_ceiling": V7_DIAGNOSTIC_TOKEN_CEILING,
+        "transport_and_future_r1_token_ceiling": 6000,
+        "research_proposal_budget_changed": False,
+        "schema_semantics_model_pair_or_uniqueness_changed": False,
+    }
+    manifest["provider_release_contract"] = release
+    exact = manifest["exact_provider_contract"]
+    exact.update(
+        {
+            "provider_release_ref": _repo_ref(V7_RELEASE_REL),
+            "provider_release_artifact_digest": bytes_sha256(
+                canonical_json_bytes(release)
+            ),
+            "provider_release_digest": release["release_digest"],
+            "request_payload_digest": exact_v7_probe_request_payload_digest(
+                repo_root
+            ),
+            "token_budget": V7_DIAGNOSTIC_TOKEN_CEILING,
+            "logical_call_id": V7_LOGICAL_CALL_ID,
+            "proposal_generation_session_id": V7_SESSION_ID,
+            "diagnostic_slot_id": (
+                "PREFREEZE_V7_DIAGNOSTIC_CEILING_ALIGNMENT"
+            ),
+        }
+    )
+    identities = [
+        {
+            "ordinal": ordinal,
+            "physical_attempt_identity_digest": sha256_digest(
+                {
+                    "attempt_id": V7_ATTEMPT_ID,
+                    "diagnostic_slot": (
+                        "PREFREEZE_V7_DIAGNOSTIC_CEILING_ALIGNMENT"
+                    ),
+                    "ordinal": ordinal,
+                    "private_root_digest": sha256_digest(
+                        {"path": v7_physical_root(ordinal).as_posix()}
+                    ),
+                }
+            ),
+            "private_root_digest": sha256_digest(
+                {"path": v7_physical_root(ordinal).as_posix()}
+            ),
+        }
+        for ordinal in (1, 2, 3)
+    ]
+    manifest["bounded_retry"].update(
+        {
+            "policy_ref": _repo_ref(V7_POLICY_REL),
+            "policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+            "physical_attempt_identities": identities,
+        }
+    )
+    future = manifest["future_r1_scientific_contract"]
+    manifest.pop("inherited_v5_scientific_contract_digest", None)
+    manifest.pop("v6_scientific_contract_digest", None)
+    manifest["inherited_v6_scientific_contract_digest"] = sha256_digest(
+        v6["future_r1_scientific_contract"]
+    )
+    manifest["v7_scientific_contract_digest"] = sha256_digest(future)
+    return manifest
+
+
+def expected_v7_authorization(repo_root: Path) -> dict[str, Any]:
+    manifest = expected_prefreeze_v7_manifest(repo_root)
+    policy = expected_v7_retry_policy(repo_root)
+    release = expected_v7_provider_release(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v7-authorization.v1",
+        "status": "AUTHORIZED_ONE_V7_CEILING_ALIGNMENT_DIAGNOSTIC_SLOT",
+        "attempt_id": V7_ATTEMPT_ID,
+        "manifest_ref": _repo_ref(V7_MANIFEST_REL),
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "retry_policy_ref": _repo_ref(V7_POLICY_REL),
+        "retry_policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+        "provider_release_ref": _repo_ref(V7_RELEASE_REL),
+        "provider_release_artifact_digest": bytes_sha256(
+            canonical_json_bytes(release)
+        ),
+        "provider_release_contract_digest": release["release_digest"],
+        "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+        "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+        "diagnostic_token_ceiling": V7_DIAGNOSTIC_TOKEN_CEILING,
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "maximum_physical_attempts": 3,
+        "maximum_retry_count": 2,
+        "deterministic_backoff_ms": [1000, 3000],
+        "provider_calls_before_authorization": 0,
+        "candidate_training_outcome_held_out_before_authorization": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def validate_prefreeze_v7(repo_root: Path) -> dict[str, Any]:
+    verify_v6_seal(repo_root)
+    release = _load_exact(
+        repo_root / V7_RELEASE_REL, expected_v7_provider_release(repo_root)
+    )
+    policy = _load_exact(
+        repo_root / V7_POLICY_REL, expected_v7_retry_policy(repo_root)
+    )
+    manifest = _load_exact(
+        repo_root / V7_MANIFEST_REL, expected_prefreeze_v7_manifest(repo_root)
+    )
+    _load_exact(repo_root / V7_AUTH_REL, expected_v7_authorization(repo_root))
+    v6 = _read_json(repo_root / V6_MANIFEST_REL)
+    exact = manifest["exact_provider_contract"]
+    validate_v6_exact_model_pair(
+        requested_model_alias=exact["requested_model_alias"],
+        returned_model=exact["required_returned_snapshot"],
+    )
+    allowed_exact_delta = {
+        "provider_release_ref",
+        "provider_release_artifact_digest",
+        "provider_release_digest",
+        "request_payload_digest",
+        "token_budget",
+        "logical_call_id",
+        "proposal_generation_session_id",
+        "diagnostic_slot_id",
+    }
+    if {
+        key: value
+        for key, value in exact.items()
+        if key not in allowed_exact_delta
+    } != {
+        key: value
+        for key, value in v6["exact_provider_contract"].items()
+        if key not in allowed_exact_delta
+    }:
+        raise Wave2IntegrationError("V7 changed a non-diagnostic Provider field")
+    if (
+        exact["token_budget"] != V7_DIAGNOSTIC_TOKEN_CEILING
+        or release["diagnostic_token_budget"]
+        != release["transport_max_total_tokens_per_call"]
+        or release["diagnostic_token_budget"]
+        != release["future_r1_token_budget_per_call"]
+    ):
+        raise Wave2IntegrationError("V7 diagnostic ceiling is not exact 6000")
+    if (
+        manifest["future_r1_scientific_contract"]
+        != v6["future_r1_scientific_contract"]
+        or manifest["response_contract_equivalence"]
+        != v6["response_contract_equivalence"]
+        or manifest["preserved_scientific_identity"]
+        != v6["preserved_scientific_identity"]
+    ):
+        raise Wave2IntegrationError("V7 changed the R1 or response contract")
+    if (
+        policy["diagnostic_slot"]["maximum_total_physical_attempts"] != 3
+        or policy["diagnostic_slot"]["deterministic_backoff_ms_after_failure"]
+        != [1000, 3000]
+        or policy["response_contract_failure"]["retry_eligible"] is not False
+        or "SEMANTIC_RESPONSE_CONTRACT_FAILURE"
+        not in policy["diagnostic_slot"]["terminal_no_retry_failure_classes"]
+    ):
+        raise Wave2IntegrationError("V7 retry/terminal policy changed")
+    if any(manifest["pre_outcome_counters"].values()):
+        raise Wave2IntegrationError("Prefreeze V7 is not pre-outcome")
+    return manifest
+
+
+def provider_free_v7_dry_run(repo_root: Path) -> dict[str, Any]:
+    manifest = validate_prefreeze_v7(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v7-dry-run-receipt.v1",
+        "status": "PASS_PROVIDER_FREE_V7_DIAGNOSTIC_CEILING_ALIGNMENT",
+        "attempt_id": V7_ATTEMPT_ID,
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "v1_v2_v3_v4_v5_v6_seals_verified": True,
+        "only_diagnostic_ceiling_delta_verified": True,
+        "diagnostic_transport_future_ceiling_equal_6000": True,
+        "future_r1_contract_exact_v6_verified": True,
+        "exact_model_pair_verified": True,
+        "strict_schema_sentinel_local_uniqueness_verified": True,
+        "token_ceiling_terminal_verified": True,
+        "provider_calls": 0,
+        "training_runs": 0,
+        "candidate_qualifications": 0,
+        "candidate_admissions": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
 __all__ = [
     "BROKER_SOURCE_REL",
     "V5_ATTEMPT_ID",
@@ -855,4 +1161,32 @@ __all__ = [
     "validate_prefreeze_v6",
     "validate_v6_exact_model_pair",
     "verify_v5_seal",
+    "V6_SEALED_DIGESTS",
+    "V7_ATTEMPT_ID",
+    "V7_ATTEMPT_RECEIPT_REL",
+    "V7_ATTEMPT_RECEIPT_SCHEMA",
+    "V7_AUTH_REL",
+    "V7_BLOCKED_REL",
+    "V7_BLOCKED_SCHEMA",
+    "V7_DIAGNOSTIC_TOKEN_CEILING",
+    "V7_DRY_RUN_REL",
+    "V7_LOGICAL_CALL_ID",
+    "V7_MANIFEST_REL",
+    "V7_POLICY_REL",
+    "V7_PRIVATE_ROOT",
+    "V7_READY_REL",
+    "V7_READY_SCHEMA",
+    "V7_RELEASE_REL",
+    "V7_SESSION_ID",
+    "V7_VERIFICATION_REL",
+    "V7_VERIFICATION_SCHEMA",
+    "exact_v7_probe_request_payload_digest",
+    "expected_prefreeze_v7_manifest",
+    "expected_v7_authorization",
+    "expected_v7_provider_release",
+    "expected_v7_retry_policy",
+    "provider_free_v7_dry_run",
+    "v7_physical_root",
+    "validate_prefreeze_v7",
+    "verify_v6_seal",
 ]

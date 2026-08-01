@@ -61,6 +61,7 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v2 import (  # noqa: E402
     V4_PROVIDER_SCHEMA_REL,
     V4_RELEASE_REL,
     V4_SESSION_ID,
+    exact_v4_probe_request_payload,
     exact_v4_probe_request_payload_digest,
     exact_probe_request_payload,
     exact_probe_request_payload_digest,
@@ -94,6 +95,16 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     v6_physical_root,
     validate_prefreeze_v6,
     validate_v6_exact_model_pair,
+    V7_ATTEMPT_ID,
+    V7_ATTEMPT_RECEIPT_REL,
+    V7_ATTEMPT_RECEIPT_SCHEMA,
+    V7_AUTH_REL,
+    V7_DIAGNOSTIC_TOKEN_CEILING,
+    V7_LOGICAL_CALL_ID,
+    V7_PRIVATE_ROOT,
+    V7_SESSION_ID,
+    v7_physical_root,
+    validate_prefreeze_v7,
 )
 from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
     V4_UNIQUENESS_CONTRACT_DIGEST,
@@ -1350,8 +1361,8 @@ class _V5PostBrokerContractFailure(ValueError):
         super().__init__(reason_code)
 
 
-def _v5_v6_diagnostic_contract(version: int) -> dict[str, Any]:
-    """Select identity only; V5 and V6 share one transport execution path."""
+def _prefreeze_diagnostic_contract(version: int) -> dict[str, Any]:
+    """Select identity/ceiling; V5--V7 share one transport path."""
 
     if version == 5:
         return {
@@ -1364,6 +1375,7 @@ def _v5_v6_diagnostic_contract(version: int) -> dict[str, Any]:
             "private_root": V5_PRIVATE_ROOT,
             "session_id": V5_SESSION_ID,
             "slot_id": "PREFREEZE_V5_OBSERVABILITY_DIAGNOSTIC",
+            "token_ceiling": PROBE_TOKEN_CEILING,
             "physical_root": v5_physical_root,
             "validate": validate_prefreeze_v5,
             "required_returned_model": MODEL,
@@ -1382,8 +1394,28 @@ def _v5_v6_diagnostic_contract(version: int) -> dict[str, Any]:
             "private_root": V6_PRIVATE_ROOT,
             "session_id": V6_SESSION_ID,
             "slot_id": "PREFREEZE_V6_EXACT_MODEL_PAIR",
+            "token_ceiling": PROBE_TOKEN_CEILING,
             "physical_root": v6_physical_root,
             "validate": validate_prefreeze_v6,
+            "required_returned_model": V6_REQUIRED_RETURNED_SNAPSHOT,
+            "pass_classification": (
+                "PASS_EXACT_GPT_5_4_ALIAS_SNAPSHOT_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+            ),
+        }
+    if version == 7:
+        return {
+            "label": "V7",
+            "attempt_id": V7_ATTEMPT_ID,
+            "attempt_rel": V7_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": V7_ATTEMPT_RECEIPT_SCHEMA,
+            "auth_rel": V7_AUTH_REL,
+            "logical_call_id": V7_LOGICAL_CALL_ID,
+            "private_root": V7_PRIVATE_ROOT,
+            "session_id": V7_SESSION_ID,
+            "slot_id": "PREFREEZE_V7_DIAGNOSTIC_CEILING_ALIGNMENT",
+            "token_ceiling": V7_DIAGNOSTIC_TOKEN_CEILING,
+            "physical_root": v7_physical_root,
+            "validate": validate_prefreeze_v7,
             "required_returned_model": V6_REQUIRED_RETURNED_SNAPSHOT,
             "pass_classification": (
                 "PASS_EXACT_GPT_5_4_ALIAS_SNAPSHOT_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
@@ -1486,7 +1518,7 @@ def _classify_v5_failure(
     }
 
 
-def _v5_v6_top_receipt(
+def _prefreeze_top_receipt(
     *,
     version: int,
     manifest: dict[str, Any],
@@ -1498,7 +1530,7 @@ def _v5_v6_top_receipt(
     response_digest: str | None,
     response_contract_reason_code: str | None,
 ) -> dict[str, Any]:
-    contract_config = _v5_v6_diagnostic_contract(version)
+    contract_config = _prefreeze_diagnostic_contract(version)
     success = status == "PASS"
     receipt = {
         "schema": contract_config["attempt_schema"],
@@ -1561,7 +1593,7 @@ def _v5_v6_top_receipt(
         ),
         "r1_worker_launch_authorized": False,
     }
-    if version == 6:
+    if version >= 6:
         receipt.update(
             {
                 "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
@@ -1569,18 +1601,20 @@ def _v5_v6_top_receipt(
                 "exact_model_pair_status": "VERIFIED" if success else "UNVERIFIED",
             }
         )
+    if version == 7:
+        receipt["diagnostic_token_ceiling"] = V7_DIAGNOSTIC_TOKEN_CEILING
     return receipt
 
 
-def _write_v5_v6_checkpoint(*, version: int, receipt: dict[str, Any]) -> None:
+def _write_prefreeze_checkpoint(*, version: int, receipt: dict[str, Any]) -> None:
     """Persist before any retry; local failure prevents another Provider call."""
 
-    attempt_rel = _v5_v6_diagnostic_contract(version)["attempt_rel"]
+    attempt_rel = _prefreeze_diagnostic_contract(version)["attempt_rel"]
     (ROOT / attempt_rel).write_bytes(canonical_json_bytes(receipt))
 
 
-def _main_v5_or_v6(version: int) -> int:
-    contract_config = _v5_v6_diagnostic_contract(version)
+def _main_prefreeze_diagnostic(version: int) -> int:
+    contract_config = _prefreeze_diagnostic_contract(version)
     label = contract_config["label"]
     parser = argparse.ArgumentParser()
     parser.add_argument("--llm-api-config", type=Path, required=True)
@@ -1614,10 +1648,10 @@ def _main_v5_or_v6(version: int) -> int:
     ):
         if contract[field] != observed:
             raise SystemExit(f"{label} Provider identity mismatch: {field}")
-    if exact_v4_probe_request_payload_digest(ROOT) != contract[
-        "request_payload_digest"
-    ]:
-        raise SystemExit(f"{label} physical request payload changed from V4")
+    request_payload = exact_v4_probe_request_payload(ROOT)
+    request_payload["max_tokens"] = contract_config["token_ceiling"]
+    if sha256_digest(request_payload) != contract["request_payload_digest"]:
+        raise SystemExit(f"{label} physical request payload differs from manifest")
 
     sentinel = json.loads((ROOT / SENTINEL_REL).read_bytes())
     provider_schema = json.loads((ROOT / V4_PROVIDER_SCHEMA_REL).read_bytes())
@@ -1655,11 +1689,11 @@ def _main_v5_or_v6(version: int) -> int:
                 proposal_generation_session_id=contract_config["session_id"],
                 prompt=schema_probe_prompt(ROOT),
                 expected_proposal_count=1,
-                max_total_tokens=PROBE_TOKEN_CEILING,
+                max_total_tokens=contract_config["token_ceiling"],
             )
             if version == 5 and result.returned_model != MODEL:
                 raise _V5PostBrokerContractFailure("RETURNED_MODEL_MISMATCH")
-            if version == 6:
+            if version >= 6:
                 try:
                     validate_v6_exact_model_pair(
                         requested_model_alias=MODEL,
@@ -1719,7 +1753,7 @@ def _main_v5_or_v6(version: int) -> int:
                 prior_attempt_digest=prior_attempt_digest,
             )
             attempts.append(entry)
-            receipt = _v5_v6_top_receipt(
+            receipt = _prefreeze_top_receipt(
                 version=version,
                 manifest=manifest,
                 attempts=attempts,
@@ -1730,7 +1764,7 @@ def _main_v5_or_v6(version: int) -> int:
                 response_digest=result.response_digest,
                 response_contract_reason_code=None,
             )
-            _write_v5_v6_checkpoint(version=version, receipt=receipt)
+            _write_prefreeze_checkpoint(version=version, receipt=receipt)
             print(
                 json.dumps(
                     {
@@ -1808,7 +1842,7 @@ def _main_v5_or_v6(version: int) -> int:
             attempts.append(entry)
             prior_attempt_digest = entry["attempt_digest"]
             status = "IN_PROGRESS" if retry else "BLOCKED"
-            receipt = _v5_v6_top_receipt(
+            receipt = _prefreeze_top_receipt(
                 version=version,
                 manifest=manifest,
                 attempts=attempts,
@@ -1821,7 +1855,7 @@ def _main_v5_or_v6(version: int) -> int:
                     "response_contract_reason_code"
                 ],
             )
-            _write_v5_v6_checkpoint(version=version, receipt=receipt)
+            _write_prefreeze_checkpoint(version=version, receipt=receipt)
             if not retry:
                 print(
                     json.dumps(
@@ -1848,12 +1882,15 @@ def _main_v5_or_v6(version: int) -> int:
 
 
 def main() -> int:
+    if "--v7" in sys.argv:
+        sys.argv.remove("--v7")
+        return _main_prefreeze_diagnostic(7)
     if "--v6" in sys.argv:
         sys.argv.remove("--v6")
-        return _main_v5_or_v6(6)
+        return _main_prefreeze_diagnostic(6)
     if "--v5" in sys.argv:
         sys.argv.remove("--v5")
-        return _main_v5_or_v6(5)
+        return _main_prefreeze_diagnostic(5)
     if "--v4" in sys.argv:
         sys.argv.remove("--v4")
         return _main_v4()

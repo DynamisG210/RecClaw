@@ -46,6 +46,23 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (
     validate_prefreeze_v6,
     validate_v6_exact_model_pair,
     verify_v5_seal,
+    V6_SEALED_DIGESTS,
+    V7_AUTH_REL,
+    V7_ATTEMPT_RECEIPT_REL,
+    V7_BLOCKED_REL,
+    V7_DIAGNOSTIC_TOKEN_CEILING,
+    V7_MANIFEST_REL,
+    V7_POLICY_REL,
+    V7_PRIVATE_ROOT,
+    V7_READY_REL,
+    V7_RELEASE_REL,
+    exact_v7_probe_request_payload_digest,
+    expected_prefreeze_v7_manifest,
+    expected_v7_provider_release,
+    expected_v7_retry_policy,
+    provider_free_v7_dry_run,
+    validate_prefreeze_v7,
+    verify_v6_seal,
 )
 from scripts.reprobe_fresh_open_spec_endpoint_v2 import _classify_v5_failure
 from recclaw_core.experiments.helix_abc_v1.wave2_integration import (
@@ -372,7 +389,7 @@ def test_v6_shared_probe_path_places_local_uniqueness_before_downstream() -> Non
         node
         for node in tree.body
         if isinstance(node, ast.FunctionDef)
-        and node.name == "_main_v5_or_v6"
+        and node.name == "_main_prefreeze_diagnostic"
     )
     calls = {
         (
@@ -477,3 +494,129 @@ def test_checked_in_v6_outcome_is_terminal_token_ceiling_and_side_effect_free() 
         "RESPONSE_CONTRACT_ERROR",
         '{"reason_code":"TOKEN_CEILING"}',
     )
+
+
+def test_v6_sealed_artifacts_remain_exact_bytes() -> None:
+    observed = verify_v6_seal(ROOT)
+    assert observed == {
+        path.as_posix(): digest for path, digest in V6_SEALED_DIGESTS.items()
+    }
+    for relative, digest in V6_SEALED_DIGESTS.items():
+        assert bytes_sha256((ROOT / relative).read_bytes()) == digest
+
+
+def test_v7_is_only_fresh_identity_and_diagnostic_ceiling_delta() -> None:
+    v6 = json.loads((ROOT / V6_MANIFEST_REL).read_bytes())
+    v7 = expected_prefreeze_v7_manifest(ROOT)
+    release = expected_v7_provider_release(ROOT)
+    assert V7_DIAGNOSTIC_TOKEN_CEILING == 6000
+    assert release["diagnostic_token_budget"] == 6000
+    assert release["transport_max_total_tokens_per_call"] == 6000
+    assert release["future_r1_token_budget_per_call"] == 6000
+    assert v7["future_r1_scientific_contract"] == v6[
+        "future_r1_scientific_contract"
+    ]
+    assert v7["response_contract_equivalence"] == v6[
+        "response_contract_equivalence"
+    ]
+    assert v7["preserved_scientific_identity"] == v6[
+        "preserved_scientific_identity"
+    ]
+    exact_v6 = v6["exact_provider_contract"]
+    exact_v7 = v7["exact_provider_contract"]
+    for field in (
+        "model",
+        "requested_model_alias",
+        "required_returned_snapshot",
+        "endpoint_digest",
+        "credential_config_digest",
+        "credential_identity_digest",
+        "response_schema_digest",
+        "sentinel_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "request_mode",
+        "temperature",
+    ):
+        assert exact_v7[field] == exact_v6[field]
+    assert exact_v7["token_budget"] == 6000
+    assert exact_v7["request_payload_digest"] == (
+        exact_v7_probe_request_payload_digest(ROOT)
+    )
+    assert exact_v7["request_payload_digest"] != exact_v6[
+        "request_payload_digest"
+    ]
+
+
+def test_v7_retry_policy_keeps_token_ceiling_terminal() -> None:
+    policy = expected_v7_retry_policy(ROOT)
+    slot = policy["diagnostic_slot"]
+    assert slot["maximum_total_physical_attempts"] == 3
+    assert slot["maximum_additional_physical_attempts"] == 2
+    assert slot["deterministic_backoff_ms_after_failure"] == [1000, 3000]
+    assert policy["response_contract_failure"]["retry_eligible"] is False
+    assert "SEMANTIC_RESPONSE_CONTRACT_FAILURE" in slot[
+        "terminal_no_retry_failure_classes"
+    ]
+
+
+def test_checked_in_v7_contract_artifacts_are_exact_and_provider_free() -> None:
+    for relative in (V7_RELEASE_REL, V7_POLICY_REL, V7_MANIFEST_REL, V7_AUTH_REL):
+        assert (ROOT / relative).is_file()
+    manifest = validate_prefreeze_v7(ROOT)
+    dry_run = provider_free_v7_dry_run(ROOT)
+    assert manifest == expected_prefreeze_v7_manifest(ROOT)
+    assert dry_run["status"] == (
+        "PASS_PROVIDER_FREE_V7_DIAGNOSTIC_CEILING_ALIGNMENT"
+    )
+    assert dry_run["provider_calls"] == 0
+    assert dry_run["training_runs"] == 0
+    assert dry_run["candidate_qualifications"] == 0
+    assert dry_run["candidate_admissions"] == 0
+    assert dry_run["outcomes_consumed"] == 0
+    assert dry_run["held_out_reads"] == 0
+
+
+def test_checked_in_v7_outcome_is_terminal_exact_pair_mismatch() -> None:
+    attempt_path = ROOT / V7_ATTEMPT_RECEIPT_REL
+    blocked_path = ROOT / V7_BLOCKED_REL
+    assert attempt_path.is_file()
+    assert blocked_path.is_file()
+    assert not (ROOT / V7_READY_REL).exists()
+    receipt = json.loads(attempt_path.read_bytes())
+    blocked = json.loads(blocked_path.read_bytes())
+    attempt = receipt["physical_attempts"][0]
+    assert receipt["status"] == "BLOCKED"
+    assert receipt["physical_provider_calls"] == 1
+    assert receipt["retry_count"] == 0
+    assert receipt["final_classification"] == "RETURNED_MODEL_PAIR_MISMATCH"
+    assert attempt["http_status"] == 200
+    assert attempt["returned_model"] == V6_REQUESTED_MODEL_ALIAS
+    assert attempt["returned_model"] != V6_REQUIRED_RETURNED_SNAPSHOT
+    assert attempt["retry_eligible"] is False
+    assert attempt["local_uniqueness_status"] == "NOT_REACHED"
+    assert blocked["status"] == "BLOCKED_PREFREEZE_V7"
+    assert blocked["r1_worker_launch_authorized"] is False
+    for field in (
+        "research_candidates_generated",
+        "open_specs_projected",
+        "resolver_calls",
+        "candidate_roots_created",
+        "candidate_qualifications",
+        "candidate_admissions",
+        "training_runs",
+        "outcomes_consumed",
+        "held_out_reads",
+    ):
+        assert receipt[field] == 0
+    connection = sqlite3.connect(
+        V7_PRIVATE_ROOT / "physical_attempt_01" / "broker.sqlite3"
+    )
+    try:
+        row = connection.execute(
+            "SELECT COUNT(*),status,error_type,total_tokens,returned_model "
+            "FROM calls"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row == (1, "SUCCESS", None, 2408, V6_REQUESTED_MODEL_ALIAS)

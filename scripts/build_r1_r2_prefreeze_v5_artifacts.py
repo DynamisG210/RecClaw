@@ -67,6 +67,29 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     provider_free_v6_dry_run,
     validate_prefreeze_v6,
     verify_v5_seal,
+    V7_ATTEMPT_ID,
+    V7_ATTEMPT_RECEIPT_REL,
+    V7_ATTEMPT_RECEIPT_SCHEMA,
+    V7_AUTH_REL,
+    V7_BLOCKED_REL,
+    V7_BLOCKED_SCHEMA,
+    V7_DIAGNOSTIC_TOKEN_CEILING,
+    V7_DRY_RUN_REL,
+    V7_MANIFEST_REL,
+    V7_POLICY_REL,
+    V7_PRIVATE_ROOT,
+    V7_READY_REL,
+    V7_READY_SCHEMA,
+    V7_RELEASE_REL,
+    V7_VERIFICATION_REL,
+    V7_VERIFICATION_SCHEMA,
+    expected_prefreeze_v7_manifest,
+    expected_v7_authorization,
+    expected_v7_provider_release,
+    expected_v7_retry_policy,
+    provider_free_v7_dry_run,
+    validate_prefreeze_v7,
+    verify_v6_seal,
 )
 
 
@@ -96,6 +119,12 @@ def _contract(version: int) -> dict[str, Any]:
                 "PASS_EXACT_GPT_5_4_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
             ),
             "pass_status": "PASS_PROVIDER_FREE_V5_OBSERVABILITY",
+            "verify_predecessor": verify_v4_seal,
+            "expected_policy": expected_v5_retry_policy,
+            "expected_manifest": expected_prefreeze_v5_manifest,
+            "expected_authorization": expected_v5_authorization,
+            "expected_release": None,
+            "release_rel": None,
         }
     if version == 6:
         return {
@@ -123,6 +152,46 @@ def _contract(version: int) -> dict[str, Any]:
                 "PASS_EXACT_GPT_5_4_ALIAS_SNAPSHOT_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
             ),
             "pass_status": "PASS_PROVIDER_FREE_V6_EXACT_MODEL_PAIR",
+            "verify_predecessor": verify_v5_seal,
+            "expected_policy": expected_v6_retry_policy,
+            "expected_manifest": expected_prefreeze_v6_manifest,
+            "expected_authorization": expected_v6_authorization,
+            "expected_release": expected_v6_provider_release,
+        }
+    if version == 7:
+        return {
+            "label": "V7",
+            "attempt_id": V7_ATTEMPT_ID,
+            "attempt_rel": V7_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": V7_ATTEMPT_RECEIPT_SCHEMA,
+            "auth_rel": V7_AUTH_REL,
+            "blocked_rel": V7_BLOCKED_REL,
+            "blocked_schema": V7_BLOCKED_SCHEMA,
+            "diagnostic_token_ceiling": V7_DIAGNOSTIC_TOKEN_CEILING,
+            "dry_run_rel": V7_DRY_RUN_REL,
+            "manifest_rel": V7_MANIFEST_REL,
+            "policy_rel": V7_POLICY_REL,
+            "private_root": V7_PRIVATE_ROOT,
+            "ready_rel": V7_READY_REL,
+            "ready_schema": V7_READY_SCHEMA,
+            "release_rel": V7_RELEASE_REL,
+            "verification_rel": V7_VERIFICATION_REL,
+            "verification_schema": V7_VERIFICATION_SCHEMA,
+            "validate": validate_prefreeze_v7,
+            "dry_run": provider_free_v7_dry_run,
+            "requested_model": V6_REQUESTED_MODEL_ALIAS,
+            "required_returned_model": V6_REQUIRED_RETURNED_SNAPSHOT,
+            "pass_classification": (
+                "PASS_EXACT_GPT_5_4_ALIAS_SNAPSHOT_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+            ),
+            "pass_status": (
+                "PASS_PROVIDER_FREE_V7_DIAGNOSTIC_CEILING_ALIGNMENT"
+            ),
+            "verify_predecessor": verify_v6_seal,
+            "expected_policy": expected_v7_retry_policy,
+            "expected_manifest": expected_prefreeze_v7_manifest,
+            "expected_authorization": expected_v7_authorization,
+            "expected_release": expected_v7_provider_release,
         }
     raise SystemExit("unsupported Prefreeze artifact version")
 
@@ -140,10 +209,7 @@ def _write_once(path: Path, payload: dict[str, Any]) -> None:
 
 def _prepare(version: int) -> int:
     contract = _contract(version)
-    if version == 5:
-        verify_v4_seal(ROOT)
-    else:
-        verify_v5_seal(ROOT)
+    contract["verify_predecessor"](ROOT)
     for forbidden in (
         contract["attempt_rel"],
         contract["blocked_rel"],
@@ -158,15 +224,12 @@ def _prepare(version: int) -> int:
         raise SystemExit(
             f"{contract['label']} private root already exists; identity is not fresh"
         )
-    if version == 5:
-        policy = expected_v5_retry_policy(ROOT)
-        manifest_payload = expected_prefreeze_v5_manifest(ROOT)
-        authorization = expected_v5_authorization(ROOT)
-    else:
-        _write_once(ROOT / V6_RELEASE_REL, expected_v6_provider_release(ROOT))
-        policy = expected_v6_retry_policy(ROOT)
-        manifest_payload = expected_prefreeze_v6_manifest(ROOT)
-        authorization = expected_v6_authorization(ROOT)
+    expected_release = contract["expected_release"]
+    if expected_release is not None:
+        _write_once(ROOT / contract["release_rel"], expected_release(ROOT))
+    policy = contract["expected_policy"](ROOT)
+    manifest_payload = contract["expected_manifest"](ROOT)
+    authorization = contract["expected_authorization"](ROOT)
     _write_once(ROOT / contract["policy_rel"], policy)
     _write_once(ROOT / contract["manifest_rel"], manifest_payload)
     _write_once(ROOT / contract["auth_rel"], authorization)
@@ -253,7 +316,7 @@ def _load_attempt(version: int) -> tuple[dict[str, Any], dict[str, Any]]:
         "outcomes_consumed": 0,
         "held_out_reads": 0,
     }
-    if version == 6:
+    if version >= 6:
         fixed.update(
             {
                 "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
@@ -263,6 +326,8 @@ def _load_attempt(version: int) -> tuple[dict[str, Any], dict[str, Any]]:
                 ]["provider_release_digest"],
             }
         )
+    if version == 7:
+        fixed["diagnostic_token_ceiling"] = V7_DIAGNOSTIC_TOKEN_CEILING
     for field, expected in fixed.items():
         if receipt.get(field) != expected:
             raise SystemExit(f"{label} attempt receipt does not prove {field}")
@@ -558,6 +623,7 @@ def _finalize(version: int) -> int:
         "requested_model_alias": contract["requested_model"],
         "returned_model": contract["required_returned_model"],
         "required_returned_snapshot": contract["required_returned_model"],
+        "diagnostic_token_ceiling": contract.get("diagnostic_token_ceiling"),
         "authentication_status": "VERIFIED",
         "provider_schema_support": "VERIFIED",
         "local_semantic_equivalence": "VERIFIED_EXACT_V1_ACCEPTANCE_SET",
@@ -599,7 +665,7 @@ def main() -> int:
     )
     parser.add_argument("--pytest-passed", type=int, default=0)
     parser.add_argument("--pytest-skipped", type=int, default=0)
-    parser.add_argument("--version", type=int, choices=(5, 6), default=5)
+    parser.add_argument("--version", type=int, choices=(5, 6, 7), default=5)
     args = parser.parse_args()
     if args.action == "prepare":
         return _prepare(args.version)
