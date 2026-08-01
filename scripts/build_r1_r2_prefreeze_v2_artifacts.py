@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare or finalize the additive Prefreeze V2 artifact set."""
+"""Prepare or finalize additive Prefreeze V2/V3 artifact sets."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ for import_root in (ROOT, SRC):
 from recclaw_core.experiments.helix_abc_v1.canonical import (  # noqa: E402
     bytes_sha256,
     canonical_json_bytes,
+    sha256_digest,
 )
 from recclaw_core.experiments.helix_abc_v1.prefreeze_v2 import (  # noqa: E402
     ATTEMPT_ID,
@@ -36,12 +37,35 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v2 import (  # noqa: E402
     V1_MANIFEST_SHA256,
     V1_PROBE_REL,
     V1_PROBE_SHA256,
+    V2_BLOCKED_SHA256,
+    V2_MANIFEST_SHA256,
+    V2_POLICY_SHA256,
+    V2_PROBE_SHA256,
+    V3_ATTEMPT_ID,
+    V3_ATTEMPT_RECEIPT_REL,
+    V3_ATTEMPT_RECEIPT_SCHEMA,
+    V3_AUTH_REL,
+    V3_BLOCKED_REL,
+    V3_BLOCKED_SCHEMA,
+    V3_DRY_RUN_REL,
+    V3_MANIFEST_REL,
+    V3_POLICY_REL,
+    V3_PRIVATE_ROOT,
+    V3_READY_REL,
+    V3_READY_SCHEMA,
+    V3_VERIFICATION_REL,
+    expected_prefreeze_v3_manifest,
     expected_prefreeze_manifest,
     expected_reprobe_authorization,
     expected_retry_policy,
+    expected_v3_authorization,
+    expected_v3_retry_policy,
     provider_free_dry_run,
+    provider_free_v3_dry_run,
     validate_prefreeze_v2,
+    validate_prefreeze_v3,
     verify_v1_seal,
+    verify_v2_seal,
 )
 
 
@@ -225,18 +249,411 @@ def _dry_run() -> int:
     return 0
 
 
+def _prepare_v3() -> int:
+    verify_v1_seal(ROOT)
+    verify_v2_seal(ROOT)
+    for forbidden in (
+        V3_ATTEMPT_RECEIPT_REL,
+        V3_BLOCKED_REL,
+        V3_READY_REL,
+        V3_VERIFICATION_REL,
+    ):
+        if (ROOT / forbidden).exists():
+            raise SystemExit("V3 outcome artifact already exists; prepare is sealed")
+    if V3_PRIVATE_ROOT.exists():
+        raise SystemExit("V3 private root already exists; identity is not fresh")
+    _write_once(ROOT / V3_POLICY_REL, expected_v3_retry_policy())
+    _write_once(
+        ROOT / V3_MANIFEST_REL,
+        expected_prefreeze_v3_manifest(ROOT),
+    )
+    _write_once(ROOT / V3_AUTH_REL, expected_v3_authorization(ROOT))
+    manifest = validate_prefreeze_v3(ROOT)
+    dry_run = provider_free_v3_dry_run(ROOT)
+    print(
+        json.dumps(
+            {
+                "attempt_id": V3_ATTEMPT_ID,
+                "authorization_sha256": bytes_sha256(
+                    (ROOT / V3_AUTH_REL).read_bytes()
+                ),
+                "manifest_sha256": bytes_sha256(
+                    (ROOT / V3_MANIFEST_REL).read_bytes()
+                ),
+                "policy_sha256": bytes_sha256(
+                    (ROOT / V3_POLICY_REL).read_bytes()
+                ),
+                "provider_calls": dry_run["provider_calls"],
+                "request_payload_digest": manifest[
+                    "exact_provider_contract"
+                ]["request_payload_digest"],
+                "status": "PREPARED_V3_PRE_OUTCOME",
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _load_v3_attempt_receipt() -> tuple[dict[str, Any], dict[str, Any]]:
+    manifest = validate_prefreeze_v3(ROOT)
+    path = ROOT / V3_ATTEMPT_RECEIPT_REL
+    if not path.is_file():
+        raise SystemExit("V3 Provider attempt receipt is missing")
+    receipt = json.loads(path.read_bytes())
+    if canonical_json_bytes(receipt) != path.read_bytes():
+        raise SystemExit("V3 Provider attempt receipt is not canonical JSON")
+    fixed = {
+        "schema": V3_ATTEMPT_RECEIPT_SCHEMA,
+        "attempt_id": V3_ATTEMPT_ID,
+        "model_requested": "gpt-5.4",
+        "endpoint_digest": manifest["exact_provider_contract"][
+            "endpoint_digest"
+        ],
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "response_schema_digest": manifest["exact_provider_contract"][
+            "response_schema_digest"
+        ],
+        "sensitive_values_persisted": False,
+        "sensitive_headers_persisted": False,
+        "research_candidates_generated": 0,
+        "open_specs_projected": 0,
+        "resolver_calls": 0,
+        "candidate_roots_created": 0,
+        "candidate_admissions": 0,
+        "training_runs": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+    }
+    for field, expected in fixed.items():
+        if receipt.get(field) != expected:
+            raise SystemExit(f"V3 attempt receipt does not prove {field}")
+    attempts = receipt.get("physical_attempts")
+    count = receipt.get("physical_provider_calls")
+    if (
+        not isinstance(attempts, list)
+        or not isinstance(count, int)
+        or count != len(attempts)
+        or not 1 <= count <= 3
+        or receipt.get("retry_count") != count - 1
+    ):
+        raise SystemExit("V3 physical attempt count/retry count is invalid")
+    identities = manifest["bounded_retry"]["physical_attempt_identities"]
+    request_envelopes: set[str] = set()
+    prior_digest: str | None = None
+    prior_end_ns: int | None = None
+    required_gap_ms = 0
+    for index, attempt in enumerate(attempts, start=1):
+        expected_identity = identities[index - 1]
+        if attempt.get("ordinal") != index:
+            raise SystemExit("V3 physical attempt order is not contiguous")
+        if (
+            attempt.get("physical_attempt_identity_digest")
+            != expected_identity["physical_attempt_identity_digest"]
+            or attempt.get("private_root_digest")
+            != expected_identity["private_root_digest"]
+        ):
+            raise SystemExit("V3 physical attempt identity changed")
+        if (
+            attempt.get("logical_call_id")
+            != manifest["exact_provider_contract"]["logical_call_id"]
+            or attempt.get("request_payload_digest")
+            != receipt["request_payload_digest"]
+        ):
+            raise SystemExit("V3 diagnostic slot/payload identity changed")
+        envelope = attempt.get("request_envelope_digest")
+        if not isinstance(envelope, str):
+            raise SystemExit("V3 attempt request envelope digest is missing")
+        request_envelopes.add(envelope)
+        preimage = dict(attempt)
+        attempt_digest = preimage.pop("attempt_digest", None)
+        if (
+            preimage.get("prior_attempt_digest") != prior_digest
+            or sha256_digest(preimage) != attempt_digest
+        ):
+            raise SystemExit("V3 physical attempt digest chain is invalid")
+        prior_digest = attempt_digest
+        start_ns = attempt.get("monotonic_start_ns")
+        end_ns = attempt.get("monotonic_end_ns")
+        if (
+            not isinstance(start_ns, int)
+            or not isinstance(end_ns, int)
+            or start_ns >= end_ns
+            or (prior_end_ns is not None and start_ns <= prior_end_ns)
+            or (
+                prior_end_ns is not None
+                and start_ns - prior_end_ns < required_gap_ms * 1_000_000
+            )
+        ):
+            raise SystemExit("V3 physical attempt time order is invalid")
+        prior_end_ns = end_ns
+        if (
+            attempt.get("sqlite_calls_schema_digest")
+            != manifest["bounded_retry"]["sqlite_calls_schema_digest"]
+            or not isinstance(attempt.get("provider_receipt_digest"), str)
+        ):
+            raise SystemExit("V3 attempt SQLite/provider receipt proof is invalid")
+        if index < count and (
+            attempt.get("retry_eligible") is not True
+            or attempt.get("termination_reason") != "RETRY_SCHEDULED"
+            or attempt.get("backoff_ms_after_attempt")
+            != (1000 if index == 1 else 3000)
+        ):
+            raise SystemExit("V3 non-final attempt was not retry eligible")
+        if index == count and attempt.get("backoff_ms_after_attempt") != 0:
+            raise SystemExit("V3 final attempt must not schedule backoff")
+        required_gap_ms = int(attempt.get("backoff_ms_after_attempt", 0))
+    if len(request_envelopes) != 1:
+        raise SystemExit("V3 physical attempts did not share one request digest")
+    final = attempts[-1]
+    if receipt.get("status") == "PASS":
+        if (
+            final.get("classification") != "PASS_EXACT_GPT_5_4_AUTH_SCHEMA"
+            or final.get("retry_eligible") is not False
+            or final.get("termination_reason") != "FIRST_VALID_RESPONSE_ACCEPTED"
+            or receipt.get("returned_model") != "gpt-5.4"
+            or receipt.get("authentication_status") != "VERIFIED"
+            or receipt.get("blocked_fields") != []
+        ):
+            raise SystemExit("V3 PASS receipt is not exact-model/schema closed")
+    elif receipt.get("status") == "BLOCKED":
+        if (
+            final.get("termination_reason")
+            not in {
+                "DETERMINISTIC_TERMINAL_FAILURE",
+                "TRANSIENT_ATTEMPTS_EXHAUSTED",
+                "LOCAL_RECEIPT_FAILURE_STOPPED",
+            }
+            or receipt.get("r1_worker_launch_authorized") is not False
+        ):
+            raise SystemExit("V3 BLOCKED termination is invalid")
+    else:
+        raise SystemExit("V3 attempt receipt has unknown status")
+    return manifest, receipt
+
+
+def _dry_run_v3() -> int:
+    receipt = provider_free_v3_dry_run(ROOT)
+    _write_once(ROOT / V3_DRY_RUN_REL, receipt)
+    print(
+        json.dumps(
+            {
+                "dry_run_receipt_sha256": bytes_sha256(
+                    (ROOT / V3_DRY_RUN_REL).read_bytes()
+                ),
+                "provider_calls": 0,
+                "training_runs": 0,
+                "status": receipt["status"],
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _finalize_v3() -> int:
+    manifest, attempt = _load_v3_attempt_receipt()
+    attempt_path = ROOT / V3_ATTEMPT_RECEIPT_REL
+    if attempt["status"] == "BLOCKED":
+        if (ROOT / V3_READY_REL).exists():
+            raise SystemExit("V3 READY exists; refusing BLOCKED finalization")
+        blocked = {
+            "schema": V3_BLOCKED_SCHEMA,
+            "status": "BLOCKED_PREFREEZE_V3",
+            "attempt_id": V3_ATTEMPT_ID,
+            "manifest_ref": V3_MANIFEST_REL.name,
+            "manifest_digest": bytes_sha256(
+                (ROOT / V3_MANIFEST_REL).read_bytes()
+            ),
+            "retry_policy_ref": V3_POLICY_REL.name,
+            "retry_policy_digest": bytes_sha256(
+                (ROOT / V3_POLICY_REL).read_bytes()
+            ),
+            "authorization_ref": V3_AUTH_REL.name,
+            "authorization_digest": bytes_sha256(
+                (ROOT / V3_AUTH_REL).read_bytes()
+            ),
+            "attempt_receipt_ref": V3_ATTEMPT_RECEIPT_REL.name,
+            "attempt_receipt_digest": bytes_sha256(
+                attempt_path.read_bytes()
+            ),
+            "v1_negative_evidence": {
+                "probe_digest": V1_PROBE_SHA256,
+                "blocked_digest": V1_BLOCKED_SHA256,
+                "classification": (
+                    "HTTP_400_EXACT_SCHEMA_KEYWORD_UNSUPPORTED"
+                ),
+            },
+            "v2_negative_evidence": {
+                "manifest_digest": V2_MANIFEST_SHA256,
+                "policy_digest": V2_POLICY_SHA256,
+                "probe_digest": V2_PROBE_SHA256,
+                "blocked_digest": V2_BLOCKED_SHA256,
+                "classification": (
+                    "HTTP_503_TRANSIENT_PROVIDER_SERVICE_UNAVAILABLE"
+                ),
+            },
+            "final_classification": attempt["final_classification"],
+            "termination_reason": attempt["termination_reason"],
+            "physical_provider_calls_v3": attempt[
+                "physical_provider_calls"
+            ],
+            "retry_count_v3": attempt["retry_count"],
+            "physical_attempt_classifications": [
+                {
+                    "ordinal": item["ordinal"],
+                    "classification": item["classification"],
+                    "retry_eligible": item["retry_eligible"],
+                    "backoff_ms_after_attempt": item[
+                        "backoff_ms_after_attempt"
+                    ],
+                    "termination_reason": item["termination_reason"],
+                }
+                for item in attempt["physical_attempts"]
+            ],
+            "provider_calls_must_stop": True,
+            "v4_or_unknown_probe_authorized": False,
+            "provider_failure_analysis": (
+                "MISSING_PROVIDER_OR_ENGINEERING_FAILURE"
+            ),
+            "provider_failure_is_mechanism_negative_evidence": False,
+            "r1_prefreeze_ready_receipt_emitted": False,
+            "r1_worker_launch_authorized": False,
+            "side_effects_v3": {
+                "provider_calls": attempt["physical_provider_calls"],
+                "research_candidates_generated": 0,
+                "candidate_roots_created": 0,
+                "candidate_admissions": 0,
+                "training_runs": 0,
+                "outcomes_consumed": 0,
+                "held_out_reads": 0,
+            },
+        }
+        _write_once(ROOT / V3_BLOCKED_REL, blocked)
+        print(
+            json.dumps(
+                {
+                    "blocked_receipt_sha256": bytes_sha256(
+                        (ROOT / V3_BLOCKED_REL).read_bytes()
+                    ),
+                    "physical_provider_calls_v3": attempt[
+                        "physical_provider_calls"
+                    ],
+                    "retry_count_v3": attempt["retry_count"],
+                    "status": "BLOCKED_PREFREEZE_V3",
+                },
+                sort_keys=True,
+            )
+        )
+        return 2
+
+    verification_path = ROOT / V3_VERIFICATION_REL
+    if not verification_path.is_file():
+        print(
+            json.dumps(
+                {
+                    "status": "PASS_AWAITING_LOCAL_VERIFICATION",
+                    "provider_calls": attempt["physical_provider_calls"],
+                },
+                sort_keys=True,
+            )
+        )
+        return 3
+    verification = json.loads(verification_path.read_bytes())
+    if canonical_json_bytes(verification) != verification_path.read_bytes():
+        raise SystemExit("V3 verification receipt is not canonical JSON")
+    required_verification = {
+        "status": "PASS",
+        "attempt_receipt_digest": bytes_sha256(attempt_path.read_bytes()),
+        "validator": "PASS",
+        "provider_free_dry_run": "PASS",
+        "targeted_adjacent_no_training_tests": "PASS",
+        "py_compile_modified_only": "PASS",
+        "canonical_hash_secret_diff_structure": "PASS",
+    }
+    for field, expected in required_verification.items():
+        if verification.get(field) != expected:
+            raise SystemExit(f"V3 verification does not prove {field}")
+    ready = {
+        "schema": V3_READY_SCHEMA,
+        "status": "R1_PREFREEZE_V3_READY",
+        "attempt_id": V3_ATTEMPT_ID,
+        "manifest_ref": V3_MANIFEST_REL.name,
+        "manifest_digest": bytes_sha256(
+            (ROOT / V3_MANIFEST_REL).read_bytes()
+        ),
+        "retry_policy_ref": V3_POLICY_REL.name,
+        "retry_policy_digest": bytes_sha256(
+            (ROOT / V3_POLICY_REL).read_bytes()
+        ),
+        "authorization_ref": V3_AUTH_REL.name,
+        "authorization_digest": bytes_sha256(
+            (ROOT / V3_AUTH_REL).read_bytes()
+        ),
+        "attempt_receipt_ref": V3_ATTEMPT_RECEIPT_REL.name,
+        "attempt_receipt_digest": bytes_sha256(attempt_path.read_bytes()),
+        "verification_receipt_ref": V3_VERIFICATION_REL.name,
+        "verification_receipt_digest": bytes_sha256(
+            verification_path.read_bytes()
+        ),
+        "model": "gpt-5.4",
+        "returned_model": "gpt-5.4",
+        "authentication_status": "VERIFIED",
+        "exact_v1_schema_support": "VERIFIED",
+        "physical_provider_calls_v3": attempt["physical_provider_calls"],
+        "retry_count_v3": attempt["retry_count"],
+        "r1_worker_launch_authorized": True,
+        "r2_launch_authorized": False,
+        "training_started": False,
+        "candidate_admission_performed": False,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+        "authorization_scope": (
+            "INDEPENDENT_R1_WORKER_MAY_START_EXACT_FROZEN_R1_ONLY"
+        ),
+    }
+    _write_once(ROOT / V3_READY_REL, ready)
+    print(
+        json.dumps(
+            {
+                "ready_receipt_sha256": bytes_sha256(
+                    (ROOT / V3_READY_REL).read_bytes()
+                ),
+                "status": "R1_PREFREEZE_V3_READY",
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "action",
-        choices=("prepare", "finalize-blocked", "dry-run"),
+        choices=(
+            "prepare",
+            "finalize-blocked",
+            "dry-run",
+            "prepare-v3",
+            "dry-run-v3",
+            "finalize-v3",
+        ),
     )
     args = parser.parse_args()
     if args.action == "prepare":
         return _prepare()
     if args.action == "finalize-blocked":
         return _finalize_blocked()
-    return _dry_run()
+    if args.action == "dry-run":
+        return _dry_run()
+    if args.action == "prepare-v3":
+        return _prepare_v3()
+    if args.action == "dry-run-v3":
+        return _dry_run_v3()
+    return _finalize_v3()
 
 
 if __name__ == "__main__":

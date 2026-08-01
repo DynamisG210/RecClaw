@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute the single authorized exact-payload Prefreeze V2 re-probe."""
+"""Execute authorized exact-payload Prefreeze endpoint diagnostics."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import hashlib
 import json
 import sqlite3
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -43,10 +44,20 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v2 import (  # noqa: E402
     SCHEMA_REL,
     SENTINEL_REL,
     SESSION_ID,
-    exact_probe_request_payload_digest,
+    SQLITE_CALL_COLUMNS,
+    V3_ATTEMPT_ID,
+    V3_ATTEMPT_RECEIPT_REL,
+    V3_ATTEMPT_RECEIPT_SCHEMA,
+    V3_AUTH_REL,
+    V3_LOGICAL_CALL_ID,
+    V3_PRIVATE_ROOT,
+    V3_SESSION_ID,
     exact_probe_request_payload,
+    exact_probe_request_payload_digest,
     schema_probe_prompt,
     validate_prefreeze_v2,
+    validate_prefreeze_v3,
+    v3_physical_root,
 )
 
 
@@ -190,7 +201,7 @@ def _failure_receipt_from_existing_call(
     }
 
 
-def main() -> int:
+def _main_v2() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--llm-api-config", type=Path)
     parser.add_argument("--private-root", type=Path, required=True)
@@ -389,6 +400,473 @@ def main() -> int:
         )
     )
     return exit_code
+
+
+def _validate_sqlite_schema(
+    connection: sqlite3.Connection,
+    *,
+    expected_digest: str,
+) -> str:
+    """Read PRAGMA metadata before any Provider call and bind exact columns."""
+
+    columns = tuple(
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(calls)").fetchall()
+    )
+    observed_digest = sha256_digest(
+        {"table": "calls", "columns": list(columns)}
+    )
+    if columns != SQLITE_CALL_COLUMNS or observed_digest != expected_digest:
+        raise SystemExit("V3 SQLite calls schema identity mismatch")
+    return observed_digest
+
+
+def _cause_type_names(error: BaseException) -> set[str]:
+    names: set[str] = set()
+    current: BaseException | None = error
+    while current is not None and type(current).__name__ not in names:
+        names.add(type(current).__name__)
+        current = current.__cause__ or current.__context__
+    return names
+
+
+def _contains_overload(value: Any) -> bool:
+    if isinstance(value, str):
+        lowered = value.lower()
+        return "overload" in lowered or "over capacity" in lowered
+    if isinstance(value, dict):
+        return any(
+            _contains_overload(key) or _contains_overload(child)
+            for key, child in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_overload(child) for child in value)
+    return False
+
+
+def _classify_v3_failure(
+    *,
+    error: Exception,
+    row: sqlite3.Row,
+    semantic_after_success: bool,
+) -> dict[str, Any]:
+    provider_receipt = json.loads(str(row["receipt_json"]))
+    error_detail = (
+        json.loads(str(row["error_detail_json"]))
+        if row["error_detail_json"] is not None
+        else None
+    )
+    outcome = (
+        json.loads(str(row["outcome_json"]))
+        if row["outcome_json"] is not None
+        else None
+    )
+    http_status = provider_receipt.get("http_status")
+    error_type = row["error_type"]
+    cause_names = _cause_type_names(error)
+    unique_items = http_status == 400 and _contains_unique_items(error_detail)
+    if semantic_after_success:
+        classification = "SEMANTIC_RESPONSE_CONTRACT_FAILURE"
+        retry_eligible = False
+    elif unique_items:
+        classification = "HTTP_400_EXACT_SCHEMA_KEYWORD_UNSUPPORTED"
+        retry_eligible = False
+    elif http_status == 408:
+        classification = "HTTP_408"
+        retry_eligible = True
+    elif http_status == 429:
+        classification = "HTTP_429"
+        retry_eligible = True
+    elif http_status is not None and http_status >= 500:
+        classification = f"HTTP_{http_status}_TRANSIENT_PROVIDER_ERROR"
+        retry_eligible = True
+    elif http_status in {401, 403}:
+        classification = f"HTTP_{http_status}_AUTH"
+        retry_eligible = False
+    elif http_status is not None and 400 <= http_status < 500:
+        classification = (
+            "HTTP_400_SCHEMA_CONTRACT"
+            if http_status == 400
+            else "OTHER_DETERMINISTIC_HTTP_4XX"
+        )
+        retry_eligible = False
+    elif error_type == "TIMEOUT":
+        classification = "NETWORK_TIMEOUT"
+        retry_eligible = True
+    elif error_type == "TRANSPORT_ERROR" and cause_names.intersection(
+        {"ConnectionResetError", "ConnectionAbortedError", "BrokenPipeError"}
+    ):
+        classification = "NETWORK_RESET"
+        retry_eligible = True
+    elif error_type == "TRANSPORT_ERROR":
+        classification = "OTHER_TRANSPORT_FAILURE"
+        retry_eligible = False
+    elif _contains_overload(error_detail):
+        classification = "PROVIDER_OVERLOAD"
+        retry_eligible = True
+    elif error_type == "SCHEMA_VALIDATION_FAILURE":
+        classification = "SCHEMA_VALIDATION_FAILURE"
+        retry_eligible = False
+    elif error_type == "RESPONSE_CONTRACT_ERROR":
+        classification = (
+            "CONTENT_NOT_JSON"
+            if "JSONDecodeError" in cause_names
+            else "JSON_OR_SEMANTIC_RESPONSE_CONTRACT_FAILURE"
+        )
+        retry_eligible = False
+    else:
+        classification = "UNCLASSIFIED_TERMINAL_PROVIDER_FAILURE"
+        retry_eligible = False
+    return {
+        "classification": classification,
+        "retry_eligible": retry_eligible,
+        "http_status": http_status,
+        "provider_receipt_digest": provider_receipt.get("receipt_digest"),
+        "broker_outcome_digest": (
+            outcome.get("outcome_digest") if outcome is not None else None
+        ),
+        "provider_error_detail_digest": (
+            sha256_digest(error_detail) if error_detail is not None else None
+        ),
+        "unsupported_schema_keyword_digest": (
+            sha256_digest("uniqueItems") if unique_items else None
+        ),
+    }
+
+
+def _attempt_chain_entry(
+    *,
+    entry: dict[str, Any],
+    prior_attempt_digest: str | None,
+) -> dict[str, Any]:
+    preimage = {
+        **entry,
+        "prior_attempt_digest": prior_attempt_digest,
+    }
+    return {**preimage, "attempt_digest": sha256_digest(preimage)}
+
+
+def _v3_top_receipt(
+    *,
+    manifest: dict[str, Any],
+    attempts: list[dict[str, Any]],
+    status: str,
+    final_classification: str,
+    termination_reason: str,
+    returned_model: str | None,
+    response_digest: str | None,
+) -> dict[str, Any]:
+    success = status == "PASS"
+    return {
+        "schema": V3_ATTEMPT_RECEIPT_SCHEMA,
+        "status": status,
+        "attempt_id": V3_ATTEMPT_ID,
+        "diagnostic_slot_id": (
+            "PREFREEZE_V3_ENDPOINT_SCHEMA_DIAGNOSTIC"
+        ),
+        "model_requested": MODEL,
+        "returned_model": returned_model,
+        "authentication_status": "VERIFIED" if success else "UNVERIFIED",
+        "endpoint_digest": manifest["exact_provider_contract"][
+            "endpoint_digest"
+        ],
+        "credential_config_digest": manifest["exact_provider_contract"][
+            "credential_config_digest"
+        ],
+        "credential_identity_digest": manifest[
+            "exact_provider_contract"
+        ]["credential_identity_digest"],
+        "provider_release_digest": manifest["exact_provider_contract"][
+            "provider_release_digest"
+        ],
+        "response_schema_digest": manifest["exact_provider_contract"][
+            "response_schema_digest"
+        ],
+        "sentinel_digest": manifest["exact_provider_contract"][
+            "sentinel_digest"
+        ],
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "response_digest": response_digest,
+        "physical_attempts": attempts,
+        "physical_provider_calls": len(attempts),
+        "retry_count": max(0, len(attempts) - 1),
+        "final_classification": final_classification,
+        "termination_reason": termination_reason,
+        "first_valid_response_accepted": success,
+        "successful_response_selection": False,
+        "extra_call_after_valid_response": False,
+        "same_diagnostic_slot": True,
+        "same_request_payload_and_envelope_digest": True,
+        "sensitive_values_persisted": False,
+        "sensitive_headers_persisted": False,
+        **_zero_side_effects(),
+        "blocked_fields": (
+            []
+            if success
+            else [
+                "endpoint_authentication",
+                "exact_fresh_open_spec_schema_support",
+                "returned_model",
+            ]
+        ),
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def _write_v3_checkpoint(receipt: dict[str, Any]) -> None:
+    """Persist before any retry; failure propagates and prevents another call."""
+
+    (ROOT / V3_ATTEMPT_RECEIPT_REL).write_bytes(
+        canonical_json_bytes(receipt)
+    )
+
+
+def _main_v3() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--llm-api-config", type=Path, required=True)
+    parser.add_argument("--private-root", type=Path, required=True)
+    args = parser.parse_args()
+
+    manifest = validate_prefreeze_v3(ROOT)
+    private_root = args.private_root.resolve()
+    if private_root != V3_PRIVATE_ROOT:
+        raise SystemExit("V3 private-root identity mismatch")
+    if private_root.exists():
+        raise SystemExit("V3 private root already exists; no second V3 run")
+    if (ROOT / V3_ATTEMPT_RECEIPT_REL).exists():
+        raise SystemExit("V3 attempt receipt already exists; no second V3 run")
+    if not (ROOT / V3_AUTH_REL).is_file():
+        raise SystemExit("V3 pre-outcome authorization is missing")
+
+    config_path = args.llm_api_config.resolve()
+    base_url, api_key = load_lab_api_credentials(config_path)
+    credential = _credential_identity(
+        config_path,
+        base_url=base_url,
+        api_key=api_key,
+    )
+    del api_key
+    contract = manifest["exact_provider_contract"]
+    for field, observed in (
+        ("endpoint_digest", credential["endpoint_digest"]),
+        ("credential_config_digest", credential["config_bytes_sha256"]),
+        (
+            "credential_identity_digest",
+            credential["credential_identity_digest"],
+        ),
+    ):
+        if contract[field] != observed:
+            raise SystemExit(f"V3 Provider identity mismatch: {field}")
+    if exact_probe_request_payload_digest(ROOT) != contract[
+        "request_payload_digest"
+    ]:
+        raise SystemExit("V3 physical request payload changed")
+
+    sentinel = json.loads((ROOT / SENTINEL_REL).read_bytes())
+    attempts: list[dict[str, Any]] = []
+    prior_attempt_digest: str | None = None
+    backoffs = (1000, 3000)
+    for ordinal in (1, 2, 3):
+        attempt_identity = manifest["bounded_retry"][
+            "physical_attempt_identities"
+        ][ordinal - 1]
+        physical_root = v3_physical_root(ordinal)
+        if ordinal > 1:
+            time.sleep(backoffs[ordinal - 2] / 1000)
+        started_ns = time.monotonic_ns()
+        broker: LabApiCanaryBrokerV1 | None = None
+        result = None
+        try:
+            broker = LabApiCanaryBrokerV1(
+                physical_root,
+                schema_path=ROOT / SCHEMA_REL,
+                config_path=config_path,
+                model=MODEL,
+                max_total_tokens_per_call=6000,
+                timeout_ms=900_000,
+                release_manifest_path=ROOT / RELEASE_REL,
+            )
+            schema_digest = _validate_sqlite_schema(
+                broker._connection,  # noqa: SLF001 - required schema proof
+                expected_digest=manifest["bounded_retry"][
+                    "sqlite_calls_schema_digest"
+                ],
+            )
+            result = broker.call_with_session(
+                logical_call_id=V3_LOGICAL_CALL_ID,
+                proposal_generation_session_id=V3_SESSION_ID,
+                prompt=schema_probe_prompt(ROOT),
+                expected_proposal_count=1,
+                max_total_tokens=PROBE_TOKEN_CEILING,
+            )
+            if result.returned_model != MODEL:
+                raise CanaryBrokerError(
+                    "V3 returned a model other than exact gpt-5.4"
+                )
+            if canonical_value(result.response) != canonical_value(sentinel):
+                raise CanaryBrokerError(
+                    "V3 response differed from the frozen sentinel"
+                )
+            broker._connection.row_factory = sqlite3.Row  # noqa: SLF001
+            success_row = broker._connection.execute(  # noqa: SLF001
+                "SELECT receipt_json FROM calls WHERE logical_call_id=?",
+                (V3_LOGICAL_CALL_ID,),
+            ).fetchone()
+            if success_row is None:
+                raise SystemExit("V3 successful call receipt row is missing")
+            success_provider_receipt = json.loads(
+                str(success_row["receipt_json"])
+            )
+            ended_ns = time.monotonic_ns()
+            entry = _attempt_chain_entry(
+                entry={
+                    "ordinal": ordinal,
+                    **attempt_identity,
+                    "logical_call_id": V3_LOGICAL_CALL_ID,
+                    "request_payload_digest": contract[
+                        "request_payload_digest"
+                    ],
+                    "request_envelope_digest": result.request_digest,
+                    "sqlite_calls_schema_digest": schema_digest,
+                    "monotonic_start_ns": started_ns,
+                    "monotonic_end_ns": ended_ns,
+                    "classification": "PASS_EXACT_GPT_5_4_AUTH_SCHEMA",
+                    "http_status": 200,
+                    "retry_eligible": False,
+                    "backoff_ms_after_attempt": 0,
+                    "termination_reason": "FIRST_VALID_RESPONSE_ACCEPTED",
+                    "returned_model": result.returned_model,
+                    "response_digest": result.response_digest,
+                    "provider_receipt_digest": success_provider_receipt[
+                        "receipt_digest"
+                    ],
+                    "broker_outcome_digest": None,
+                    "provider_error_detail_digest": None,
+                },
+                prior_attempt_digest=prior_attempt_digest,
+            )
+            attempts.append(entry)
+            receipt = _v3_top_receipt(
+                manifest=manifest,
+                attempts=attempts,
+                status="PASS",
+                final_classification=entry["classification"],
+                termination_reason=entry["termination_reason"],
+                returned_model=result.returned_model,
+                response_digest=result.response_digest,
+            )
+            _write_v3_checkpoint(receipt)
+            print(
+                json.dumps(
+                    {
+                        "classification": entry["classification"],
+                        "physical_provider_calls": len(attempts),
+                        "receipt_sha256": bytes_sha256(
+                            (ROOT / V3_ATTEMPT_RECEIPT_REL).read_bytes()
+                        ),
+                        "retry_count": len(attempts) - 1,
+                        "status": "PASS",
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
+        except Exception as error:
+            if broker is None:
+                raise
+            broker._connection.row_factory = sqlite3.Row  # noqa: SLF001
+            row = broker._connection.execute(  # noqa: SLF001
+                "SELECT logical_call_id, request_digest, response_digest, "
+                "returned_model, status, error_type, error_detail_json, "
+                "receipt_json, outcome_json FROM calls WHERE logical_call_id=?",
+                (V3_LOGICAL_CALL_ID,),
+            ).fetchone()
+            if row is None:
+                raise SystemExit(
+                    "V3 local receipt failure stopped before retry"
+                ) from error
+            evidence = _classify_v3_failure(
+                error=error,
+                row=row,
+                semantic_after_success=(result is not None),
+            )
+            retry = evidence["retry_eligible"] and ordinal < 3
+            termination = (
+                "RETRY_SCHEDULED"
+                if retry
+                else (
+                    "TRANSIENT_ATTEMPTS_EXHAUSTED"
+                    if evidence["retry_eligible"]
+                    else "DETERMINISTIC_TERMINAL_FAILURE"
+                )
+            )
+            ended_ns = time.monotonic_ns()
+            entry = _attempt_chain_entry(
+                entry={
+                    "ordinal": ordinal,
+                    **attempt_identity,
+                    "logical_call_id": V3_LOGICAL_CALL_ID,
+                    "request_payload_digest": contract[
+                        "request_payload_digest"
+                    ],
+                    "request_envelope_digest": row["request_digest"],
+                    "sqlite_calls_schema_digest": manifest[
+                        "bounded_retry"
+                    ]["sqlite_calls_schema_digest"],
+                    "monotonic_start_ns": started_ns,
+                    "monotonic_end_ns": ended_ns,
+                    **evidence,
+                    "backoff_ms_after_attempt": (
+                        backoffs[ordinal - 1] if retry else 0
+                    ),
+                    "termination_reason": termination,
+                    "returned_model": row["returned_model"],
+                    "response_digest": row["response_digest"],
+                },
+                prior_attempt_digest=prior_attempt_digest,
+            )
+            attempts.append(entry)
+            prior_attempt_digest = entry["attempt_digest"]
+            status = "IN_PROGRESS" if retry else "BLOCKED"
+            receipt = _v3_top_receipt(
+                manifest=manifest,
+                attempts=attempts,
+                status=status,
+                final_classification=entry["classification"],
+                termination_reason=termination,
+                returned_model=None,
+                response_digest=None,
+            )
+            _write_v3_checkpoint(receipt)
+            if not retry:
+                print(
+                    json.dumps(
+                        {
+                            "classification": entry["classification"],
+                            "physical_provider_calls": len(attempts),
+                            "receipt_sha256": bytes_sha256(
+                                (ROOT / V3_ATTEMPT_RECEIPT_REL).read_bytes()
+                            ),
+                            "retry_count": len(attempts) - 1,
+                            "status": "BLOCKED",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 2
+        finally:
+            if broker is not None:
+                broker.close()
+    raise SystemExit("V3 bounded retry loop reached an impossible state")
+
+
+def main() -> int:
+    if "--v3" in sys.argv:
+        sys.argv.remove("--v3")
+        return _main_v3()
+    return _main_v2()
 
 
 if __name__ == "__main__":

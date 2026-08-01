@@ -1,9 +1,12 @@
-"""Fail-closed Prefreeze V2 identity and provider-free validation.
+"""Fail-closed Prefreeze V2/V3 identity and provider-free validation.
 
 Prefreeze V2 is an additive, pre-outcome amendment.  It seals the accepted V1
 negative evidence and changes only the future R1 provider retry policy.  The
 one diagnostic re-probe authorized by V2 is not an R1 proposal slot and never
 uses that retry policy.
+
+Prefreeze V3 is another additive attempt.  It reuses the exact V1 physical
+request payload and applies the bounded transient retry policy frozen by V2.
 """
 
 from __future__ import annotations
@@ -396,6 +399,355 @@ def provider_free_dry_run(repo_root: Path) -> dict[str, Any]:
         "v1_seal_verified": True,
         "ab_call_contract_symmetry_verified": True,
         "retry_policy_verified": True,
+        "provider_calls": 0,
+        "training_runs": 0,
+        "candidate_admissions": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+# Prefreeze V3 is intentionally implemented in the existing validator module;
+# it does not introduce another Broker, transport boundary, or state service.
+V2_HEAD = "3e2ac024347f6950f0414b39974cd8e46fd5e654"
+V2_PARENT = V1_HEAD
+V2_TREE = "2438bfd66f5818994ab7db226a0942cbc5ebc037"
+V2_MANIFEST_SHA256 = "c6d40629b3597a52054cbd1b26d76b3c61345d9f8d9dc838387c6f5122f2af6f"
+V2_POLICY_SHA256 = "b07e26b469c5975a4def21476dcda4cd245c41decfc558a06bf7f7d84b9941b3"
+V2_AUTH_SHA256 = "38cab44e1eafafddebabac348cdf15b5a8c17c32855f026f7621cd3c2ccbb3d3"
+V2_PROBE_SHA256 = "24c325c6c03636d7e4886f51db9d72c8e9a86ebd539b28ff09fb710395917f50"
+V2_BLOCKED_SHA256 = "41e5f94afdaedaa81a4ae43b07c9120d6345f2625dd7e6717d502ac0f83b625f"
+V2_DRY_RUN_SHA256 = "2c0fd926f051eb3f6a6a24a22932bc6823be35ba9087358492670c3004660231"
+
+V3_ATTEMPT_ID = "recclaw-r1-r2-prefreeze-v3-20260801"
+V3_MANIFEST_SCHEMA = "recclaw.research-line.r1-r2-prefreeze-attempt.v3"
+V3_POLICY_SCHEMA = "recclaw.research-line.r1-provider-retry-policy.v3"
+V3_AUTH_SCHEMA = "recclaw.research-line.prefreeze-v3-reprobe-authorization.v1"
+V3_ATTEMPT_RECEIPT_SCHEMA = (
+    "recclaw.research-line.prefreeze-v3-provider-attempt-receipt.v1"
+)
+V3_DRY_RUN_SCHEMA = "recclaw.research-line.prefreeze-v3-dry-run-receipt.v1"
+V3_BLOCKED_SCHEMA = "recclaw.research-line.prefreeze-v3-blocked-receipt.v1"
+V3_READY_SCHEMA = "recclaw.research-line.r1-prefreeze-v3-ready-receipt.v1"
+
+V3_LOGICAL_CALL_ID = "fresh-open-spec-prefreeze-v3-diagnostic-slot"
+V3_SESSION_ID = "fresh-open-spec-prefreeze-v3-diagnostic-slot-session"
+V3_PRIVATE_ROOT = Path("/root/projects/RecClaw_r1_prefreeze_reprobe_v3_private")
+
+V3_POLICY_REL = DOC_ROOT_REL / "R1_PROVIDER_RETRY_POLICY_V3.json"
+V3_MANIFEST_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_MANIFEST_V3.json"
+V3_AUTH_REL = DOC_ROOT_REL / "PREFREEZE_V3_REPROBE_AUTHORIZATION.json"
+V3_ATTEMPT_RECEIPT_REL = (
+    DOC_ROOT_REL / "FRESH_OPEN_SPEC_ENDPOINT_ATTEMPT_RECEIPT_V3.json"
+)
+V3_BLOCKED_REL = DOC_ROOT_REL / "PREFREEZE_V3_BLOCKED_RECEIPT.json"
+V3_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_V3_READY_RECEIPT.json"
+V3_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V3_DRY_RUN_RECEIPT.json"
+V3_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V3_VERIFICATION_RECEIPT.json"
+
+SQLITE_CALL_COLUMNS = (
+    "logical_call_id",
+    "request_digest",
+    "response_digest",
+    "response_json",
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "latency_ms",
+    "returned_model",
+    "status",
+    "error_type",
+    "error_detail_json",
+    "proposal_generation_session_id",
+    "receipt_digest",
+    "receipt_json",
+    "closure_receipt_json",
+    "outcome_json",
+    "broker_release_digest",
+)
+
+
+def v3_physical_root(ordinal: int) -> Path:
+    if ordinal not in {1, 2, 3}:
+        raise Wave2IntegrationError("V3 physical attempt ordinal must be 1..3")
+    return V3_PRIVATE_ROOT / f"physical_attempt_{ordinal:02d}"
+
+
+def verify_v2_seal(repo_root: Path) -> dict[str, str]:
+    """Verify every committed V2 manifest/policy/receipt artifact."""
+
+    expected = {
+        MANIFEST_REL: V2_MANIFEST_SHA256,
+        POLICY_REL: V2_POLICY_SHA256,
+        AUTH_REL: V2_AUTH_SHA256,
+        PROBE_REL: V2_PROBE_SHA256,
+        BLOCKED_REL: V2_BLOCKED_SHA256,
+        DRY_RUN_REL: V2_DRY_RUN_SHA256,
+    }
+    for relative, digest in expected.items():
+        path = repo_root / relative
+        if not path.is_file() or bytes_sha256(path.read_bytes()) != digest:
+            raise Wave2IntegrationError(
+                f"sealed V2 bytes changed: {relative.as_posix()}"
+            )
+    return {relative.as_posix(): digest for relative, digest in expected.items()}
+
+
+def expected_v3_retry_policy() -> dict[str, Any]:
+    """Bind V2 retry semantics to the one V3 diagnostic slot."""
+
+    inherited = expected_retry_policy()
+    return {
+        "schema": V3_POLICY_SCHEMA,
+        "inherited_v2_policy_ref": _repo_ref(POLICY_REL),
+        "inherited_v2_policy_digest": V2_POLICY_SHA256,
+        "future_r1_policy_unchanged": True,
+        "proposal_slots_per_side": inherited["proposal_slots_per_side"],
+        "proposal_denominator_per_side": inherited[
+            "proposal_denominator_per_side"
+        ],
+        "diagnostic_slot": {
+            "slot_id": "PREFREEZE_V3_ENDPOINT_SCHEMA_DIAGNOSTIC",
+            "same_logical_call_id_required": True,
+            "same_request_payload_digest_required": True,
+            "initial_physical_attempts": 1,
+            "maximum_additional_physical_attempts": 2,
+            "maximum_total_physical_attempts": 3,
+            "deterministic_backoff_ms_after_failure": [1000, 3000],
+            "retryable_failure_classes": inherited[
+                "retryable_failure_classes"
+            ],
+            "terminal_no_retry_failure_classes": inherited[
+                "terminal_no_retry_failure_classes"
+            ],
+            "first_valid_strict_response_action": "ACCEPT_AND_STOP",
+            "successful_response_selection": "FORBIDDEN",
+            "extra_call_after_valid_response": "FORBIDDEN",
+            "local_receipt_failure_action": "STOP_WITHOUT_PROVIDER_RETRY",
+        },
+        "missingness": inherited["exhausted_slot_missingness"],
+        "response_contract_rules": inherited["response_contract_rules"],
+    }
+
+
+def expected_prefreeze_v3_manifest(repo_root: Path) -> dict[str, Any]:
+    """Construct the only admitted V3 pre-outcome identity."""
+
+    verify_v1_seal(repo_root)
+    verify_v2_seal(repo_root)
+    v1_probe = _read_json(repo_root / V1_PROBE_REL)
+    v2_manifest = _read_json(repo_root / MANIFEST_REL)
+    release = _read_json(repo_root / RELEASE_REL)
+    schema_bytes = (repo_root / SCHEMA_REL).read_bytes()
+    schema = _read_json(repo_root / SCHEMA_REL)
+    if "uniqueItems" not in canonical_json_bytes(schema).decode("utf-8"):
+        raise Wave2IntegrationError("frozen V1 schema no longer contains uniqueItems")
+    policy_bytes = canonical_json_bytes(expected_v3_retry_policy())
+    physical_roots = [
+        {
+            "ordinal": ordinal,
+            "physical_attempt_identity_digest": sha256_digest(
+                {
+                    "attempt_id": V3_ATTEMPT_ID,
+                    "diagnostic_slot": "PREFREEZE_V3_ENDPOINT_SCHEMA_DIAGNOSTIC",
+                    "ordinal": ordinal,
+                    "private_root_digest": sha256_digest(
+                        {"path": v3_physical_root(ordinal).as_posix()}
+                    ),
+                }
+            ),
+            "private_root_digest": sha256_digest(
+                {"path": v3_physical_root(ordinal).as_posix()}
+            ),
+        }
+        for ordinal in (1, 2, 3)
+    ]
+    future = v2_manifest["future_r1_provider_call_contract"]
+    return {
+        "schema": V3_MANIFEST_SCHEMA,
+        "attempt_identity": {
+            "attempt_id": V3_ATTEMPT_ID,
+            "base_commit": V2_HEAD,
+            "base_parent": V2_PARENT,
+            "base_tree": V2_TREE,
+            "pre_outcome": True,
+            "distinct_from_v1_v2_attempts": True,
+            "old_attempt_call_db_identity_reuse": False,
+        },
+        "sealed_negative_evidence": {
+            "v1_manifest_digest": V1_MANIFEST_SHA256,
+            "v1_probe_receipt_digest": V1_PROBE_SHA256,
+            "v1_blocked_receipt_digest": V1_BLOCKED_SHA256,
+            "v1_failure_class": "HTTP_400_EXACT_SCHEMA_KEYWORD_UNSUPPORTED",
+            "v2_manifest_digest": V2_MANIFEST_SHA256,
+            "v2_policy_digest": V2_POLICY_SHA256,
+            "v2_authorization_digest": V2_AUTH_SHA256,
+            "v2_probe_receipt_digest": V2_PROBE_SHA256,
+            "v2_blocked_receipt_digest": V2_BLOCKED_SHA256,
+            "v2_dry_run_digest": V2_DRY_RUN_SHA256,
+            "v2_failure_class": (
+                "HTTP_503_TRANSIENT_PROVIDER_SERVICE_UNAVAILABLE"
+            ),
+            "preservation": "SEALED_WORKING_AND_COMMITTED_BYTES_IDENTICAL",
+        },
+        "exact_provider_contract": {
+            "model": MODEL,
+            "model_digest": GPT_5_4_MODEL_DIGEST,
+            "endpoint_digest": v1_probe["endpoint_digest"],
+            "credential_config_digest": v1_probe[
+                "credential_config_digest"
+            ],
+            "credential_identity_digest": v1_probe[
+                "credential_identity_digest"
+            ],
+            "provider_release_digest": release["release_digest"],
+            "response_schema_digest": bytes_sha256(schema_bytes),
+            "response_schema_contains_unique_items": True,
+            "sentinel_digest": sha256_digest(
+                _read_json(repo_root / SENTINEL_REL)
+            ),
+            "request_payload_digest": exact_probe_request_payload_digest(
+                repo_root
+            ),
+            "request_mode": "SINGLE_JSON_SCHEMA_NO_TOOLS",
+            "logical_call_id": V3_LOGICAL_CALL_ID,
+            "proposal_generation_session_id": V3_SESSION_ID,
+            "diagnostic_slot_id": (
+                "PREFREEZE_V3_ENDPOINT_SCHEMA_DIAGNOSTIC"
+            ),
+        },
+        "bounded_retry": {
+            "policy_ref": _repo_ref(V3_POLICY_REL),
+            "policy_digest": bytes_sha256(policy_bytes),
+            "maximum_physical_attempts": 3,
+            "maximum_retry_count": 2,
+            "deterministic_backoff_ms": [1000, 3000],
+            "physical_attempt_identities": physical_roots,
+            "sqlite_calls_schema_digest": sha256_digest(
+                {"table": "calls", "columns": list(SQLITE_CALL_COLUMNS)}
+            ),
+        },
+        "future_r1_scientific_contract": {
+            "shared_call_contract_digest": future[
+                "shared_call_contract_digest"
+            ],
+            "side_a_call_contract_digest": future[
+                "side_a_call_contract_digest"
+            ],
+            "side_b_call_contract_digest": future[
+                "side_b_call_contract_digest"
+            ],
+            "proposal_slots_per_side": 8,
+            "proposal_denominator_per_side": 8,
+            "retry_is_proposal": False,
+            "provider_failure_analysis": (
+                "MISSING_PROVIDER_OR_ENGINEERING_FAILURE"
+            ),
+            "provider_failure_is_mechanism_negative_evidence": False,
+        },
+        "prohibited_actions": {
+            "model_or_endpoint_change": "FORBIDDEN",
+            "schema_relaxation": "FORBIDDEN",
+            "manual_response_patch": "FORBIDDEN",
+            "candidate_or_qualification_or_admission": "FORBIDDEN",
+            "training_or_outcome_or_held_out": "FORBIDDEN",
+            "additional_attempt_after_terminal_state": "FORBIDDEN",
+        },
+        "pre_outcome_counters": {
+            "provider_calls": 0,
+            "research_candidates_generated": 0,
+            "open_specs_projected": 0,
+            "resolver_calls": 0,
+            "candidate_roots_created": 0,
+            "candidate_admissions": 0,
+            "training_runs": 0,
+            "outcomes_consumed": 0,
+            "held_out_reads": 0,
+        },
+        "ready_condition": (
+            "FIRST_VALID_STRICT_RESPONSE_AND_VALIDATOR_DRY_RUN_TEST_CANONICAL_"
+            "HASH_SECRET_DIFF_STRUCTURE_ALL_PASS"
+        ),
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def expected_v3_authorization(repo_root: Path) -> dict[str, Any]:
+    manifest_bytes = canonical_json_bytes(
+        expected_prefreeze_v3_manifest(repo_root)
+    )
+    policy_bytes = canonical_json_bytes(expected_v3_retry_policy())
+    return {
+        "schema": V3_AUTH_SCHEMA,
+        "status": "AUTHORIZED_ONE_BOUNDED_DIAGNOSTIC_SLOT",
+        "attempt_id": V3_ATTEMPT_ID,
+        "manifest_ref": _repo_ref(V3_MANIFEST_REL),
+        "manifest_digest": bytes_sha256(manifest_bytes),
+        "retry_policy_ref": _repo_ref(V3_POLICY_REL),
+        "retry_policy_digest": bytes_sha256(policy_bytes),
+        "request_payload_digest": exact_probe_request_payload_digest(
+            repo_root
+        ),
+        "maximum_physical_attempts": 3,
+        "maximum_retry_count": 2,
+        "deterministic_backoff_ms": [1000, 3000],
+        "provider_calls_before_authorization": 0,
+        "candidate_training_outcome_held_out_before_authorization": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def validate_prefreeze_v3_payload(
+    repo_root: Path,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    observed = canonical_value(payload)
+    expected = canonical_value(expected_prefreeze_v3_manifest(repo_root))
+    if observed != expected:
+        raise Wave2IntegrationError("fail-closed Prefreeze V3 manifest mismatch")
+    return observed
+
+
+def validate_prefreeze_v3(repo_root: Path) -> dict[str, Any]:
+    """Validate V3 identity, sealed predecessors, retry, and A/B science."""
+
+    verify_v1_seal(repo_root)
+    verify_v2_seal(repo_root)
+    _load_exact(repo_root / V3_POLICY_REL, expected_v3_retry_policy())
+    manifest = _load_exact(
+        repo_root / V3_MANIFEST_REL,
+        expected_prefreeze_v3_manifest(repo_root),
+    )
+    validate_prefreeze_v3_payload(repo_root, manifest)
+    _load_exact(
+        repo_root / V3_AUTH_REL,
+        expected_v3_authorization(repo_root),
+    )
+    future = manifest["future_r1_scientific_contract"]
+    shared = future["shared_call_contract_digest"]
+    if (
+        future["side_a_call_contract_digest"] != shared
+        or future["side_b_call_contract_digest"] != shared
+    ):
+        raise Wave2IntegrationError("Prefreeze V3 A/B call digests differ")
+    if any(manifest["pre_outcome_counters"].values()):
+        raise Wave2IntegrationError("Prefreeze V3 is not pre-outcome")
+    return manifest
+
+
+def provider_free_v3_dry_run(repo_root: Path) -> dict[str, Any]:
+    manifest = validate_prefreeze_v3(repo_root)
+    return {
+        "schema": V3_DRY_RUN_SCHEMA,
+        "status": "PASS_PROVIDER_FREE_VALIDATION",
+        "attempt_id": V3_ATTEMPT_ID,
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "v1_v2_seals_verified": True,
+        "ab_call_contract_symmetry_verified": True,
+        "bounded_retry_policy_verified": True,
+        "sqlite_schema_identity_frozen": True,
         "provider_calls": 0,
         "training_runs": 0,
         "candidate_admissions": 0,
