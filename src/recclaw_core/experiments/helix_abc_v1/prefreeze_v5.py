@@ -11,6 +11,7 @@ from .lab_api_broker import LabApiResponseFailureReasonV1
 from .prefreeze_v2 import (
     DOC_ROOT_REL,
     SQLITE_CALL_COLUMNS,
+    V1_MANIFEST_REL,
     V4_ATTEMPT_RECEIPT_REL,
     V4_AUTH_REL,
     V4_BLOCKED_REL,
@@ -32,6 +33,10 @@ from .wave2_integration import Wave2IntegrationError
 V4_HEAD = "45aa25211322d9f765e28447d5d1e885ccf3ee70"
 V4_PARENT = "68014e714d6636268fc36b259bf13498f158e4cd"
 V4_TREE = "cf2b333b2930be78557b8e0502e6db995ae42aa7"
+
+V5_HEAD = "d0fd84ce8174a4bfc913d98e1d0fa58e7480f363"
+V5_PARENT = "45aa25211322d9f765e28447d5d1e885ccf3ee70"
+V5_TREE = "72c0a36c1ebde8ffc80368cba624b4886e3fdf3d"
 
 V4_SEALED_DIGESTS: dict[Path, str] = {
     V4_MANIFEST_REL: "932c72d875eb629fa617243244d72b64ad7c5d186fce45d46390a754a06e56dc",
@@ -80,6 +85,48 @@ V5_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V5_VERIFICATION_RECEIPT.json"
 BROKER_SOURCE_REL = Path(
     "src/recclaw_core/experiments/helix_abc_v1/lab_api_broker.py"
 )
+
+V5_SEALED_DIGESTS: dict[Path, str] = {
+    V5_MANIFEST_REL: "e4b5468c2f0711cfc0b7d52330efa4240cc26bc41c0d0a45b8416bc01da3b936",
+    V5_POLICY_REL: "5bfa9a9f11cf817f8f6c1a38392f514e0826665d93899256f9c7daf8b5120749",
+    V5_AUTH_REL: "2ff14b4aa657743a3c76ad3738e20bc5e8f6e5b42f6f552f6b553c339b25af3d",
+    V5_DRY_RUN_REL: "c6ee04e0ddb5e0636f861ca5c5dfe7b2f57e84b6bb283d49b84a26f62c86869f",
+    V5_ATTEMPT_RECEIPT_REL: "8f6b74382d11b967d2b67f7771ad37b4bdb5c3a5e92446b885a44d1eb4779fed",
+    V5_BLOCKED_REL: "5254d1d517f0f521d44e9fccf300f025f754cdab0d157a89d7ae7685b9ee8031",
+}
+
+V6_ATTEMPT_ID = "recclaw-r1-r2-prefreeze-v6-20260801"
+V6_MANIFEST_SCHEMA = "recclaw.research-line.r1-r2-prefreeze-attempt.v6"
+V6_POLICY_SCHEMA = "recclaw.research-line.r1-provider-retry-policy.v6"
+V6_AUTH_SCHEMA = "recclaw.research-line.prefreeze-v6-authorization.v1"
+V6_RELEASE_SCHEMA = "recclaw.research-line.provider-release-contract.v6"
+V6_ATTEMPT_RECEIPT_SCHEMA = (
+    "recclaw.research-line.prefreeze-v6-provider-attempt-receipt.v1"
+)
+V6_DRY_RUN_SCHEMA = "recclaw.research-line.prefreeze-v6-dry-run-receipt.v1"
+V6_BLOCKED_SCHEMA = "recclaw.research-line.prefreeze-v6-blocked-receipt.v1"
+V6_READY_SCHEMA = "recclaw.research-line.r1-prefreeze-ready-receipt.v6"
+V6_VERIFICATION_SCHEMA = (
+    "recclaw.research-line.prefreeze-v6-verification-receipt.v1"
+)
+
+V6_REQUESTED_MODEL_ALIAS = "gpt-5.4"
+V6_REQUIRED_RETURNED_SNAPSHOT = "gpt-5.4-2026-03-05"
+V6_LOGICAL_CALL_ID = "fresh-open-spec-prefreeze-v6-exact-model-pair-slot"
+V6_SESSION_ID = "fresh-open-spec-prefreeze-v6-exact-model-pair-slot-session"
+V6_PRIVATE_ROOT = Path("/root/projects/RecClaw_r1_prefreeze_probe_v6_private")
+
+V6_RELEASE_REL = DOC_ROOT_REL / "FRESH_OPEN_SPEC_PROVIDER_RELEASE_V6.json"
+V6_POLICY_REL = DOC_ROOT_REL / "R1_PROVIDER_RETRY_POLICY_V6.json"
+V6_MANIFEST_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_MANIFEST_V6.json"
+V6_AUTH_REL = DOC_ROOT_REL / "PREFREEZE_V6_AUTHORIZATION.json"
+V6_ATTEMPT_RECEIPT_REL = (
+    DOC_ROOT_REL / "FRESH_OPEN_SPEC_ENDPOINT_ATTEMPT_RECEIPT_V6.json"
+)
+V6_BLOCKED_REL = DOC_ROOT_REL / "PREFREEZE_V6_BLOCKED_RECEIPT.json"
+V6_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
+V6_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V6_DRY_RUN_RECEIPT.json"
+V6_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V6_VERIFICATION_RECEIPT.json"
 
 
 def _repo_ref(relative: Path) -> str:
@@ -394,6 +441,365 @@ def provider_free_v5_dry_run(repo_root: Path) -> dict[str, Any]:
     }
 
 
+def v6_physical_root(ordinal: int) -> Path:
+    if ordinal not in {1, 2, 3}:
+        raise Wave2IntegrationError("V6 physical attempt ordinal must be 1..3")
+    return V6_PRIVATE_ROOT / f"physical_attempt_{ordinal:02d}"
+
+
+def verify_v5_seal(repo_root: Path) -> dict[str, str]:
+    """Prove that V1--V5 accepted evidence remains byte-identical."""
+
+    verify_v4_seal(repo_root)
+    for relative, digest in V5_SEALED_DIGESTS.items():
+        path = repo_root / relative
+        if not path.is_file() or bytes_sha256(path.read_bytes()) != digest:
+            raise Wave2IntegrationError(
+                f"sealed V5 bytes changed: {relative.as_posix()}"
+            )
+    broker_digest = bytes_sha256((repo_root / BROKER_SOURCE_REL).read_bytes())
+    if broker_digest != "3e255e71e128011e6533b259fcb3455da378b9ecb398862aed3d5eac8ae00441":
+        raise Wave2IntegrationError("accepted V5 Broker source bytes changed")
+    return {
+        relative.as_posix(): digest
+        for relative, digest in V5_SEALED_DIGESTS.items()
+    }
+
+
+def validate_v6_exact_model_pair(
+    *, requested_model_alias: str, returned_model: str
+) -> None:
+    """Accept only the two exact, pre-frozen model identity literals."""
+
+    if requested_model_alias != V6_REQUESTED_MODEL_ALIAS:
+        raise Wave2IntegrationError("V6 requested model alias mismatch")
+    if returned_model != V6_REQUIRED_RETURNED_SNAPSHOT:
+        raise Wave2IntegrationError("V6 returned model snapshot mismatch")
+
+
+def _v6_preserved_scientific_identity(repo_root: Path) -> dict[str, Any]:
+    v1 = _read_json(repo_root / V1_MANIFEST_REL)
+    preserved = {
+        key: deepcopy(v1[key])
+        for key in (
+            "open_spec_contract",
+            "r1_identity",
+            "r2_identity",
+            "runtime_identity",
+            "evidence_policy",
+            "shared_implementation",
+        )
+    }
+    return {
+        "source_manifest_ref": _repo_ref(V1_MANIFEST_REL),
+        "source_manifest_digest": bytes_sha256(
+            (repo_root / V1_MANIFEST_REL).read_bytes()
+        ),
+        "preserved_fields": sorted(preserved),
+        "preserved_fields_digest": sha256_digest(preserved),
+        "seed_root_db_candidate_package_outcome_memory_lineage_unchanged": True,
+        "runtime_dependency_missingness_gate_threshold_analysis_unchanged": True,
+        "shared_origin_blind_implementer_qualifier_unchanged": True,
+        "manual_patch_prohibition_unchanged": True,
+    }
+
+
+def expected_v6_provider_release(repo_root: Path) -> dict[str, Any]:
+    """Return the exact-pair release binding without changing transport bytes."""
+
+    verify_v5_seal(repo_root)
+    v5 = _read_json(repo_root / V5_MANIFEST_REL)
+    v1 = _read_json(repo_root / V1_MANIFEST_REL)
+    exact = v5["exact_provider_contract"]
+    proposal = v1["shared_proposal_call"]
+    preimage = {
+        "schema": V6_RELEASE_SCHEMA,
+        "transport_release_ref": exact["provider_release_ref"],
+        "transport_release_artifact_digest": V4_SEALED_DIGESTS[V4_RELEASE_REL],
+        "transport_release_contract_digest": exact["provider_release_digest"],
+        "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+        "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+        "endpoint_digest": exact["endpoint_digest"],
+        "credential_config_digest": exact["credential_config_digest"],
+        "credential_identity_digest": exact["credential_identity_digest"],
+        "response_schema_digest": exact["response_schema_digest"],
+        "local_uniqueness_contract_digest": v5[
+            "response_contract_equivalence"
+        ]["local_uniqueness_contract_digest"],
+        "prompt_digest": exact["prompt_digest"],
+        "tool_policy_digest": exact["tool_policy_digest"],
+        "request_mode": exact["request_mode"],
+        "temperature": exact["temperature"],
+        "diagnostic_slot_call_count": 1,
+        "diagnostic_expected_proposals": 1,
+        "diagnostic_token_budget": exact["token_budget"],
+        "transport_max_total_tokens_per_call": proposal["token_budget"],
+        "future_r1_call_count_per_side": proposal["call_count"],
+        "future_r1_proposal_budget_per_side": proposal[
+            "proposal_budget_per_side"
+        ],
+        "future_r1_expected_proposals_per_slot": proposal[
+            "expected_proposals_per_call"
+        ],
+        "future_r1_token_budget_per_call": proposal["token_budget"],
+        "alias_or_snapshot_matching": "EXACT_LITERAL_ONLY",
+        "prefix_regex_startswith_or_arbitrary_snapshot": "FORBIDDEN",
+        "silent_alias_fallback_model_or_endpoint_change": "FORBIDDEN",
+    }
+    return {**preimage, "release_digest": sha256_digest(preimage)}
+
+
+def expected_v6_retry_policy(repo_root: Path) -> dict[str, Any]:
+    policy = deepcopy(_read_json(repo_root / V5_POLICY_REL))
+    policy["schema"] = V6_POLICY_SCHEMA
+    policy["inherited_v5_policy_ref"] = _repo_ref(V5_POLICY_REL)
+    policy["inherited_v5_policy_digest"] = V5_SEALED_DIGESTS[V5_POLICY_REL]
+    policy.pop("inherited_v4_policy_ref", None)
+    policy.pop("inherited_v4_policy_digest", None)
+    policy.pop("inherited_v4_policy_semantics_digest", None)
+    policy["diagnostic_slot"]["slot_id"] = "PREFREEZE_V6_EXACT_MODEL_PAIR"
+    policy["exact_model_pair_failure"] = {
+        "failure_class": "RETURNED_MODEL_PAIR_MISMATCH",
+        "retry_eligible": False,
+        "manual_patch": "FORBIDDEN",
+        "successful_response_selection": "FORBIDDEN",
+        "candidate_admission": "FORBIDDEN",
+        "mechanism_negative_evidence": False,
+    }
+    return policy
+
+
+def expected_prefreeze_v6_manifest(repo_root: Path) -> dict[str, Any]:
+    verify_v5_seal(repo_root)
+    v5 = _read_json(repo_root / V5_MANIFEST_REL)
+    release = expected_v6_provider_release(repo_root)
+    policy = expected_v6_retry_policy(repo_root)
+    exact = deepcopy(v5["exact_provider_contract"])
+    exact.update(
+        {
+            "model": V6_REQUESTED_MODEL_ALIAS,
+            "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+            "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+            "model_identity_pair_digest": sha256_digest(
+                {
+                    "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+                    "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+                }
+            ),
+            "transport_provider_release_digest": exact[
+                "provider_release_digest"
+            ],
+            "provider_release_ref": _repo_ref(V6_RELEASE_REL),
+            "provider_release_artifact_digest": bytes_sha256(
+                canonical_json_bytes(release)
+            ),
+            "provider_release_digest": release["release_digest"],
+            "logical_call_id": V6_LOGICAL_CALL_ID,
+            "proposal_generation_session_id": V6_SESSION_ID,
+            "diagnostic_slot_id": "PREFREEZE_V6_EXACT_MODEL_PAIR",
+        }
+    )
+    physical_identities = [
+        {
+            "ordinal": ordinal,
+            "physical_attempt_identity_digest": sha256_digest(
+                {
+                    "attempt_id": V6_ATTEMPT_ID,
+                    "diagnostic_slot": "PREFREEZE_V6_EXACT_MODEL_PAIR",
+                    "ordinal": ordinal,
+                    "private_root_digest": sha256_digest(
+                        {"path": v6_physical_root(ordinal).as_posix()}
+                    ),
+                }
+            ),
+            "private_root_digest": sha256_digest(
+                {"path": v6_physical_root(ordinal).as_posix()}
+            ),
+        }
+        for ordinal in (1, 2, 3)
+    ]
+    future = deepcopy(v5["future_r1_scientific_contract"])
+    shared_call_digest = sha256_digest(
+        {
+            "inherited_v5_shared_call_contract_digest": future[
+                "shared_call_contract_digest"
+            ],
+            "v6_provider_release_contract_digest": release["release_digest"],
+        }
+    )
+    future.update(
+        {
+            "shared_call_contract_digest": shared_call_digest,
+            "side_a_call_contract_digest": shared_call_digest,
+            "side_b_call_contract_digest": shared_call_digest,
+        }
+    )
+    return {
+        "schema": V6_MANIFEST_SCHEMA,
+        "attempt_identity": {
+            "attempt_id": V6_ATTEMPT_ID,
+            "base_commit": V5_HEAD,
+            "base_parent": V5_PARENT,
+            "base_tree": V5_TREE,
+            "pre_outcome": True,
+            "distinct_from_v1_v2_v3_v4_v5_attempts": True,
+            "old_attempt_call_session_db_identity_reuse": False,
+        },
+        "sealed_predecessor_evidence": {
+            "v5_manifest_digest": V5_SEALED_DIGESTS[V5_MANIFEST_REL],
+            "v5_attempt_digest": V5_SEALED_DIGESTS[V5_ATTEMPT_RECEIPT_REL],
+            "v5_blocked_digest": V5_SEALED_DIGESTS[V5_BLOCKED_REL],
+            "v1_v2_v3_v4_v5_preservation": (
+                "SEALED_WORKING_AND_COMMITTED_BYTES_IDENTICAL"
+            ),
+        },
+        "accepted_v5_engineering_history": {
+            "http_200_parse_failure_observability": (
+                "ALLOWLISTED_CONTENT_FREE_REASON_CODE"
+            ),
+            "http_error_persistence": "STATUS_ONLY_NO_PROVIDER_BODY",
+            "sqlite_schema_changed": False,
+            "accepted_v5_artifacts_rewritten": False,
+        },
+        "authorized_v6_protocol_change": {
+            "only_scientific_protocol_change": (
+                "EXACT_REQUEST_ALIAS_TO_EXACT_RETURNED_SNAPSHOT_BINDING"
+            ),
+            "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+            "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+            "matching": "TWO_EXACT_LITERAL_EQUALITIES_FAIL_CLOSED",
+            "generic_alias_acceptance": "FORBIDDEN",
+        },
+        "provider_release_contract": release,
+        "exact_provider_contract": exact,
+        "response_contract_equivalence": deepcopy(
+            v5["response_contract_equivalence"]
+        ),
+        "bounded_retry": {
+            "policy_ref": _repo_ref(V6_POLICY_REL),
+            "policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+            "maximum_physical_attempts": 3,
+            "maximum_retry_count": 2,
+            "deterministic_backoff_ms": [1000, 3000],
+            "physical_attempt_identities": physical_identities,
+            "sqlite_calls_schema_digest": v5["bounded_retry"][
+                "sqlite_calls_schema_digest"
+            ],
+        },
+        "preserved_scientific_identity": _v6_preserved_scientific_identity(
+            repo_root
+        ),
+        "future_r1_scientific_contract": future,
+        "inherited_v5_scientific_contract_digest": sha256_digest(
+            v5["future_r1_scientific_contract"]
+        ),
+        "v6_scientific_contract_digest": sha256_digest(future),
+        "pre_outcome_counters": deepcopy(v5["pre_outcome_counters"]),
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def expected_v6_authorization(repo_root: Path) -> dict[str, Any]:
+    manifest = expected_prefreeze_v6_manifest(repo_root)
+    policy = expected_v6_retry_policy(repo_root)
+    release = expected_v6_provider_release(repo_root)
+    return {
+        "schema": V6_AUTH_SCHEMA,
+        "status": "AUTHORIZED_ONE_V6_EXACT_MODEL_PAIR_DIAGNOSTIC_SLOT",
+        "attempt_id": V6_ATTEMPT_ID,
+        "manifest_ref": _repo_ref(V6_MANIFEST_REL),
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "retry_policy_ref": _repo_ref(V6_POLICY_REL),
+        "retry_policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+        "provider_release_ref": _repo_ref(V6_RELEASE_REL),
+        "provider_release_artifact_digest": bytes_sha256(
+            canonical_json_bytes(release)
+        ),
+        "provider_release_contract_digest": release["release_digest"],
+        "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+        "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "maximum_physical_attempts": 3,
+        "maximum_retry_count": 2,
+        "deterministic_backoff_ms": [1000, 3000],
+        "provider_calls_before_authorization": 0,
+        "candidate_training_outcome_held_out_before_authorization": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def validate_prefreeze_v6(repo_root: Path) -> dict[str, Any]:
+    verify_v5_seal(repo_root)
+    release = _load_exact(
+        repo_root / V6_RELEASE_REL, expected_v6_provider_release(repo_root)
+    )
+    policy = _load_exact(
+        repo_root / V6_POLICY_REL, expected_v6_retry_policy(repo_root)
+    )
+    manifest = _load_exact(
+        repo_root / V6_MANIFEST_REL, expected_prefreeze_v6_manifest(repo_root)
+    )
+    _load_exact(repo_root / V6_AUTH_REL, expected_v6_authorization(repo_root))
+    exact = manifest["exact_provider_contract"]
+    validate_v6_exact_model_pair(
+        requested_model_alias=exact["requested_model_alias"],
+        returned_model=exact["required_returned_snapshot"],
+    )
+    if (
+        exact["provider_release_digest"] != release["release_digest"]
+        or exact["request_payload_digest"]
+        != _read_json(repo_root / V5_MANIFEST_REL)["exact_provider_contract"][
+            "request_payload_digest"
+        ]
+    ):
+        raise Wave2IntegrationError("V6 release or request payload binding changed")
+    future = manifest["future_r1_scientific_contract"]
+    shared = future["shared_call_contract_digest"]
+    if (
+        future["side_a_call_contract_digest"] != shared
+        or future["side_b_call_contract_digest"] != shared
+        or future["proposal_slots_per_side"] != 8
+        or future["proposal_denominator_per_side"] != 8
+    ):
+        raise Wave2IntegrationError("V6 A/B symmetry or denominator changed")
+    if (
+        policy["diagnostic_slot"]["maximum_total_physical_attempts"] != 3
+        or policy["diagnostic_slot"]["deterministic_backoff_ms_after_failure"]
+        != [1000, 3000]
+        or policy["exact_model_pair_failure"]["retry_eligible"] is not False
+    ):
+        raise Wave2IntegrationError("V6 retry or model-pair failure policy changed")
+    if any(manifest["pre_outcome_counters"].values()):
+        raise Wave2IntegrationError("Prefreeze V6 is not pre-outcome")
+    return manifest
+
+
+def provider_free_v6_dry_run(repo_root: Path) -> dict[str, Any]:
+    manifest = validate_prefreeze_v6(repo_root)
+    return {
+        "schema": V6_DRY_RUN_SCHEMA,
+        "status": "PASS_PROVIDER_FREE_V6_EXACT_MODEL_PAIR",
+        "attempt_id": V6_ATTEMPT_ID,
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "v1_v2_v3_v4_v5_seals_verified": True,
+        "exact_requested_alias_verified": True,
+        "exact_required_returned_snapshot_verified": True,
+        "pair_bound_provider_release_verified": True,
+        "exact_v5_request_payload_verified": True,
+        "local_uniqueness_before_downstream_verified": True,
+        "ab_call_contract_symmetry_verified": True,
+        "provider_calls": 0,
+        "training_runs": 0,
+        "candidate_qualifications": 0,
+        "candidate_admissions": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
 __all__ = [
     "BROKER_SOURCE_REL",
     "V5_ATTEMPT_ID",
@@ -420,4 +826,33 @@ __all__ = [
     "v5_physical_root",
     "validate_prefreeze_v5",
     "verify_v4_seal",
+    "V5_SEALED_DIGESTS",
+    "V6_ATTEMPT_ID",
+    "V6_ATTEMPT_RECEIPT_REL",
+    "V6_ATTEMPT_RECEIPT_SCHEMA",
+    "V6_AUTH_REL",
+    "V6_BLOCKED_REL",
+    "V6_BLOCKED_SCHEMA",
+    "V6_DRY_RUN_REL",
+    "V6_LOGICAL_CALL_ID",
+    "V6_MANIFEST_REL",
+    "V6_POLICY_REL",
+    "V6_PRIVATE_ROOT",
+    "V6_READY_REL",
+    "V6_READY_SCHEMA",
+    "V6_RELEASE_REL",
+    "V6_REQUESTED_MODEL_ALIAS",
+    "V6_REQUIRED_RETURNED_SNAPSHOT",
+    "V6_SESSION_ID",
+    "V6_VERIFICATION_REL",
+    "V6_VERIFICATION_SCHEMA",
+    "expected_prefreeze_v6_manifest",
+    "expected_v6_authorization",
+    "expected_v6_provider_release",
+    "expected_v6_retry_policy",
+    "provider_free_v6_dry_run",
+    "v6_physical_root",
+    "validate_prefreeze_v6",
+    "validate_v6_exact_model_pair",
+    "verify_v5_seal",
 ]

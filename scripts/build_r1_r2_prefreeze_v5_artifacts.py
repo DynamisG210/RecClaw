@@ -43,7 +43,88 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     provider_free_v5_dry_run,
     validate_prefreeze_v5,
     verify_v4_seal,
+    V6_ATTEMPT_ID,
+    V6_ATTEMPT_RECEIPT_REL,
+    V6_ATTEMPT_RECEIPT_SCHEMA,
+    V6_AUTH_REL,
+    V6_BLOCKED_REL,
+    V6_BLOCKED_SCHEMA,
+    V6_DRY_RUN_REL,
+    V6_MANIFEST_REL,
+    V6_POLICY_REL,
+    V6_PRIVATE_ROOT,
+    V6_READY_REL,
+    V6_READY_SCHEMA,
+    V6_RELEASE_REL,
+    V6_REQUESTED_MODEL_ALIAS,
+    V6_REQUIRED_RETURNED_SNAPSHOT,
+    V6_VERIFICATION_REL,
+    V6_VERIFICATION_SCHEMA,
+    expected_prefreeze_v6_manifest,
+    expected_v6_authorization,
+    expected_v6_provider_release,
+    expected_v6_retry_policy,
+    provider_free_v6_dry_run,
+    validate_prefreeze_v6,
+    verify_v5_seal,
 )
+
+
+def _contract(version: int) -> dict[str, Any]:
+    if version == 5:
+        return {
+            "label": "V5",
+            "attempt_id": V5_ATTEMPT_ID,
+            "attempt_rel": V5_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": V5_ATTEMPT_RECEIPT_SCHEMA,
+            "auth_rel": V5_AUTH_REL,
+            "blocked_rel": V5_BLOCKED_REL,
+            "blocked_schema": V5_BLOCKED_SCHEMA,
+            "dry_run_rel": V5_DRY_RUN_REL,
+            "manifest_rel": V5_MANIFEST_REL,
+            "policy_rel": V5_POLICY_REL,
+            "private_root": V5_PRIVATE_ROOT,
+            "ready_rel": V5_READY_REL,
+            "ready_schema": V5_READY_SCHEMA,
+            "verification_rel": V5_VERIFICATION_REL,
+            "verification_schema": V5_VERIFICATION_SCHEMA,
+            "validate": validate_prefreeze_v5,
+            "dry_run": provider_free_v5_dry_run,
+            "requested_model": "gpt-5.4",
+            "required_returned_model": "gpt-5.4",
+            "pass_classification": (
+                "PASS_EXACT_GPT_5_4_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+            ),
+            "pass_status": "PASS_PROVIDER_FREE_V5_OBSERVABILITY",
+        }
+    if version == 6:
+        return {
+            "label": "V6",
+            "attempt_id": V6_ATTEMPT_ID,
+            "attempt_rel": V6_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": V6_ATTEMPT_RECEIPT_SCHEMA,
+            "auth_rel": V6_AUTH_REL,
+            "blocked_rel": V6_BLOCKED_REL,
+            "blocked_schema": V6_BLOCKED_SCHEMA,
+            "dry_run_rel": V6_DRY_RUN_REL,
+            "manifest_rel": V6_MANIFEST_REL,
+            "policy_rel": V6_POLICY_REL,
+            "private_root": V6_PRIVATE_ROOT,
+            "ready_rel": V6_READY_REL,
+            "ready_schema": V6_READY_SCHEMA,
+            "release_rel": V6_RELEASE_REL,
+            "verification_rel": V6_VERIFICATION_REL,
+            "verification_schema": V6_VERIFICATION_SCHEMA,
+            "validate": validate_prefreeze_v6,
+            "dry_run": provider_free_v6_dry_run,
+            "requested_model": V6_REQUESTED_MODEL_ALIAS,
+            "required_returned_model": V6_REQUIRED_RETURNED_SNAPSHOT,
+            "pass_classification": (
+                "PASS_EXACT_GPT_5_4_ALIAS_SNAPSHOT_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+            ),
+            "pass_status": "PASS_PROVIDER_FREE_V6_EXACT_MODEL_PAIR",
+        }
+    raise SystemExit("unsupported Prefreeze artifact version")
 
 
 def _write_once(path: Path, payload: dict[str, Any]) -> None:
@@ -57,44 +138,58 @@ def _write_once(path: Path, payload: dict[str, Any]) -> None:
     path.write_bytes(encoded)
 
 
-def _prepare() -> int:
-    verify_v4_seal(ROOT)
+def _prepare(version: int) -> int:
+    contract = _contract(version)
+    if version == 5:
+        verify_v4_seal(ROOT)
+    else:
+        verify_v5_seal(ROOT)
     for forbidden in (
-        V5_ATTEMPT_RECEIPT_REL,
-        V5_BLOCKED_REL,
-        V5_READY_REL,
-        V5_VERIFICATION_REL,
+        contract["attempt_rel"],
+        contract["blocked_rel"],
+        contract["ready_rel"],
+        contract["verification_rel"],
     ):
         if (ROOT / forbidden).exists():
-            raise SystemExit("V5 outcome artifact already exists; prepare is sealed")
-    if V5_PRIVATE_ROOT.exists():
-        raise SystemExit("V5 private root already exists; identity is not fresh")
-    _write_once(ROOT / V5_POLICY_REL, expected_v5_retry_policy(ROOT))
-    _write_once(ROOT / V5_MANIFEST_REL, expected_prefreeze_v5_manifest(ROOT))
-    _write_once(ROOT / V5_AUTH_REL, expected_v5_authorization(ROOT))
-    manifest = validate_prefreeze_v5(ROOT)
-    dry_run = provider_free_v5_dry_run(ROOT)
+            raise SystemExit(
+                f"{contract['label']} outcome artifact already exists; prepare is sealed"
+            )
+    if contract["private_root"].exists():
+        raise SystemExit(
+            f"{contract['label']} private root already exists; identity is not fresh"
+        )
+    if version == 5:
+        policy = expected_v5_retry_policy(ROOT)
+        manifest_payload = expected_prefreeze_v5_manifest(ROOT)
+        authorization = expected_v5_authorization(ROOT)
+    else:
+        _write_once(ROOT / V6_RELEASE_REL, expected_v6_provider_release(ROOT))
+        policy = expected_v6_retry_policy(ROOT)
+        manifest_payload = expected_prefreeze_v6_manifest(ROOT)
+        authorization = expected_v6_authorization(ROOT)
+    _write_once(ROOT / contract["policy_rel"], policy)
+    _write_once(ROOT / contract["manifest_rel"], manifest_payload)
+    _write_once(ROOT / contract["auth_rel"], authorization)
+    manifest = contract["validate"](ROOT)
+    dry_run = contract["dry_run"](ROOT)
     print(
         json.dumps(
             {
-                "attempt_id": V5_ATTEMPT_ID,
+                "attempt_id": contract["attempt_id"],
                 "authorization_sha256": bytes_sha256(
-                    (ROOT / V5_AUTH_REL).read_bytes()
+                    (ROOT / contract["auth_rel"]).read_bytes()
                 ),
-                "broker_source_sha256": manifest[
-                    "engineering_observability_change"
-                ]["broker_source_digest"],
                 "manifest_sha256": bytes_sha256(
-                    (ROOT / V5_MANIFEST_REL).read_bytes()
+                    (ROOT / contract["manifest_rel"]).read_bytes()
                 ),
                 "policy_sha256": bytes_sha256(
-                    (ROOT / V5_POLICY_REL).read_bytes()
+                    (ROOT / contract["policy_rel"]).read_bytes()
                 ),
                 "provider_calls": dry_run["provider_calls"],
                 "request_payload_digest": manifest["exact_provider_contract"][
                     "request_payload_digest"
                 ],
-                "status": "PREPARED_V5_PRE_OUTCOME",
+                "status": f"PREPARED_{contract['label']}_PRE_OUTCOME",
             },
             sort_keys=True,
         )
@@ -102,14 +197,15 @@ def _prepare() -> int:
     return 0
 
 
-def _dry_run() -> int:
-    receipt = provider_free_v5_dry_run(ROOT)
-    _write_once(ROOT / V5_DRY_RUN_REL, receipt)
+def _dry_run(version: int) -> int:
+    contract = _contract(version)
+    receipt = contract["dry_run"](ROOT)
+    _write_once(ROOT / contract["dry_run_rel"], receipt)
     print(
         json.dumps(
             {
                 "dry_run_receipt_sha256": bytes_sha256(
-                    (ROOT / V5_DRY_RUN_REL).read_bytes()
+                    (ROOT / contract["dry_run_rel"]).read_bytes()
                 ),
                 "provider_calls": 0,
                 "status": receipt["status"],
@@ -121,18 +217,20 @@ def _dry_run() -> int:
     return 0
 
 
-def _load_attempt() -> tuple[dict[str, Any], dict[str, Any]]:
-    manifest = validate_prefreeze_v5(ROOT)
-    path = ROOT / V5_ATTEMPT_RECEIPT_REL
+def _load_attempt(version: int) -> tuple[dict[str, Any], dict[str, Any]]:
+    contract = _contract(version)
+    label = contract["label"]
+    manifest = contract["validate"](ROOT)
+    path = ROOT / contract["attempt_rel"]
     if not path.is_file():
-        raise SystemExit("V5 Provider attempt receipt is missing")
+        raise SystemExit(f"{label} Provider attempt receipt is missing")
     receipt = json.loads(path.read_bytes())
     if canonical_json_bytes(receipt) != path.read_bytes():
-        raise SystemExit("V5 Provider attempt receipt is not canonical JSON")
+        raise SystemExit(f"{label} Provider attempt receipt is not canonical JSON")
     fixed = {
-        "schema": V5_ATTEMPT_RECEIPT_SCHEMA,
-        "attempt_id": V5_ATTEMPT_ID,
-        "model_requested": "gpt-5.4",
+        "schema": contract["attempt_schema"],
+        "attempt_id": contract["attempt_id"],
+        "model_requested": contract["requested_model"],
         "endpoint_digest": manifest["exact_provider_contract"][
             "endpoint_digest"
         ],
@@ -155,9 +253,19 @@ def _load_attempt() -> tuple[dict[str, Any], dict[str, Any]]:
         "outcomes_consumed": 0,
         "held_out_reads": 0,
     }
+    if version == 6:
+        fixed.update(
+            {
+                "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+                "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+                "provider_release_digest": manifest[
+                    "exact_provider_contract"
+                ]["provider_release_digest"],
+            }
+        )
     for field, expected in fixed.items():
         if receipt.get(field) != expected:
-            raise SystemExit(f"V5 attempt receipt does not prove {field}")
+            raise SystemExit(f"{label} attempt receipt does not prove {field}")
     attempts = receipt.get("physical_attempts")
     count = receipt.get("physical_provider_calls")
     if (
@@ -167,7 +275,7 @@ def _load_attempt() -> tuple[dict[str, Any], dict[str, Any]]:
         or not 1 <= count <= 3
         or receipt.get("retry_count") != count - 1
     ):
-        raise SystemExit("V5 physical attempt count/retry count is invalid")
+        raise SystemExit(f"{label} physical attempt count/retry count is invalid")
     identities = manifest["bounded_retry"]["physical_attempt_identities"]
     reason_codes = {
         item["reason_code"] for item in diagnostic_reason_vocabulary()
@@ -185,17 +293,17 @@ def _load_attempt() -> tuple[dict[str, Any], dict[str, Any]]:
             or attempt.get("private_root_digest")
             != expected_identity["private_root_digest"]
         ):
-            raise SystemExit("V5 physical attempt identity changed")
+            raise SystemExit(f"{label} physical attempt identity changed")
         if (
             attempt.get("logical_call_id")
             != manifest["exact_provider_contract"]["logical_call_id"]
             or attempt.get("request_payload_digest")
             != receipt["request_payload_digest"]
         ):
-            raise SystemExit("V5 diagnostic slot/payload identity changed")
+            raise SystemExit(f"{label} diagnostic slot/payload identity changed")
         envelope = attempt.get("request_envelope_digest")
         if not isinstance(envelope, str):
-            raise SystemExit("V5 request envelope digest is missing")
+            raise SystemExit(f"{label} request envelope digest is missing")
         envelopes.add(envelope)
         preimage = dict(attempt)
         attempt_digest = preimage.pop("attempt_digest", None)
@@ -203,7 +311,7 @@ def _load_attempt() -> tuple[dict[str, Any], dict[str, Any]]:
             preimage.get("prior_attempt_digest") != prior_digest
             or sha256_digest(preimage) != attempt_digest
         ):
-            raise SystemExit("V5 attempt digest chain is invalid")
+            raise SystemExit(f"{label} attempt digest chain is invalid")
         prior_digest = attempt_digest
         start_ns = attempt.get("monotonic_start_ns")
         end_ns = attempt.get("monotonic_end_ns")
@@ -216,71 +324,76 @@ def _load_attempt() -> tuple[dict[str, Any], dict[str, Any]]:
                 and start_ns - prior_end_ns < required_gap_ms * 1_000_000
             )
         ):
-            raise SystemExit("V5 physical attempt time/backoff order is invalid")
+            raise SystemExit(f"{label} physical attempt time/backoff order is invalid")
         prior_end_ns = end_ns
         reason_code = attempt.get("response_contract_reason_code")
         if reason_code is not None and reason_code not in reason_codes:
-            raise SystemExit("V5 persisted a non-allowlisted reason code")
+            raise SystemExit(f"{label} persisted a non-allowlisted reason code")
         if reason_code is not None and attempt.get("retry_eligible") is not False:
-            raise SystemExit("V5 response-contract reason was retried")
+            raise SystemExit(f"{label} response-contract reason was retried")
         if index < count and (
             attempt.get("retry_eligible") is not True
             or attempt.get("termination_reason") != "RETRY_SCHEDULED"
             or attempt.get("backoff_ms_after_attempt")
             != (1000 if index == 1 else 3000)
         ):
-            raise SystemExit("V5 non-final retry proof is invalid")
+            raise SystemExit(f"{label} non-final retry proof is invalid")
         if index == count and attempt.get("backoff_ms_after_attempt") != 0:
-            raise SystemExit("V5 final attempt scheduled an extra retry")
+            raise SystemExit(f"{label} final attempt scheduled an extra retry")
         required_gap_ms = int(attempt.get("backoff_ms_after_attempt", 0))
     if len(envelopes) != 1:
-        raise SystemExit("V5 attempts did not share one request envelope")
+        raise SystemExit(f"{label} attempts did not share one request envelope")
     final = attempts[-1]
     if receipt.get("status") == "PASS":
         if (
             final.get("classification")
-            != "PASS_EXACT_GPT_5_4_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+            != contract["pass_classification"]
             or final.get("termination_reason")
             != "FIRST_VALID_LOCAL_EQUIVALENT_RESPONSE_ACCEPTED"
-            or receipt.get("returned_model") != "gpt-5.4"
+            or receipt.get("returned_model")
+            != contract["required_returned_model"]
             or receipt.get("authentication_status") != "VERIFIED"
             or receipt.get("local_semantic_equivalence_status") != "VERIFIED"
             or receipt.get("blocked_fields") != []
         ):
-            raise SystemExit("V5 PASS receipt is not fully closed")
+            raise SystemExit(f"{label} PASS receipt is not fully closed")
     elif receipt.get("status") == "BLOCKED":
         if final.get("termination_reason") not in {
             "DETERMINISTIC_TERMINAL_FAILURE",
             "TRANSIENT_ATTEMPTS_EXHAUSTED",
             "LOCAL_RESPONSE_CONTRACT_TERMINAL_FAILURE",
         }:
-            raise SystemExit("V5 BLOCKED termination is invalid")
+            raise SystemExit(f"{label} BLOCKED termination is invalid")
     else:
-        raise SystemExit("V5 attempt receipt has unknown status")
+        raise SystemExit(f"{label} attempt receipt has unknown status")
     return manifest, receipt
 
 
-def _record_verification(*, pytest_passed: int, pytest_skipped: int) -> int:
-    _, attempt = _load_attempt()
+def _record_verification(
+    *, version: int, pytest_passed: int, pytest_skipped: int
+) -> int:
+    contract = _contract(version)
+    label = contract["label"]
+    _, attempt = _load_attempt(version)
     if attempt["status"] != "PASS":
-        raise SystemExit("V5 BLOCKED attempt cannot receive PASS verification")
-    dry_run_path = ROOT / V5_DRY_RUN_REL
+        raise SystemExit(f"{label} BLOCKED attempt cannot receive PASS verification")
+    dry_run_path = ROOT / contract["dry_run_rel"]
     if not dry_run_path.is_file():
-        raise SystemExit("V5 provider-free dry-run receipt is missing")
+        raise SystemExit(f"{label} provider-free dry-run receipt is missing")
     dry_run = json.loads(dry_run_path.read_bytes())
     if (
         canonical_json_bytes(dry_run) != dry_run_path.read_bytes()
-        or dry_run.get("status") != "PASS_PROVIDER_FREE_V5_OBSERVABILITY"
+        or dry_run.get("status") != contract["pass_status"]
     ):
-        raise SystemExit("V5 provider-free dry-run is not PASS")
+        raise SystemExit(f"{label} provider-free dry-run is not PASS")
     if pytest_passed < 1 or pytest_skipped < 0:
-        raise SystemExit("V5 pytest result is invalid")
+        raise SystemExit(f"{label} pytest result is invalid")
     verification = {
-        "schema": V5_VERIFICATION_SCHEMA,
+        "schema": contract["verification_schema"],
         "status": "PASS",
-        "attempt_id": V5_ATTEMPT_ID,
+        "attempt_id": contract["attempt_id"],
         "attempt_receipt_digest": bytes_sha256(
-            (ROOT / V5_ATTEMPT_RECEIPT_REL).read_bytes()
+            (ROOT / contract["attempt_rel"]).read_bytes()
         ),
         "dry_run_receipt_digest": bytes_sha256(dry_run_path.read_bytes()),
         "validator": "PASS",
@@ -297,13 +410,13 @@ def _record_verification(*, pytest_passed: int, pytest_skipped: int) -> int:
         "outcomes_consumed": 0,
         "held_out_reads": 0,
     }
-    _write_once(ROOT / V5_VERIFICATION_REL, verification)
+    _write_once(ROOT / contract["verification_rel"], verification)
     print(
         json.dumps(
             {
                 "status": "PASS",
                 "verification_receipt_sha256": bytes_sha256(
-                    (ROOT / V5_VERIFICATION_REL).read_bytes()
+                    (ROOT / contract["verification_rel"]).read_bytes()
                 ),
             },
             sort_keys=True,
@@ -312,37 +425,41 @@ def _record_verification(*, pytest_passed: int, pytest_skipped: int) -> int:
     return 0
 
 
-def _finalize() -> int:
-    manifest, attempt = _load_attempt()
-    attempt_path = ROOT / V5_ATTEMPT_RECEIPT_REL
+def _finalize(version: int) -> int:
+    contract = _contract(version)
+    label = contract["label"]
+    manifest, attempt = _load_attempt(version)
+    attempt_path = ROOT / contract["attempt_rel"]
     if attempt["status"] == "BLOCKED":
-        if (ROOT / V5_READY_REL).exists():
-            raise SystemExit("V5 READY exists; refusing BLOCKED finalization")
+        if (ROOT / contract["ready_rel"]).exists():
+            raise SystemExit(f"{label} READY exists; refusing BLOCKED finalization")
         blocked = {
-            "schema": V5_BLOCKED_SCHEMA,
-            "status": "BLOCKED_PREFREEZE_V5",
-            "attempt_id": V5_ATTEMPT_ID,
-            "manifest_ref": V5_MANIFEST_REL.name,
+            "schema": contract["blocked_schema"],
+            "status": f"BLOCKED_PREFREEZE_{label}",
+            "attempt_id": contract["attempt_id"],
+            "manifest_ref": contract["manifest_rel"].name,
             "manifest_digest": bytes_sha256(
-                (ROOT / V5_MANIFEST_REL).read_bytes()
+                (ROOT / contract["manifest_rel"]).read_bytes()
             ),
-            "retry_policy_ref": V5_POLICY_REL.name,
+            "retry_policy_ref": contract["policy_rel"].name,
             "retry_policy_digest": bytes_sha256(
-                (ROOT / V5_POLICY_REL).read_bytes()
+                (ROOT / contract["policy_rel"]).read_bytes()
             ),
-            "authorization_ref": V5_AUTH_REL.name,
+            "authorization_ref": contract["auth_rel"].name,
             "authorization_digest": bytes_sha256(
-                (ROOT / V5_AUTH_REL).read_bytes()
+                (ROOT / contract["auth_rel"]).read_bytes()
             ),
-            "attempt_receipt_ref": V5_ATTEMPT_RECEIPT_REL.name,
+            "attempt_receipt_ref": contract["attempt_rel"].name,
             "attempt_receipt_digest": bytes_sha256(attempt_path.read_bytes()),
             "final_classification": attempt["final_classification"],
             "response_contract_reason_code": attempt.get(
                 "response_contract_reason_code"
             ),
             "termination_reason": attempt["termination_reason"],
-            "physical_provider_calls_v5": attempt["physical_provider_calls"],
-            "retry_count_v5": attempt["retry_count"],
+            f"physical_provider_calls_v{version}": attempt[
+                "physical_provider_calls"
+            ],
+            f"retry_count_v{version}": attempt["retry_count"],
             "physical_attempt_classifications": [
                 {
                     "ordinal": item["ordinal"],
@@ -358,12 +475,11 @@ def _finalize() -> int:
                 }
                 for item in attempt["physical_attempts"]
             ],
-            "provider_calls_must_stop_for_v5_slot": True,
-            "v6_allowed_only_for_single_local_root_cause": True,
+            f"provider_calls_must_stop_for_v{version}_slot": True,
             "provider_failure_is_mechanism_negative_evidence": False,
             "r1_prefreeze_ready_receipt_emitted": False,
             "r1_worker_launch_authorized": False,
-            "side_effects_v5": {
+            f"side_effects_v{version}": {
                 "provider_calls": attempt["physical_provider_calls"],
                 "research_candidates_generated": 0,
                 "candidate_roots_created": 0,
@@ -374,25 +490,27 @@ def _finalize() -> int:
                 "held_out_reads": 0,
             },
         }
-        _write_once(ROOT / V5_BLOCKED_REL, blocked)
+        if version == 5:
+            blocked["v6_allowed_only_for_single_local_root_cause"] = True
+        _write_once(ROOT / contract["blocked_rel"], blocked)
         print(
             json.dumps(
                 {
                     "blocked_receipt_sha256": bytes_sha256(
-                        (ROOT / V5_BLOCKED_REL).read_bytes()
+                        (ROOT / contract["blocked_rel"]).read_bytes()
                     ),
-                    "physical_provider_calls_v5": attempt[
+                    f"physical_provider_calls_v{version}": attempt[
                         "physical_provider_calls"
                     ],
-                    "retry_count_v5": attempt["retry_count"],
-                    "status": "BLOCKED_PREFREEZE_V5",
+                    f"retry_count_v{version}": attempt["retry_count"],
+                    "status": f"BLOCKED_PREFREEZE_{label}",
                 },
                 sort_keys=True,
             )
         )
         return 2
 
-    verification_path = ROOT / V5_VERIFICATION_REL
+    verification_path = ROOT / contract["verification_rel"]
     if not verification_path.is_file():
         print(json.dumps({"status": "PASS_AWAITING_LOCAL_VERIFICATION"}))
         return 3
@@ -413,30 +531,40 @@ def _finalize() -> int:
     }
     for field, expected in required.items():
         if verification.get(field) != expected:
-            raise SystemExit(f"V5 verification does not prove {field}")
+            raise SystemExit(f"{label} verification does not prove {field}")
     ready = {
-        "schema": V5_READY_SCHEMA,
+        "schema": contract["ready_schema"],
         "status": "R1_PREFREEZE_READY",
-        "attempt_id": V5_ATTEMPT_ID,
-        "manifest_ref": V5_MANIFEST_REL.name,
-        "manifest_digest": bytes_sha256((ROOT / V5_MANIFEST_REL).read_bytes()),
-        "retry_policy_ref": V5_POLICY_REL.name,
-        "retry_policy_digest": bytes_sha256((ROOT / V5_POLICY_REL).read_bytes()),
-        "authorization_ref": V5_AUTH_REL.name,
-        "authorization_digest": bytes_sha256((ROOT / V5_AUTH_REL).read_bytes()),
-        "attempt_receipt_ref": V5_ATTEMPT_RECEIPT_REL.name,
+        "attempt_id": contract["attempt_id"],
+        "manifest_ref": contract["manifest_rel"].name,
+        "manifest_digest": bytes_sha256(
+            (ROOT / contract["manifest_rel"]).read_bytes()
+        ),
+        "retry_policy_ref": contract["policy_rel"].name,
+        "retry_policy_digest": bytes_sha256(
+            (ROOT / contract["policy_rel"]).read_bytes()
+        ),
+        "authorization_ref": contract["auth_rel"].name,
+        "authorization_digest": bytes_sha256(
+            (ROOT / contract["auth_rel"]).read_bytes()
+        ),
+        "attempt_receipt_ref": contract["attempt_rel"].name,
         "attempt_receipt_digest": bytes_sha256(attempt_path.read_bytes()),
-        "verification_receipt_ref": V5_VERIFICATION_REL.name,
+        "verification_receipt_ref": contract["verification_rel"].name,
         "verification_receipt_digest": bytes_sha256(
             verification_path.read_bytes()
         ),
-        "model": "gpt-5.4",
-        "returned_model": "gpt-5.4",
+        "model": contract["requested_model"],
+        "requested_model_alias": contract["requested_model"],
+        "returned_model": contract["required_returned_model"],
+        "required_returned_snapshot": contract["required_returned_model"],
         "authentication_status": "VERIFIED",
         "provider_schema_support": "VERIFIED",
         "local_semantic_equivalence": "VERIFIED_EXACT_V1_ACCEPTANCE_SET",
-        "physical_provider_calls_v5": attempt["physical_provider_calls"],
-        "retry_count_v5": attempt["retry_count"],
+        f"physical_provider_calls_v{version}": attempt[
+            "physical_provider_calls"
+        ],
+        f"retry_count_v{version}": attempt["retry_count"],
         "r1_worker_launch_authorized": True,
         "r2_launch_authorized": False,
         "training_started": False,
@@ -448,12 +576,12 @@ def _finalize() -> int:
             "INDEPENDENT_R1_WORKER_MAY_START_EXACT_FROZEN_R1_ONLY"
         ),
     }
-    _write_once(ROOT / V5_READY_REL, ready)
+    _write_once(ROOT / contract["ready_rel"], ready)
     print(
         json.dumps(
             {
                 "ready_receipt_sha256": bytes_sha256(
-                    (ROOT / V5_READY_REL).read_bytes()
+                    (ROOT / contract["ready_rel"]).read_bytes()
                 ),
                 "status": "R1_PREFREEZE_READY",
             },
@@ -471,17 +599,19 @@ def main() -> int:
     )
     parser.add_argument("--pytest-passed", type=int, default=0)
     parser.add_argument("--pytest-skipped", type=int, default=0)
+    parser.add_argument("--version", type=int, choices=(5, 6), default=5)
     args = parser.parse_args()
     if args.action == "prepare":
-        return _prepare()
+        return _prepare(args.version)
     if args.action == "dry-run":
-        return _dry_run()
+        return _dry_run(args.version)
     if args.action == "record-verification":
         return _record_verification(
+            version=args.version,
             pytest_passed=args.pytest_passed,
             pytest_skipped=args.pytest_skipped,
         )
-    return _finalize()
+    return _finalize(args.version)
 
 
 if __name__ == "__main__":

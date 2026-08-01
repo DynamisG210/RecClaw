@@ -82,6 +82,18 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     diagnostic_reason_vocabulary,
     v5_physical_root,
     validate_prefreeze_v5,
+    V6_ATTEMPT_ID,
+    V6_ATTEMPT_RECEIPT_REL,
+    V6_ATTEMPT_RECEIPT_SCHEMA,
+    V6_AUTH_REL,
+    V6_LOGICAL_CALL_ID,
+    V6_PRIVATE_ROOT,
+    V6_REQUESTED_MODEL_ALIAS,
+    V6_REQUIRED_RETURNED_SNAPSHOT,
+    V6_SESSION_ID,
+    v6_physical_root,
+    validate_prefreeze_v6,
+    validate_v6_exact_model_pair,
 )
 from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
     V4_UNIQUENESS_CONTRACT_DIGEST,
@@ -1338,6 +1350,48 @@ class _V5PostBrokerContractFailure(ValueError):
         super().__init__(reason_code)
 
 
+def _v5_v6_diagnostic_contract(version: int) -> dict[str, Any]:
+    """Select identity only; V5 and V6 share one transport execution path."""
+
+    if version == 5:
+        return {
+            "label": "V5",
+            "attempt_id": V5_ATTEMPT_ID,
+            "attempt_rel": V5_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": V5_ATTEMPT_RECEIPT_SCHEMA,
+            "auth_rel": V5_AUTH_REL,
+            "logical_call_id": V5_LOGICAL_CALL_ID,
+            "private_root": V5_PRIVATE_ROOT,
+            "session_id": V5_SESSION_ID,
+            "slot_id": "PREFREEZE_V5_OBSERVABILITY_DIAGNOSTIC",
+            "physical_root": v5_physical_root,
+            "validate": validate_prefreeze_v5,
+            "required_returned_model": MODEL,
+            "pass_classification": (
+                "PASS_EXACT_GPT_5_4_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+            ),
+        }
+    if version == 6:
+        return {
+            "label": "V6",
+            "attempt_id": V6_ATTEMPT_ID,
+            "attempt_rel": V6_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": V6_ATTEMPT_RECEIPT_SCHEMA,
+            "auth_rel": V6_AUTH_REL,
+            "logical_call_id": V6_LOGICAL_CALL_ID,
+            "private_root": V6_PRIVATE_ROOT,
+            "session_id": V6_SESSION_ID,
+            "slot_id": "PREFREEZE_V6_EXACT_MODEL_PAIR",
+            "physical_root": v6_physical_root,
+            "validate": validate_prefreeze_v6,
+            "required_returned_model": V6_REQUIRED_RETURNED_SNAPSHOT,
+            "pass_classification": (
+                "PASS_EXACT_GPT_5_4_ALIAS_SNAPSHOT_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
+            ),
+        }
+    raise SystemExit("unsupported Prefreeze diagnostic version")
+
+
 def _classify_v5_failure(
     *,
     error: Exception,
@@ -1432,8 +1486,9 @@ def _classify_v5_failure(
     }
 
 
-def _v5_top_receipt(
+def _v5_v6_top_receipt(
     *,
+    version: int,
     manifest: dict[str, Any],
     attempts: list[dict[str, Any]],
     status: str,
@@ -1443,12 +1498,13 @@ def _v5_top_receipt(
     response_digest: str | None,
     response_contract_reason_code: str | None,
 ) -> dict[str, Any]:
+    contract_config = _v5_v6_diagnostic_contract(version)
     success = status == "PASS"
-    return {
-        "schema": V5_ATTEMPT_RECEIPT_SCHEMA,
+    receipt = {
+        "schema": contract_config["attempt_schema"],
         "status": status,
-        "attempt_id": V5_ATTEMPT_ID,
-        "diagnostic_slot_id": "PREFREEZE_V5_OBSERVABILITY_DIAGNOSTIC",
+        "attempt_id": contract_config["attempt_id"],
+        "diagnostic_slot_id": contract_config["slot_id"],
         "model_requested": MODEL,
         "returned_model": returned_model,
         "authentication_status": "VERIFIED" if success else "UNVERIFIED",
@@ -1494,37 +1550,53 @@ def _v5_top_receipt(
             if success
             else [
                 "endpoint_authentication",
-                "exact_gpt_5_4_returned_model",
+                (
+                    "exact_gpt_5_4_returned_model"
+                    if version == 5
+                    else "exact_requested_alias_returned_snapshot_pair"
+                ),
                 "v4_provider_schema_support",
                 "local_semantic_equivalence",
             ]
         ),
         "r1_worker_launch_authorized": False,
     }
+    if version == 6:
+        receipt.update(
+            {
+                "requested_model_alias": V6_REQUESTED_MODEL_ALIAS,
+                "required_returned_snapshot": V6_REQUIRED_RETURNED_SNAPSHOT,
+                "exact_model_pair_status": "VERIFIED" if success else "UNVERIFIED",
+            }
+        )
+    return receipt
 
 
-def _write_v5_checkpoint(receipt: dict[str, Any]) -> None:
+def _write_v5_v6_checkpoint(*, version: int, receipt: dict[str, Any]) -> None:
     """Persist before any retry; local failure prevents another Provider call."""
 
-    (ROOT / V5_ATTEMPT_RECEIPT_REL).write_bytes(canonical_json_bytes(receipt))
+    attempt_rel = _v5_v6_diagnostic_contract(version)["attempt_rel"]
+    (ROOT / attempt_rel).write_bytes(canonical_json_bytes(receipt))
 
 
-def _main_v5() -> int:
+def _main_v5_or_v6(version: int) -> int:
+    contract_config = _v5_v6_diagnostic_contract(version)
+    label = contract_config["label"]
     parser = argparse.ArgumentParser()
     parser.add_argument("--llm-api-config", type=Path, required=True)
     parser.add_argument("--private-root", type=Path, required=True)
     args = parser.parse_args()
 
-    manifest = validate_prefreeze_v5(ROOT)
+    manifest = contract_config["validate"](ROOT)
     private_root = args.private_root.resolve()
-    if private_root != V5_PRIVATE_ROOT:
-        raise SystemExit("V5 private-root identity mismatch")
+    if private_root != contract_config["private_root"]:
+        raise SystemExit(f"{label} private-root identity mismatch")
     if private_root.exists():
-        raise SystemExit("V5 private root already exists; no second V5 run")
-    if (ROOT / V5_ATTEMPT_RECEIPT_REL).exists():
-        raise SystemExit("V5 attempt receipt already exists; no second V5 run")
-    if not (ROOT / V5_AUTH_REL).is_file():
-        raise SystemExit("V5 pre-outcome authorization is missing")
+        raise SystemExit(f"{label} private root already exists; no second run")
+    if (ROOT / contract_config["attempt_rel"]).exists():
+        raise SystemExit(f"{label} attempt receipt already exists; no second run")
+    if not (ROOT / contract_config["auth_rel"]).is_file():
+        raise SystemExit(f"{label} pre-outcome authorization is missing")
 
     config_path = args.llm_api_config.resolve()
     base_url, api_key = load_lab_api_credentials(config_path)
@@ -1541,11 +1613,11 @@ def _main_v5() -> int:
         ("credential_identity_digest", credential["credential_identity_digest"]),
     ):
         if contract[field] != observed:
-            raise SystemExit(f"V5 Provider identity mismatch: {field}")
+            raise SystemExit(f"{label} Provider identity mismatch: {field}")
     if exact_v4_probe_request_payload_digest(ROOT) != contract[
         "request_payload_digest"
     ]:
-        raise SystemExit("V5 physical request payload changed from V4")
+        raise SystemExit(f"{label} physical request payload changed from V4")
 
     sentinel = json.loads((ROOT / SENTINEL_REL).read_bytes())
     provider_schema = json.loads((ROOT / V4_PROVIDER_SCHEMA_REL).read_bytes())
@@ -1556,7 +1628,7 @@ def _main_v5() -> int:
         attempt_identity = manifest["bounded_retry"][
             "physical_attempt_identities"
         ][ordinal - 1]
-        physical_root = v5_physical_root(ordinal)
+        physical_root = contract_config["physical_root"](ordinal)
         if ordinal > 1:
             time.sleep(backoffs[ordinal - 2] / 1000)
         started_ns = time.monotonic_ns()
@@ -1579,14 +1651,24 @@ def _main_v5() -> int:
                 ],
             )
             result = broker.call_with_session(
-                logical_call_id=V5_LOGICAL_CALL_ID,
-                proposal_generation_session_id=V5_SESSION_ID,
+                logical_call_id=contract_config["logical_call_id"],
+                proposal_generation_session_id=contract_config["session_id"],
                 prompt=schema_probe_prompt(ROOT),
                 expected_proposal_count=1,
                 max_total_tokens=PROBE_TOKEN_CEILING,
             )
-            if result.returned_model != MODEL:
+            if version == 5 and result.returned_model != MODEL:
                 raise _V5PostBrokerContractFailure("RETURNED_MODEL_MISMATCH")
+            if version == 6:
+                try:
+                    validate_v6_exact_model_pair(
+                        requested_model_alias=MODEL,
+                        returned_model=result.returned_model,
+                    )
+                except Exception as error:
+                    raise _V5PostBrokerContractFailure(
+                        "RETURNED_MODEL_PAIR_MISMATCH"
+                    ) from error
             if canonical_value(result.response) != canonical_value(sentinel):
                 raise _V5PostBrokerContractFailure(
                     "SENTINEL_SEMANTIC_MISMATCH"
@@ -1598,25 +1680,23 @@ def _main_v5() -> int:
             broker._connection.row_factory = sqlite3.Row  # noqa: SLF001
             success_row = broker._connection.execute(  # noqa: SLF001
                 "SELECT receipt_json FROM calls WHERE logical_call_id=?",
-                (V5_LOGICAL_CALL_ID,),
+                (contract_config["logical_call_id"],),
             ).fetchone()
             if success_row is None:
-                raise SystemExit("V5 successful call receipt row is missing")
+                raise SystemExit(f"{label} successful call receipt row is missing")
             success_provider_receipt = json.loads(str(success_row["receipt_json"]))
             ended_ns = time.monotonic_ns()
             entry = _attempt_chain_entry(
                 entry={
                     "ordinal": ordinal,
                     **attempt_identity,
-                    "logical_call_id": V5_LOGICAL_CALL_ID,
+                    "logical_call_id": contract_config["logical_call_id"],
                     "request_payload_digest": contract["request_payload_digest"],
                     "request_envelope_digest": result.request_digest,
                     "sqlite_calls_schema_digest": schema_digest,
                     "monotonic_start_ns": started_ns,
                     "monotonic_end_ns": ended_ns,
-                    "classification": (
-                        "PASS_EXACT_GPT_5_4_AUTH_PROVIDER_AND_LOCAL_SCHEMA"
-                    ),
+                    "classification": contract_config["pass_classification"],
                     "http_status": 200,
                     "retry_eligible": False,
                     "backoff_ms_after_attempt": 0,
@@ -1639,7 +1719,8 @@ def _main_v5() -> int:
                 prior_attempt_digest=prior_attempt_digest,
             )
             attempts.append(entry)
-            receipt = _v5_top_receipt(
+            receipt = _v5_v6_top_receipt(
+                version=version,
                 manifest=manifest,
                 attempts=attempts,
                 status="PASS",
@@ -1649,14 +1730,14 @@ def _main_v5() -> int:
                 response_digest=result.response_digest,
                 response_contract_reason_code=None,
             )
-            _write_v5_checkpoint(receipt)
+            _write_v5_v6_checkpoint(version=version, receipt=receipt)
             print(
                 json.dumps(
                     {
                         "classification": entry["classification"],
                         "physical_provider_calls": len(attempts),
                         "receipt_sha256": bytes_sha256(
-                            (ROOT / V5_ATTEMPT_RECEIPT_REL).read_bytes()
+                            (ROOT / contract_config["attempt_rel"]).read_bytes()
                         ),
                         "retry_count": len(attempts) - 1,
                         "status": "PASS",
@@ -1673,11 +1754,11 @@ def _main_v5() -> int:
                 "SELECT logical_call_id, request_digest, response_digest, "
                 "returned_model, status, error_type, error_detail_json, "
                 "receipt_json, outcome_json FROM calls WHERE logical_call_id=?",
-                (V5_LOGICAL_CALL_ID,),
+                (contract_config["logical_call_id"],),
             ).fetchone()
             if row is None:
                 raise SystemExit(
-                    "V5 local receipt failure stopped before retry"
+                    f"{label} local receipt failure stopped before retry"
                 ) from error
             evidence = _classify_v5_failure(error=error, row=row)
             retry = evidence["retry_eligible"] and ordinal < 3
@@ -1700,7 +1781,7 @@ def _main_v5() -> int:
                 entry={
                     "ordinal": ordinal,
                     **attempt_identity,
-                    "logical_call_id": V5_LOGICAL_CALL_ID,
+                    "logical_call_id": contract_config["logical_call_id"],
                     "request_payload_digest": contract["request_payload_digest"],
                     "request_envelope_digest": row["request_digest"],
                     "sqlite_calls_schema_digest": manifest["bounded_retry"][
@@ -1727,7 +1808,8 @@ def _main_v5() -> int:
             attempts.append(entry)
             prior_attempt_digest = entry["attempt_digest"]
             status = "IN_PROGRESS" if retry else "BLOCKED"
-            receipt = _v5_top_receipt(
+            receipt = _v5_v6_top_receipt(
+                version=version,
                 manifest=manifest,
                 attempts=attempts,
                 status=status,
@@ -1739,7 +1821,7 @@ def _main_v5() -> int:
                     "response_contract_reason_code"
                 ],
             )
-            _write_v5_checkpoint(receipt)
+            _write_v5_v6_checkpoint(version=version, receipt=receipt)
             if not retry:
                 print(
                     json.dumps(
@@ -1747,7 +1829,7 @@ def _main_v5() -> int:
                             "classification": entry["classification"],
                             "physical_provider_calls": len(attempts),
                             "receipt_sha256": bytes_sha256(
-                                (ROOT / V5_ATTEMPT_RECEIPT_REL).read_bytes()
+                                (ROOT / contract_config["attempt_rel"]).read_bytes()
                             ),
                             "response_contract_reason_code": entry[
                                 "response_contract_reason_code"
@@ -1762,13 +1844,16 @@ def _main_v5() -> int:
         finally:
             if broker is not None:
                 broker.close()
-    raise SystemExit("V5 bounded retry loop reached an impossible state")
+    raise SystemExit(f"{label} bounded retry loop reached an impossible state")
 
 
 def main() -> int:
+    if "--v6" in sys.argv:
+        sys.argv.remove("--v6")
+        return _main_v5_or_v6(6)
     if "--v5" in sys.argv:
         sys.argv.remove("--v5")
-        return _main_v5()
+        return _main_v5_or_v6(5)
     if "--v4" in sys.argv:
         sys.argv.remove("--v4")
         return _main_v4()

@@ -131,11 +131,16 @@ def test_v2_validator_rejects_retry_scope_or_denominator_mutation() -> None:
         validate_prefreeze_v2_payload(ROOT, payload)
 
 
-def test_v2_reprobe_script_has_one_provider_call_and_no_candidate_path() -> None:
+def test_v2_reprobe_function_has_one_provider_call_and_no_candidate_path() -> None:
     tree = ast.parse(REPROBE_SCRIPT.read_text(encoding="utf-8"))
+    main_v2 = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_main_v2"
+    )
     calls = [
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(main_v2)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "call_with_session"
@@ -146,7 +151,7 @@ def test_v2_reprobe_script_has_one_provider_call_and_no_candidate_path() -> None
         if isinstance(node, ast.ImportFrom) and node.module is not None
     }
 
-    assert len(calls) == 4
+    assert len(calls) == 1
     assert not any(
         name.endswith(
             (

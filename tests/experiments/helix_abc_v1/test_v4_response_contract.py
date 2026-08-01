@@ -238,15 +238,20 @@ def test_v4_validator_rejects_semantic_equivalence_mutation() -> None:
 def test_v4_probe_orders_local_contract_before_any_downstream_use() -> None:
     path = ROOT / "scripts/reprobe_fresh_open_spec_endpoint_v2.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    main_v4 = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_main_v4"
+    )
     local_calls = [
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(main_v4)
         if isinstance(node, ast.Call)
         and getattr(node.func, "id", None) == "validate_v4_response_contract"
     ]
     provider_calls = [
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(main_v4)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "call_with_session"
@@ -257,8 +262,8 @@ def test_v4_probe_orders_local_contract_before_any_downstream_use() -> None:
         if isinstance(node, ast.ImportFrom) and node.module is not None
     }
 
-    assert len(local_calls) == 2
-    assert len(provider_calls) == 4
+    assert len(local_calls) == 1
+    assert len(provider_calls) == 1
     assert not any(
         name.endswith(
             (
