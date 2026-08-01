@@ -71,20 +71,36 @@ from .vnext_contracts import (
 )
 
 
-ACCEPTED_COMMIT = "ce9104ac67993ea5184ef4337403954ee50b543e"
-ACCEPTED_PARENT = "1af05904230485f82b503adc051ae3b1b6833b47"
-ACCEPTED_TREE = "58d88bd96fd39ea0b5d907ebfec30cd8b76ab92d"
+ACCEPTED_COMMIT = "dd75f8f50d1c9e26593bf60171a9b3019ad6420b"
+ACCEPTED_PARENT = "ce9104ac67993ea5184ef4337403954ee50b543e"
+ACCEPTED_TREE = "1d27dbae709d9cdad5f66869b5769c344f2c10d1"
 READY_SHA256 = "aede1d9fbbded5b0145e4ff48ff6d7d19d2bdbb40959dfe73c61fa5bb8cf8de9"
 MANIFEST_SHA256 = "b021e49d24d3b1cbe8d9cec52fc902351d46f975b34d31bf18d32ecfe2941a9a"
 MODEL = "gpt-5.4"
 PROPOSAL_TOKEN_CEILING = 6000
-IMPLEMENTATION_TOKEN_CEILING = 6000
+IMPLEMENTATION_TOKEN_CEILING = 20_000
 EXPERIMENT_EPOCHS = 100
 BACKOFF_MS = (1000, 3000)
 MAX_PHYSICAL_ATTEMPTS = 3
 CONTEXT_REF = "fresh-r1-r2-prefreeze-context-v1"
 CONTEXT_DIGEST = "4965758687e260c490e4f103910cf683d6d3b695c631d67ee27e0385c5704bce"
-R1_ROOT = Path("/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1")
+R1_ROOT = Path(
+    "/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_corrected_v1"
+)
+SEALED_R1_RECEIPT = Path(
+    "/root/projects/RecClaw_fresh_r1/docs/research_line/vnext/"
+    "R1_FRESH_CANONICAL_RECEIPT.json"
+)
+SEALED_R1_RECEIPT_SHA256 = (
+    "e22fc697df65b501e783de6b95cdafc537581f49a76dfd6a8f818052cc0879c2"
+)
+SEALED_R1_EXTERNAL_RECEIPT = Path(
+    "/root/projects/RecClaw_r1_r2_runs/fresh_r1_open_spec_v1/"
+    "R1_CANONICAL_RECEIPT.json"
+)
+SEALED_R1_EXTERNAL_RECEIPT_SHA256 = (
+    "446d53611bdcc21d685b080bcf1be158d124a75973d93ed390511817c64bbdda"
+)
 SEARCH_DATA_ROOT = Path("/root/projects/RecClaw_campaign_dataset_v1/search")
 SEARCH_DATASET_ROOT = SEARCH_DATA_ROOT / "ml-1m"
 RECBole_ROOT = Path("/root/projects/RecBole")
@@ -139,6 +155,8 @@ ROLE_INSTRUCTIONS = {
     ),
 }
 
+CORRECTED_RUN_IDENTITY = "fresh-r1-corrected-v1"
+
 
 class FreshR1Error(RuntimeError):
     """A run-level identity, protocol, or orchestration failure."""
@@ -160,6 +178,65 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise FreshR1Error(f"JSON artifact is not an object: {path}")
     return value
+
+
+def derive_fresh_r1_proposal_schema(
+    base_schema: Mapping[str, Any],
+    delta: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply only the two exact-token restrictions authorized for corrected R1."""
+
+    if (
+        delta.get("schema")
+        != "recclaw.research-line.fresh-r1-proposal-schema-delta.v1"
+        or tuple(delta.get("compatibility_requirement_tokens", ()))
+        != PROTOCOL_REQUIREMENTS
+        or tuple(delta.get("required_dependency_tokens", ()))
+        != AVAILABLE_DEPENDENCIES
+    ):
+        raise FreshR1Error("corrected R1 proposal schema delta changed")
+    derived = canonical_value(base_schema)
+    proposal = derived["properties"]["proposals"]["items"]
+    compatibility_items = proposal["properties"]["compatibility_requirements"][
+        "items"
+    ]
+    dependency_items = proposal["properties"]["resolution_facts"]["properties"][
+        "required_dependencies"
+    ]["items"]
+    compatibility_items["enum"] = list(PROTOCOL_REQUIREMENTS)
+    dependency_items["enum"] = list(AVAILABLE_DEPENDENCIES)
+    jsonschema.validators.validator_for(derived).check_schema(derived)
+    return derived
+
+
+def call_contract_for_side(
+    side: str,
+    *,
+    service: str,
+    prompt_digest: str,
+    response_schema_digest: str,
+) -> dict[str, Any]:
+    """Return the side-independent physical call contract for one R1 service."""
+
+    if side not in {"side_a", "side_b"}:
+        raise FreshR1Error(f"unknown R1 side: {side}")
+    ceilings = {
+        "proposal": PROPOSAL_TOKEN_CEILING,
+        "implementation": IMPLEMENTATION_TOKEN_CEILING,
+    }
+    if service not in ceilings:
+        raise FreshR1Error(f"unknown R1 Provider service: {service}")
+    return canonical_value(
+        {
+            "granularity": "ONE_PROPOSAL_PER_LOGICAL_CALL",
+            "model": MODEL,
+            "prompt_digest": prompt_digest,
+            "response_schema_digest": response_schema_digest,
+            "temperature": 0,
+            "token_ceiling": ceilings[service],
+            "tools": [],
+        }
+    )
 
 
 def _write_new_json(path: Path, value: Mapping[str, Any]) -> str:
@@ -218,6 +295,10 @@ def verify_formal_identity(repo_root: Path) -> dict[str, Any]:
         "ready_sha256": bytes_sha256(ready_path.read_bytes()),
         "manifest_sha256": bytes_sha256(manifest_path.read_bytes()),
         "python_sha256": bytes_sha256(PYTHON_EXECUTABLE.read_bytes()),
+        "sealed_r1_external_receipt_sha256": bytes_sha256(
+            SEALED_R1_EXTERNAL_RECEIPT.read_bytes()
+        ),
+        "sealed_r1_receipt_sha256": bytes_sha256(SEALED_R1_RECEIPT.read_bytes()),
         **_credential_identity(API_CONFIG),
     }
     expected = {
@@ -228,6 +309,8 @@ def verify_formal_identity(repo_root: Path) -> dict[str, Any]:
         "ready_sha256": READY_SHA256,
         "manifest_sha256": MANIFEST_SHA256,
         "python_sha256": "d99cded726bcf8b1576305ef425915fc7009c40325ecc2659553ab1c94997938",
+        "sealed_r1_external_receipt_sha256": SEALED_R1_EXTERNAL_RECEIPT_SHA256,
+        "sealed_r1_receipt_sha256": SEALED_R1_RECEIPT_SHA256,
         "credential_config_digest": manifest["exact_provider_contract"][
             "credential_config_digest"
         ],
@@ -283,9 +366,13 @@ def render_proposal_prompt(
     producer_role: str,
 ) -> str:
     instruction = ROLE_INSTRUCTIONS[producer_role] + (
-        " Exact frozen protocol requirements: "
+        " Each compatibility_requirements array item MUST be copied verbatim "
+        "as one token from this list; do not emit a sentence, paraphrase, or "
+        "combined clause: "
         + ", ".join(PROTOCOL_REQUIREMENTS)
-        + ". Exact available dependencies: "
+        + ". Each resolution_facts.required_dependencies array item MUST be "
+        "copied verbatim as one token from this list; do not emit a sentence, "
+        "paraphrase, or combined clause: "
         + ", ".join(AVAILABLE_DEPENDENCIES)
         + ". Required budgets may not exceed "
         + json.dumps(BUDGET_LIMITS, sort_keys=True)
@@ -607,14 +694,20 @@ def _materialize_and_qualify(
     implementation_prompt_digest: str,
     tool_policy_digest: str,
 ) -> tuple[MaterializedCandidate, MechanicalQualificationRun, dict[str, Any]]:
-    candidate_root = side_root / "candidates" / slot_id
     policy = _shared_policy(implementation_prompt_digest, tool_policy_digest)
+    request = build_shared_implementer_request(spec, policy=policy)
+    candidate_parent = side_root / "candidates" / slot_id
+    candidate_parent.mkdir(parents=True, exist_ok=True)
+    candidate_root = candidate_parent / str(request["blind_candidate_id"])
     materialized = materialize_candidate_package(
         spec,
         policy=policy,
         implementation_response=implementation,
         candidate_root=candidate_root,
-        candidate_root_ref=f"fresh-r1-candidate-root:{sha256_digest({'path': candidate_root.as_posix()})}",
+        candidate_root_ref=(
+            f"{CORRECTED_RUN_IDENTITY}-candidate-root:"
+            f"{sha256_digest({'path': candidate_root.as_posix()})}"
+        ),
     )
     behavior: dict[str, Any] = {}
     base_fixture = _qualification_fixture(repo_root, seed=seed, root=side_root / "qualification" / slot_id)
@@ -731,11 +824,13 @@ def run_development_training(
     )
     start_identity = {
         "binding_digest": binding_digest,
-        "claim_id": f"fresh-r1-claim:{run_id}",
+        "claim_id": f"{CORRECTED_RUN_IDENTITY}-claim:{run_id}",
         "execution_purpose": "DEVELOPMENT_PILOT_OFFLINE_TOPN",
         "ordinary_launch_attempt_ordinal": 1,
-        "permit_digest": sha256_digest({"authority": "user-delegated-formal-fresh-r1"}),
-        "round_id": f"fresh-r1-round:{run_id}",
+        "permit_digest": sha256_digest(
+            {"authority": "user-delegated-corrected-formal-fresh-r1"}
+        ),
+        "round_id": f"{CORRECTED_RUN_IDENTITY}-round:{run_id}",
         "run_id": run_id,
         "runner_abi": CAMPAIGN_TRAINING_RUNNER_ABI,
         "runtime_binding_digest": runtime_binding_digest,
@@ -895,21 +990,32 @@ def _episode(
         }
     )
     return TypedResearchEpisodeV1(
-        campaign_id=f"fresh-r1-{side}-{slot_id}",
+        campaign_id=f"{CORRECTED_RUN_IDENTITY}-{side}-{slot_id}",
         context_ref=spec.context_ref,
         context_digest=spec.context_digest,
         hypothesis=spec.hypothesis,
         executable_capability_ref=capability.capability_id,
         executable_capability_digest=capability.digest,
-        executable_profile_ref=f"fresh-r1-development-profile:{sha256_digest(profile)}",
+        executable_profile_ref=(
+            f"{CORRECTED_RUN_IDENTITY}-development-profile:{sha256_digest(profile)}"
+        ),
         executable_profile_digest=sha256_digest(profile),
-        experiment_binding_ref=f"fresh-r1-experiment-binding:{sha256_digest(binding)}",
+        experiment_binding_ref=(
+            f"{CORRECTED_RUN_IDENTITY}-experiment-binding:{sha256_digest(binding)}"
+        ),
         experiment_binding_digest=sha256_digest(binding),
-        comparator_ref=f"fresh-r1-bpr-comparator:{baseline_run['binding_digest']}",
+        comparator_ref=(
+            f"{CORRECTED_RUN_IDENTITY}-bpr-comparator:"
+            f"{baseline_run['binding_digest']}"
+        ),
         comparator_digest=sha256_digest(baseline_run),
-        outcome_ref=f"fresh-r1-development-outcome:{sha256_digest(outcome)}",
+        outcome_ref=(
+            f"{CORRECTED_RUN_IDENTITY}-development-outcome:{sha256_digest(outcome)}"
+        ),
         outcome_digest=sha256_digest(outcome),
-        cost_ref=f"fresh-r1-development-cost:{sha256_digest(cost)}",
+        cost_ref=(
+            f"{CORRECTED_RUN_IDENTITY}-development-cost:{sha256_digest(cost)}"
+        ),
         cost_digest=sha256_digest(cost),
         protocol_ref=spec.protocol_ref,
         protocol_digest=spec.protocol_digest,
@@ -973,11 +1079,21 @@ def _failure_record(
 def _negative_fixture_check(provider_schema: Mapping[str, Any]) -> dict[str, Any]:
     fixture_path = _resource_root() / "fresh_open_spec_v4_duplicate_arrays_negative_fixture.json"
     fixture = _read_json(fixture_path)
+    proposal = fixture["proposals"][0]
+    proposal["compatibility_requirements"] = [
+        PROTOCOL_REQUIREMENTS[0],
+        PROTOCOL_REQUIREMENTS[0],
+    ]
+    proposal["resolution_facts"]["required_dependencies"] = [
+        AVAILABLE_DEPENDENCIES[0],
+        AVAILABLE_DEPENDENCIES[0],
+    ]
     try:
         validate_v4_response_contract(fixture, provider_schema=provider_schema)
     except V4LocalUniquenessError as error:
         return {
             "fixture_sha256": bytes_sha256(fixture_path.read_bytes()),
+            "normalized_fixture_digest": sha256_digest(fixture),
             "observed_error": type(error).__name__,
             "status": "PASS_EXPECTED_REJECTION",
         }
@@ -1017,7 +1133,12 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
     schedule = _read_json(resource_root / "fresh_open_spec_call_schedule_v1.json")
     proposal_template_path = resource_root / "fresh_open_spec_proposal_prompt_v1.txt"
     proposal_template = proposal_template_path.read_text(encoding="utf-8")
-    proposal_schema_path = resource_root / "fresh_open_spec_proposal_response_v4_provider.schema.json"
+    base_proposal_schema_path = (
+        resource_root / "fresh_open_spec_proposal_response_v4_provider.schema.json"
+    )
+    proposal_schema_delta_path = (
+        resource_root / "fresh_r1_proposal_schema_delta_v1.json"
+    )
     implementation_template_path = resource_root / "fresh_r1_implementer_prompt_v1.txt"
     implementation_template = implementation_template_path.read_text(encoding="utf-8")
     implementation_schema_path = resource_root / "fresh_r1_implementation_response_v1.schema.json"
@@ -1030,14 +1151,24 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
     )
     if bytes_sha256(proposal_template_path.read_bytes()) != manifest["exact_provider_contract"]["prompt_digest"]:
         raise FreshR1Error("proposal prompt template digest differs from V11")
-    if bytes_sha256(proposal_schema_path.read_bytes()) != manifest["exact_provider_contract"]["response_schema_digest"]:
+    if bytes_sha256(base_proposal_schema_path.read_bytes()) != manifest["exact_provider_contract"]["response_schema_digest"]:
         raise FreshR1Error("proposal schema digest differs from V11")
     if bytes_sha256(tool_policy_path.read_bytes()) != manifest["exact_provider_contract"]["tool_policy_digest"]:
         raise FreshR1Error("proposal tool policy digest differs from V11")
-    proposal_schema = _read_json(proposal_schema_path)
+    proposal_schema_delta = _read_json(proposal_schema_delta_path)
+    if proposal_schema_delta.get("base_schema_sha256") != bytes_sha256(
+        base_proposal_schema_path.read_bytes()
+    ):
+        raise FreshR1Error("corrected R1 schema delta targets a different base")
+    proposal_schema = derive_fresh_r1_proposal_schema(
+        _read_json(base_proposal_schema_path),
+        proposal_schema_delta,
+    )
     negative_fixture = _negative_fixture_check(proposal_schema)
     R1_ROOT.mkdir(parents=True)
     _write_new_json(R1_ROOT / "RUN_IDENTITY.json", identity)
+    proposal_schema_path = R1_ROOT / "contracts/fresh_r1_proposal_response.schema.json"
+    proposal_schema_digest = _write_new_json(proposal_schema_path, proposal_schema)
     bindings = frozen_search_bindings(
         context_ref=CONTEXT_REF,
         context_digest=CONTEXT_DIGEST,
@@ -1063,7 +1194,31 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
     records: dict[str, list[dict[str, Any]]] = {"side_a": [], "side_b": []}
     live_specs: dict[tuple[str, str], tuple[Any, Mapping[str, Any], Any]] = {}
     seen_spec_digests: set[str] = set()
-    transport_digest = manifest["provider_release_contract"]["transport_release_contract_digest"]
+    proposal_contracts = {
+        side: call_contract_for_side(
+            side,
+            service="proposal",
+            prompt_digest=bytes_sha256(proposal_template_path.read_bytes()),
+            response_schema_digest=proposal_schema_digest,
+        )
+        for side in ("side_a", "side_b")
+    }
+    implementation_schema_digest = bytes_sha256(
+        implementation_schema_path.read_bytes()
+    )
+    implementation_contracts = {
+        side: call_contract_for_side(
+            side,
+            service="implementation",
+            prompt_digest=implementation_prompt_digest,
+            response_schema_digest=implementation_schema_digest,
+        )
+        for side in ("side_a", "side_b")
+    }
+    if proposal_contracts["side_a"] != proposal_contracts["side_b"]:
+        raise FreshR1Error("proposal A/B call contracts differ")
+    if implementation_contracts["side_a"] != implementation_contracts["side_b"]:
+        raise FreshR1Error("implementation A/B call contracts differ")
 
     # Proposal generation is completed before any implementation or qualification
     # outcome exists, keeping all sixteen frozen slots outcome-independent.
@@ -1080,15 +1235,14 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
                 proposal_seed=seed,
                 producer_role=str(slot["producer_role"]),
             )
-            logical_id = f"fresh-r1:{side}:{slot_id}:proposal"
+            logical_id = f"{CORRECTED_RUN_IDENTITY}:{side}:{slot_id}:proposal"
             call_result = bounded_provider_call(
                 call_root=R1_ROOT / side / "provider/proposals" / slot_id,
                 schema_path=proposal_schema_path,
                 logical_call_id=logical_id,
-                session_id=f"fresh-r1:{side}:proposal-session",
+                session_id=f"{CORRECTED_RUN_IDENTITY}:{side}:proposal-session",
                 prompt=prompt,
                 token_ceiling=PROPOSAL_TOKEN_CEILING,
-                expected_transport_release_digest=transport_digest,
             )
             record["provider_attempts"] = call_result.attempts
             if call_result.call is None:
@@ -1185,8 +1339,13 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
             call_result = bounded_provider_call(
                 call_root=side_root / "provider/implementations" / slot_id,
                 schema_path=implementation_schema_path,
-                logical_call_id=f"fresh-r1:{side}:{slot_id}:implementation",
-                session_id="fresh-r1:shared-origin-blind-implementation-session",
+                logical_call_id=(
+                    f"{CORRECTED_RUN_IDENTITY}:{side}:{slot_id}:implementation"
+                ),
+                session_id=(
+                    f"{CORRECTED_RUN_IDENTITY}:"
+                    "shared-origin-blind-implementation-session"
+                ),
                 prompt=prompt,
                 token_ceiling=IMPLEMENTATION_TOKEN_CEILING,
             )
@@ -1276,9 +1435,9 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
                 materialized.package,
                 qualification.receipt,
                 capability_kind=_mechanism_kind(facts["high_change_dimensions"]),
-                capability_version="fresh-r1-v1",
+                capability_version="fresh-r1-corrected-v1",
                 semantic_identity_ref=(
-                    "fresh-r1-semantic:" + sha256_digest(
+                    f"{CORRECTED_RUN_IDENTITY}-semantic:" + sha256_digest(
                         {
                             "capability_diff": facts["capability_diff"],
                             "high_change_dimensions": facts["high_change_dimensions"],
@@ -1342,13 +1501,19 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
                 entrypoint="recbole.model.general_recommender.bpr:BPR",
                 source_sha256=baseline_source_sha256,
             )
-            candidate_source = side_root / "candidates" / slot_id / "recclaw_ext/candidate.py"
+            blind_candidate_id = str(
+                materialized.shared_request["blind_candidate_id"]
+            )
+            candidate_root = (
+                side_root / "candidates" / slot_id / blind_candidate_id
+            )
+            candidate_source = candidate_root / "recclaw_ext/candidate.py"
             candidate_run = run_development_training(
                 repo_root=repo_root,
                 side_root=side_root,
                 run_id=f"{slot_id}-candidate",
                 seed=seed,
-                candidate_root=side_root / "candidates" / slot_id,
+                candidate_root=candidate_root,
                 entrypoint=materialized.package.executable_entrypoint,
                 source_sha256=bytes_sha256(candidate_source.read_bytes()),
             )
@@ -1435,13 +1600,7 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
             },
             "gate": final_gate,
             "held_out_reads": 0,
-            "implementation_call_contract": {
-                "model": MODEL,
-                "prompt_digest": implementation_prompt_digest,
-                "response_schema_digest": bytes_sha256(implementation_schema_path.read_bytes()),
-                "token_ceiling": IMPLEMENTATION_TOKEN_CEILING,
-                "tools": [],
-            },
+            "implementation_call_contract_by_side": implementation_contracts,
             "implementation_provider_usage": implementation_usage,
             "manual_candidate_patches": 0,
             "missingness_by_side": {
@@ -1449,9 +1608,20 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
             },
             "negative_fixture": negative_fixture,
             "preliminary_gate_before_experiments": preliminary_gate,
-            "proposal_call_contract_digest": manifest["future_r1_scientific_contract"][
+            "proposal_base_call_contract_digest": manifest["future_r1_scientific_contract"][
                 "shared_call_contract_digest"
             ],
+            "proposal_call_contract_by_side": proposal_contracts,
+            "proposal_schema_delta": {
+                "base_schema_sha256": bytes_sha256(
+                    base_proposal_schema_path.read_bytes()
+                ),
+                "delta_sha256": bytes_sha256(
+                    proposal_schema_delta_path.read_bytes()
+                ),
+                "effective_schema_sha256": proposal_schema_digest,
+                "purpose": "STRICT_EXACT_TOKEN_PROVIDER_INTERFACE_CORRECTION",
+            },
             "proposal_provider_usage": proposal_usage,
             "proposal_slots_per_side": 8,
             "resolver_distribution": dict(sorted(resolver_distribution.items())),
@@ -1460,7 +1630,12 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
                 "maximum_physical_attempts": MAX_PHYSICAL_ATTEMPTS,
                 "policy_digest": manifest["bounded_retry"]["policy_digest"],
             },
-            "schema": "recclaw.research-line.fresh-r1-canonical-receipt.v1",
+            "prior_sealed_r1_failure_interpretation": (
+                "GENERIC_ORCHESTRATION_INTERFACE_FAILURE_WITH_NO_MECHANISM_OUTCOME"
+            ),
+            "schema": (
+                "recclaw.research-line.fresh-r1-corrected-canonical-receipt.v1"
+            ),
             "side_records": records,
             "status": status,
             "training": {

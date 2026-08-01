@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the exact accepted formal fresh R1 once."""
+"""Run the single corrected formal fresh R1 from the sealed generic failure."""
 
 from __future__ import annotations
 
@@ -25,7 +25,11 @@ def main() -> int:
     parser.add_argument(
         "--canonical-receipt",
         type=Path,
-        default=ROOT / "docs/research_line/vnext/R1_FRESH_CANONICAL_RECEIPT.json",
+        default=(
+            ROOT
+            / "docs/research_line/vnext/"
+            "R1_FRESH_CORRECTED_CANONICAL_RECEIPT.json"
+        ),
     )
     parser.add_argument("--preflight", action="store_true")
     args = parser.parse_args()
