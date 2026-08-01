@@ -1,0 +1,8 @@
+{
+  "base_schema_sha256": "1a03214b9e9b27036d0350398c3e8ab17fd6158c638aa75ad5354b041c3c7e5b",
+  "expressibility_claims": [
+    "EXPRESSIBLE",
+    "NOT_EXPRESSIBLE"
+  ],
+  "schema": "recclaw.research-line.fresh-r2-proposal-schema-delta.v1"
+}

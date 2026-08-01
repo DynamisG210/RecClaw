@@ -717,6 +717,7 @@ def _materialize_and_qualify(
     implementation: Mapping[str, Any],
     implementation_prompt_digest: str,
     tool_policy_digest: str,
+    run_identity: str = CORRECTED_RUN_IDENTITY,
 ) -> tuple[MaterializedCandidate, MechanicalQualificationRun, dict[str, Any]]:
     policy = _shared_policy(implementation_prompt_digest, tool_policy_digest)
     request = build_shared_implementer_request(spec, policy=policy)
@@ -729,7 +730,7 @@ def _materialize_and_qualify(
         implementation_response=implementation,
         candidate_root=candidate_root,
         candidate_root_ref=(
-            f"{CORRECTED_RUN_IDENTITY}-candidate-root:"
+            f"{run_identity}-candidate-root:"
             f"{sha256_digest({'path': candidate_root.as_posix()})}"
         ),
     )
@@ -794,6 +795,9 @@ def run_development_training(
     candidate_root: Path | None,
     entrypoint: str,
     source_sha256: str,
+    run_identity: str = CORRECTED_RUN_IDENTITY,
+    authority: str = "user-delegated-corrected-formal-fresh-r1",
+    timeout_seconds: int = 1500,
 ) -> dict[str, Any]:
     run_root = side_root / "experiments" / run_id
     result_root = run_root / "worker"
@@ -848,13 +852,13 @@ def run_development_training(
     )
     start_identity = {
         "binding_digest": binding_digest,
-        "claim_id": f"{CORRECTED_RUN_IDENTITY}-claim:{run_id}",
+        "claim_id": f"{run_identity}-claim:{run_id}",
         "execution_purpose": "DEVELOPMENT_PILOT_OFFLINE_TOPN",
         "ordinary_launch_attempt_ordinal": 1,
         "permit_digest": sha256_digest(
-            {"authority": "user-delegated-corrected-formal-fresh-r1"}
+            {"authority": authority}
         ),
-        "round_id": f"{CORRECTED_RUN_IDENTITY}-round:{run_id}",
+        "round_id": f"{run_identity}-round:{run_id}",
         "run_id": run_id,
         "runner_abi": CAMPAIGN_TRAINING_RUNNER_ABI,
         "runtime_binding_digest": runtime_binding_digest,
@@ -931,7 +935,7 @@ def run_development_training(
         raise FreshR1Error("training START_CONFIRMED pid mismatch")
     _write_start_gate(gate_path, start_identity)
     try:
-        stdout, stderr = process.communicate(timeout=1500)
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
         return_code = int(process.returncode)
     except subprocess.TimeoutExpired:
         process.kill()
