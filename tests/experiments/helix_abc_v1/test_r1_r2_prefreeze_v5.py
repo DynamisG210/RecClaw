@@ -99,6 +99,24 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (
     provider_free_v9_dry_run,
     validate_prefreeze_v9,
     verify_v8_seal,
+    V9_SEALED_DIGESTS,
+    V10_AUTH_REL,
+    V10_ATTEMPT_RECEIPT_REL,
+    V10_BLOCKED_REL,
+    V10_MANIFEST_REL,
+    V10_POLICY_REL,
+    V10_PRIVATE_ROOT,
+    V10_READY_REL,
+    V10_RELEASE_REL,
+    V10_REQUEST_MODEL_ALIAS,
+    exact_v10_probe_request_payload,
+    expected_prefreeze_v10_manifest,
+    expected_v10_provider_release,
+    prefreeze_v10_runtime_spec,
+    provider_free_v10_dry_run,
+    validate_prefreeze_v10,
+    validate_v10_route_snapshot_pair,
+    verify_v9_seal,
 )
 from scripts.build_r1_r2_prefreeze_v5_artifacts import _contract
 from scripts.reprobe_fresh_open_spec_endpoint_v2 import (
@@ -1023,6 +1041,190 @@ def test_v9_outcome_is_hard_resource_block_after_three_transient_503s() -> None:
             None,
             None,
         )
+    for field in (
+        "research_candidates_generated",
+        "open_specs_projected",
+        "resolver_calls",
+        "candidate_roots_created",
+        "candidate_qualifications",
+        "candidate_admissions",
+        "training_runs",
+        "outcomes_consumed",
+        "held_out_reads",
+    ):
+        assert receipt[field] == 0
+
+
+def test_v9_sealed_artifacts_remain_exact_bytes_for_v10() -> None:
+    observed = verify_v9_seal(ROOT)
+    for relative, digest in V9_SEALED_DIGESTS.items():
+        assert observed[relative.as_posix()] == digest
+        assert bytes_sha256((ROOT / relative).read_bytes()) == digest
+
+
+def test_v10_requires_exact_alias_route_and_exact_returned_snapshot() -> None:
+    validate_v10_route_snapshot_pair(
+        requested_model=V10_REQUEST_MODEL_ALIAS,
+        returned_model=V8_MODEL_SNAPSHOT,
+    )
+    for requested, returned in (
+        (V8_MODEL_SNAPSHOT, V8_MODEL_SNAPSHOT),
+        (V10_REQUEST_MODEL_ALIAS + " ", V8_MODEL_SNAPSHOT),
+        (V10_REQUEST_MODEL_ALIAS, V10_REQUEST_MODEL_ALIAS),
+        (V10_REQUEST_MODEL_ALIAS, "gpt-5.4-2026-03-06"),
+    ):
+        with pytest.raises(Wave2IntegrationError):
+            validate_v10_route_snapshot_pair(
+                requested_model=requested,
+                returned_model=returned,
+            )
+
+
+def test_v10_changes_only_routing_literal_and_derived_identities() -> None:
+    v9 = json.loads((ROOT / V9_MANIFEST_REL).read_bytes())
+    v10 = expected_prefreeze_v10_manifest(ROOT)
+    exact9 = v9["exact_provider_contract"]
+    exact10 = v10["exact_provider_contract"]
+    assert exact9["model"] == V8_MODEL_SNAPSHOT
+    assert exact10["model"] == V10_REQUEST_MODEL_ALIAS
+    assert exact10["requested_model_literal"] == V10_REQUEST_MODEL_ALIAS
+    assert exact10["required_returned_snapshot"] == V8_MODEL_SNAPSHOT
+    payload = exact_v10_probe_request_payload(ROOT)
+    assert payload["model"] == V10_REQUEST_MODEL_ALIAS
+    assert payload["max_tokens"] == 6000
+    assert "tools" not in payload and "functions" not in payload
+    for field in (
+        "endpoint_digest",
+        "credential_config_digest",
+        "credential_identity_digest",
+        "response_schema_digest",
+        "sentinel_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "request_mode",
+        "temperature",
+        "token_budget",
+        "required_returned_snapshot",
+    ):
+        assert exact10[field] == exact9[field]
+    future9 = dict(v9["future_r1_scientific_contract"])
+    future10 = dict(v10["future_r1_scientific_contract"])
+    for field in (
+        "requested_model_literal",
+        "shared_call_contract_digest",
+        "side_a_call_contract_digest",
+        "side_b_call_contract_digest",
+    ):
+        future9.pop(field, None)
+        future10.pop(field, None)
+    assert future10 == future9
+    assert v10["response_contract_equivalence"] == v9[
+        "response_contract_equivalence"
+    ]
+    assert v10["preserved_scientific_identity"] == v9[
+        "preserved_scientific_identity"
+    ]
+    assert v10["provider_returned_model_evidence"] == v9[
+        "provider_returned_model_evidence"
+    ]
+
+
+def test_v10_release_keeps_exact_snapshot_and_all_nonrouting_bindings() -> None:
+    release9 = expected_v9_provider_release(ROOT)
+    release10 = expected_v10_provider_release(ROOT)
+    assert release10["requested_model_literal"] == V10_REQUEST_MODEL_ALIAS
+    assert release10["required_returned_snapshot"] == V8_MODEL_SNAPSHOT
+    for field in (
+        "endpoint_digest",
+        "credential_config_digest",
+        "credential_identity_digest",
+        "response_schema_digest",
+        "local_uniqueness_contract_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "request_mode",
+        "temperature",
+        "diagnostic_token_budget",
+        "transport_max_total_tokens_per_call",
+        "future_r1_token_budget_per_call",
+        "future_r1_call_count_per_side",
+        "future_r1_proposal_budget_per_side",
+    ):
+        assert release10[field] == release9[field]
+
+
+def test_v10_builder_and_probe_consume_one_shared_version_spec() -> None:
+    expected = prefreeze_v10_runtime_spec()
+    assert _contract(10) == expected
+    assert _prefreeze_diagnostic_contract(10) == expected
+
+
+def test_checked_in_v10_contract_artifacts_are_exact_and_provider_free() -> None:
+    for relative in (
+        V10_RELEASE_REL,
+        V10_POLICY_REL,
+        V10_MANIFEST_REL,
+        V10_AUTH_REL,
+    ):
+        assert (ROOT / relative).is_file()
+    manifest = validate_prefreeze_v10(ROOT)
+    dry_run = provider_free_v10_dry_run(ROOT)
+    assert manifest == expected_prefreeze_v10_manifest(ROOT)
+    assert dry_run["status"] == (
+        "PASS_PROVIDER_FREE_V10_MODEL_ROUTING_CORRECTION"
+    )
+    assert dry_run["provider_calls"] == 0
+    assert dry_run["training_runs"] == 0
+    assert dry_run["candidate_qualifications"] == 0
+    assert dry_run["candidate_admissions"] == 0
+    assert dry_run["outcomes_consumed"] == 0
+    assert dry_run["held_out_reads"] == 0
+
+
+def test_v10_outcome_is_terminal_actual_envelope_alias_mismatch() -> None:
+    attempt_path = ROOT / V10_ATTEMPT_RECEIPT_REL
+    blocked_path = ROOT / V10_BLOCKED_REL
+    assert attempt_path.is_file()
+    assert blocked_path.is_file()
+    assert not (ROOT / V10_READY_REL).exists()
+    receipt = json.loads(attempt_path.read_bytes())
+    blocked = json.loads(blocked_path.read_bytes())
+    attempt = receipt["physical_attempts"][0]
+    assert receipt["status"] == "BLOCKED"
+    assert receipt["physical_provider_calls"] == 1
+    assert receipt["retry_count"] == 0
+    assert receipt["final_classification"] == (
+        "RETURNED_MODEL_SNAPSHOT_MISMATCH"
+    )
+    assert receipt["termination_reason"] == "DETERMINISTIC_TERMINAL_FAILURE"
+    assert attempt["http_status"] == 200
+    assert attempt["returned_model"] == V10_REQUEST_MODEL_ALIAS
+    assert attempt["returned_model"] != V8_MODEL_SNAPSHOT
+    assert attempt["response_digest"] == (
+        "05cc80fa34c99145955dc41075b4f3cb9c33013f034cfcbafc1778ec4b742064"
+    )
+    assert attempt["retry_eligible"] is False
+    assert attempt["local_uniqueness_status"] == "NOT_REACHED"
+    assert blocked["status"] == "BLOCKED_PREFREEZE_V10"
+    assert blocked["r1_worker_launch_authorized"] is False
+    connection = sqlite3.connect(
+        V10_PRIVATE_ROOT / "physical_attempt_01" / "broker.sqlite3"
+    )
+    try:
+        row = connection.execute(
+            "SELECT COUNT(*),status,error_type,total_tokens,returned_model,"
+            "response_digest FROM calls"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row == (
+        1,
+        "SUCCESS",
+        None,
+        2418,
+        V10_REQUEST_MODEL_ALIAS,
+        "05cc80fa34c99145955dc41075b4f3cb9c33013f034cfcbafc1778ec4b742064",
+    )
     for field in (
         "research_candidates_generated",
         "open_specs_projected",

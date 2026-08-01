@@ -90,12 +90,15 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     provider_free_v7_dry_run,
     prefreeze_v8_runtime_spec,
     prefreeze_v9_runtime_spec,
+    prefreeze_v10_runtime_spec,
     validate_prefreeze_v7,
     verify_v6_seal,
 )
 
 
 def _contract(version: int) -> dict[str, Any]:
+    if version == 10:
+        return prefreeze_v10_runtime_spec()
     if version == 9:
         return prefreeze_v9_runtime_spec()
     if version == 8:
@@ -694,7 +697,7 @@ def main() -> int:
     parser.add_argument("--pytest-passed", type=int, default=0)
     parser.add_argument("--pytest-skipped", type=int, default=0)
     parser.add_argument(
-        "--version", type=int, choices=(5, 6, 7, 8, 9), default=5
+        "--version", type=int, choices=(5, 6, 7, 8, 9, 10), default=5
     )
     args = parser.parse_args()
     if args.action == "prepare":

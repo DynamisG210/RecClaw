@@ -107,6 +107,7 @@ from recclaw_core.experiments.helix_abc_v1.prefreeze_v5 import (  # noqa: E402
     validate_prefreeze_v7,
     prefreeze_v8_runtime_spec,
     prefreeze_v9_runtime_spec,
+    prefreeze_v10_runtime_spec,
     validate_v8_exact_snapshot_pair,
 )
 from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
@@ -1367,6 +1368,8 @@ class _V5PostBrokerContractFailure(ValueError):
 def _prefreeze_diagnostic_contract(version: int) -> dict[str, Any]:
     """Select identity/ceiling; V5--V7 share one transport path."""
 
+    if version == 10:
+        return prefreeze_v10_runtime_spec()
     if version == 9:
         return prefreeze_v9_runtime_spec()
     if version == 8:
@@ -1727,7 +1730,7 @@ def _main_prefreeze_diagnostic(version: int) -> int:
             if version >= 6:
                 try:
                     if version >= 8:
-                        validate_v8_exact_snapshot_pair(
+                        contract_config["validate_model_pair"](
                             requested_model=contract_config[
                                 "requested_model"
                             ],
@@ -1927,6 +1930,9 @@ def _main_prefreeze_diagnostic(version: int) -> int:
 
 
 def main() -> int:
+    if "--v10" in sys.argv:
+        sys.argv.remove("--v10")
+        return _main_prefreeze_diagnostic(10)
     if "--v9" in sys.argv:
         sys.argv.remove("--v9")
         return _main_prefreeze_diagnostic(9)

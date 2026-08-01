@@ -241,6 +241,38 @@ V9_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
 V9_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V9_DRY_RUN_RECEIPT.json"
 V9_VERIFICATION_REL = DOC_ROOT_REL / "PREFREEZE_V9_VERIFICATION_RECEIPT.json"
 
+V9_HEAD = "042dc4d3d42595d768425d7e5dc53a05faa10ef1"
+V9_PARENT = "a076f82a94659bf5b6a1c271bdd10badbc29444a"
+V9_TREE = "5256c751f70190a91c01f9faa6fa2d46253df963"
+V9_SEALED_DIGESTS: dict[Path, str] = {
+    V9_RELEASE_REL: "1ce4fa40e18c83c6a234d2a4937aa71c8e4fb9eda4e0b07c09839402877554e7",
+    V9_POLICY_REL: "aab4de895067f3a3522d1a3a8de953a739f154949eeae2e96e7ab8e2f5a9c5a7",
+    V9_MANIFEST_REL: "40538791e7e69f7905529dcd82fcfc92ced372aa168117ab245e63d500323600",
+    V9_AUTH_REL: "ae0ebca878c8b35235d35036fff68497286ce9a753af406bc24d0b1b9e940493",
+    V9_DRY_RUN_REL: "a720d03ce0f98be7eb0232928ce8dc7136395c951cc095517fdd68715844393f",
+    V9_ATTEMPT_RECEIPT_REL: "ff7a6d22120e2a540f2d61e286e94f21b0eb5c05b6455064fceeda2799fe6c99",
+    V9_BLOCKED_REL: "74b7f28003da886ed698aac3505c7a2412922942c437a9cf6523265fd4c1cd3e",
+}
+
+V10_REQUEST_MODEL_ALIAS = "gpt-5.4"
+V10_ATTEMPT_ID = "recclaw-r1-r2-prefreeze-v10-20260801"
+V10_LOGICAL_CALL_ID = "fresh-open-spec-prefreeze-v10-model-routing-slot"
+V10_SESSION_ID = "fresh-open-spec-prefreeze-v10-model-routing-slot-session"
+V10_PRIVATE_ROOT = Path("/root/projects/RecClaw_r1_prefreeze_probe_v10_private")
+V10_RELEASE_REL = DOC_ROOT_REL / "FRESH_OPEN_SPEC_PROVIDER_RELEASE_V10.json"
+V10_POLICY_REL = DOC_ROOT_REL / "R1_PROVIDER_RETRY_POLICY_V10.json"
+V10_MANIFEST_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_MANIFEST_V10.json"
+V10_AUTH_REL = DOC_ROOT_REL / "PREFREEZE_V10_AUTHORIZATION.json"
+V10_ATTEMPT_RECEIPT_REL = (
+    DOC_ROOT_REL / "FRESH_OPEN_SPEC_ENDPOINT_ATTEMPT_RECEIPT_V10.json"
+)
+V10_BLOCKED_REL = DOC_ROOT_REL / "PREFREEZE_V10_BLOCKED_RECEIPT.json"
+V10_READY_REL = DOC_ROOT_REL / "R1_PREFREEZE_READY_RECEIPT.json"
+V10_DRY_RUN_REL = DOC_ROOT_REL / "R1_R2_PREFREEZE_V10_DRY_RUN_RECEIPT.json"
+V10_VERIFICATION_REL = (
+    DOC_ROOT_REL / "PREFREEZE_V10_VERIFICATION_RECEIPT.json"
+)
+
 
 def _repo_ref(relative: Path) -> str:
     return relative.as_posix()
@@ -1253,6 +1285,32 @@ def expected_v8_broker_release(repo_root: Path) -> dict[str, Any]:
     return release.to_dict()
 
 
+_MODEL_IDENTITY_BINDING_FIELDS = (
+    "requested_model_literal",
+    "required_returned_snapshot",
+    "endpoint_digest",
+    "credential_config_digest",
+    "credential_identity_digest",
+    "response_schema_digest",
+    "local_uniqueness_contract_digest",
+    "prompt_digest",
+    "tool_policy_digest",
+    "request_mode",
+    "temperature",
+    "diagnostic_token_budget",
+    "transport_max_total_tokens_per_call",
+    "future_r1_token_budget_per_call",
+    "future_r1_call_count_per_side",
+    "future_r1_proposal_budget_per_side",
+)
+
+
+def _model_identity_contract_digest(release: Mapping[str, Any]) -> str:
+    return sha256_digest(
+        {key: release[key] for key in _MODEL_IDENTITY_BINDING_FIELDS}
+    )
+
+
 def expected_v8_provider_release(repo_root: Path) -> dict[str, Any]:
     verify_v7_seal(repo_root)
     release = deepcopy(_read_json(repo_root / V7_RELEASE_REL))
@@ -1278,29 +1336,8 @@ def expected_v8_provider_release(repo_root: Path) -> dict[str, Any]:
             ),
         }
     )
-    identity_preimage = {
-        key: release[key]
-        for key in (
-            "requested_model_literal",
-            "required_returned_snapshot",
-            "endpoint_digest",
-            "credential_config_digest",
-            "credential_identity_digest",
-            "response_schema_digest",
-            "local_uniqueness_contract_digest",
-            "prompt_digest",
-            "tool_policy_digest",
-            "request_mode",
-            "temperature",
-            "diagnostic_token_budget",
-            "transport_max_total_tokens_per_call",
-            "future_r1_token_budget_per_call",
-            "future_r1_call_count_per_side",
-            "future_r1_proposal_budget_per_side",
-        )
-    }
-    release["model_identity_contract_digest"] = sha256_digest(
-        identity_preimage
+    release["model_identity_contract_digest"] = (
+        _model_identity_contract_digest(release)
     )
     return {**release, "release_digest": sha256_digest(release)}
 
@@ -1640,6 +1677,7 @@ def prefreeze_v8_runtime_spec() -> dict[str, Any]:
         "dry_run": provider_free_v8_dry_run,
         "requested_model": V8_MODEL_SNAPSHOT,
         "required_returned_model": V8_MODEL_SNAPSHOT,
+        "validate_model_pair": validate_v8_exact_snapshot_pair,
         "identity_receipt_fields": {
             "requested_model_literal": V8_MODEL_SNAPSHOT,
             "required_returned_snapshot": V8_MODEL_SNAPSHOT,
@@ -1962,6 +2000,432 @@ def prefreeze_v9_runtime_spec() -> dict[str, Any]:
     return spec
 
 
+def v10_physical_root(ordinal: int) -> Path:
+    if ordinal not in {1, 2, 3}:
+        raise Wave2IntegrationError("V10 physical attempt ordinal must be 1..3")
+    return V10_PRIVATE_ROOT / f"physical_attempt_{ordinal:02d}"
+
+
+def verify_v9_seal(repo_root: Path) -> dict[str, str]:
+    verified = verify_v8_seal(repo_root)
+    for relative, digest in V9_SEALED_DIGESTS.items():
+        path = repo_root / relative
+        if not path.is_file() or bytes_sha256(path.read_bytes()) != digest:
+            raise Wave2IntegrationError(
+                f"sealed V9 bytes changed: {relative.as_posix()}"
+            )
+        verified[relative.as_posix()] = digest
+    return verified
+
+
+def exact_v10_probe_request_payload(repo_root: Path) -> dict[str, Any]:
+    payload = exact_v8_probe_request_payload(repo_root)
+    payload["model"] = V10_REQUEST_MODEL_ALIAS
+    return payload
+
+
+def exact_v10_probe_request_payload_digest(repo_root: Path) -> str:
+    return sha256_digest(exact_v10_probe_request_payload(repo_root))
+
+
+def validate_v10_route_snapshot_pair(
+    *, requested_model: str, returned_model: str
+) -> None:
+    if requested_model != V10_REQUEST_MODEL_ALIAS:
+        raise Wave2IntegrationError("V10 request routing alias mismatch")
+    if returned_model != V8_MODEL_SNAPSHOT:
+        raise Wave2IntegrationError("V10 returned snapshot mismatch")
+
+
+def expected_v10_broker_release(repo_root: Path) -> dict[str, Any]:
+    release = expected_v8_broker_release(repo_root)
+    release.pop("release_digest")
+    release["model"] = V10_REQUEST_MODEL_ALIAS
+    return {**release, "release_digest": sha256_digest(release)}
+
+
+def expected_v10_provider_release(repo_root: Path) -> dict[str, Any]:
+    verify_v9_seal(repo_root)
+    release = deepcopy(_read_json(repo_root / V9_RELEASE_REL))
+    release.pop("release_digest")
+    release.pop("availability_predecessor", None)
+    broker_release = expected_v10_broker_release(repo_root)
+    release.update(
+        {
+            "schema": "recclaw.research-line.provider-release-contract.v10",
+            "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+            "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+            "request_and_return_matching": (
+                "EXACT_GATEWAY_ROUTE_ALIAS_TO_EXACT_RETURNED_SNAPSHOT"
+            ),
+            "alias_request_or_fallback": (
+                "EXACT_ROUTING_ALIAS_ONLY_REQUEST_MODEL_FALLBACK_FORBIDDEN"
+            ),
+            "transport_release_ref": "INLINE_LAB_API_BROKER_RELEASE_V1_V10",
+            "transport_release_artifact_digest": bytes_sha256(
+                canonical_json_bytes(broker_release)
+            ),
+            "transport_release_contract_digest": broker_release[
+                "release_digest"
+            ],
+            "routing_correction_predecessor": {
+                "v9_release_digest": V9_SEALED_DIGESTS[V9_RELEASE_REL],
+                "v9_attempt_digest": V9_SEALED_DIGESTS[
+                    V9_ATTEMPT_RECEIPT_REL
+                ],
+                "v9_blocked_digest": V9_SEALED_DIGESTS[V9_BLOCKED_REL],
+                "observed_supported_alias_source": "SEALED_V7_HTTP200",
+                "snapshot_literal_route_failures": 6,
+            },
+        }
+    )
+    release["model_identity_contract_digest"] = (
+        _model_identity_contract_digest(release)
+    )
+    return {**release, "release_digest": sha256_digest(release)}
+
+
+def expected_v10_retry_policy(repo_root: Path) -> dict[str, Any]:
+    verify_v9_seal(repo_root)
+    policy = deepcopy(_read_json(repo_root / V9_POLICY_REL))
+    policy["schema"] = "recclaw.research-line.r1-provider-retry-policy.v10"
+    policy.pop("inherited_v8_policy_ref", None)
+    policy.pop("inherited_v8_policy_digest", None)
+    policy["inherited_v9_policy_ref"] = _repo_ref(V9_POLICY_REL)
+    policy["inherited_v9_policy_digest"] = V9_SEALED_DIGESTS[V9_POLICY_REL]
+    policy["diagnostic_slot"]["slot_id"] = (
+        "PREFREEZE_V10_MODEL_ROUTING_CORRECTION"
+    )
+    return policy
+
+
+def expected_prefreeze_v10_manifest(repo_root: Path) -> dict[str, Any]:
+    verify_v9_seal(repo_root)
+    v9 = _read_json(repo_root / V9_MANIFEST_REL)
+    release = expected_v10_provider_release(repo_root)
+    policy = expected_v10_retry_policy(repo_root)
+    manifest = deepcopy(v9)
+    manifest["schema"] = "recclaw.research-line.r1-r2-prefreeze-attempt.v10"
+    manifest["attempt_identity"] = {
+        "attempt_id": V10_ATTEMPT_ID,
+        "base_commit": V9_HEAD,
+        "base_parent": V9_PARENT,
+        "base_tree": V9_TREE,
+        "pre_outcome": True,
+        "distinct_from_v1_v2_v3_v4_v5_v6_v7_v8_v9_attempts": True,
+        "old_attempt_call_session_db_identity_reuse": False,
+    }
+    manifest["sealed_predecessor_evidence"] = {
+        "v9_manifest_digest": V9_SEALED_DIGESTS[V9_MANIFEST_REL],
+        "v9_attempt_digest": V9_SEALED_DIGESTS[V9_ATTEMPT_RECEIPT_REL],
+        "v9_blocked_digest": V9_SEALED_DIGESTS[V9_BLOCKED_REL],
+        "v1_through_v9_preservation": (
+            "SEALED_WORKING_AND_COMMITTED_BYTES_IDENTICAL"
+        ),
+    }
+    manifest["authorized_v10_model_routing_correction"] = {
+        "request_model_literal": V10_REQUEST_MODEL_ALIAS,
+        "request_literal_role": "GATEWAY_ROUTING_INPUT_ONLY",
+        "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+        "actual_provider_envelope_model_required": True,
+        "request_model_fallback_prefix_regex_startswith_allowlist": (
+            "FORBIDDEN"
+        ),
+        "only_scientific_delta": "GATEWAY_ROUTE_LITERAL",
+        "accepted_snapshot_or_comparison_change": False,
+        "v11_or_unbounded_retry_authorized": False,
+    }
+    manifest["provider_release_contract"] = release
+    exact = manifest["exact_provider_contract"]
+    exact.update(
+        {
+            "model": V10_REQUEST_MODEL_ALIAS,
+            "model_digest": sha256_digest(
+                {"model": V10_REQUEST_MODEL_ALIAS}
+            ),
+            "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+            "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+            "model_identity_pair_digest": sha256_digest(
+                {
+                    "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+                    "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+                }
+            ),
+            "transport_provider_release_digest": release[
+                "transport_release_contract_digest"
+            ],
+            "provider_release_ref": _repo_ref(V10_RELEASE_REL),
+            "provider_release_artifact_digest": bytes_sha256(
+                canonical_json_bytes(release)
+            ),
+            "provider_release_digest": release["release_digest"],
+            "request_payload_digest": exact_v10_probe_request_payload_digest(
+                repo_root
+            ),
+            "logical_call_id": V10_LOGICAL_CALL_ID,
+            "proposal_generation_session_id": V10_SESSION_ID,
+            "diagnostic_slot_id": (
+                "PREFREEZE_V10_MODEL_ROUTING_CORRECTION"
+            ),
+        }
+    )
+    identities = []
+    for ordinal in (1, 2, 3):
+        private_digest = sha256_digest(
+            {"path": v10_physical_root(ordinal).as_posix()}
+        )
+        identities.append(
+            {
+                "ordinal": ordinal,
+                "physical_attempt_identity_digest": sha256_digest(
+                    {
+                        "attempt_id": V10_ATTEMPT_ID,
+                        "diagnostic_slot": (
+                            "PREFREEZE_V10_MODEL_ROUTING_CORRECTION"
+                        ),
+                        "ordinal": ordinal,
+                        "private_root_digest": private_digest,
+                    }
+                ),
+                "private_root_digest": private_digest,
+            }
+        )
+    manifest["bounded_retry"].update(
+        {
+            "policy_ref": _repo_ref(V10_POLICY_REL),
+            "policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+            "physical_attempt_identities": identities,
+        }
+    )
+    future = manifest["future_r1_scientific_contract"]
+    shared = sha256_digest(
+        {
+            "inherited_v9_shared_call_contract_digest": future[
+                "shared_call_contract_digest"
+            ],
+            "v10_provider_release_contract_digest": release[
+                "release_digest"
+            ],
+        }
+    )
+    future.update(
+        {
+            "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+            "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+            "shared_call_contract_digest": shared,
+            "side_a_call_contract_digest": shared,
+            "side_b_call_contract_digest": shared,
+        }
+    )
+    manifest["inherited_v9_scientific_contract_digest"] = sha256_digest(
+        v9["future_r1_scientific_contract"]
+    )
+    manifest["v10_scientific_contract_digest"] = sha256_digest(future)
+    manifest["r1_worker_launch_authorized"] = False
+    return manifest
+
+
+def expected_v10_authorization(repo_root: Path) -> dict[str, Any]:
+    manifest = expected_prefreeze_v10_manifest(repo_root)
+    policy = expected_v10_retry_policy(repo_root)
+    release = expected_v10_provider_release(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v10-authorization.v1",
+        "status": "AUTHORIZED_ONE_V10_MODEL_ROUTING_DIAGNOSTIC_SLOT",
+        "attempt_id": V10_ATTEMPT_ID,
+        "manifest_ref": _repo_ref(V10_MANIFEST_REL),
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "retry_policy_ref": _repo_ref(V10_POLICY_REL),
+        "retry_policy_digest": bytes_sha256(canonical_json_bytes(policy)),
+        "provider_release_ref": _repo_ref(V10_RELEASE_REL),
+        "provider_release_artifact_digest": bytes_sha256(
+            canonical_json_bytes(release)
+        ),
+        "provider_release_contract_digest": release["release_digest"],
+        "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+        "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+        "diagnostic_token_ceiling": V8_DIAGNOSTIC_TOKEN_CEILING,
+        "request_payload_digest": manifest["exact_provider_contract"][
+            "request_payload_digest"
+        ],
+        "maximum_physical_attempts": 3,
+        "maximum_retry_count": 2,
+        "deterministic_backoff_ms": [1000, 3000],
+        "provider_calls_before_authorization": 0,
+        "candidate_training_outcome_held_out_before_authorization": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def validate_prefreeze_v10(repo_root: Path) -> dict[str, Any]:
+    verify_v9_seal(repo_root)
+    release = _load_exact(
+        repo_root / V10_RELEASE_REL,
+        expected_v10_provider_release(repo_root),
+    )
+    policy = _load_exact(
+        repo_root / V10_POLICY_REL, expected_v10_retry_policy(repo_root)
+    )
+    manifest = _load_exact(
+        repo_root / V10_MANIFEST_REL,
+        expected_prefreeze_v10_manifest(repo_root),
+    )
+    _load_exact(
+        repo_root / V10_AUTH_REL, expected_v10_authorization(repo_root)
+    )
+    v9 = _read_json(repo_root / V9_MANIFEST_REL)
+    exact9 = v9["exact_provider_contract"]
+    exact10 = manifest["exact_provider_contract"]
+    validate_v10_route_snapshot_pair(
+        requested_model=exact10["requested_model_literal"],
+        returned_model=exact10["required_returned_snapshot"],
+    )
+    allowed_exact_delta = {
+        "model",
+        "model_digest",
+        "requested_model_literal",
+        "model_identity_pair_digest",
+        "transport_provider_release_digest",
+        "provider_release_ref",
+        "provider_release_artifact_digest",
+        "provider_release_digest",
+        "request_payload_digest",
+        "logical_call_id",
+        "proposal_generation_session_id",
+        "diagnostic_slot_id",
+    }
+    if {
+        key: value
+        for key, value in exact10.items()
+        if key not in allowed_exact_delta
+    } != {
+        key: value
+        for key, value in exact9.items()
+        if key not in allowed_exact_delta
+    }:
+        raise Wave2IntegrationError("V10 changed a non-routing Provider field")
+    future9 = deepcopy(v9["future_r1_scientific_contract"])
+    future10 = deepcopy(manifest["future_r1_scientific_contract"])
+    for field in (
+        "requested_model_literal",
+        "shared_call_contract_digest",
+        "side_a_call_contract_digest",
+        "side_b_call_contract_digest",
+    ):
+        future9.pop(field, None)
+        future10.pop(field, None)
+    if (
+        future10 != future9
+        or manifest["response_contract_equivalence"]
+        != v9["response_contract_equivalence"]
+        or manifest["preserved_scientific_identity"]
+        != v9["preserved_scientific_identity"]
+        or manifest["provider_returned_model_evidence"]
+        != v9["provider_returned_model_evidence"]
+        or exact10["request_payload_digest"]
+        != exact_v10_probe_request_payload_digest(repo_root)
+    ):
+        raise Wave2IntegrationError("V10 changed the preserved R1 contract")
+    policy9 = deepcopy(_read_json(repo_root / V9_POLICY_REL))
+    policy10 = deepcopy(policy)
+    for value in (policy9, policy10):
+        value.pop("schema", None)
+        value.pop("inherited_v8_policy_ref", None)
+        value.pop("inherited_v8_policy_digest", None)
+        value.pop("inherited_v9_policy_ref", None)
+        value.pop("inherited_v9_policy_digest", None)
+        value["diagnostic_slot"].pop("slot_id", None)
+    if policy10 != policy9:
+        raise Wave2IntegrationError("V10 changed retry semantics")
+    if any(manifest["pre_outcome_counters"].values()):
+        raise Wave2IntegrationError("Prefreeze V10 is not pre-outcome")
+    return manifest
+
+
+def provider_free_v10_dry_run(repo_root: Path) -> dict[str, Any]:
+    manifest = validate_prefreeze_v10(repo_root)
+    return {
+        "schema": "recclaw.research-line.prefreeze-v10-dry-run-receipt.v1",
+        "status": "PASS_PROVIDER_FREE_V10_MODEL_ROUTING_CORRECTION",
+        "attempt_id": V10_ATTEMPT_ID,
+        "manifest_digest": bytes_sha256(canonical_json_bytes(manifest)),
+        "v1_through_v9_seals_verified": True,
+        "exact_gateway_alias_request_verified": True,
+        "exact_actual_envelope_snapshot_required": True,
+        "request_model_fallback_forbidden": True,
+        "non_routing_scientific_contract_exactly_preserved": True,
+        "bounded_retry_semantics_exactly_preserved": True,
+        "provider_calls": 0,
+        "training_runs": 0,
+        "candidate_qualifications": 0,
+        "candidate_admissions": 0,
+        "outcomes_consumed": 0,
+        "held_out_reads": 0,
+        "r1_worker_launch_authorized": False,
+    }
+
+
+def prefreeze_v10_runtime_spec() -> dict[str, Any]:
+    spec = prefreeze_v9_runtime_spec()
+    spec.update(
+        {
+            "label": "V10",
+            "attempt_id": V10_ATTEMPT_ID,
+            "attempt_rel": V10_ATTEMPT_RECEIPT_REL,
+            "attempt_schema": (
+                "recclaw.research-line.prefreeze-v10-provider-attempt-receipt.v1"
+            ),
+            "auth_rel": V10_AUTH_REL,
+            "blocked_rel": V10_BLOCKED_REL,
+            "blocked_schema": (
+                "recclaw.research-line.prefreeze-v10-blocked-receipt.v1"
+            ),
+            "dry_run_rel": V10_DRY_RUN_REL,
+            "manifest_rel": V10_MANIFEST_REL,
+            "policy_rel": V10_POLICY_REL,
+            "private_root": V10_PRIVATE_ROOT,
+            "ready_rel": V10_READY_REL,
+            "ready_schema": (
+                "recclaw.research-line.r1-prefreeze-ready-receipt.v10"
+            ),
+            "release_rel": V10_RELEASE_REL,
+            "verification_rel": V10_VERIFICATION_REL,
+            "verification_schema": (
+                "recclaw.research-line.prefreeze-v10-verification-receipt.v1"
+            ),
+            "validate": validate_prefreeze_v10,
+            "dry_run": provider_free_v10_dry_run,
+            "requested_model": V10_REQUEST_MODEL_ALIAS,
+            "required_returned_model": V8_MODEL_SNAPSHOT,
+            "validate_model_pair": validate_v10_route_snapshot_pair,
+            "identity_receipt_fields": {
+                "requested_model_literal": V10_REQUEST_MODEL_ALIAS,
+                "required_returned_snapshot": V8_MODEL_SNAPSHOT,
+            },
+            "blocked_identity_field": (
+                "exact_gateway_route_alias_and_returned_snapshot"
+            ),
+            "pass_classification": (
+                "PASS_EXACT_ALIAS_ROUTE_SNAPSHOT_AUTH_PROVIDER_LOCAL_SCHEMA"
+            ),
+            "pass_status": (
+                "PASS_PROVIDER_FREE_V10_MODEL_ROUTING_CORRECTION"
+            ),
+            "verify_predecessor": verify_v9_seal,
+            "expected_policy": expected_v10_retry_policy,
+            "expected_manifest": expected_prefreeze_v10_manifest,
+            "expected_authorization": expected_v10_authorization,
+            "expected_release": expected_v10_provider_release,
+            "logical_call_id": V10_LOGICAL_CALL_ID,
+            "session_id": V10_SESSION_ID,
+            "slot_id": "PREFREEZE_V10_MODEL_ROUTING_CORRECTION",
+            "physical_root": v10_physical_root,
+            "hard_blocked_on_transient_exhaustion": False,
+        }
+    )
+    return spec
+
+
 __all__ = [
     "BROKER_SOURCE_REL",
     "V5_ATTEMPT_ID",
@@ -2101,4 +2565,32 @@ __all__ = [
     "v9_physical_root",
     "validate_prefreeze_v9",
     "verify_v8_seal",
+    "V9_SEALED_DIGESTS",
+    "V10_ATTEMPT_ID",
+    "V10_ATTEMPT_RECEIPT_REL",
+    "V10_AUTH_REL",
+    "V10_BLOCKED_REL",
+    "V10_DRY_RUN_REL",
+    "V10_LOGICAL_CALL_ID",
+    "V10_MANIFEST_REL",
+    "V10_POLICY_REL",
+    "V10_PRIVATE_ROOT",
+    "V10_READY_REL",
+    "V10_RELEASE_REL",
+    "V10_REQUEST_MODEL_ALIAS",
+    "V10_SESSION_ID",
+    "V10_VERIFICATION_REL",
+    "exact_v10_probe_request_payload",
+    "exact_v10_probe_request_payload_digest",
+    "expected_prefreeze_v10_manifest",
+    "expected_v10_authorization",
+    "expected_v10_broker_release",
+    "expected_v10_provider_release",
+    "expected_v10_retry_policy",
+    "prefreeze_v10_runtime_spec",
+    "provider_free_v10_dry_run",
+    "v10_physical_root",
+    "validate_prefreeze_v10",
+    "validate_v10_route_snapshot_pair",
+    "verify_v9_seal",
 ]
