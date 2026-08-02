@@ -1,0 +1,1 @@
+{"execution_recipe":{"base_model_config":"BPR","config":{},"entrypoint":"recbole.model.general_recommender.bpr:BPR","entrypoint_source_sha256":"d7f859638fc1578ee1ab1b0c147b11bc3cda797f4aedb029100466eea4d6a151","mechanism_id":"matched-bpr-control","model":"BPR"}}

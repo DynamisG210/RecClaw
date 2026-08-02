@@ -1,0 +1,1 @@
+episode stage invocation omitted the frozen --input-pool path; failed before receipt/outcome/training; corrected once with identical frozen pool

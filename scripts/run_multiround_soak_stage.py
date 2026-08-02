@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
@@ -21,7 +22,12 @@ def _bootstrap(args: argparse.Namespace) -> None:
     os.environ["RECCLAW_RECBOLE_ROOT"] = str(args.recbole_root)
     os.environ["RECCLAW_PYTHON_EXECUTABLE"] = str(args.python_executable)
     os.environ["RECCLAW_API_CONFIG"] = str(args.api_config)
-    for path in (args.recbole_root, args.repo_root, args.repo_root / "src"):
+    runtime_paths = (
+        (args.repo_root, args.repo_root / "src")
+        if args.stage == "selected-resolver"
+        else (args.recbole_root, args.repo_root, args.repo_root / "src")
+    )
+    for path in runtime_paths:
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
 
@@ -70,6 +76,22 @@ def _verify_file(path: Path, expected: str, label: str) -> None:
     observed = bytes_sha256(path.read_bytes())
     if observed != expected:
         raise RuntimeError(f"{label} SHA drift: {observed}")
+
+
+def _read_upstream(args: argparse.Namespace, name: str) -> dict[str, Any]:
+    """Read a sealed v1 upstream artifact through the v2 hash binding."""
+
+    if args.upstream_root is None:
+        return _read(args.round_root / name)
+    binding = _read(args.round_root / "SEALED_UPSTREAM_BINDING.json")
+    artifact = binding.get("sealed_artifacts", {}).get(name)
+    if not isinstance(artifact, dict):
+        raise RuntimeError(f"sealed upstream binding is missing {name}")
+    path = args.upstream_root / name
+    if Path(str(artifact.get("path"))).resolve() != path.resolve():
+        raise RuntimeError(f"sealed upstream path drift for {name}")
+    _verify_file(path, str(artifact.get("sha256")), f"sealed upstream {name}")
+    return _read(path)
 
 
 def _selected_record(
@@ -203,6 +225,56 @@ def run_preflight(args: argparse.Namespace) -> Path:
             "cuda_device_name": torch.cuda.get_device_name(0),
             "search_manifest_sha256": bytes_sha256(search_manifest.read_bytes()),
             "provider_config_sha256": bytes_sha256(args.api_config.read_bytes()),
+            "held_out_reads": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        },
+    )
+
+
+def run_selected_resolver(args: argparse.Namespace) -> Path:
+    """Re-run the real Resolver for the policy-owned selected chain."""
+
+    from recclaw_core.experiments.helix_abc_v1.canonical import sha256_digest
+    from recclaw_core.experiments.helix_abc_v1.fresh_r2 import (
+        _r2_environment,
+        build_active_r2_profile,
+        build_r1_registry,
+        load_registered_r1_artifacts,
+    )
+    from recclaw_core.experiments.helix_abc_v1.open_spec import resolve_capability
+
+    manifest = _manifest(args)
+    arm, record = _selected_record(manifest, args.input_pool)
+    spec = _rehydrate_spec(record)
+    artifacts, _receipt_value = load_registered_r1_artifacts(args.repo_root)
+    registry = build_r1_registry(artifacts)
+    _current, _build_manifest, _next_profile, _build_receipt, active = (
+        build_active_r2_profile(registry)
+    )
+    environment = _r2_environment(active)
+    resolution = resolve_capability(
+        spec,
+        resolution_facts=record["resolution_facts"],
+        environment=environment,
+    )
+    observed = resolution.canonical_dict()
+    expected = record["resolution"]
+    matches = observed == expected
+    return _receipt(
+        args.round_root / "RESOLVER_RECEIPT.json",
+        {
+            "schema": "recclaw.research-line.q4-prospective-selected-resolver.v1",
+            "status": "RESOLUTION_CONFIRMED" if matches else "RESOLUTION_DRIFT",
+            "policy_name": manifest.get("policy_name"),
+            "selected_arm": arm,
+            "selected_candidate_id": spec.digest,
+            "expected_resolution_digest": sha256_digest(expected),
+            "observed_resolution_digest": sha256_digest(observed),
+            "resolution": observed,
+            "resolver_reexecuted": True,
+            "qualification_or_resource_outcomes_consumed": False,
+            "retries": 0,
             "held_out_reads": 0,
             "development_only": True,
             "scientific_effect_claim": False,
@@ -346,7 +418,7 @@ def run_resource_admission(args: argparse.Namespace) -> Path:
     from recclaw_core.experiments.helix_abc_v1.fresh_r1 import run_development_training
 
     manifest = _manifest(args)
-    qualification = _read(args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
+    qualification = _read_upstream(args, "MATERIALIZE_QUALIFIER_RECEIPT.json")
     if qualification["status"] != "QUALIFICATION_PASS":
         return _receipt(
             args.round_root / "RESOURCE_ADMISSION_RECEIPT.json",
@@ -417,7 +489,7 @@ def run_matched_execution(args: argparse.Namespace) -> Path:
 
     manifest = _manifest(args)
     admission = _read(args.round_root / "RESOURCE_ADMISSION_RECEIPT.json")
-    qualification = _read(args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
+    qualification = _read_upstream(args, "MATERIALIZE_QUALIFIER_RECEIPT.json")
     if not admission["admitted"]:
         return _receipt(
             args.round_root / "MATCHED_EXECUTION_RECEIPT.json",
@@ -503,7 +575,7 @@ def run_episode(args: argparse.Namespace) -> Path:
     manifest = _manifest(args)
     _arm, record = _selected_record(manifest, args.input_pool)
     spec = _rehydrate_spec(record)
-    qualification = _read(args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
+    qualification = _read_upstream(args, "MATERIALIZE_QUALIFIER_RECEIPT.json")
     matched = _read(args.round_root / "MATCHED_EXECUTION_RECEIPT.json")
     if matched["status"] != "COMPLETED_MATCHED_PAIR":
         return _receipt(
@@ -603,6 +675,22 @@ def run_episode(args: argparse.Namespace) -> Path:
             "scientific_effect_claim": False,
         },
     )
+
+
+def run_mechanism_probe(args: argparse.Namespace) -> Path:
+    """Classify the real qualifier and Q0R2 probe before full outcome."""
+
+    from recclaw_core.experiments.helix_abc_v1.prospective_policy_comparison import (
+        classify_mechanism_probe,
+    )
+
+    qualification = _read_upstream(args, "MATERIALIZE_QUALIFIER_RECEIPT.json")
+    admission = _read(args.round_root / "RESOURCE_ADMISSION_RECEIPT.json")
+    payload = classify_mechanism_probe(
+        qualification=qualification,
+        admission=admission,
+    )
+    return _receipt(args.round_root / "MECHANISM_PROBE_RECEIPT.json", payload)
 
 
 def run_authority_update(args: argparse.Namespace) -> Path:
@@ -799,9 +887,11 @@ def run_activation(args: argparse.Namespace) -> Path:
 STAGES = {
     "preflight": run_preflight,
     "provider-resolver": run_provider_resolver,
+    "selected-resolver": run_selected_resolver,
     "implementer": run_implementer,
     "materialize-qualifier": run_materialize_qualifier,
     "resource-admission": run_resource_admission,
+    "mechanism-probe": run_mechanism_probe,
     "matched-execution": run_matched_execution,
     "episode": run_episode,
     "authority-update": run_authority_update,
@@ -816,6 +906,7 @@ def main() -> int:
     parser.add_argument("--round-root", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--input-pool", type=Path)
+    parser.add_argument("--upstream-root", type=Path)
     parser.add_argument("--previous-policy", type=Path)
     parser.add_argument("--previous-projection", type=Path)
     parser.add_argument("--projects-root", type=Path, required=True)
@@ -829,6 +920,7 @@ def main() -> int:
         "round_root",
         "manifest",
         "input_pool",
+        "upstream_root",
         "previous_policy",
         "previous_projection",
         "projects_root",
@@ -841,7 +933,26 @@ def main() -> int:
         if isinstance(value, Path):
             setattr(args, name, value.resolve())
     _bootstrap(args)
+    started_ns = time.monotonic_ns()
     result = STAGES[args.stage](args)
+    wall_time_ms = (time.monotonic_ns() - started_ns) // 1_000_000
+    manifest = _manifest(args)
+    if manifest.get("schema") == "recclaw.research-line.q4-prospective-arm-manifest.v1":
+        from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
+
+        _receipt(
+            args.round_root / "stage_costs" / f"{args.stage}.json",
+            {
+                "schema": "recclaw.research-line.q4-prospective-stage-cost.v1",
+                "stage": args.stage,
+                "policy_name": manifest.get("policy_name"),
+                "wall_time_ms": wall_time_ms,
+                "artifact": str(result),
+                "artifact_sha256": bytes_sha256(result.read_bytes()),
+                "held_out_reads": 0,
+                "development_only": True,
+            },
+        )
     print(json.dumps({"stage": args.stage, "artifact": str(result)}, sort_keys=True))
     return 0
 
