@@ -144,6 +144,31 @@ COMPATIBLE_EQUIVALENCE_CONTRACT_SHA256 = (
 COMPATIBLE_EQUIVALENCE_GPU_LOG_SHA256 = (
     "ef76ee91d009196b13d40d7fe81a5b21e000a4dfbcee779a773b187776ae757f"
 )
+COMPATIBLE_EXECUTION_CONTRACT_RELATIVE_PATH = (
+    "docs/research_line/vnext/"
+    "F1_RESOURCE_COMPATIBLE_EXECUTION_CONTRACT.json"
+)
+COMPATIBLE_EXECUTION_CONTRACT_SHA256 = (
+    "611f4cd9afd465d18c06e3c0049170cb4b4f06861991346fb6bed4b2465042c1"
+)
+COMPATIBLE_EXECUTION_RUN_IDENTITY = (
+    "f1-resource-compatible-execution-v1"
+)
+COMPATIBLE_EXECUTION_CAMPAIGN_ID = (
+    "recclaw-f1-resource-compatible-execution-v1"
+)
+COMPATIBLE_PRIOR_PHYSICAL_RECEIPT_SHA256 = (
+    "7ab541ca52e7ffa37089ebd16b8cecabea31bbfecf698d513a226987dbf08592"
+)
+COMPATIBLE_PRIOR_PREFIX_RECEIPT_SHA256 = (
+    "4f48387d606fa1d69f073ad5fa73dea169a52aad00e0fcd8dde63993714ff6d7"
+)
+COMPATIBLE_PRIOR_DECISION_SHA256 = (
+    "ab4be6ed84917e9b2d59dca42e68f7f04a73e0b54247b19f197169cc81aebf1a"
+)
+COMPATIBLE_PRIOR_PREFIX_RESULT_SHA256 = (
+    "8c60b460d916e4f58a83afb512dcebbf43a1dd4335fee7881fd1c0b1fb26e927"
+)
 COMPATIBLE_TEST_SHA256 = (
     "14eae461a3554708afcfe5c3336cee3521b2cef102320fbb65cd73732d0f8300"
 )
@@ -770,7 +795,7 @@ def _compatible_episode(
     identity: Mapping[str, Any],
     baseline_run: Mapping[str, Any],
     candidate_run: Mapping[str, Any],
-    uniform_deadline_seconds: int,
+    deadlines_seconds: Mapping[str, int],
 ) -> TypedResearchEpisodeV1:
     spec = _read_json(sealed_f1_root / "specs/slot-01.json")["research_spec"]
     qualification = _read_json(
@@ -791,7 +816,7 @@ def _compatible_episode(
             "baseline_wall_time_ms": baseline_run["wall_time_ms"],
             "candidate_wall_time_ms": candidate_run["wall_time_ms"],
             "physical_training_runs": 2,
-            "uniform_deadline_seconds_per_arm": uniform_deadline_seconds,
+            "deadlines_seconds": deadlines_seconds,
         }
     )
     realization = identity["realization_binding"]
@@ -935,6 +960,327 @@ def _compatible_physical_receipt(
     )
 
 
+def _validate_compatible_execution_contract(
+    repo_root: Path,
+    *,
+    prior_prefix_campaign: Path,
+) -> dict[str, Any]:
+    contract_path = repo_root / COMPATIBLE_EXECUTION_CONTRACT_RELATIVE_PATH
+    prior_physical_path = (
+        prior_prefix_campaign
+        / "F1_RESOURCE_COMPATIBLE_REALIZATION_PHYSICAL_RECEIPT.json"
+    )
+    prior_prefix_path = prior_prefix_campaign / "PREFIX_PHYSICAL_RECEIPT.json"
+    prior_decision_path = (
+        prior_prefix_campaign / "PREDICTION_AND_SCHEDULE_BEFORE_OUTCOME.json"
+    )
+    prior_result_path = (
+        prior_prefix_campaign
+        / "prefix_results/resource_compatible_realization.json"
+    )
+    recovery_path = (
+        repo_root
+        / "docs/research_line/vnext/"
+        "F1_OPEN_META_RUNTIME_RECOVERY_V2_CANONICAL_RECEIPT.json"
+    )
+    observed = {
+        "contract": bytes_sha256(contract_path.read_bytes()),
+        "decision": bytes_sha256(prior_decision_path.read_bytes()),
+        "physical": bytes_sha256(prior_physical_path.read_bytes()),
+        "prefix": bytes_sha256(prior_prefix_path.read_bytes()),
+        "prefix_result": bytes_sha256(prior_result_path.read_bytes()),
+        "recovery": bytes_sha256(recovery_path.read_bytes()),
+    }
+    expected = {
+        "contract": COMPATIBLE_EXECUTION_CONTRACT_SHA256,
+        "decision": COMPATIBLE_PRIOR_DECISION_SHA256,
+        "physical": COMPATIBLE_PRIOR_PHYSICAL_RECEIPT_SHA256,
+        "prefix": COMPATIBLE_PRIOR_PREFIX_RECEIPT_SHA256,
+        "prefix_result": COMPATIBLE_PRIOR_PREFIX_RESULT_SHA256,
+        "recovery": F1_RECOVERY_REPO_RECEIPT_SHA256,
+    }
+    if observed != expected:
+        raise F1Gpu35ClosureError(
+            "compatible execution resource evidence byte drift: "
+            + json.dumps(
+                {
+                    key: {"expected": expected[key], "observed": observed[key]}
+                    for key in expected
+                    if expected[key] != observed[key]
+                },
+                sort_keys=True,
+            )
+        )
+    contract = _read_json(contract_path)
+    prior_physical = _read_json(prior_physical_path)
+    prior_prefix = _read_json(prior_prefix_path)
+    prior_decision = _read_json(prior_decision_path)
+    prior_result = _read_json(prior_result_path)
+    recovery = _read_json(recovery_path)
+    prediction = prior_decision["accepted_consumer_output"]["predictions"][
+        COMPATIBLE_PROBE_ARM
+    ]
+    control = recovery["runtime_recovery"]["control"]
+    candidate_point = float(prediction["estimated_total_wall_time_seconds"])
+    control_seconds = int(control["wall_time_ms"]) / 1000
+    margin = float(contract["admission"]["resource_margin_multiplier"])
+    campaign_raw = (candidate_point + control_seconds) * margin
+    campaign_budget = math.ceil(campaign_raw / 3600) * 3600
+    deadlines = {
+        "matched_bpr_control": math.ceil(control_seconds * margin),
+        COMPATIBLE_PROBE_ARM: math.ceil(candidate_point * margin),
+    }
+    if (
+        contract.get("status") != "PASS"
+        or contract.get("development_only") is not True
+        or contract.get("held_out_reads") != 0
+        or contract.get("new_provider_calls") != 0
+        or contract.get("outcome_fields_consumed") != []
+        or contract["admission"].get("decision")
+        != "ADMITTED_FRESH_MATCHED_PAIR"
+        or contract["admission"].get("arm_order") != list(COMPATIBLE_ARM_ORDER)
+        or contract["admission"].get("campaign_budget_seconds")
+        != campaign_budget
+        or contract["admission"].get("campaign_budget_seconds") != 10800
+        or contract["admission"].get("deadlines_seconds") != deadlines
+        or contract["admission"].get("deadline_sum_seconds")
+        != sum(deadlines.values())
+        or contract["admission"].get("watchdog_seconds")
+        != ENGINEERING_WATCHDOG_SECONDS
+        or max(deadlines.values()) >= ENGINEERING_WATCHDOG_SECONDS
+        or contract["inputs"]["candidate_prefix"].get(
+            "candidate_point_estimate_seconds"
+        )
+        != candidate_point
+        or contract["inputs"]["fresh_matched_control_prior"].get(
+            "exact_wall_time_ms"
+        )
+        != control["wall_time_ms"]
+        or prior_physical.get("status") != "RESOURCE_DEFERRED"
+        or prior_physical.get("episode") is not None
+        or prior_prefix.get("prefix_result", {}).get("exit_status") != "SUCCESS"
+        or prior_result.get("exit_status") != "SUCCESS"
+        or prior_result.get("epochs_requested") != PROBE_EPOCHS
+        or prior_result.get("seed") != TRAINING_SEED
+        or prior_result.get("resource_telemetry", {}).get(
+            "peak_gpu_memory_mib"
+        )
+        != 6696.0
+        or prior_decision.get("full_outcomes_present_when_written") != 0
+        or control.get("exit_status") != "SUCCESS"
+        or control.get("result_sha256")
+        != contract["inputs"]["fresh_matched_control_prior"][
+            "control_result_sha256"
+        ]
+        or contract["claims"].get("comparable_to_prior_7200_campaign")
+        is not False
+        or contract["claims"].get("scientific_effect") is not False
+        or contract["claims"].get("policy_superiority") is not False
+    ):
+        raise F1Gpu35ClosureError(
+            "compatible execution contract semantic or mechanical drift"
+        )
+    return contract
+
+
+def _compatible_execution_physical_receipt(
+    *,
+    campaign_root: Path,
+    identity: Mapping[str, Any],
+    contract: Mapping[str, Any],
+    runs: Mapping[str, Mapping[str, Any]],
+    episode: TypedResearchEpisodeV1 | None,
+) -> dict[str, Any]:
+    completed = episode is not None
+    deadlines = contract["admission"]["deadlines_seconds"]
+    architecture_gates = {
+        "end_to_end_result_chain_real_and_valid": completed,
+        "function_real_and_runnable": completed,
+        "no_fixed_66_tuning_static_wrapper_fallback_mock_or_smoke_substitution": (
+            completed
+            and all(run.get("epochs_requested") == FULL_EPOCHS for run in runs.values())
+            and all(run.get("seed") == TRAINING_SEED for run in runs.values())
+            and all(
+                runs[arm].get("resource_deadline_seconds") == deadlines[arm]
+                for arm in COMPATIBLE_ARM_ORDER
+            )
+            and all(
+                run.get("watchdog_seconds") == ENGINEERING_WATCHDOG_SECONDS
+                for run in runs.values()
+            )
+        ),
+        "serves_open_algorithm_research_target": (
+            completed
+            and identity["realization_binding"]["identity"]
+            == "RESOURCE_COMPATIBLE_EQUIVALENT_REALIZATION"
+            and identity["original_sealed_binding"]["policy_digest"] is not None
+        ),
+    }
+    status = (
+        "F1_RESOURCE_COMPATIBLE_REALIZATION_PASS"
+        if all(architecture_gates.values())
+        else "RESOURCE_DEFERRED"
+    )
+    return canonical_value(
+        {
+            "architecture_effect_gates": architecture_gates,
+            "attempt_identity": identity,
+            "development_only": True,
+            "effect_update": (
+                "DEVELOPMENT_ONLY_TYPED_EPISODE"
+                if episode is not None
+                else "COMPLETION_RESOURCE_ONLY"
+            ),
+            "episode": episode.canonical_dict() if episode else None,
+            "execution_contract_sha256": bytes_sha256(
+                (campaign_root / "RESOURCE_COMPATIBLE_EXECUTION_CONTRACT.json")
+                .read_bytes()
+            ),
+            "experiment_executed": episode is not None,
+            "held_out_reads": 0,
+            "matched_full_runs": runs,
+            "mechanism_negative_evidence": False,
+            "new_physical_training_runs": 2,
+            "new_provider_calls": 0,
+            "old_7200_campaign_comparison_allowed": False,
+            "original_sealed_candidate_disposition": "RESOURCE_DEFERRED",
+            "original_sealed_candidate_pass": False,
+            "policy_superiority_claim": False,
+            "resource_disposition": (
+                "COMPLETED_MATCHED_PAIR" if completed else "RESOURCE_DEFERRED"
+            ),
+            "schema": (
+                "recclaw.research-line."
+                "f1-resource-compatible-execution-physical-receipt.v1"
+            ),
+            "scientific_effect_claim": False,
+            "scientific_interpretation": "INCONCLUSIVE_NOT_ADJUDICATED",
+            "status": status,
+        }
+    )
+
+
+def run_compatible_execution(
+    *,
+    repo_root: Path,
+    campaign_root: Path,
+    sealed_f1_root: Path,
+    equivalence_gpu_log_path: Path,
+    prior_prefix_campaign: Path,
+) -> dict[str, Any]:
+    _assert_new(campaign_root, label="fresh compatible execution campaign root")
+    sealed_binding = _validate_sealed_inputs(repo_root, sealed_f1_root)
+    realization_binding = _validate_compatible_realization(
+        repo_root,
+        equivalence_gpu_log_path=equivalence_gpu_log_path,
+    )
+    contract = _validate_compatible_execution_contract(
+        repo_root,
+        prior_prefix_campaign=prior_prefix_campaign,
+    )
+    idle = _assert_gpu_idle()
+    campaign_root.mkdir(parents=True)
+    base_identity = _compatible_identity(
+        campaign_root=campaign_root,
+        sealed_binding=sealed_binding,
+        realization_binding=realization_binding,
+    )
+    identity = canonical_value(
+        {
+            **base_identity,
+            "campaign_id": COMPATIBLE_EXECUTION_CAMPAIGN_ID,
+            "execution_contract_sha256": COMPATIBLE_EXECUTION_CONTRACT_SHA256,
+            "prior_resource_deferred_commit": (
+                "aa44b0a9391f072637ffd531464f33d1b6b9e415"
+            ),
+            "prior_resource_evidence_root": str(prior_prefix_campaign),
+            "run_identity": COMPATIBLE_EXECUTION_RUN_IDENTITY,
+            "schema": (
+                "recclaw.research-line."
+                "f1-resource-compatible-execution-identity.v1"
+            ),
+        }
+    )
+    _write_new_json(campaign_root / "RUN_IDENTITY.json", identity)
+    _write_new_json(campaign_root / "GPU_IDLE_BEFORE_EXECUTION.json", idle)
+    _write_new_json(
+        campaign_root / "RESOURCE_COMPATIBLE_EXECUTION_CONTRACT.json",
+        contract,
+    )
+    recbole_root = Path(os.environ["RECCLAW_RECBOLE_ROOT"])
+    baseline_source = recbole_root / "recbole/model/general_recommender/bpr.py"
+    if bytes_sha256(baseline_source.read_bytes()) != BPR_SOURCE_SHA256:
+        raise F1Gpu35ClosureError("gpu35 BPR comparator source identity drift")
+    arm_inputs = {
+        "matched_bpr_control": {
+            "candidate_root": None,
+            "entrypoint": "recbole.model.general_recommender.bpr:BPR",
+            "source_sha256": BPR_SOURCE_SHA256,
+        },
+        COMPATIBLE_PROBE_ARM: {
+            "candidate_root": Path(realization_binding["realization_root"]),
+            "entrypoint": realization_binding["entrypoint"],
+            "source_sha256": realization_binding["source_sha256"],
+        },
+    }
+    deadlines = contract["admission"]["deadlines_seconds"]
+    runs: dict[str, dict[str, Any]] = {}
+    for arm in COMPATIBLE_ARM_ORDER:
+        _write_new_json(
+            campaign_root / "gpu_idle_before_arm" / f"{arm}.json",
+            _assert_gpu_idle(),
+        )
+        row = arm_inputs[arm]
+        runs[arm] = _run_arm(
+            repo_root=repo_root,
+            side_root=campaign_root / "full_runs",
+            run_id=f"{arm}-full",
+            candidate_root=row["candidate_root"],
+            entrypoint=str(row["entrypoint"]),
+            source_sha256=str(row["source_sha256"]),
+            epochs=FULL_EPOCHS,
+            purpose="DEVELOPMENT_ONLY_RESOURCE_COMPATIBLE_EXECUTION",
+            timeout_seconds=int(deadlines[arm]),
+            run_identity=COMPATIBLE_EXECUTION_RUN_IDENTITY,
+            authority="user-delegated-f1-resource-compatible-execution-v1",
+        )
+        _write_new_json(campaign_root / "full_results" / f"{arm}.json", runs[arm])
+    training_closed = all(
+        run.get("exit_status") == "SUCCESS"
+        and "ndcg@10" in run.get("metrics", {})
+        for run in runs.values()
+    )
+    episode = (
+        _compatible_episode(
+            sealed_f1_root=sealed_f1_root,
+            identity=identity,
+            baseline_run=runs["matched_bpr_control"],
+            candidate_run=runs[COMPATIBLE_PROBE_ARM],
+            deadlines_seconds=deadlines,
+        )
+        if training_closed
+        else None
+    )
+    if episode is not None:
+        _write_new_json(
+            campaign_root / "episodes/resource_compatible_realization.json",
+            episode.canonical_dict(),
+        )
+    physical = _compatible_execution_physical_receipt(
+        campaign_root=campaign_root,
+        identity=identity,
+        contract=contract,
+        runs=runs,
+        episode=episode,
+    )
+    _write_new_json(
+        campaign_root
+        / "F1_RESOURCE_COMPATIBLE_EXECUTION_PHYSICAL_RECEIPT.json",
+        physical,
+    )
+    return physical
+
+
 def run_compatible_full(
     *,
     repo_root: Path,
@@ -1026,7 +1372,9 @@ def run_compatible_full(
             identity=identity,
             baseline_run=runs["matched_bpr_control"],
             candidate_run=runs["resource_compatible_realization"],
-            uniform_deadline_seconds=uniform_deadline,
+            deadlines_seconds={
+                arm: uniform_deadline for arm in COMPATIBLE_ARM_ORDER
+            },
         )
         if training_closed
         else None
@@ -1414,6 +1762,45 @@ def bind_compatible_receipt(
     return repository_receipt
 
 
+def bind_compatible_execution_receipt(
+    *,
+    physical_receipt_path: Path,
+    canonical_receipt_path: Path,
+) -> dict[str, Any]:
+    _assert_new(canonical_receipt_path, label="compatible execution repository receipt")
+    physical = _read_json(physical_receipt_path)
+    if (
+        physical.get("schema")
+        != (
+            "recclaw.research-line."
+            "f1-resource-compatible-execution-physical-receipt.v1"
+        )
+        or physical.get("development_only") is not True
+        or physical.get("held_out_reads") != 0
+        or physical.get("new_provider_calls") != 0
+        or physical.get("scientific_effect_claim") is not False
+        or physical.get("policy_superiority_claim") is not False
+        or physical.get("original_sealed_candidate_pass") is not False
+        or physical.get("original_sealed_candidate_disposition")
+        != "RESOURCE_DEFERRED"
+        or physical.get("old_7200_campaign_comparison_allowed") is not False
+    ):
+        raise F1Gpu35ClosureError(
+            "invalid resource-compatible execution physical receipt"
+        )
+    repository_receipt = canonical_value(
+        {
+            **physical,
+            "external_receipt_ref": str(physical_receipt_path),
+            "external_receipt_sha256": bytes_sha256(
+                physical_receipt_path.read_bytes()
+            ),
+        }
+    )
+    _write_new_json(canonical_receipt_path, repository_receipt)
+    return repository_receipt
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1425,6 +1812,8 @@ def main() -> int:
             "compatible-prefix",
             "compatible-full",
             "compatible-bind",
+            "compatible-execution",
+            "compatible-execution-bind",
         ),
         required=True,
     )
@@ -1433,12 +1822,14 @@ def main() -> int:
     parser.add_argument("--physical-receipt", type=Path)
     parser.add_argument("--canonical-receipt", type=Path)
     parser.add_argument("--equivalence-gpu-log", type=Path)
+    parser.add_argument("--prior-prefix-campaign", type=Path)
     args = parser.parse_args()
     if args.phase in {
         "prefix",
         "finalize-prefix-failure",
         "compatible-prefix",
         "compatible-full",
+        "compatible-execution",
     }:
         if args.campaign_root is None or args.sealed_f1_root is None:
             parser.error(
@@ -1464,20 +1855,33 @@ def main() -> int:
                 "compatible-prefix": run_compatible_prefix,
                 "compatible-full": run_compatible_full,
             }
-            result = compatible_functions[args.phase](
-                repo_root=ROOT,
-                campaign_root=args.campaign_root.resolve(),
-                sealed_f1_root=args.sealed_f1_root.resolve(),
-                equivalence_gpu_log_path=args.equivalence_gpu_log.resolve(),
-            )
+            if args.phase == "compatible-execution":
+                if args.prior_prefix_campaign is None:
+                    parser.error(
+                        "compatible execution requires --prior-prefix-campaign"
+                    )
+                result = run_compatible_execution(
+                    repo_root=ROOT,
+                    campaign_root=args.campaign_root.resolve(),
+                    sealed_f1_root=args.sealed_f1_root.resolve(),
+                    equivalence_gpu_log_path=args.equivalence_gpu_log.resolve(),
+                    prior_prefix_campaign=args.prior_prefix_campaign.resolve(),
+                )
+            else:
+                result = compatible_functions[args.phase](
+                    repo_root=ROOT,
+                    campaign_root=args.campaign_root.resolve(),
+                    sealed_f1_root=args.sealed_f1_root.resolve(),
+                    equivalence_gpu_log_path=args.equivalence_gpu_log.resolve(),
+                )
     else:
         if args.physical_receipt is None or args.canonical_receipt is None:
             parser.error("bind requires --physical-receipt and --canonical-receipt")
-        bind_function = (
-            bind_compatible_receipt
-            if args.phase == "compatible-bind"
-            else bind_receipt
-        )
+        bind_function = {
+            "bind": bind_receipt,
+            "compatible-bind": bind_compatible_receipt,
+            "compatible-execution-bind": bind_compatible_execution_receipt,
+        }[args.phase]
         result = bind_function(
             physical_receipt_path=args.physical_receipt.resolve(),
             canonical_receipt_path=args.canonical_receipt.resolve(),
