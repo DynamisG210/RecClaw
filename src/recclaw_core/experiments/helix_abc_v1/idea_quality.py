@@ -61,7 +61,7 @@ from .vnext_contracts import (
 
 
 Q1_MODEL = MODEL
-Q1_PROPOSAL_TOKEN_CEILING = 12_000
+Q1_PROPOSAL_TOKEN_CEILING = 16_000
 Q1_IMPLEMENTATION_TOKEN_CEILING = 20_000
 Q1_CANDIDATE_SLOTS = ("diagnosis", "frontier")
 Q1_SLOT_MODES = {
@@ -294,6 +294,16 @@ def build_q1_ab_contract() -> dict[str, Any]:
             "model": Q1_MODEL,
             "tools": [],
             "proposal_token_ceiling": Q1_PROPOSAL_TOKEN_CEILING,
+            "proposal_token_ceiling_calibration": {
+                "current": Q1_PROPOSAL_TOKEN_CEILING,
+                "derivation": (
+                    "2x fresh maximum proposal input tokens (7917) = 15834, "
+                    "rounded upward to the next thousand"
+                ),
+                "historical_right_censored": 12_000,
+                "outcome_blind": True,
+                "same_for_all_arms_and_slots": True,
+            },
             "implementation_token_ceiling": Q1_IMPLEMENTATION_TOKEN_CEILING,
             "candidate_slots": list(Q1_CANDIDATE_SLOTS),
             "slot_modes": Q1_SLOT_MODES,

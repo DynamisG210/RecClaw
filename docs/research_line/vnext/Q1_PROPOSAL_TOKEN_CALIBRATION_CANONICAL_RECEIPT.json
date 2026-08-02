@@ -1,0 +1,89 @@
+{
+  "schema": "recclaw.research-line.q1-proposal-token-calibration-canonical-receipt.v1",
+  "status": "HARD_BLOCK",
+  "development_only": true,
+  "decision": "FOUR_SLOT_PROVIDER_SUCCESS_BUT_ENRICHED_QUALIFICATION_AND_RESOURCE_ADMISSION_BLOCKED",
+  "source_parent_commit": "4e0dbc9ff283334c075034588f4d61adee958f4d",
+  "source_code_sha256": "0352e0392455d95f23db3261ac6d2fad02c98bd707a473a4764b8a340f49f9b7",
+  "calibration_manifest_ref": "docs/research_line/vnext/Q1_PROPOSAL_TOKEN_CALIBRATION_MANIFEST.json",
+  "calibration_manifest_sha256": "7ac3d7706ef80fbcd59f5f66852b2cfe454e92714b2e281cdeb17e5d503b27b9",
+  "frozen_budget": {
+    "proposal_total_token_ceiling": 16000,
+    "historical_right_censored_ceiling": 12000,
+    "derivation": "2x fresh maximum proposal input tokens (7917) = 15834, rounded upward to the next thousand",
+    "all_arms_and_slots_equal": true,
+    "implementation_token_ceiling_unchanged": 20000,
+    "model": "gpt-5.4",
+    "temperature": 0.0,
+    "tools": [],
+    "retry_count": 0
+  },
+  "fresh_run": {
+    "root": "/tmp/recclaw_q1_token_calibration_79fa06a_20260802_01/run",
+    "canonical_receipt_ref": "results/research_line/q1_token_calibration_20260802_01/Q1_CANONICAL_RECEIPT.json",
+    "canonical_receipt_sha256": "1dcc62a38ec24879620a585a9067225322d1e53ccb0e173b2390b2e57d58876f",
+    "ab_contract_sha256": "f1d73275c2b8797c7671158172cef1790100e656138c22c436f905dfe62a220e",
+    "baseline_schema_sha256": "c51a959b7cda232ff580ebd47827f5412a057024670d3382ae08467856a02e99",
+    "enriched_schema_sha256": "196ab592bcfb9c8af3417195364da8539543048984831a857e5114adc9ad7ae7",
+    "frozen_selection_sha256": "3de78339cf4ebf1a0124cc316c981669151e073fea005285fcf317bfa7aef957",
+    "proposal_physical_calls": 4,
+    "proposal_successes": 4,
+    "proposal_retries": 0,
+    "implementation_physical_calls": 2,
+    "implementation_successes": 2,
+    "implementation_retries": 0,
+    "resolver_calls": 4,
+    "selection_frozen_before_implementation": true,
+    "selected_baseline_package_digest": "b585c9dcddc47acb9a4a26dbb0e7871dcd3440c999b8210ebd74afe88e117e35",
+    "selected_enriched_package_digest": "9613d1b0e5f1b919a63b67cd2bb0a4fef3d2bb1f42ee6a8e14b8a846c9cc4134"
+  },
+  "physical_broker_hashes": {
+    "proposal_baseline_diagnosis": "6672513ae77527bdf39119cb19bc3dc40e51462eee101cbb1f47d31368695983",
+    "proposal_baseline_frontier": "183406cdc451a67c42d31949f39e13bb27fdea0b0d5acfc60d9008e59112df30",
+    "proposal_enriched_diagnosis": "718da9366d881de39713e0e121abd9636d3999609af54031422924b18b8598fb",
+    "proposal_enriched_frontier": "849d59859b4914ba50fe2d979a8c3d3095c9ddd1270ac09ad8d7bd2c8c943663",
+    "implementation_baseline": "5caf6bbb5c98091b01532b43bbdd382c7c5a4dd8915aa793c6b4d2033ee9ada4",
+    "implementation_enriched": "69405b3aed36a98a1d5ab4765bf38f0772d8051c8fce763b136d2d6a2e0bb4a2"
+  },
+  "qualification_and_resource": {
+    "baseline_qualification": "PASS",
+    "baseline_resource_admission": "RESOURCE_DEFERRED",
+    "enriched_qualification": "FAIL_IMPLEMENTATION_UNIT_ASSERTIONERROR",
+    "enriched_resource_admission": "RESOURCE_DEFERRED",
+    "resource_schedules_nonempty": false,
+    "qualification_or_resource_failure_is_scientific_effect": false
+  },
+  "downstream": {
+    "candidate_pool_frozen": true,
+    "selection_frozen": true,
+    "implementer_calls": 2,
+    "materialized_packages": 2,
+    "qualifier_runs": 2,
+    "resource_admission_calls": 2,
+    "gpu_training_lines": 0,
+    "q2_package_created": false
+  },
+  "boundaries": {
+    "held_out_reads": 0,
+    "effect_updates": 0,
+    "effect_untouched": true,
+    "manual_candidate_patches": 0,
+    "old_12000_outputs_reused": false,
+    "availability_probe_in_this_run": false,
+    "original_q1_calibration_and_schemafix_roots_read_only": true,
+    "pushes": 0
+  },
+  "four_gates": {
+    "functional_real_execution": "HARD_BLOCK_ENRICHED_QUALIFIER_UNIT_FAILURE",
+    "end_to_end_result_chain": "HARD_BLOCK_RESOURCE_SCHEDULE_EMPTY",
+    "recclaw_open_recommendation_research_value": "ARCHITECTURE_SIGNAL_ONLY_NO_Q2_CONSUMABLE_PACKAGE",
+    "no_66_item_tuning_static_wrapper_fallback_mock_effect": "PASS"
+  },
+  "interpretation": {
+    "token_ceiling_calibration_resolved_provider_failure": true,
+    "scientific_effect_claim": false,
+    "formal_scientific_experiment": false,
+    "q2_continuation_allowed": false
+  },
+  "next_action": "STOP_WITHOUT_RAISING_CEILING_OR_ADDING_COMPATIBILITY_SCHEME"
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "recclaw.research-line.q1-proposal-token-calibration-manifest.v1",
+  "development_only": true,
+  "source_parent_commit": "4e0dbc9ff283334c075034588f4d61adee958f4d",
+  "historical_right_censored_ceiling": 12000,
+  "fresh_max_input_tokens_observed": 7917,
+  "derivation": "2x fresh maximum proposal input tokens = 15834, rounded upward to the next thousand",
+  "proposal_total_token_ceiling": 16000,
+  "applies_to": {
+    "arms": [
+      "baseline",
+      "enriched"
+    ],
+    "slots": [
+      "diagnosis",
+      "frontier"
+    ],
+    "candidate_count_per_arm": 2,
+    "selection_budget_per_arm": 1
+  },
+  "invariants": {
+    "model": "gpt-5.4",
+    "temperature": 0.0,
+    "tools": [],
+    "origin_blind": true,
+    "selection_rule_unchanged": true,
+    "implementation_token_ceiling": 20000,
+    "retry_count": 0,
+    "outcome_blind": true
+  },
+  "forbidden_uses": [
+    "arm_or_slot_specific_budgeting",
+    "candidate_content_budgeting",
+    "ndcg_or_implementation_outcome_budgeting",
+    "retry_or_fallback"
+  ],
+  "old_12000_is_historical_evidence_only": true,
+  "held_out_reads": 0,
+  "effect_updates": 0
+}

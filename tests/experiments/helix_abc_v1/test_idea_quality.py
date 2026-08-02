@@ -32,6 +32,7 @@ from recclaw_core.experiments.helix_abc_v1.innovation_spine import (
 )
 from recclaw_core.experiments.helix_abc_v1.canonical import canonical_json_bytes
 from recclaw_core.experiments.helix_abc_v1.lab_api_broker import (
+    LabApiBrokerReleaseV1,
     validate_provider_strict_schema,
 )
 
@@ -109,6 +110,17 @@ def test_offline_ab_contract_is_symmetric_origin_blind_and_small() -> None:
     assert contract["model"] == Q1_MODEL
     assert contract["tools"] == []
     assert contract["proposal_token_ceiling"] == Q1_PROPOSAL_TOKEN_CEILING
+    assert Q1_PROPOSAL_TOKEN_CEILING == 16_000
+    assert contract["proposal_token_ceiling_calibration"] == {
+        "current": 16_000,
+        "derivation": (
+            "2x fresh maximum proposal input tokens (7917) = 15834, "
+            "rounded upward to the next thousand"
+        ),
+        "historical_right_censored": 12_000,
+        "outcome_blind": True,
+        "same_for_all_arms_and_slots": True,
+    }
     assert contract["candidate_slots"] == list(Q1_CANDIDATE_SLOTS)
     assert contract["candidate_count_per_arm"] == 2
     assert contract["selection_budget_per_arm"] == 1
@@ -126,6 +138,21 @@ def test_offline_ab_contract_is_symmetric_origin_blind_and_small() -> None:
         "ndcg_or_other_effect_metric",
         "qualification_result",
     ]
+
+
+def test_all_four_proposal_slots_share_the_frozen_broker_release_ceiling() -> None:
+    release = LabApiBrokerReleaseV1.create(
+        base_url="https://laboratory.invalid/v1",
+        model=Q1_MODEL,
+        response_schema_digest="a" * 64,
+        max_total_tokens_per_call=Q1_PROPOSAL_TOKEN_CEILING,
+        timeout_ms=900_000,
+    )
+    assert release.max_total_tokens_per_call == 16_000
+    assert release.retry_count == 0
+    assert release.temperature == 0.0
+    assert Q1_CANDIDATE_SLOTS == ("diagnosis", "frontier")
+    assert build_q1_ab_contract()["candidate_count_per_arm"] == 2
 
 
 def test_prompts_are_origin_blind_and_only_enriched_contract_differs() -> None:
