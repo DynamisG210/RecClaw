@@ -1,0 +1,66 @@
+{
+  "development_only": true,
+  "effect_authority": {
+    "allowed": [
+      "FULL_COMPARABLE_FRESH_MATCHED_DEVELOPMENT_EPISODE"
+    ],
+    "forbidden": [
+      "RESOURCE_CENSORED",
+      "RESOURCE_DEFERRED",
+      "RIGHT_CENSORED",
+      "PROTOCOL_MISSINGNESS",
+      "PROBE_ONLY",
+      "QUALIFICATION_ONLY",
+      "NOT_ASSESSED",
+      "NON_IDENTIFIABLE_WITHOUT_MATCHED_EFFECT"
+    ],
+    "target": "PARENT_RELATIVE_DEVELOPMENT_EFFECT",
+    "uncertainty_rule": "INCONCLUSIVE_OR_NOT_ADJUDICATED_EPISODES_RETAIN_OBSERVED_EFFECT_WITH_EXPLICIT_REDUCED_WEIGHT_AND_NO_SCIENTIFIC_CLAIM"
+  },
+  "feasibility_authority": {
+    "allowed": [
+      "SUCCESS",
+      "RIGHT_CENSORED",
+      "RESOURCE_CENSORED",
+      "RESOURCE_DEFERRED",
+      "OOM",
+      "TIMEOUT",
+      "ACCELERATOR_ERROR",
+      "RUNTIME_FAILURE",
+      "QUALIFICATION_FAILURE",
+      "PROTOCOL_NO_CHECKPOINT"
+    ],
+    "forbidden": [
+      "NDCG_AS_COMPLETION_LABEL",
+      "MECHANISM_STATE_AS_COMPLETION_LABEL",
+      "CANDIDATE_IDENTITY_AS_FEATURE"
+    ],
+    "target": "COMPLETION_PROBABILITY_AND_RESOURCE_COST"
+  },
+  "held_out_reads": 0,
+  "mechanism_information_authority": {
+    "allowed": [
+      "NOT_ASSESSED",
+      "INACTIVE",
+      "ACTIVE_SUPPORTED",
+      "ACTIVE_CONTRADICTED",
+      "NON_IDENTIFIABLE"
+    ],
+    "forbidden": [
+      "RESOURCE_STATUS_AS_MECHANISM_EFFECT",
+      "NDCG_AS_MECHANISM_LABEL",
+      "PROTOCOL_MISSINGNESS_AS_NEGATIVE_MECHANISM_LABEL",
+      "CANDIDATE_IDENTITY_AS_FEATURE"
+    ],
+    "target": "PROBABILITY_OF_IDENTIFIABLE_MECHANISM_EVIDENCE_UNDER_THE_DECLARED_PROBE_DESIGN"
+  },
+  "q2_binding": {
+    "effect_update": false,
+    "feasibility_update": "RESOURCE_CENSORED_AND_PROTOCOL_NO_CHECKPOINT_COMPONENTS_ONLY",
+    "mechanism_information_update": "NON_IDENTIFIABLE_LABEL_WITH_GENERAL_PROBE_DESIGN_FEATURES",
+    "resource_status_changes_mechanism_effect": false
+  },
+  "schema": "recclaw.research-line.q3-head-authority-matrix.v1",
+  "scientific_effect_claim": false,
+  "separation_invariant": "EACH_HEAD_RECEIVES_ONLY_ITS_OWN_CANONICAL_INPUT_PROJECTION; AUDIT_IDENTITY_AND_OTHER_HEAD_FIELDS_ARE_EXCLUDED"
+}
