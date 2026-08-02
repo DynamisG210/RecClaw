@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import sys
@@ -15,10 +16,12 @@ from recclaw_core.experiments.helix_abc_v1.resource_scheduling import (
     FIXED_EVAL_BATCH_INDICES,
     FIXED_TRAIN_BATCH_INDICES,
     PROBE_EPOCHS,
+    admit_resource_only_evidence,
     build_fixed_batch_prefix_contract,
     finalize_fixed_batch_hard_block_receipt,
     finalize_hard_block_receipt,
     predict_resources,
+    project_resource_only_evidence,
     structural_features,
 )
 from recclaw_core.experiments.helix_abc_v1.fresh_r1 import (
@@ -67,6 +70,73 @@ def _probe(*, batch_ms: int, peak_mib: float) -> dict[str, object]:
         },
         "wall_time_ms": sum(int(row["wall_time_ms"]) for row in batches) + 500,
     }
+
+
+def _accepted_resource_receipts() -> tuple[dict[str, object], dict[str, object]]:
+    root = Path(__file__).resolve().parents[3]
+    q0 = json.loads(
+        (root / "docs/research_line/vnext/Q0_QUALITY_CALIBRATION_CANONICAL_RECEIPT.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    q0r = json.loads(
+        (root / "docs/research_line/vnext/Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return q0, q0r
+
+
+def test_q0r2_resource_projection_is_effect_blind() -> None:
+    q0, q0r = _accepted_resource_receipts()
+    changed = copy.deepcopy(q0)
+    changed["evaluation"]["outcomes"]["parent_equivalent_null"].update(
+        {
+            "candidate_minus_bpr": 999.0,
+            "candidate_ndcg_at_10": -999.0,
+            "mechanism_effect_update_allowed": False,
+        }
+    )
+    changed["evaluation"]["matched_bpr_control"]["metrics"] = {"ndcg@10": -42.0}
+    changed["arm_records"]["parent_equivalent_null"]["training_run"]["metrics"] = {
+        "loss": 123.0,
+        "ndcg@10": -42.0,
+    }
+
+    projected = project_resource_only_evidence(q0_receipt=q0, q0r_receipt=q0r)
+    changed_projected = project_resource_only_evidence(
+        q0_receipt=changed, q0r_receipt=q0r
+    )
+    decision = admit_resource_only_evidence(projected)
+
+    assert projected == changed_projected
+    assert decision == admit_resource_only_evidence(changed_projected)
+    assert projected["effect_fields_consumed"] == []
+    assert all(
+        row["mechanism_effect_update_allowed"] is False
+        for row in projected["arms"].values()
+    )
+    encoded = json.dumps(projected, sort_keys=True).lower()
+    assert "ndcg" not in encoded
+    assert "candidate_minus" not in encoded
+    assert '"loss"' not in encoded
+
+
+def test_q0r2_first_principles_admission_is_non_empty() -> None:
+    q0, q0r = _accepted_resource_receipts()
+    evidence = project_resource_only_evidence(q0_receipt=q0, q0r_receipt=q0r)
+
+    decision = admit_resource_only_evidence(evidence)
+
+    scheduled = {row["arm"] for row in decision["schedule"]}
+    deferred = {row["arm"]: row for row in decision["deferred_arms"]}
+    assert scheduled == {"matched_bpr_control", "parent_equivalent_null"}
+    assert decision["schedule"]
+    assert sum(row["deadline_seconds"] for row in decision["schedule"]) <= 7200
+    assert deferred["known_good_reference"]["resource_disposition"] == "RESOURCE_DEFERRED"
+    assert deferred["frontier_candidate"]["future_eligible"] is True
+    assert decision["engineering_watchdog_seconds"] == 10800
+    assert all(row["deadline_seconds"] < 10800 for row in decision["schedule"])
 
 
 def test_q0r_prediction_is_uniform_outcome_blind_and_budget_bounded() -> None:

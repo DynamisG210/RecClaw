@@ -51,8 +51,13 @@ Q0R_V2_PHYSICAL_RECEIPT_SHA256 = (
 Q0R_V2_PREFIX_CONTRACT_SHA256 = (
     "c87190d7a1a0b997f2f513c8bc7605a5e9c7d2cf6ec3ad6cf3c6f2c7351e446c"
 )
+ACCEPTED_Q0R_V3_COMMIT = "5372da07829c92d73b530855fded95de4f57059b"
+Q0R_V3_REPO_RECEIPT_SHA256 = (
+    "91341e1ed6f4b324503d7e79a8b24f3c0b04482028e5e646fe00920781b791e6"
+)
 Q0R_RUN_IDENTITY = "q0r-resource-scheduling-v3-type-preserving-fixed-batch"
 Q0R_BRANCH = "feat/research-line-resource-scheduling"
+Q0R2_RUN_IDENTITY = "q0r2-first-principles-resource-admission"
 Q0R_ROOT = Path(
     os.environ.get(
         "RECCLAW_Q0R_ROOT",
@@ -342,6 +347,239 @@ def _arm_inputs(
     return inputs
 
 
+def project_resource_only_evidence(
+    *,
+    q0_receipt: Mapping[str, Any],
+    q0r_receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project prior observations onto the fields allowed to inform resources.
+
+    Q0 metrics and comparisons are intentionally unreachable from the returned
+    value.  The exact package/runtime bindings come from the accepted Q0R input
+    identity, while completion and censoring facts come from the accepted Q0
+    physical executions.
+    """
+
+    common_runtime = q0_receipt["prefrozen_manifest"]["common_runtime"]
+    early_stopping = {
+        "epochs_ceiling": int(common_runtime["epochs"]),
+        "evaluation_interval_epochs": 1,
+        "patience_evaluations": int(common_runtime["early_stopping_patience"]),
+        "semantics": "STOP_AFTER_PATIENCE_WITHOUT_VALIDATION_IMPROVEMENT",
+    }
+    if early_stopping != {
+        "epochs_ceiling": 100,
+        "evaluation_interval_epochs": 1,
+        "patience_evaluations": 10,
+        "semantics": "STOP_AFTER_PATIENCE_WITHOUT_VALIDATION_IMPROVEMENT",
+    }:
+        raise ResourceSchedulingError("Q0 early-stopping contract drift")
+    q0_runtime = q0_receipt["runtime_environment_identity"]
+    q0r_runtime = q0r_receipt["runtime_environment_identity"]
+    runtime_identity = {
+        "gpu_name": q0_runtime["gpu_name"],
+        "gpu_memory_total_mib": q0_runtime["gpu_memory_total_mib"],
+        "python_executable_sha256": q0_runtime["python_executable_sha256"],
+        "recbole_commit": q0_runtime["recbole_commit"],
+        "recbole_tree": q0_runtime["recbole_tree"],
+        "search_partition_files": q0_runtime["search_partition_files"],
+    }
+    if any(q0r_runtime.get(key) != value for key, value in runtime_identity.items()):
+        raise ResourceSchedulingError("Q0/Q0R runtime identity mismatch")
+
+    q0r_inputs = q0r_receipt["input_identity"]["candidate_inputs"]
+    q0_timeout_ms = int(common_runtime["timeout_seconds_per_run"]) * 1000
+    projected: dict[str, Any] = {}
+    for arm in ARM_ORDER:
+        if arm == "matched_bpr_control":
+            training = q0_receipt["evaluation"]["matched_bpr_control"]
+            expected_source = q0_runtime["recbole_bpr_source_sha256"]
+            if q0r_inputs[arm]["source_sha256"] != expected_source:
+                raise ResourceSchedulingError("matched BPR package identity mismatch")
+        else:
+            q0_arm = q0_receipt["arm_records"][arm]
+            training = q0_arm["training_run"]
+            for key in ("candidate_package_digest", "candidate_source_tree_digest"):
+                if q0r_inputs[arm][key] != q0_arm[key]:
+                    raise ResourceSchedulingError(f"Q0/Q0R package mismatch: {arm}")
+        if training.get("exit_status") == "SUCCESS":
+            observation_status = "SUCCESS"
+            censor_bound_ms = None
+            completion_semantics = "OBSERVED_EARLY_STOPPING_AWARE_COMPLETION"
+        elif (
+            training.get("launcher_return_code") == 124
+            and int(training.get("wall_time_ms", 0)) >= q0_timeout_ms
+        ):
+            observation_status = "RIGHT_CENSORED"
+            censor_bound_ms = q0_timeout_ms
+            completion_semantics = "NOT_OBSERVED_BEYOND_CENSOR_BOUND"
+        else:
+            raise ResourceSchedulingError(f"Q0 resource status unsupported: {arm}")
+
+        probe = q0r_receipt["probe_runs"][arm]
+        telemetry = probe.get("resource_telemetry") or {}
+        batches = [
+            row
+            for row in telemetry.get("batch_records", ())
+            if row.get("status") == "BATCH_COMPLETED"
+            and row.get("phase") in {"TRAIN", "EVAL"}
+            and isinstance(row.get("wall_time_ms"), (int, float))
+        ]
+        phase_cost_ms = {}
+        for phase in ("TRAIN", "EVAL"):
+            values = [float(row["wall_time_ms"]) for row in batches if row["phase"] == phase]
+            phase_cost_ms[phase.lower()] = (
+                sum(values) / len(values) if values else None
+            )
+        projected[arm] = {
+            "arm": arm,
+            "early_stopping_contract": early_stopping,
+            "mechanism_effect_update_allowed": False,
+            "package_identity": {
+                key: value
+                for key, value in q0r_inputs[arm].items()
+                if key in {
+                    "candidate_package_digest",
+                    "candidate_source_tree_digest",
+                    "entrypoint",
+                    "source_sha256",
+                }
+            },
+            "prefix_resource_observation": {
+                "completed_eval_batches": sum(row["phase"] == "EVAL" for row in batches),
+                "completed_train_batches": sum(row["phase"] == "TRAIN" for row in batches),
+                "exit_status": probe["exit_status"],
+                "mean_batch_wall_time_ms_by_phase": phase_cost_ms,
+                "peak_gpu_memory_mib": telemetry.get("peak_gpu_memory_mib"),
+                "wall_time_ms": probe["wall_time_ms"],
+            },
+            "prior_completion_observation": {
+                "censor_bound_ms": censor_bound_ms,
+                "completion_semantics": completion_semantics,
+                "status": observation_status,
+                "wall_time_ms": int(training["wall_time_ms"]),
+            },
+            "recipe_identity": {
+                "dataset_partition": common_runtime["dataset_partition"],
+                "epochs_ceiling": int(training["epochs_requested"]),
+                "execution_recipe_digest": training["execution_recipe_digest"],
+                "runtime_binding_digest": training["runtime_binding_digest"],
+                "runtime_release_digest": training["runtime_release_digest"],
+                "seed": int(training["seed"]),
+            },
+            "runtime_identity": runtime_identity,
+        }
+    return {
+        "arms": projected,
+        "effect_fields_consumed": [],
+        "held_out_reads": 0,
+        "projection_rule": "EXPLICIT_RESOURCE_ONLY_ALLOWLIST",
+        "schema": "recclaw.q0r2-resource-only-evidence.v1",
+    }
+
+
+def admit_resource_only_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    total_budget_seconds: int = CAMPAIGN_TOTAL_BUDGET_SECONDS,
+) -> dict[str, Any]:
+    """Admit the empirically completable subset without arm-specific rules."""
+
+    eligible: list[tuple[float, str, str, int]] = []
+    deferred: list[dict[str, Any]] = []
+    predictions: dict[str, Any] = {}
+    for arm, row in evidence["arms"].items():
+        if row.get("mechanism_effect_update_allowed") is not False:
+            raise ResourceSchedulingError("resource evidence may not update effect")
+        observation = row["prior_completion_observation"]
+        identity_digest = sha256_digest(
+            {
+                "package": row["package_identity"],
+                "recipe": row["recipe_identity"],
+                "runtime": row["runtime_identity"],
+            }
+        )
+        prediction = {
+            "completion_basis": None,
+            "completion_probability": 0.0,
+            "empirical_completion_seconds": None,
+            "identity_digest": identity_digest,
+            "mechanism_effect_update_allowed": False,
+            "right_censored_lower_bound_seconds": (
+                observation["censor_bound_ms"] / 1000
+                if observation["censor_bound_ms"] is not None
+                else None
+            ),
+        }
+        if observation["status"] == "SUCCESS":
+            empirical_seconds = observation["wall_time_ms"] / 1000
+            deadline = max(300, math.ceil(60 + 2.0 * empirical_seconds))
+            prediction.update(
+                {
+                    "completion_basis": "EXACT_IDENTITY_EMPIRICAL_SUCCESS",
+                    "completion_probability": 0.90,
+                    "empirical_completion_seconds": empirical_seconds,
+                }
+            )
+            eligible.append((empirical_seconds, identity_digest, arm, deadline))
+        else:
+            prediction["completion_basis"] = "RIGHT_CENSORED_NO_COMPLETION_TIME"
+            deferred.append(
+                {
+                    "arm": arm,
+                    "future_eligible": True,
+                    "mechanism_effect_update_allowed": False,
+                    "reason": "RIGHT_CENSORED_WITHOUT_EXACT_IDENTITY_COMPLETION",
+                    "resource_disposition": "RESOURCE_DEFERRED",
+                }
+            )
+        predictions[arm] = prediction
+
+    schedule = []
+    allocated = 0
+    for _seconds, _identity, arm, deadline in sorted(eligible):
+        if allocated + deadline > total_budget_seconds:
+            predictions[arm]["completion_probability"] = 0.0
+            deferred.append(
+                {
+                    "arm": arm,
+                    "future_eligible": True,
+                    "mechanism_effect_update_allowed": False,
+                    "reason": "EMPIRICAL_DEADLINE_EXCEEDS_REMAINING_CAMPAIGN_BUDGET",
+                    "resource_disposition": "RESOURCE_DEFERRED",
+                }
+            )
+            continue
+        allocated += deadline
+        schedule.append(
+            {
+                "arm": arm,
+                "deadline_seconds": deadline,
+                "ordinal": len(schedule) + 1,
+            }
+        )
+    return canonical_value(
+        {
+            "campaign_total_budget_seconds": total_budget_seconds,
+            "deadline_formula": (
+                "for an exact package/recipe/runtime SUCCESS under the same "
+                "early-stopping contract, max(300, ceil(60 + 2 * empirical "
+                "completion)); right-censored observations remain future-eligible "
+                "but are not admitted without an observed completion"
+            ),
+            "deferred_arms": deferred,
+            "effect_fields_consumed": [],
+            "engineering_watchdog_seconds": ENGINEERING_WATCHDOG_SECONDS,
+            "predictions": predictions,
+            "schedule": schedule,
+            "schedule_rule": (
+                "ascending empirical completion time with exact identity digest tie-break"
+            ),
+            "schema": "recclaw.q0r2-first-principles-admission.v1",
+        }
+    )
+
+
 def predict_resources(
     *,
     arm_features: Mapping[str, Mapping[str, Any]],
@@ -617,6 +855,8 @@ def _run_one(
     purpose: str,
     timeout_seconds: int,
     prefix_contract_path: Path | None = None,
+    run_identity: str = Q0R_RUN_IDENTITY,
+    authority: str = "user-delegated-q0r-resource-scheduling",
 ) -> dict[str, Any]:
     try:
         return run_development_training(
@@ -627,8 +867,8 @@ def _run_one(
             candidate_root=arm_input["candidate_root"],
             entrypoint=str(arm_input["entrypoint"]),
             source_sha256=str(arm_input["source_sha256"]),
-            run_identity=Q0R_RUN_IDENTITY,
-            authority="user-delegated-q0r-resource-scheduling",
+            run_identity=run_identity,
+            authority=authority,
             timeout_seconds=timeout_seconds,
             recbole_commit_identity="7b02be5ec80a88310f2d04a27a82adfcbb5dc211",
             epochs=epochs,
@@ -675,6 +915,332 @@ def _missingness(run: Mapping[str, Any]) -> dict[str, Any]:
         "reason": reason,
         "resource_disposition": disposition,
     }
+
+
+def plan_resource_admission(
+    repo_root: Path,
+    *,
+    campaign_root: Path,
+    q0_external_receipt_path: Path,
+) -> dict[str, Any]:
+    """Validate accepted evidence and freeze Q0R2 admission before outcomes."""
+
+    repo_root = repo_root.resolve()
+    campaign_root = campaign_root.resolve()
+    if campaign_root.exists():
+        raise ResourceSchedulingError(f"Q0R2 root already exists: {campaign_root}")
+    q0_repo, q0_external = _validate_q0_receipts(
+        repo_root, q0_external_receipt_path.resolve()
+    )
+    q0r_path = (
+        repo_root
+        / "docs/research_line/vnext/"
+        "Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
+    )
+    if bytes_sha256(q0r_path.read_bytes()) != Q0R_V3_REPO_RECEIPT_SHA256:
+        raise ResourceSchedulingError("sealed Q0R v3 repository receipt byte drift")
+    q0r_receipt = json.loads(q0r_path.read_text(encoding="utf-8"))
+    if (
+        q0r_receipt.get("status") != "HARD_BLOCK"
+        or q0r_receipt.get("held_out_reads") != 0
+        or q0r_receipt.get("full_outcomes_present") != 0
+    ):
+        raise ResourceSchedulingError("Q0R v3 hard-block identity drift")
+    runtime = _runtime_environment(repo_root)
+    _validate_runtime_environment(runtime)
+    arm_inputs = _arm_inputs(q0_external)
+    evidence = project_resource_only_evidence(
+        q0_receipt=q0_external,
+        q0r_receipt=q0r_receipt,
+    )
+    decision = admit_resource_only_evidence(evidence)
+    if not decision["schedule"]:
+        raise ResourceSchedulingError("Q0R2 first-principles schedule is empty")
+
+    campaign_root.mkdir(parents=True)
+    evidence_path = campaign_root / "RESOURCE_ONLY_EVIDENCE.json"
+    runtime_path = campaign_root / "RUNTIME_ENVIRONMENT.json"
+    decision_path = campaign_root / "PREDICTION_AND_SCHEDULE_BEFORE_OUTCOME.json"
+    evidence_digest = _write_new_json(evidence_path, evidence)
+    runtime_digest = _write_new_json(runtime_path, runtime)
+    decision_digest = _write_new_json(decision_path, decision)
+    binding = canonical_value(
+        {
+            "accepted_q0_commit": ACCEPTED_Q0_COMMIT,
+            "accepted_q0_external_receipt_sha256": Q0_EXTERNAL_RECEIPT_SHA256,
+            "accepted_q0_repo_receipt_sha256": Q0_REPO_RECEIPT_SHA256,
+            "accepted_q0r_v3_commit": ACCEPTED_Q0R_V3_COMMIT,
+            "accepted_q0r_v3_receipt_sha256": Q0R_V3_REPO_RECEIPT_SHA256,
+            "branch": "feat/research-line-resource-admission",
+            "candidate_source_sha256": {
+                arm: row["source_sha256"] for arm, row in arm_inputs.items()
+            },
+            "decision_artifact_sha256": decision_digest,
+            "full_outcomes_present_when_written": 0,
+            "held_out_reads": 0,
+            "q0_status": q0_repo["status"],
+            "resource_only_evidence_sha256": evidence_digest,
+            "runtime_environment_sha256": runtime_digest,
+            "schema": "recclaw.q0r2-plan-binding.v1",
+        }
+    )
+    binding_path = campaign_root / "PLAN_BINDING.json"
+    binding_digest = _write_new_json(binding_path, binding)
+    for path in (evidence_path, runtime_path, decision_path, binding_path):
+        path.chmod(0o444)
+    return canonical_value(
+        {
+            "decision": decision,
+            "decision_artifact_sha256": decision_digest,
+            "full_outcomes_present": 0,
+            "plan_binding_sha256": binding_digest,
+            "resource_only_evidence_sha256": evidence_digest,
+            "status": "FROZEN_NON_EMPTY_SCHEDULE",
+        }
+    )
+
+
+def execute_resource_admission(
+    repo_root: Path,
+    *,
+    campaign_root: Path,
+    q0_external_receipt_path: Path,
+) -> dict[str, Any]:
+    """Execute each arm in the already-frozen Q0R2 schedule exactly once."""
+
+    repo_root = repo_root.resolve()
+    campaign_root = campaign_root.resolve()
+    paths = {
+        "evidence": campaign_root / "RESOURCE_ONLY_EVIDENCE.json",
+        "runtime": campaign_root / "RUNTIME_ENVIRONMENT.json",
+        "decision": campaign_root / "PREDICTION_AND_SCHEDULE_BEFORE_OUTCOME.json",
+        "binding": campaign_root / "PLAN_BINDING.json",
+    }
+    if any(not path.is_file() for path in paths.values()):
+        raise ResourceSchedulingError("Q0R2 frozen plan is incomplete")
+    if any(path.stat().st_mode & 0o222 for path in paths.values()):
+        raise ResourceSchedulingError("Q0R2 decision artifacts are not read-only")
+    binding = json.loads(paths["binding"].read_text(encoding="utf-8"))
+    observed = {
+        "decision_artifact_sha256": bytes_sha256(paths["decision"].read_bytes()),
+        "resource_only_evidence_sha256": bytes_sha256(paths["evidence"].read_bytes()),
+        "runtime_environment_sha256": bytes_sha256(paths["runtime"].read_bytes()),
+    }
+    if any(binding[key] != value for key, value in observed.items()):
+        raise ResourceSchedulingError("Q0R2 frozen plan byte drift")
+    full_root = campaign_root / "fresh_full_runs"
+    if full_root.exists():
+        raise ResourceSchedulingError("Q0R2 full outcome root already exists")
+
+    _q0_repo, q0_external = _validate_q0_receipts(
+        repo_root, q0_external_receipt_path.resolve()
+    )
+    q0r_path = (
+        repo_root
+        / "docs/research_line/vnext/"
+        "Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
+    )
+    if bytes_sha256(q0r_path.read_bytes()) != Q0R_V3_REPO_RECEIPT_SHA256:
+        raise ResourceSchedulingError("sealed Q0R v3 repository receipt byte drift")
+    runtime = _runtime_environment(repo_root)
+    if canonical_value(runtime) != canonical_value(
+        json.loads(paths["runtime"].read_text(encoding="utf-8"))
+    ):
+        raise ResourceSchedulingError("runtime changed after Q0R2 plan freeze")
+    arm_inputs = _arm_inputs(q0_external)
+    evidence = json.loads(paths["evidence"].read_text(encoding="utf-8"))
+    decision = json.loads(paths["decision"].read_text(encoding="utf-8"))
+    initial_sources = {
+        arm: bytes_sha256(Path(row["source_path"]).read_bytes())
+        for arm, row in arm_inputs.items()
+    }
+
+    full_runs: dict[str, Any] = {}
+    result_digests: dict[str, str] = {}
+    for scheduled in decision["schedule"]:
+        arm = scheduled["arm"]
+        run = _run_one(
+            repo_root=repo_root,
+            side_root=full_root,
+            arm=arm,
+            arm_input=arm_inputs[arm],
+            epochs=FULL_EPOCHS,
+            purpose="Q0R2_FRESH_SCHEDULED_DEVELOPMENT_VALIDATION",
+            timeout_seconds=int(scheduled["deadline_seconds"]),
+            run_identity=Q0R2_RUN_IDENTITY,
+            authority="user-delegated-q0r2-resource-admission",
+        )
+        full_runs[arm] = run
+        result_digests[arm] = _write_new_json(full_root / f"{arm}.json", run)
+
+    source_unchanged = initial_sources == {
+        arm: bytes_sha256(Path(row["source_path"]).read_bytes())
+        for arm, row in arm_inputs.items()
+    }
+    seals_unchanged = (
+        source_unchanged
+        and bytes_sha256(q0_external_receipt_path.read_bytes())
+        == Q0_EXTERNAL_RECEIPT_SHA256
+        and bytes_sha256(q0r_path.read_bytes()) == Q0R_V3_REPO_RECEIPT_SHA256
+        and bytes_sha256(paths["decision"].read_bytes())
+        == binding["decision_artifact_sha256"]
+    )
+    scheduled_by_arm = {row["arm"]: row for row in decision["schedule"]}
+    deferred_by_arm = {row["arm"]: row for row in decision["deferred_arms"]}
+    fresh_results = {}
+    exact_binding = True
+    for arm in ARM_ORDER:
+        run = full_runs.get(arm)
+        if run is None:
+            disposition = deferred_by_arm[arm]
+            fresh_results[arm] = {
+                "exit_status": "NOT_RUN_RESOURCE_DEFERRED",
+                "mechanism_effect_update_allowed": False,
+                "missingness": {
+                    "missing": True,
+                    "reason": disposition["reason"],
+                    "resource_disposition": disposition["resource_disposition"],
+                },
+                "physical_run_executed": False,
+                "result_artifact_sha256": None,
+                "wall_time_ms": 0,
+            }
+            continue
+        recipe = evidence["arms"][arm]["recipe_identity"]
+        binding_ok = (
+            run.get("execution_recipe_digest") == recipe["execution_recipe_digest"]
+            and run.get("runtime_binding_digest") == recipe["runtime_binding_digest"]
+            and run.get("runtime_release_digest") == recipe["runtime_release_digest"]
+            and run.get("seed") == recipe["seed"]
+        )
+        exact_binding = exact_binding and binding_ok
+        fresh_results[arm] = {
+            "deadline_seconds": scheduled_by_arm[arm]["deadline_seconds"],
+            "exact_package_recipe_runtime_binding": binding_ok,
+            "exit_status": run.get("exit_status"),
+            "mechanism_effect_update_allowed": False,
+            "missingness": _missingness(run),
+            "physical_run_executed": True,
+            "result_artifact_ref": str(full_root / f"{arm}.json"),
+            "result_artifact_sha256": result_digests[arm],
+            "wall_time_ms": int(run.get("wall_time_ms", 0)),
+        }
+
+    scheduled_success = bool(scheduled_by_arm) and all(
+        run.get("exit_status") == "SUCCESS" for run in full_runs.values()
+    )
+    all_accounted = set(scheduled_by_arm) | set(deferred_by_arm) == set(ARM_ORDER)
+    gates = {
+        "function_real_and_runnable": scheduled_success,
+        "end_to_end_result_chain_real_and_valid": (
+            len(full_runs) == len(scheduled_by_arm)
+            and all_accounted
+            and exact_binding
+            and seals_unchanged
+        ),
+        "serves_open_algorithm_research_target": (
+            bool(scheduled_by_arm)
+            and all(
+                row["mechanism_effect_update_allowed"] is False
+                for row in fresh_results.values()
+            )
+        ),
+        "no_fixed_66_tuning_static_wrapper_fallback_mock_or_smoke_substitution": (
+            decision["effect_fields_consumed"] == []
+            and evidence["effect_fields_consumed"] == []
+            and len(full_runs) == len(scheduled_by_arm)
+        ),
+    }
+    accepted_pass = all(gates.values())
+    physical = canonical_value(
+        {
+            "cost": {
+                "campaign_budget_seconds": CAMPAIGN_TOTAL_BUDGET_SECONDS,
+                "fresh_full_run_wall_time_ms": sum(
+                    int(run.get("wall_time_ms", 0)) for run in full_runs.values()
+                ),
+                "physical_full_runs": len(full_runs),
+                "retries": 0,
+            },
+            "decision_before_outcome": {
+                "artifact_ref": str(paths["decision"]),
+                "artifact_sha256": binding["decision_artifact_sha256"],
+                "full_outcomes_present_when_written": 0,
+                "schedule": decision["schedule"],
+            },
+            "development_only": True,
+            "effect_untouched": {
+                "effect_fields_consumed": [],
+                "mechanism_effect_updates": 0,
+                "resource_censor_updates_effect": False,
+            },
+            "engineering_safety": {
+                "engineering_watchdog_seconds": ENGINEERING_WATCHDOG_SECONDS,
+                "legacy_1500_seconds_controls_full_runs": False,
+                "watchdog_is_research_budget": False,
+            },
+            "evaluation": {
+                "formal_acceptance_self_approved": False,
+                "formal_scientific_experiment": False,
+                "gates": gates,
+                "h2_resource_modeling_and_admission": (
+                    "CLOSED_DEVELOPMENT_ONLY" if accepted_pass else "NOT_CLOSED"
+                ),
+                "q1_allowed": accepted_pass,
+                "scientific_effect_claim": False,
+            },
+            "fresh_results": fresh_results,
+            "held_out_reads": 0,
+            "input_identity": binding,
+            "prediction_and_schedule": decision,
+            "resource_only_evidence": {
+                "artifact_ref": str(paths["evidence"]),
+                "artifact_sha256": binding["resource_only_evidence_sha256"],
+            },
+            "schema": "recclaw.research-line.q0r2-resource-admission.v1",
+            "scientific_effect_claim": False,
+            "sealed_inputs_unchanged": seals_unchanged,
+            "status": "PASS" if accepted_pass else "HARD_BLOCK",
+        }
+    )
+    physical_path = campaign_root / "Q0R2_RESOURCE_ADMISSION_PHYSICAL_RECEIPT.json"
+    physical_digest = _write_new_json(physical_path, physical)
+    physical_path.chmod(0o444)
+    return canonical_value(
+        {
+            **physical,
+            "physical_receipt_sha256": physical_digest,
+        }
+    )
+
+
+def finalize_resource_admission_receipt(
+    physical_receipt_path: Path,
+    *,
+    canonical_receipt_path: Path,
+    external_receipt_ref: str,
+) -> dict[str, Any]:
+    """Bind an immutable Q0R2 physical receipt into the repository."""
+
+    physical_digest = bytes_sha256(physical_receipt_path.read_bytes())
+    physical = json.loads(physical_receipt_path.read_text(encoding="utf-8"))
+    if (
+        physical.get("schema")
+        != "recclaw.research-line.q0r2-resource-admission.v1"
+        or physical.get("held_out_reads") != 0
+        or physical.get("scientific_effect_claim") is not False
+        or physical.get("status") not in {"PASS", "HARD_BLOCK"}
+    ):
+        raise ResourceSchedulingError("invalid Q0R2 physical receipt")
+    canonical = canonical_value(
+        {
+            **physical,
+            "external_receipt_ref": external_receipt_ref,
+            "external_receipt_sha256": physical_digest,
+        }
+    )
+    _write_new_json(canonical_receipt_path, canonical)
+    return canonical
 
 
 def _engineering_budget_separation() -> dict[str, Any]:
