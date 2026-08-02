@@ -44,7 +44,7 @@
     "schema_sha256": "7f2f33797c67e8b718093f6e1f6e22f3cced926cf8c628a09a024b83d587248a"
   },
   "downstream": {
-    "resolver_calls": 0,
+    "resolver_calls": 3,
     "implementer_calls": 0,
     "materialized_packages": 0,
     "qualifier_runs": 0,

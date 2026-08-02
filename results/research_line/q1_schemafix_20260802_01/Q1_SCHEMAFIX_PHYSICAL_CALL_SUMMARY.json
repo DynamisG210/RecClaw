@@ -100,6 +100,7 @@
   "downstream_execution": {
     "candidate_pool_frozen": false,
     "selection_frozen": false,
+    "resolver_calls": 3,
     "implementer_calls": 0,
     "materialized_packages": 0,
     "qualifier_runs": 0,
