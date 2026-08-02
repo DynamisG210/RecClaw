@@ -1,0 +1,106 @@
+{
+  "schema": "recclaw.research-line.q1-physical-call-summary.v1",
+  "development_only": true,
+  "fresh_root": "/tmp/recclaw_q1_idea_quality_278391a_20260802_02/run",
+  "source_snapshot_sha256": "5a63431926319830155d1cf07063ce9b9423cd438958b95d35cc180fcef049f4",
+  "frozen_artifacts": {
+    "ab_contract_sha256": "8e9d676ebb822783c9299bb3af11884aec176c4d62824ff7133435fb89ef2538",
+    "research_context_sha256": "0bcb32c7a1b2d27d12f4f6d0dde961aed9f81005353115e45795e742d06dc8cf",
+    "baseline_schema_sha256": "c51a959b7cda232ff580ebd47827f5412a057024670d3382ae08467856a02e99",
+    "enriched_schema_sha256": "17b644bcdb31c68cbd18d9924e4bf0b8e267e853ef98e13b41238e737bac5d6c"
+  },
+  "calls": [
+    {
+      "arm": "baseline",
+      "slot": "diagnosis",
+      "status": "SUCCESS",
+      "returned_model": "gpt-5.4",
+      "request_digest": "caaa4a402c535d1b0a75e62eeb2e37bbe54e0ffc5de6912d633e7202a11d0cc7",
+      "response_digest": "64d75f6d86e97f6bdc262bc09a11a8e0ff988f1d2bc21ddd2950a19a930eb795",
+      "receipt_digest": "6122b76fde6007ee4e1ca72f1b3bcdd34221f7c5c7fd6af5b50b4a55cf4f3b24",
+      "broker_db_sha256": "66b93c75a1e2bfb6db9f261baa927d534fe274b3146e77a0d092e6dbe7f56067",
+      "input_tokens": 7711,
+      "output_tokens": 1980,
+      "billed_tokens": 9691,
+      "latency_ms": 37737,
+      "producer_role": "falsification_designer",
+      "current_profile_expressibility_claim": "NOT_EXPRESSIBLE"
+    },
+    {
+      "arm": "baseline",
+      "slot": "frontier",
+      "status": "SUCCESS",
+      "returned_model": "gpt-5.4",
+      "request_digest": "12c8e684457376496bcaab562f3e1a5c9cb8bf335f583d72e6820c7ebda98f75",
+      "response_digest": "784d2d7fa997a87525ec4456afcef42e5f649709798854315511f4b633826d92",
+      "receipt_digest": "860d7513d1c5f80dcbcc14a124163fadf848cb4823594f66b54e1f0ac2d9d54a",
+      "broker_db_sha256": "525dc9a9856211fad2a7c0c8eccd7612ae1b361f0cafc9cbc23545a542fd29f9",
+      "input_tokens": 7710,
+      "output_tokens": 2186,
+      "billed_tokens": 9896,
+      "latency_ms": 41012,
+      "producer_role": "frontier_architect",
+      "current_profile_expressibility_claim": "NOT_EXPRESSIBLE"
+    },
+    {
+      "arm": "enriched",
+      "slot": "diagnosis",
+      "status": "FAILED",
+      "error_type": "HTTP_400",
+      "http_status": 400,
+      "returned_model": null,
+      "request_digest": "0bd9c7b7189e141d772e98951ee718762500dfc4aa54ed3a5de5a94297aaafaa",
+      "response_digest": null,
+      "receipt_digest": "4d3702d50c7884ea355c2e9213dd3ad00bc26f506b97170a0d2696718ca1b01e",
+      "broker_db_sha256": "2823102e17343deb999e05fe531c89518e850f04a18175e77b2614330c3a5a01",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "billed_tokens": 0,
+      "latency_ms": 2850,
+      "mechanism_negative_evidence": false
+    },
+    {
+      "arm": "enriched",
+      "slot": "frontier",
+      "status": "FAILED",
+      "error_type": "HTTP_400",
+      "http_status": 400,
+      "returned_model": null,
+      "request_digest": "d31d94f698159ff830d197f8588afb4c736ff009d294aa28ca0551a049fc88fc",
+      "response_digest": null,
+      "receipt_digest": "b94a218d838c90672d03576e6d7eb3374028011b8b3746035df03911d35f8e87",
+      "broker_db_sha256": "f6345840ac32f225f021fe2cda2d4ea3799c11d844f5758531bdd70433a7c93b",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "billed_tokens": 0,
+      "latency_ms": 2602,
+      "mechanism_negative_evidence": false
+    }
+  ],
+  "usage": {
+    "physical_calls": 4,
+    "successful_calls": 2,
+    "failed_calls": 2,
+    "retries": 0,
+    "input_tokens": 15421,
+    "output_tokens": 4166,
+    "billed_tokens": 19587,
+    "provider_wall_time_ms": 84201
+  },
+  "downstream_execution": {
+    "candidate_pool_frozen": false,
+    "selection_frozen": false,
+    "implementer_calls": 0,
+    "materialized_packages": 0,
+    "qualifier_runs": 0,
+    "resource_admission_calls": 0,
+    "gpu_training_lines": 0
+  },
+  "boundaries": {
+    "held_out_reads": 0,
+    "manual_candidate_patches": 0,
+    "effect_updates": 0,
+    "credential_cleanup_verified": true,
+    "physical_attempt_02_present": false
+  }
+}

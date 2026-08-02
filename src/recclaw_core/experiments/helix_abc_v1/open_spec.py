@@ -31,7 +31,9 @@ from .vnext_contracts import (
     CapabilityResolutionResultV1,
     CapabilityResolutionV1,
     CurrentProfileExpressibilityV1,
+    IdeaModeV1,
     OpenResearchSpecV1,
+    RealizationModeV1,
 )
 
 
@@ -409,7 +411,7 @@ def project_open_producer_draft(
 
     if not isinstance(draft, Mapping):
         raise OpenSpecProjectionError("open Producer draft must be a mapping")
-    expected = {
+    baseline_fields = {
         "producer_role",
         "hypothesis",
         "mechanism_change",
@@ -423,9 +425,22 @@ def project_open_producer_draft(
         "current_profile_expressibility_claim",
         "resolution_facts",
     }
-    if set(draft) != expected:
+    enriched_fields = {
+        "idea_mode",
+        "research_question",
+        "observed_failure_mode",
+        "closest_parent",
+        "minimal_testable_wedge",
+        "causal_chain",
+        "discriminative_predictions",
+        "mechanism_off_definition",
+        "resource_hypothesis",
+        "realization_mode",
+    }
+    if set(draft) not in (baseline_fields, baseline_fields | enriched_fields):
         raise OpenSpecProjectionError(
-            "open Producer draft must contain exactly the A0 projection fields"
+            "open Producer draft must contain the baseline fields and either all or "
+            "none of the enriched OpenSpec fields"
         )
     normalized_bindings = _normalize_bindings(bindings)
     role = str(draft["producer_role"])
@@ -457,6 +472,45 @@ def project_open_producer_draft(
         compatibility_requirements = tuple(
             normalized_bindings["compatibility_requirements"]
         )
+    enriched: dict[str, Any] = {}
+    if enriched_fields <= set(draft):
+        try:
+            idea_mode = IdeaModeV1(draft["idea_mode"])
+            realization_mode = RealizationModeV1(draft["realization_mode"])
+        except ValueError as error:
+            raise OpenSpecProjectionError(
+                "idea_mode or realization_mode is invalid"
+            ) from error
+        observed_failure = draft["observed_failure_mode"]
+        if idea_mode is IdeaModeV1.DIAGNOSIS_DRIVEN and observed_failure in (
+            None,
+            "NOT_OBSERVED",
+        ):
+            raise OpenSpecProjectionError(
+                "DIAGNOSIS_DRIVEN requires a real observed_failure_mode"
+            )
+        if idea_mode is IdeaModeV1.FRONTIER_HYPOTHESIS and observed_failure == "NOT_OBSERVED":
+            observed_failure = None
+        enriched = {
+            "idea_mode": idea_mode,
+            "research_question": draft["research_question"],
+            "observed_failure_mode": observed_failure,
+            "closest_parent": draft["closest_parent"],
+            "minimal_testable_wedge": draft["minimal_testable_wedge"],
+            "causal_chain": _sorted_unique_strings(
+                draft["causal_chain"],
+                field_name="causal_chain",
+                allow_empty=False,
+            ),
+            "discriminative_predictions": _sorted_unique_strings(
+                draft["discriminative_predictions"],
+                field_name="discriminative_predictions",
+                allow_empty=False,
+            ),
+            "mechanism_off_definition": draft["mechanism_off_definition"],
+            "resource_hypothesis": draft["resource_hypothesis"],
+            "realization_mode": realization_mode,
+        }
     spec = OpenResearchSpecV1(
         hypothesis=draft["hypothesis"],
         mechanism_change=draft["mechanism_change"],
@@ -483,6 +537,7 @@ def project_open_producer_draft(
         producer_role=role,
         high_change_justification=draft["high_change_justification"],
         current_profile_expressibility_claim=expressibility,
+        **enriched,
     )
     return spec, _normalize_resolution_facts(draft["resolution_facts"])
 
@@ -514,6 +569,15 @@ def _coerce_open_spec(
                 payload["current_profile_expressibility_claim"]
             )
         )
+    if payload.get("idea_mode") is not None:
+        payload["idea_mode"] = IdeaModeV1(payload["idea_mode"])
+    if payload.get("realization_mode") is not None:
+        payload["realization_mode"] = RealizationModeV1(payload["realization_mode"])
+    for field_name in ("causal_chain", "discriminative_predictions"):
+        if field_name in payload:
+            payload[field_name] = _sorted_unique_strings(
+                payload[field_name], field_name=field_name
+            )
     return OpenResearchSpecV1(**payload)
 
 

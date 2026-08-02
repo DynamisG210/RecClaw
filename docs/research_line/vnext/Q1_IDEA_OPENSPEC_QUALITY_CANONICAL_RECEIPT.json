@@ -1,0 +1,136 @@
+{
+  "schema": "recclaw.research-line.q1-idea-openspec-quality-canonical-receipt.v1",
+  "status": "HARD_BLOCK",
+  "development_only": true,
+  "input_identity": {
+    "accepted_q0r2_commit": "278391ab47c78508af211978045ad5573d6fc135",
+    "accepted_q0r2_parent": "5372da07829c92d73b530855fded95de4f57059b",
+    "accepted_q0r2_tree": "4ef40aa98ddb3ddd1020c2a8ffc7b0dee0752edf",
+    "accepted_q0r2_receipt_sha256": "3db80f559e474687f70cdc7aa0eeb0487c4b12fb7053444cfcc35a5d1252f4be",
+    "accepted_q0r2_physical_sha256": "f8ec201e6a98dd9fb9eea4b95f680ea6eb3f5939235d14e4ddf86f7cca362c56",
+    "branch": "feat/research-line-idea-openspec-quality",
+    "initial_source_snapshot_sha256": "02d47d240a168411278d9e3e2a9769fd1291eee34ae89e7de56d3cd1b52791e8",
+    "fresh_source_snapshot_sha256": "5a63431926319830155d1cf07063ce9b9423cd438958b95d35cc180fcef049f4"
+  },
+  "offline_contract_evidence": {
+    "py_compile": "PASS",
+    "focused_and_adjacent_tests": {
+      "status": "PASS",
+      "passed": 42,
+      "warnings": 9
+    },
+    "remote_preflight_tests": {
+      "status": "PASS",
+      "passed": 6
+    },
+    "ab_contract_sha256": "8e9d676ebb822783c9299bb3af11884aec176c4d62824ff7133435fb89ef2538",
+    "research_context_sha256": "0bcb32c7a1b2d27d12f4f6d0dde961aed9f81005353115e45795e742d06dc8cf",
+    "baseline_schema_sha256": "c51a959b7cda232ff580ebd47827f5412a057024670d3382ae08467856a02e99",
+    "enriched_schema_sha256": "17b644bcdb31c68cbd18d9924e4bf0b8e267e853ef98e13b41238e737bac5d6c"
+  },
+  "fairness_contract": {
+    "model": "gpt-5.4",
+    "tools": [],
+    "proposal_token_ceiling": 12000,
+    "candidate_count_per_arm": 2,
+    "selection_budget_per_arm": 1,
+    "paired_slots": ["diagnosis", "frontier"],
+    "paired_seeds": {"diagnosis": 55011, "frontier": 55012},
+    "same_research_context": true,
+    "same_active_profile_catalog": true,
+    "same_protocol_and_runtime": true,
+    "origin_blind": true,
+    "only_intended_difference": "CURRENT_OPENSPEC_VERSUS_MINIMALLY_ENRICHED_OPENSPEC",
+    "outcome_fields_available_to_selection": [],
+    "held_out_reads": 0
+  },
+  "preoutcome_interface_fix": {
+    "count": 1,
+    "abandoned_root": "/tmp/recclaw_q1_idea_quality_278391a_20260802_01/run",
+    "failure_phase": "PROMPT_RENDER_BEFORE_ANY_PROVIDER_CALL",
+    "failure_type": "FALSE_POSITIVE_PLACEHOLDER_DETECTION",
+    "fix": "restrict unresolved-placeholder detection to uppercase template tokens",
+    "provider_calls_before_fix": 0,
+    "candidate_or_selection_changed": false,
+    "mechanism_negative_evidence": false
+  },
+  "physical_evidence": {
+    "fresh_root": "/tmp/recclaw_q1_idea_quality_278391a_20260802_02/run",
+    "summary_ref": "results/research_line/q1_idea_quality_20260802_01/Q1_PHYSICAL_CALL_SUMMARY.json",
+    "summary_sha256": "2f74fe7d28e8b59bcb83f573194976922cd83a45fa148c303aef6c46038e2c0d",
+    "baseline_proposals": {
+      "requested": 2,
+      "successful": 2,
+      "response_digests": [
+        "64d75f6d86e97f6bdc262bc09a11a8e0ff988f1d2bc21ddd2950a19a930eb795",
+        "784d2d7fa997a87525ec4456afcef42e5f649709798854315511f4b633826d92"
+      ]
+    },
+    "enriched_proposals": {
+      "requested": 2,
+      "successful": 0,
+      "failure_class": "PROVIDER_SCHEMA_HTTP_400",
+      "http_statuses": [400, 400],
+      "receipt_digests": [
+        "4d3702d50c7884ea355c2e9213dd3ad00bc26f506b97170a0d2696718ca1b01e",
+        "b94a218d838c90672d03576e6d7eb3374028011b8b3746035df03911d35f8e87"
+      ],
+      "mechanism_negative_evidence": false
+    },
+    "provider_usage": {
+      "physical_calls": 4,
+      "successful_calls": 2,
+      "failed_calls": 2,
+      "retries": 0,
+      "billed_tokens": 19587,
+      "provider_wall_time_ms": 84201
+    },
+    "credential_cleanup_verified": true
+  },
+  "hard_block": {
+    "reason_code": "ENRICHED_CANDIDATE_POOL_EMPTY_PROVIDER_SCHEMA_HTTP_400",
+    "observed": "Both baseline calls returned real proposals; both enriched calls were rejected with HTTP 400 before producing a response.",
+    "inference": "The shared provider rejected the enriched strict response schema; the provider persisted no more specific error message, so the unsupported schema keyword is not claimed as proven.",
+    "why_no_further_fix": "One legal pre-outcome interface correction had already been consumed, and another schema revision/fresh call would violate the one-fix and no prompt-version stacking boundary.",
+    "candidate_pool_frozen": false,
+    "selection_frozen": false,
+    "selected_baseline_package": null,
+    "selected_enriched_package": null
+  },
+  "downstream_chain": {
+    "resolver_calls": 0,
+    "implementer_calls": 0,
+    "materialized_packages": 0,
+    "qualifier_runs": 0,
+    "q0r2_resource_admission_calls": 0,
+    "gpu_training_lines": 0,
+    "resource_censored_count": 0,
+    "resource_censored_mechanism_effect_updates": 0,
+    "effect_update_count": 0
+  },
+  "idea_mode_evidence": {
+    "baseline_diagnosis_slot_real": true,
+    "baseline_frontier_slot_real": true,
+    "enriched_diagnosis_spec_real": false,
+    "enriched_frontier_spec_real": false,
+    "observed_failure_semantics_verified_on_real_enriched_response": false,
+    "frontier_not_observed_semantics_verified_on_real_enriched_response": false
+  },
+  "four_gates": {
+    "function_real_and_runnable": false,
+    "end_to_end_result_chain_real_and_valid": false,
+    "serves_open_algorithm_research_target_with_real_selected_enriched_package": false,
+    "no_fixed_66_tuning_static_wrapper_fallback_mock_or_smoke_substitution": true
+  },
+  "architecture_quality_signal": "OFFLINE_CONTRACT_AND_CONSUMER_WIRING_PASS_PHYSICAL_ENRICHED_PRODUCTION_BLOCKED",
+  "scientific_effect": "NOT_ADJUDICATED",
+  "scientific_effect_claim": false,
+  "formal_scientific_experiment": false,
+  "formal_acceptance_self_approved": false,
+  "manual_candidate_patches": 0,
+  "retry_count": 0,
+  "held_out_reads": 0,
+  "q1_accepted": false,
+  "q2_continuation_allowed": false,
+  "q2_continuation_package": null
+}

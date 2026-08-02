@@ -504,11 +504,16 @@ def bounded_provider_call(
     prompt: str,
     token_ceiling: int,
     expected_transport_release_digest: str | None = None,
+    maximum_physical_attempts: int = MAX_PHYSICAL_ATTEMPTS,
     sleep: Callable[[float], None] = time.sleep,
 ) -> ProviderAttemptResult:
+    if not isinstance(maximum_physical_attempts, int) or not (
+        1 <= maximum_physical_attempts <= MAX_PHYSICAL_ATTEMPTS
+    ):
+        raise FreshR1Error("maximum_physical_attempts is outside the bounded policy")
     attempts: list[dict[str, Any]] = []
     request_digests: set[str] = set()
-    for ordinal in range(1, MAX_PHYSICAL_ATTEMPTS + 1):
+    for ordinal in range(1, maximum_physical_attempts + 1):
         if ordinal > 1:
             sleep(BACKOFF_MS[ordinal - 2] / 1000)
         private_root = call_root / f"physical_attempt_{ordinal:02d}"
@@ -572,7 +577,7 @@ def bounded_provider_call(
                     "status": "FAILED",
                 }
             )
-            if not retry_eligible(failure) or ordinal == MAX_PHYSICAL_ATTEMPTS:
+            if not retry_eligible(failure) or ordinal == maximum_physical_attempts:
                 return ProviderAttemptResult(
                     call=None,
                     attempts=tuple(canonical_value(attempts)),

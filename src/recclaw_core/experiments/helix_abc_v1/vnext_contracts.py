@@ -46,6 +46,16 @@ class CurrentProfileExpressibilityV1(str, Enum):
     UNRESOLVED = "UNRESOLVED"
 
 
+class IdeaModeV1(str, Enum):
+    DIAGNOSIS_DRIVEN = "DIAGNOSIS_DRIVEN"
+    FRONTIER_HYPOTHESIS = "FRONTIER_HYPOTHESIS"
+
+
+class RealizationModeV1(str, Enum):
+    PARENT_PRESERVING = "PARENT_PRESERVING"
+    NON_NESTED = "NON_NESTED"
+
+
 class QualificationStageV1(str, Enum):
     STATIC_VALIDATION = "STATIC_VALIDATION"
     CONSTRUCTION = "CONSTRUCTION"
@@ -267,9 +277,39 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
     producer_role: str
     high_change_justification: str
     current_profile_expressibility_claim: CurrentProfileExpressibilityV1
+    idea_mode: IdeaModeV1 | None = None
+    research_question: str | None = None
+    observed_failure_mode: str | None = None
+    closest_parent: str | None = None
+    minimal_testable_wedge: str | None = None
+    causal_chain: tuple[str, ...] = ()
+    discriminative_predictions: tuple[str, ...] = ()
+    mechanism_off_definition: str | None = None
+    resource_hypothesis: str | None = None
+    realization_mode: RealizationModeV1 | None = None
 
     schema = "recclaw.research-line.vnext.open-research-spec.v1"
     identity_namespace = "recclaw-open-research-spec-v1"
+
+    _enriched_field_names: ClassVar[tuple[str, ...]] = (
+        "idea_mode",
+        "research_question",
+        "observed_failure_mode",
+        "closest_parent",
+        "minimal_testable_wedge",
+        "causal_chain",
+        "discriminative_predictions",
+        "mechanism_off_definition",
+        "resource_hypothesis",
+        "realization_mode",
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = canonical_value(self)
+        if self.idea_mode is None:
+            for field_name in self._enriched_field_names:
+                payload.pop(field_name)
+        return payload
 
     def __post_init__(self) -> None:
         _normalize_digest_fields(self)
@@ -302,6 +342,44 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
             raise VNextContractError(
                 "current_profile_expressibility_claim is outside the closed domain"
             )
+        enriched_values = (
+            self.idea_mode,
+            self.research_question,
+            self.closest_parent,
+            self.minimal_testable_wedge,
+            self.causal_chain,
+            self.discriminative_predictions,
+            self.mechanism_off_definition,
+            self.resource_hypothesis,
+            self.realization_mode,
+        )
+        if any(value not in (None, ()) for value in enriched_values):
+            if not isinstance(self.idea_mode, IdeaModeV1):
+                raise VNextContractError("idea_mode is required for enriched OpenSpec")
+            if not isinstance(self.realization_mode, RealizationModeV1):
+                raise VNextContractError(
+                    "realization_mode is required for enriched OpenSpec"
+                )
+            for field_name in (
+                "research_question",
+                "closest_parent",
+                "minimal_testable_wedge",
+                "mechanism_off_definition",
+                "resource_hypothesis",
+            ):
+                _nonempty(getattr(self, field_name), field_name=field_name)
+            if (
+                self.idea_mode is IdeaModeV1.DIAGNOSIS_DRIVEN
+                and self.observed_failure_mode in (None, "NOT_OBSERVED")
+            ):
+                raise VNextContractError(
+                    "DIAGNOSIS_DRIVEN requires a real observed_failure_mode"
+                )
+            if self.observed_failure_mode is not None:
+                _nonempty(
+                    self.observed_failure_mode,
+                    field_name="observed_failure_mode",
+                )
         object.__setattr__(
             self,
             "implementation_requirements",
@@ -326,6 +404,28 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
                 field_name="compatibility_requirements",
             ),
         )
+        object.__setattr__(
+            self,
+            "causal_chain",
+            _sorted_unique_strings(
+                self.causal_chain,
+                field_name="causal_chain",
+            ) if self.causal_chain else (),
+        )
+        object.__setattr__(
+            self,
+            "discriminative_predictions",
+            _sorted_unique_strings(
+                self.discriminative_predictions,
+                field_name="discriminative_predictions",
+            ) if self.discriminative_predictions else (),
+        )
+        if self.idea_mode is not None and (
+            not self.causal_chain or not self.discriminative_predictions
+        ):
+            raise VNextContractError(
+                "enriched OpenSpec requires causal_chain and discriminative_predictions"
+            )
 
     @property
     def spec_id(self) -> str:

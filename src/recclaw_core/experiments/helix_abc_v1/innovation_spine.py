@@ -23,6 +23,8 @@ from .vnext_contracts import CandidatePackageV1, OpenResearchSpecV1
 
 
 _BLIND_SPEC_FIELDS = (
+    "causal_chain",
+    "closest_parent",
     "compatibility_requirements",
     "competing_explanation",
     "current_profile_digest",
@@ -32,11 +34,18 @@ _BLIND_SPEC_FIELDS = (
     "falsifier",
     "high_change_justification",
     "hypothesis",
+    "idea_mode",
     "implementation_requirements",
     "matched_control_requirement",
+    "mechanism_off_definition",
     "mechanism_change",
+    "minimal_testable_wedge",
     "protocol_digest",
     "protocol_ref",
+    "realization_mode",
+    "research_question",
+    "resource_hypothesis",
+    "discriminative_predictions",
 )
 _FORBIDDEN_REQUEST_KEYS = frozenset(
     {
@@ -208,7 +217,11 @@ def origin_blind_projection(spec: OpenResearchSpecV1) -> dict[str, Any]:
         )
     source = spec.to_dict()
     projection = canonical_value(
-        {field_name: source[field_name] for field_name in _BLIND_SPEC_FIELDS}
+        {
+            field_name: source[field_name]
+            for field_name in _BLIND_SPEC_FIELDS
+            if field_name in source
+        }
     )
     _reject_forbidden_request_keys(projection)
     return projection
