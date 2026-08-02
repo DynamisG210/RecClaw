@@ -16,6 +16,177 @@ import traceback
 from pathlib import Path
 
 
+def _numeric_loss(value: object) -> float | list[float] | None:
+    """Convert RecBole's epoch loss return into a JSON-safe observation."""
+
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, tuple) and all(
+        isinstance(item, (int, float)) for item in value
+    ):
+        return [float(item) for item in value]
+    return None
+
+
+def _install_resource_telemetry(
+    trainer: object,
+    *,
+    torch: object,
+    train_data: object,
+    valid_data: object,
+) -> dict[str, object]:
+    """Measure the existing RecBole train/eval calls without changing their work."""
+
+    phases: list[dict[str, object]] = []
+    original_train_epoch = trainer._train_epoch
+    original_valid_epoch = trainer._valid_epoch
+
+    def begin_phase() -> int | None:
+        if not torch.cuda.is_available():
+            return None
+        device = torch.cuda.current_device()
+        torch.cuda.synchronize(device)
+        torch.cuda.reset_peak_memory_stats(device)
+        return int(device)
+
+    def finish_phase(device: int | None) -> dict[str, object]:
+        if device is None:
+            return {
+                "peak_allocated_mib": None,
+                "peak_reserved_mib": None,
+            }
+        torch.cuda.synchronize(device)
+        divisor = 1024 * 1024
+        return {
+            "peak_allocated_mib": torch.cuda.max_memory_allocated(device) / divisor,
+            "peak_reserved_mib": torch.cuda.max_memory_reserved(device) / divisor,
+        }
+
+    def measured_train_epoch(
+        epoch_train_data: object,
+        epoch_idx: int,
+        loss_func: object = None,
+        show_progress: bool = False,
+    ) -> object:
+        device = begin_phase()
+        started_ns = time.monotonic_ns()
+        loss: object = None
+        status = "SUCCESS"
+        try:
+            loss = original_train_epoch(
+                epoch_train_data,
+                epoch_idx,
+                loss_func=loss_func,
+                show_progress=show_progress,
+            )
+            return loss
+        except Exception:
+            status = "RUNTIME_FAILURE"
+            raise
+        finally:
+            phases.append(
+                {
+                    "batch_count": len(epoch_train_data),
+                    "epoch": int(epoch_idx),
+                    "loss": _numeric_loss(loss),
+                    "phase": "TRAIN",
+                    "status": status,
+                    "wall_time_ms": max(
+                        1, (time.monotonic_ns() - started_ns) // 1_000_000
+                    ),
+                    **finish_phase(device),
+                }
+            )
+
+    def measured_valid_epoch(
+        epoch_valid_data: object,
+        show_progress: bool = False,
+    ) -> object:
+        device = begin_phase()
+        started_ns = time.monotonic_ns()
+        result: object = None
+        status = "SUCCESS"
+        try:
+            result = original_valid_epoch(
+                epoch_valid_data,
+                show_progress=show_progress,
+            )
+            return result
+        except Exception:
+            status = "RUNTIME_FAILURE"
+            raise
+        finally:
+            valid_score = None
+            if (
+                isinstance(result, tuple)
+                and result
+                and isinstance(result[0], (int, float))
+            ):
+                valid_score = float(result[0])
+            phases.append(
+                {
+                    "batch_count": len(epoch_valid_data),
+                    "epoch": max(
+                        (
+                            int(row["epoch"])
+                            for row in phases
+                            if row["phase"] == "TRAIN"
+                        ),
+                        default=-1,
+                    ),
+                    "phase": "EVAL",
+                    "status": status,
+                    "valid_score": valid_score,
+                    "wall_time_ms": max(
+                        1, (time.monotonic_ns() - started_ns) // 1_000_000
+                    ),
+                    **finish_phase(device),
+                }
+            )
+
+    trainer._train_epoch = measured_train_epoch
+    trainer._valid_epoch = measured_valid_epoch
+    return {
+        "parameter_count": sum(
+            parameter.numel() for parameter in trainer.model.parameters()
+        ),
+        "phase_records": phases,
+        "train_batches_per_epoch": len(train_data),
+        "trainable_parameter_count": sum(
+            parameter.numel()
+            for parameter in trainer.model.parameters()
+            if parameter.requires_grad
+        ),
+        "validation_batches_per_eval": len(valid_data),
+    }
+
+
+def _finalize_resource_telemetry(value: dict[str, object]) -> dict[str, object]:
+    phases = list(value["phase_records"])
+    train_rows = [row for row in phases if row["phase"] == "TRAIN"]
+    eval_rows = [row for row in phases if row["phase"] == "EVAL"]
+    valid_rows = [
+        row for row in eval_rows if isinstance(row.get("valid_score"), (int, float))
+    ]
+    best_epoch = None
+    if valid_rows:
+        best_epoch = max(valid_rows, key=lambda row: float(row["valid_score"]))["epoch"]
+    peaks = [
+        float(row[key])
+        for row in phases
+        for key in ("peak_allocated_mib", "peak_reserved_mib")
+        if isinstance(row.get(key), (int, float))
+    ]
+    return {
+        **value,
+        "best_observed_epoch": best_epoch,
+        "epochs_completed": len(train_rows),
+        "loss_trend": [row.get("loss") for row in train_rows],
+        "peak_gpu_memory_mib": max(peaks) if peaks else None,
+        "schema": "recclaw.worker-resource-telemetry.v1",
+    }
+
+
 def _write_durable_json(path: Path, value: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = (
@@ -198,6 +369,7 @@ def main() -> int:
     parser.add_argument("--permit-digest", required=True)
     parser.add_argument("--project-root", required=True)
     parser.add_argument("--recbole-root", required=True)
+    parser.add_argument("--resource-telemetry", action="store_true")
     parser.add_argument("--round-id", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--runner-abi", required=True)
@@ -315,6 +487,7 @@ def main() -> int:
     exit_code = 0
     argv_before = sys.argv[:]
     device_evidence: dict[str, object] = {}
+    resource_telemetry: dict[str, object] | None = None
     try:
         import torch
 
@@ -379,6 +552,13 @@ def main() -> int:
                 trainer = get_trainer(
                     config["MODEL_TYPE"], config["model"]
                 )(config, model)
+                if args.resource_telemetry:
+                    resource_telemetry = _install_resource_telemetry(
+                        trainer,
+                        torch=torch,
+                        train_data=train_data,
+                        valid_data=valid_data,
+                    )
                 best_valid_score, best_valid_result = trainer.fit(
                     train_data,
                     valid_data,
@@ -411,6 +591,12 @@ def main() -> int:
             handle.write(payload["traceback"])
     finally:
         sys.argv = argv_before
+    if args.resource_telemetry:
+        payload["resource_telemetry"] = (
+            _finalize_resource_telemetry(resource_telemetry)
+            if resource_telemetry is not None
+            else None
+        )
     output_path.write_text(
         json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n",
         encoding="utf-8",

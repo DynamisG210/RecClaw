@@ -828,6 +828,10 @@ def run_development_training(
     authority: str = "user-delegated-corrected-formal-fresh-r1",
     timeout_seconds: int = 1500,
     recbole_commit_identity: str | None = None,
+    epochs: int = EXPERIMENT_EPOCHS,
+    execution_purpose: str = "DEVELOPMENT_PILOT_OFFLINE_TOPN",
+    resource_telemetry: bool = False,
+    watchdog_seconds: int | None = None,
 ) -> dict[str, Any]:
     if recbole_commit_identity is not None and recbole_commit_identity != (
         "7b02be5ec80a88310f2d04a27a82adfcbb5dc211"
@@ -875,6 +879,18 @@ def run_development_training(
         "run_id": run_id,
         "seed": seed,
     }
+    if (
+        epochs != EXPERIMENT_EPOCHS
+        or execution_purpose != "DEVELOPMENT_PILOT_OFFLINE_TOPN"
+        or resource_telemetry
+    ):
+        binding.update(
+            {
+                "epochs": epochs,
+                "execution_purpose": execution_purpose,
+                "resource_telemetry": resource_telemetry,
+            }
+        )
     binding_digest = sha256_digest(binding)
     runtime_binding_digest = sha256_digest(
         {
@@ -891,7 +907,7 @@ def run_development_training(
     start_identity = {
         "binding_digest": binding_digest,
         "claim_id": f"{run_identity}-claim:{run_id}",
-        "execution_purpose": "DEVELOPMENT_PILOT_OFFLINE_TOPN",
+        "execution_purpose": execution_purpose,
         "ordinary_launch_attempt_ordinal": 1,
         "permit_digest": sha256_digest(
             {"authority": authority}
@@ -914,7 +930,7 @@ def run_development_training(
         "--checkpoint-dir", str(checkpoint_dir),
         "--data-path", str(SEARCH_DATA_ROOT),
         "--dataset", "ml-1m",
-        "--epochs", str(EXPERIMENT_EPOCHS),
+        "--epochs", str(epochs),
         "--execution-purpose", str(start_identity["execution_purpose"]),
         "--execution-recipe-path", str(recipe_path),
         "--filesystem-capability-path", str(capability_path),
@@ -934,6 +950,8 @@ def run_development_training(
         "--start-confirmation-path", str(confirmation_path),
         "--start-gate-path", str(gate_path),
     ]
+    if resource_telemetry:
+        command.append("--resource-telemetry")
     started_ns = time.monotonic_ns()
     process = subprocess.Popen(
         command,
@@ -972,13 +990,24 @@ def run_development_training(
         process.wait()
         raise FreshR1Error("training START_CONFIRMED pid mismatch")
     _write_start_gate(gate_path, start_identity)
+    effective_timeout = (
+        min(timeout_seconds, watchdog_seconds)
+        if watchdog_seconds is not None
+        else timeout_seconds
+    )
+    censoring_trigger = None
     try:
-        stdout, stderr = process.communicate(timeout=timeout_seconds)
+        stdout, stderr = process.communicate(timeout=effective_timeout)
         return_code = int(process.returncode)
     except subprocess.TimeoutExpired:
         process.kill()
         stdout, stderr = process.communicate()
         return_code = 124
+        censoring_trigger = (
+            "ENGINEERING_WATCHDOG"
+            if watchdog_seconds is not None and watchdog_seconds <= timeout_seconds
+            else "RESOURCE_BUDGET_DEADLINE"
+        )
     wall_time_ms = max(1, (time.monotonic_ns() - started_ns) // 1_000_000)
     worker = _read_json(output_path) if output_path.is_file() else {
         "error_message": "worker result missing",
@@ -989,28 +1018,47 @@ def run_development_training(
         for key, value in dict(worker.get("best_valid_result", {})).items()
         if isinstance(value, (int, float)) and math.isfinite(float(value))
     }
-    return canonical_value(
-        {
-            "binding_digest": binding_digest,
-            "device_evidence": worker.get("training_device_evidence"),
-            "epochs_requested": EXPERIMENT_EPOCHS,
-            "execution_recipe_digest": sha256_digest(recipe),
-            "exit_status": worker.get("exit_status"),
-            "filesystem_mount_audit": worker.get("filesystem_mount_audit"),
-            "launcher_return_code": return_code,
-            "log_sha256": bytes_sha256(log_path.read_bytes()) if log_path.is_file() else None,
-            "metrics": metrics,
-            "result_sha256": bytes_sha256(output_path.read_bytes()) if output_path.is_file() else None,
-            "runtime_binding_digest": runtime_binding_digest,
-            "runtime_release_digest": release_digest,
-            "seed": seed,
-            "stderr_digest": sha256_digest(stderr),
-            "stdout_digest": sha256_digest(stdout),
-            "wall_time_ms": wall_time_ms,
-            "worker_error_message": worker.get("error_message"),
-            "worker_error_type": worker.get("error_type"),
-        }
-    )
+    result = {
+        "binding_digest": binding_digest,
+        "device_evidence": worker.get("training_device_evidence"),
+        "epochs_requested": epochs,
+        "execution_recipe_digest": sha256_digest(recipe),
+        "exit_status": (
+            "RESOURCE_CENSORED"
+            if censoring_trigger is not None
+            else worker.get("exit_status")
+        ),
+        "filesystem_mount_audit": worker.get("filesystem_mount_audit"),
+        "launcher_return_code": return_code,
+        "log_sha256": bytes_sha256(log_path.read_bytes()) if log_path.is_file() else None,
+        "metrics": metrics,
+        "result_sha256": bytes_sha256(output_path.read_bytes()) if output_path.is_file() else None,
+        "runtime_binding_digest": runtime_binding_digest,
+        "runtime_release_digest": release_digest,
+        "seed": seed,
+        "stderr_digest": sha256_digest(stderr),
+        "stdout_digest": sha256_digest(stdout),
+        "wall_time_ms": wall_time_ms,
+        "worker_error_message": worker.get("error_message"),
+        "worker_error_type": worker.get("error_type"),
+    }
+    if resource_telemetry:
+        result["resource_telemetry"] = worker.get("resource_telemetry")
+    if watchdog_seconds is not None:
+        result.update(
+            {
+                "censoring_semantics": (
+                    "RESOURCE_OR_COMPLETION_ONLY; NEVER_MECHANISM_EFFECT"
+                    if censoring_trigger is not None
+                    else None
+                ),
+                "censoring_trigger": censoring_trigger,
+                "mechanism_effect_update_allowed": False,
+                "resource_deadline_seconds": timeout_seconds,
+                "watchdog_seconds": watchdog_seconds,
+            }
+        )
+    return canonical_value(result)
 
 
 def _episode(
