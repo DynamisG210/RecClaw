@@ -668,13 +668,30 @@ def project_q1_resource_admission(
     )
 
 
-def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
+def run_idea_quality(
+    repo_root: Path,
+    *,
+    run_root: Path,
+    stop_after_pool: bool = False,
+    provider_run_identity: str = Q1_RUN_IDENTITY,
+    proposal_seeds: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
     """Execute the one-shot real Q1 Producer-to-resource-plan chain."""
 
     repo_root = repo_root.resolve()
     run_root = run_root.resolve()
     if run_root.exists():
         raise IdeaQualityError(f"Q1 root already exists: {run_root}")
+    effective_proposal_seeds = dict(proposal_seeds or Q1_PROPOSAL_SEEDS)
+    if set(effective_proposal_seeds) != set(Q1_CANDIDATE_SLOTS) or any(
+        not isinstance(value, int) or isinstance(value, bool)
+        for value in effective_proposal_seeds.values()
+    ):
+        raise IdeaQualityError("proposal seeds must exactly cover the frozen Q1 slots")
+    if not provider_run_identity or any(
+        character.isspace() for character in provider_run_identity
+    ):
+        raise IdeaQualityError("provider_run_identity must be whitespace-free")
     started_ns = time.monotonic_ns()
     context = build_research_context(repo_root)
     artifacts, _r1_receipt = load_registered_r1_artifacts(repo_root)
@@ -721,7 +738,7 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                 arm=arm,
                 slot=slot,
                 role=Q1_SLOT_ROLES[slot],
-                seed=Q1_PROPOSAL_SEEDS[slot],
+                seed=effective_proposal_seeds[slot],
                 context=context,
                 profile_catalog=catalog,
                 protocol_ref=active.protocol_ref,
@@ -734,8 +751,8 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
             call = bounded_provider_call(
                 call_root=run_root / "provider/proposals" / arm / slot,
                 schema_path=schema_paths[arm],
-                logical_call_id=f"{Q1_RUN_IDENTITY}:{slot}:proposal",
-                session_id=f"{Q1_RUN_IDENTITY}:{slot}:paired-proposal-session",
+                logical_call_id=f"{provider_run_identity}:{arm}:{slot}:proposal",
+                session_id=f"{provider_run_identity}:{slot}:paired-proposal-session",
                 prompt=prompt,
                 token_ceiling=Q1_PROPOSAL_TOKEN_CEILING,
                 maximum_physical_attempts=1,
@@ -771,7 +788,7 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                         {
                             "slot": slot,
                             "producer_role": Q1_SLOT_ROLES[slot],
-                            "proposal_seed": Q1_PROPOSAL_SEEDS[slot],
+                            "proposal_seed": effective_proposal_seeds[slot],
                             "provider_attempts": call.attempts,
                             "proposal_response_digest": call.call.response_digest,
                             "research_spec": spec.canonical_dict(),
@@ -794,7 +811,7 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                 {
                     "slot": slot,
                     "producer_role": Q1_SLOT_ROLES[slot],
-                    "proposal_seed": Q1_PROPOSAL_SEEDS[slot],
+                    "proposal_seed": effective_proposal_seeds[slot],
                     "provider_attempts": call.attempts,
                     "proposal_response_digest": call.call.response_digest,
                     "research_spec": spec.canonical_dict(),
@@ -846,6 +863,33 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
     frozen_selection_digest = _write_new_json(
         run_root / "FROZEN_SELECTION_BEFORE_IMPLEMENTATION.json", frozen_selection
     )
+
+    if stop_after_pool:
+        proposal_usage = _provider_usage(proposal_attempt_groups)
+        receipt = canonical_value(
+            {
+                "schema": "recclaw.research-line.q4-provider-resolver-pool.v1",
+                "status": "POOL_FROZEN_BEFORE_IMPLEMENTATION",
+                "provider_run_identity": provider_run_identity,
+                "proposal_seeds": effective_proposal_seeds,
+                "candidate_count": sum(len(rows) for rows in pools.values()),
+                "candidate_pools": pools,
+                "frozen_pool_ref": str(
+                    run_root / "FROZEN_SELECTION_BEFORE_IMPLEMENTATION.json"
+                ),
+                "frozen_pool_sha256": frozen_selection_digest,
+                "proposal_provider_usage": proposal_usage,
+                "implementation_provider_calls": 0,
+                "implementation_or_qualification_outcomes_present_when_written": 0,
+                "outcome_fields_consumed": [],
+                "retries": proposal_usage["retries"],
+                "held_out_reads": 0,
+                "development_only": True,
+                "scientific_effect_claim": False,
+            }
+        )
+        _write_new_json(run_root / "PROVIDER_RESOLVER_RECEIPT.json", receipt)
+        return receipt
 
     implementer_template = implementer_template_path.read_text(encoding="utf-8")
     policy = _shared_policy(
