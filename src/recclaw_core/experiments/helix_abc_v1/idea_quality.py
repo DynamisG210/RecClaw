@@ -16,7 +16,12 @@ from typing import Any, Mapping, Sequence
 
 import jsonschema
 
-from .canonical import bytes_sha256, canonical_value, sha256_digest
+from .canonical import (
+    bytes_sha256,
+    canonical_json_bytes,
+    canonical_value,
+    sha256_digest,
+)
 from .fresh_r1 import (
     AVAILABLE_DEPENDENCIES,
     BUDGET_LIMITS,
@@ -81,6 +86,12 @@ Q1_SLOT_ROLES = {
     "diagnosis": "falsification_designer",
     "frontier": "frontier_architect",
 }
+Q1_CONDITIONAL_SENTINEL_PROMPT = (
+    "Return exactly one JSON object matching the supplied schema. Use schema "
+    "recclaw.q1-provider-contract-sentinel.v1 and exactly one proposals item "
+    "with sentinel_mode A and sentinel_observation PRESENT. This is a synthetic "
+    "transport-contract sentinel; do not add prose or any other fields."
+)
 
 
 class IdeaQualityError(RuntimeError):
@@ -151,6 +162,147 @@ def derive_enriched_proposal_schema() -> dict[str, Any]:
     schema["title"] = "RecClaw Q1 Enriched OpenSpec Proposal Response"
     jsonschema.validators.validator_for(schema).check_schema(schema)
     return canonical_value(schema)
+
+
+def derive_q1_conditional_contract_sentinel_schema() -> dict[str, Any]:
+    """Return a tiny non-research schema isolating Q1 conditional composition."""
+
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Q1 Provider Conditional Contract Sentinel",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "schema": {
+                "type": "string",
+                "enum": ["recclaw.q1-provider-contract-sentinel.v1"],
+            },
+            "proposals": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "sentinel_mode": {
+                            "type": "string",
+                            "enum": ["A", "B"],
+                        },
+                        "sentinel_observation": {
+                            "type": ["string", "null"],
+                        },
+                    },
+                    "required": ["sentinel_mode", "sentinel_observation"],
+                    "allOf": [
+                        {
+                            "if": {
+                                "properties": {
+                                    "sentinel_mode": {"const": "A"}
+                                },
+                                "required": ["sentinel_mode"],
+                            },
+                            "then": {
+                                "properties": {
+                                    "sentinel_observation": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                    }
+                                }
+                            },
+                        },
+                        {
+                            "if": {
+                                "properties": {
+                                    "sentinel_mode": {"const": "B"}
+                                },
+                                "required": ["sentinel_mode"],
+                            },
+                            "then": {
+                                "properties": {
+                                    "sentinel_observation": {
+                                        "enum": [None, "NOT_OBSERVED"]
+                                    }
+                                }
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+        "required": ["schema", "proposals"],
+    }
+    jsonschema.validators.validator_for(schema).check_schema(schema)
+    return canonical_value(schema)
+
+
+def q1_provider_contract_static_matrix() -> dict[str, Any]:
+    """Describe the bounded structural hypotheses behind the observed HTTP 400."""
+
+    baseline = derive_fresh_r2_proposal_schema()
+    enriched = derive_enriched_proposal_schema()
+    sentinel = derive_q1_conditional_contract_sentinel_schema()
+    baseline_proposal = baseline["properties"]["proposals"]["items"]
+    enriched_proposal = enriched["properties"]["proposals"]["items"]
+    sentinel_proposal = sentinel["properties"]["proposals"]["items"]
+    return canonical_value(
+        {
+            "schema": "recclaw.research-line.q1-provider-contract-matrix.v1",
+            "observed": {
+                "baseline_http_statuses": [200, 200],
+                "enriched_http_statuses": [400, 400],
+                "provider_error_body_persisted": False,
+            },
+            "invariants": {
+                "model": Q1_MODEL,
+                "tools": [],
+                "token_ceiling": Q1_PROPOSAL_TOKEN_CEILING,
+                "strict": True,
+                "temperature": 0.0,
+                "response_format": "json_schema",
+            },
+            "schemas": {
+                "baseline": {
+                    "canonical_bytes": len(canonical_json_bytes(baseline)),
+                    "proposal_properties": len(baseline_proposal["properties"]),
+                    "proposal_required": len(baseline_proposal["required"]),
+                    "conditional_composition": False,
+                },
+                "enriched": {
+                    "canonical_bytes": len(canonical_json_bytes(enriched)),
+                    "proposal_properties": len(enriched_proposal["properties"]),
+                    "proposal_required": len(enriched_proposal["required"]),
+                    "conditional_composition": True,
+                    "unique_keywords": ["allOf", "const", "if", "then"],
+                },
+                "sentinel": {
+                    "canonical_bytes": len(canonical_json_bytes(sentinel)),
+                    "proposal_properties": len(sentinel_proposal["properties"]),
+                    "proposal_required": len(sentinel_proposal["required"]),
+                    "conditional_composition": True,
+                    "research_semantics": False,
+                },
+            },
+            "hypotheses": [
+                {
+                    "id": "H_CONDITIONAL_COMPOSITION_UNSUPPORTED",
+                    "prediction": "the tiny conditional sentinel returns HTTP 400",
+                    "single_probe_budget": 1,
+                },
+                {
+                    "id": "H_SCHEMA_SIZE_OR_PROPERTY_COUNT",
+                    "prediction": "the tiny conditional sentinel is accepted",
+                    "single_probe_budget": 0,
+                },
+            ],
+            "decision_rule": (
+                "HTTP_400 confirms the conditional-composition boundary independent "
+                "of schema size/property count; HTTP_200 leaves the root cause unresolved"
+            ),
+            "research_candidate_generation_allowed": False,
+            "held_out_reads": 0,
+        }
+    )
 
 
 def build_q1_ab_contract() -> dict[str, Any]:

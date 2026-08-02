@@ -1,0 +1,116 @@
+{
+  "schema": "recclaw.research-line.q1-four-call-contract-comparison.v1",
+  "development_only": true,
+  "source_commit": "bb35405121280bea9ee009fb030010985804af08",
+  "source_physical_summary": "results/research_line/q1_idea_quality_20260802_01/Q1_PHYSICAL_CALL_SUMMARY.json",
+  "source_physical_summary_sha256": "2f74fe7d28e8b59bcb83f573194976922cd83a45fa148c303aef6c46038e2c0d",
+  "request_invariants": {
+    "endpoint_digest": "8f6acc6b27581f6ae162c891bf65b5671f8c2d327f20cad9ba9f848fc45c38fc",
+    "max_tokens": 12000,
+    "model": "gpt-5.4",
+    "response_format_type": "json_schema",
+    "strict": true,
+    "temperature": 0.0,
+    "tools": []
+  },
+  "calls": [
+    {
+      "arm": "baseline",
+      "slot": "diagnosis",
+      "http_status": 200,
+      "broker_status": "SUCCESS",
+      "broker_failure_class": null,
+      "broker_classifier_rule_id": null,
+      "prompt_utf8_bytes": 22180,
+      "payload_canonical_bytes": 26019,
+      "schema_canonical_bytes": 2885,
+      "proposal_property_count": 12,
+      "request_digest": "caaa4a402c535d1b0a75e62eeb2e37bbe54e0ffc5de6912d633e7202a11d0cc7",
+      "response_digest": "64d75f6d86e97f6bdc262bc09a11a8e0ff988f1d2bc21ddd2950a19a930eb795",
+      "returned_model": "gpt-5.4"
+    },
+    {
+      "arm": "baseline",
+      "slot": "frontier",
+      "http_status": 200,
+      "broker_status": "SUCCESS",
+      "broker_failure_class": null,
+      "broker_classifier_rule_id": null,
+      "prompt_utf8_bytes": 22175,
+      "payload_canonical_bytes": 26014,
+      "schema_canonical_bytes": 2885,
+      "proposal_property_count": 12,
+      "request_digest": "12c8e684457376496bcaab562f3e1a5c9cb8bf335f583d72e6820c7ebda98f75",
+      "response_digest": "784d2d7fa997a87525ec4456afcef42e5f649709798854315511f4b633826d92",
+      "returned_model": "gpt-5.4"
+    },
+    {
+      "arm": "enriched",
+      "slot": "diagnosis",
+      "http_status": 400,
+      "broker_status": "FAILED",
+      "broker_failure_class": "CLI_CONTRACT_ERROR",
+      "broker_classifier_rule_id": "LAB_API_HTTP_400_V1",
+      "prompt_utf8_bytes": 22451,
+      "payload_canonical_bytes": 27520,
+      "schema_canonical_bytes": 4115,
+      "proposal_property_count": 22,
+      "request_digest": "0bd9c7b7189e141d772e98951ee718762500dfc4aa54ed3a5de5a94297aaafaa",
+      "response_digest": null,
+      "returned_model": null
+    },
+    {
+      "arm": "enriched",
+      "slot": "frontier",
+      "http_status": 400,
+      "broker_status": "FAILED",
+      "broker_failure_class": "CLI_CONTRACT_ERROR",
+      "broker_classifier_rule_id": "LAB_API_HTTP_400_V1",
+      "prompt_utf8_bytes": 22449,
+      "payload_canonical_bytes": 27518,
+      "schema_canonical_bytes": 4115,
+      "proposal_property_count": 22,
+      "request_digest": "d31d94f698159ff830d197f8588afb4c736ff009d294aa28ca0551a049fc88fc",
+      "response_digest": null,
+      "returned_model": null
+    }
+  ],
+  "schema_structure": {
+    "baseline_unique_combinator_paths": [],
+    "enriched_unique_keywords": [
+      "allOf",
+      "const",
+      "if",
+      "then"
+    ],
+    "enriched_unique_combinator_paths": [
+      "properties.proposals.items.allOf",
+      "properties.proposals.items.allOf.0.if",
+      "properties.proposals.items.allOf.0.if.properties.idea_mode.const",
+      "properties.proposals.items.allOf.0.then",
+      "properties.proposals.items.allOf.1.if",
+      "properties.proposals.items.allOf.1.if.properties.idea_mode.const",
+      "properties.proposals.items.allOf.1.then"
+    ]
+  },
+  "transport_limits": {
+    "http_error_body_read_limit_bytes": 16384,
+    "http_error_body_persisted": false,
+    "persisted_provider_error_detail": {
+      "http_status_only": true
+    },
+    "specific_provider_rejection_text_available": false
+  },
+  "static_inference": {
+    "bounded_hypotheses": [
+      "H_CONDITIONAL_COMPOSITION_UNSUPPORTED",
+      "H_SCHEMA_SIZE_OR_PROPERTY_COUNT"
+    ],
+    "reason_one_probe_can_discriminate": "The 894-byte two-property sentinel preserves the exact conditional-composition cluster while remaining smaller than the successful baseline schema.",
+    "not_a_root_cause_claim": true
+  },
+  "payload_measurement_method": "Reconstructed from the frozen source, accepted context, profile catalog, prompt template and canonical JSON serializer; physical request bodies are not persisted.",
+  "held_out_reads": 0,
+  "outcome_fields_consumed": [],
+  "research_candidates_generated": 0
+}

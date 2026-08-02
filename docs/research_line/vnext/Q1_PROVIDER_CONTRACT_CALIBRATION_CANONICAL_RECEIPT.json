@@ -1,0 +1,111 @@
+{
+  "schema": "recclaw.research-line.q1-provider-contract-calibration-canonical-receipt.v1",
+  "status": "HARD_BLOCK",
+  "development_only": true,
+  "decision": "ROOT_CAUSE_NOT_LOCALIZED_TRANSIENT_HTTP_503",
+  "starting_commit": "bb35405121280bea9ee009fb030010985804af08",
+  "original_q1_evidence": {
+    "canonical_receipt_ref": "docs/research_line/vnext/Q1_IDEA_OPENSPEC_QUALITY_CANONICAL_RECEIPT.json",
+    "canonical_receipt_sha256": "00c1303db1fcc469e5588c05a55705668f29d4ef882e368fa3e432b37adce3a5",
+    "physical_summary_ref": "results/research_line/q1_idea_quality_20260802_01/Q1_PHYSICAL_CALL_SUMMARY.json",
+    "physical_summary_sha256": "2f74fe7d28e8b59bcb83f573194976922cd83a45fa148c303aef6c46038e2c0d",
+    "roots_and_receipt_read_only": true
+  },
+  "static_contract_comparison": {
+    "ref": "results/research_line/q1_provider_contract_calibration_20260802_01/FOUR_CALL_CONTRACT_COMPARISON.json",
+    "sha256": "3f76a4a5a1957cea739da9bf0a7f7ce80d02c67d45341ef6d53a973b99f4fa80",
+    "baseline_http_statuses": [
+      200,
+      200
+    ],
+    "enriched_http_statuses": [
+      400,
+      400
+    ],
+    "invariant_fields": [
+      "endpoint",
+      "model",
+      "response_format",
+      "strictness",
+      "temperature",
+      "token_ceiling",
+      "tools"
+    ],
+    "remaining_ambiguity_before_probe": [
+      "conditional composition support",
+      "schema size or proposal property count"
+    ]
+  },
+  "qualification_probe": {
+    "physical_root": "/tmp/recclaw_q1_provider_contract_bb35405_20260802_02",
+    "kind": "SYNTHETIC_CONDITIONAL_SCHEMA_SENTINEL",
+    "research_semantics": false,
+    "research_candidates_generated": 0,
+    "physical_calls": 1,
+    "retries": 0,
+    "http_status": 503,
+    "broker_failure_class": "PROVIDER_ERROR",
+    "broker_classifier_rule_id": "LAB_API_HTTP_503_V1",
+    "request_digest": "7e725c80d806cacec2f78df5224627688f53111c6c2514d2f4e655dfe657185b",
+    "closure_receipt_digest": "e219cd2264997c617e49f9cb9ae244a8e14eddce5cf1d0a0bc77db8ea6a8a7f3",
+    "outcome_digest": "f02e9cba0d881211224ca6a71d7841053f746125fbacfac784cdcce6e09c2a4b",
+    "receipt_ref": "results/research_line/q1_provider_contract_calibration_20260802_01/CONTRACT_PROBE_RECEIPT.json",
+    "receipt_sha256": "7db8b6a8a19390b6851d7fef18c2acd1568bcda5f27f392d26791526df4dd3ca",
+    "schema_ref": "results/research_line/q1_provider_contract_calibration_20260802_01/CONDITIONAL_SENTINEL_SCHEMA.json",
+    "schema_sha256": "26cd7530a1b22de0e36df9cc2c20bbcbb83b9e3bf48ede1c6c8e8401a51c50de",
+    "static_matrix_ref": "results/research_line/q1_provider_contract_calibration_20260802_01/STATIC_CONTRACT_MATRIX.json",
+    "static_matrix_sha256": "81e1f7e2dca39d2da09af42a7763d4c06e1e79bf9f4917d0d6fc319437d178c8",
+    "broker_db_ref": "results/research_line/q1_provider_contract_calibration_20260802_01/physical_attempt_01/broker.sqlite3",
+    "broker_db_sha256": "49a56831302900a496f397d369a981ed73459ec077faff5dfb2bf07a55d1bf57",
+    "release_ref": "results/research_line/q1_provider_contract_calibration_20260802_01/physical_attempt_01/LAB_API_BROKER_RELEASE_V1.json",
+    "release_sha256": "7dc6497c2ce21190944ed4c9f11443276efbd9169abc9c35802030bec30297e4"
+  },
+  "pre_provider_startup_failures": [
+    {
+      "ordinal": 1,
+      "classification": "REMOTE_TRAP_QUOTING_FAILURE",
+      "provider_physical_calls": 0,
+      "credential_read": false,
+      "python_started": false,
+      "probe_root_created": false
+    },
+    {
+      "ordinal": 2,
+      "classification": "DEV_STDIN_PATH_RESOLUTION_FAILURE",
+      "provider_physical_calls": 0,
+      "broker_initialized": false,
+      "probe_root": "/tmp/recclaw_q1_provider_contract_bb35405_20260802_01",
+      "probe_root_contents": [
+        "CONDITIONAL_SENTINEL_SCHEMA.json",
+        "STATIC_CONTRACT_MATRIX.json"
+      ]
+    }
+  ],
+  "interpretation": {
+    "http_503_is_contract_evidence": false,
+    "conditional_composition_root_cause_confirmed": false,
+    "schema_size_or_property_count_root_cause_confirmed": false,
+    "openspec_provider_compatibility_change_authorized": false,
+    "fresh_q1_ab_authorized": false,
+    "q2_authorized": false,
+    "scientific_effect_claim": "NONE"
+  },
+  "execution_boundaries": {
+    "held_out_reads": 0,
+    "outcome_fields_consumed": [],
+    "effect_updates": 0,
+    "manual_candidate_patches": 0,
+    "implementer_calls": 0,
+    "qualifier_calls": 0,
+    "resource_admission_calls": 0,
+    "gpu_training_lines": 0,
+    "pushes": 0
+  },
+  "four_gates": {
+    "functional_real_execution": "HARD_BLOCK_Q1_ENRICHED_PROVIDER_CONTRACT_NOT_LOCALIZED",
+    "end_to_end_result_chain": "HARD_BLOCK_NOT_STARTED",
+    "recclaw_open_recommendation_research_value": "NOT_ESTABLISHED_WITH_FRESH_CONSUMABLE_PACKAGE",
+    "no_preimplementation_tuning_static_wrapper_mock_effect": "PASS"
+  },
+  "next_action": "STOP_WITHOUT_PROVIDER_RETRY_OR_Q2"
+}

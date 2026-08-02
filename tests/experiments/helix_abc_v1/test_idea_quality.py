@@ -6,10 +6,13 @@ import pytest
 
 from recclaw_core.experiments.helix_abc_v1.idea_quality import (
     Q1_CANDIDATE_SLOTS,
+    Q1_CONDITIONAL_SENTINEL_PROMPT,
     Q1_MODEL,
     Q1_PROPOSAL_TOKEN_CEILING,
     build_q1_ab_contract,
+    derive_q1_conditional_contract_sentinel_schema,
     derive_enriched_proposal_schema,
+    q1_provider_contract_static_matrix,
     render_q1_producer_prompt,
     score_preoutcome_testability,
 )
@@ -20,6 +23,10 @@ from recclaw_core.experiments.helix_abc_v1.open_spec import (
 from recclaw_core.experiments.helix_abc_v1.innovation_spine import (
     SharedImplementerPolicy,
     build_shared_implementer_request,
+)
+from recclaw_core.experiments.helix_abc_v1.canonical import canonical_json_bytes
+from recclaw_core.experiments.helix_abc_v1.lab_api_broker import (
+    validate_provider_strict_schema,
 )
 
 
@@ -201,6 +208,25 @@ def test_enriched_schema_and_existing_projection_enforce_mode_semantics() -> Non
     invalid["observed_failure_mode"] = None
     with pytest.raises(OpenSpecProjectionError):
         project_open_producer_draft(invalid, bindings=_bindings())
+
+
+def test_contract_sentinel_is_small_nonresearch_and_isolates_conditionals() -> None:
+    sentinel = derive_q1_conditional_contract_sentinel_schema()
+    baseline = build_q1_ab_contract()
+    matrix = q1_provider_contract_static_matrix()
+
+    validate_provider_strict_schema(sentinel)
+    assert matrix["schemas"]["sentinel"]["conditional_composition"] is True
+    assert matrix["schemas"]["sentinel"]["proposal_properties"] == 2
+    assert matrix["schemas"]["sentinel"]["canonical_bytes"] < matrix["schemas"][
+        "baseline"
+    ]["canonical_bytes"]
+    assert matrix["research_candidate_generation_allowed"] is False
+    assert baseline["model"] == matrix["invariants"]["model"]
+    serialized = canonical_json_bytes(sentinel).lower()
+    for forbidden in (b"openspec", b"recommender", b"hypothesis", b"mechanism"):
+        assert forbidden not in serialized
+        assert forbidden not in Q1_CONDITIONAL_SENTINEL_PROMPT.lower().encode()
 
 
 def test_preoutcome_scoring_rejects_outcome_or_implementation_inputs() -> None:
