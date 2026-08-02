@@ -341,6 +341,36 @@ def test_shared_resolution_digest_schema_and_four_expressibility_combinations() 
     )
 
 
+def test_shared_prompt_states_the_local_expressibility_contract() -> None:
+    template = (
+        RESOURCE_ROOT / "idea_quality_producer_prompt_v1.txt"
+    ).read_text(encoding="utf-8")
+    prompts = [
+        render_q1_producer_prompt(
+            template,
+            arm=arm,
+            slot="diagnosis",
+            role="falsification_designer",
+            seed=55011,
+            context={"evidence_class": "DEVELOPMENT_ONLY"},
+            profile_catalog=({"semantics_digest": "a" * 64},),
+            protocol_ref="protocol:test",
+            protocol_digest="b" * 64,
+            context_ref="context:test",
+            context_digest="c" * 64,
+            profile_ref="profile:test",
+            profile_digest="d" * 64,
+        )
+        for arm in ("baseline", "enriched")
+    ]
+    for prompt in prompts:
+        assert "For current_profile_expressibility_claim EXPRESSIBLE" in prompt
+        assert "one exact semantics_digest from the active profile catalog" in prompt
+        assert "For NOT_EXPRESSIBLE" in prompt
+        assert "set requested_current_semantics_digest to null" in prompt
+        assert "provide non-empty capability_diff and high_change_dimensions" in prompt
+
+
 def test_invalid_spec_gate_precedes_any_implementer_consumer() -> None:
     source = inspect.getsource(run_idea_quality)
     invalid_gate = source.index(

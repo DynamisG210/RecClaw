@@ -335,14 +335,22 @@ def build_q1_ab_contract() -> dict[str, Any]:
 
 
 def _contract_instruction(arm: str, slot: str) -> str:
+    resolution_contract = (
+        "For current_profile_expressibility_claim EXPRESSIBLE, set "
+        "resolution_facts.requested_current_semantics_digest to one exact "
+        "semantics_digest from the active profile catalog and leave "
+        "capability_diff and high_change_dimensions empty. For NOT_EXPRESSIBLE, "
+        "set requested_current_semantics_digest to null and provide non-empty "
+        "capability_diff and high_change_dimensions. "
+    )
     if arm == "baseline":
-        return (
+        return resolution_contract + (
             "Use only the current OpenSpec fields in the supplied response schema. "
             "For the diagnosis slot, bind the hypothesis to the accepted context gap. "
             "For the frontier slot, pose one open structural recommender hypothesis."
         )
     if arm == "enriched":
-        return (
+        return resolution_contract + (
             "Use the enriched OpenSpec fields. Set idea_mode to "
             f"{Q1_SLOT_MODES[slot]}. State research_question, closest_parent, "
             "minimal_testable_wedge, causal_chain, a prediction that distinguishes the "
