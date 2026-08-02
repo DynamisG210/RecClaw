@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
+import copy
 from pathlib import Path
 
 import jsonschema
@@ -18,6 +20,7 @@ from recclaw_core.experiments.helix_abc_v1.idea_quality import (
     q1_provider_contract_static_matrix,
     render_q1_producer_prompt,
     score_preoutcome_testability,
+    run_idea_quality,
 )
 from recclaw_core.experiments.helix_abc_v1.fresh_r2 import (
     derive_fresh_r2_proposal_schema,
@@ -280,6 +283,72 @@ def test_enriched_schema_and_existing_projection_enforce_mode_semantics() -> Non
             },
             schema,
         )
+
+
+def test_shared_resolution_digest_schema_and_four_expressibility_combinations() -> None:
+    digest_schemas = []
+    for schema in (derive_fresh_r2_proposal_schema(), derive_enriched_proposal_schema()):
+        digest_schema = schema["properties"]["proposals"]["items"]["properties"][
+            "resolution_facts"
+        ]["properties"]["requested_current_semantics_digest"]
+        digest_schemas.append(digest_schema)
+        jsonschema.validate(None, digest_schema)
+        jsonschema.validate("a" * 64, digest_schema)
+    assert digest_schemas[0] == digest_schemas[1]
+    assert digest_schemas[0]["type"] == ["string", "null"]
+
+    expressible = copy.deepcopy(_enriched_draft(mode="DIAGNOSIS_DRIVEN"))
+    expressible["current_profile_expressibility_claim"] = "EXPRESSIBLE"
+    expressible["resolution_facts"].update(
+        {
+            "requested_current_semantics_digest": "a" * 64,
+            "capability_diff": [],
+            "high_change_dimensions": [],
+        }
+    )
+    project_open_producer_draft(
+        expressible,
+        bindings=_bindings(),
+        strict_resolution_contract=True,
+    )
+
+    expressive_missing_digest = copy.deepcopy(expressible)
+    expressive_missing_digest["resolution_facts"][
+        "requested_current_semantics_digest"
+    ] = None
+    with pytest.raises(OpenSpecProjectionError):
+        project_open_producer_draft(
+            expressive_missing_digest,
+            bindings=_bindings(),
+            strict_resolution_contract=True,
+        )
+
+    outside_with_digest = copy.deepcopy(_enriched_draft(mode="FRONTIER_HYPOTHESIS"))
+    outside_with_digest["resolution_facts"][
+        "requested_current_semantics_digest"
+    ] = "a" * 64
+    with pytest.raises(OpenSpecProjectionError):
+        project_open_producer_draft(
+            outside_with_digest,
+            bindings=_bindings(),
+            strict_resolution_contract=True,
+        )
+
+    project_open_producer_draft(
+        _enriched_draft(mode="FRONTIER_HYPOTHESIS"),
+        bindings=_bindings(),
+        strict_resolution_contract=True,
+    )
+
+
+def test_invalid_spec_gate_precedes_any_implementer_consumer() -> None:
+    source = inspect.getsource(run_idea_quality)
+    invalid_gate = source.index(
+        "if resolution.resolution is CapabilityResolutionResultV1.INVALID_SPEC:"
+    )
+    implementer_loop = source.index("implementer_template =", invalid_gate)
+    assert invalid_gate < implementer_loop
+    assert source.index("continue", invalid_gate) < implementer_loop
 
 
 def test_provider_compatible_realization_preserves_baseline_schema_bytes() -> None:

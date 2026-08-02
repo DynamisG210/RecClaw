@@ -174,6 +174,35 @@ def _normalize_resolution_facts(
     )
 
 
+def _validate_expressibility_facts(
+    claim: CurrentProfileExpressibilityV1,
+    facts: Mapping[str, Any],
+) -> None:
+    """Keep Provider-compatible nullable facts semantically strict locally."""
+
+    requested = facts["requested_current_semantics_digest"]
+    capability_diff = facts["capability_diff"]
+    dimensions = facts["high_change_dimensions"]
+    if claim is CurrentProfileExpressibilityV1.EXPRESSIBLE:
+        if requested is None:
+            raise OpenSpecProjectionError(
+                "EXPRESSIBLE requires requested_current_semantics_digest"
+            )
+        if capability_diff or dimensions:
+            raise OpenSpecProjectionError(
+                "EXPRESSIBLE forbids capability_diff and high_change_dimensions"
+            )
+    elif claim is CurrentProfileExpressibilityV1.NOT_EXPRESSIBLE:
+        if requested is not None:
+            raise OpenSpecProjectionError(
+                "NOT_EXPRESSIBLE requires a null requested_current_semantics_digest"
+            )
+        if not capability_diff or not dimensions:
+            raise OpenSpecProjectionError(
+                "NOT_EXPRESSIBLE requires capability_diff and high_change_dimensions"
+            )
+
+
 def _normalize_bindings(bindings: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(bindings, Mapping):
         raise OpenSpecProjectionError("bindings must be a mapping")
@@ -406,6 +435,7 @@ def project_open_producer_draft(
     draft: Mapping[str, Any],
     *,
     bindings: Mapping[str, Any],
+    strict_resolution_contract: bool = False,
 ) -> tuple[OpenResearchSpecV1, dict[str, Any]]:
     """Project a high-change draft from any of the same four Producer roles."""
 
@@ -543,7 +573,10 @@ def project_open_producer_draft(
         current_profile_expressibility_claim=expressibility,
         **enriched,
     )
-    return spec, _normalize_resolution_facts(draft["resolution_facts"])
+    facts = _normalize_resolution_facts(draft["resolution_facts"])
+    if strict_resolution_contract:
+        _validate_expressibility_facts(expressibility, facts)
+    return spec, facts
 
 
 def _coerce_open_spec(

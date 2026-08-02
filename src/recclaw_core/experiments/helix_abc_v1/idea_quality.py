@@ -749,10 +749,32 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                 raise IdeaQualityError("Provider changed paired Producer role")
             if arm == "enriched" and draft["idea_mode"] != Q1_SLOT_MODES[slot]:
                 raise IdeaQualityError("Provider changed frozen enriched idea mode")
-            spec, facts = project_open_producer_draft(draft, bindings=bindings)
+            spec, facts = project_open_producer_draft(
+                draft,
+                bindings=bindings,
+                strict_resolution_contract=True,
+            )
             resolution = resolve_capability(
                 spec, resolution_facts=facts, environment=environment
             )
+            if resolution.resolution is CapabilityResolutionResultV1.INVALID_SPEC:
+                pools[arm].append(
+                    canonical_value(
+                        {
+                            "slot": slot,
+                            "producer_role": Q1_SLOT_ROLES[slot],
+                            "proposal_seed": Q1_PROPOSAL_SEEDS[slot],
+                            "provider_attempts": call.attempts,
+                            "proposal_response_digest": call.call.response_digest,
+                            "research_spec": spec.canonical_dict(),
+                            "resolution_facts": facts,
+                            "resolution": resolution.canonical_dict(),
+                            "manual_candidate_patches": 0,
+                            "stage": "INVALID_SPEC",
+                        }
+                    )
+                )
+                continue
             feasible = resolution.resolution in {
                 CapabilityResolutionResultV1.SEARCH_READY,
                 CapabilityResolutionResultV1.INNOVATION_REQUIRED,
