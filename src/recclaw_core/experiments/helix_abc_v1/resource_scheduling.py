@@ -41,12 +41,22 @@ Q0R_V1_REPO_RECEIPT_SHA256 = (
 Q0R_V1_PHYSICAL_RECEIPT_SHA256 = (
     "bfaa4124c22b55fb9c990f643f2c270c72db962e038e4bceca0b32516277c3b6"
 )
-Q0R_RUN_IDENTITY = "q0r-resource-scheduling-v2-fixed-batch"
+ACCEPTED_Q0R_V2_COMMIT = "ac423acdb10dbe210d9e1f1f0478bac88f6f66ad"
+Q0R_V2_REPO_RECEIPT_SHA256 = (
+    "2eac12ba13f3ecaab8d6f1f4e7debca1ea2281749728fa7a58845784918dc7b4"
+)
+Q0R_V2_PHYSICAL_RECEIPT_SHA256 = (
+    "1b36b50066b338ea49e7e70ba0fe11ed9dac2f920a9db6956e45d69ebb89fa7b"
+)
+Q0R_V2_PREFIX_CONTRACT_SHA256 = (
+    "c87190d7a1a0b997f2f513c8bc7605a5e9c7d2cf6ec3ad6cf3c6f2c7351e446c"
+)
+Q0R_RUN_IDENTITY = "q0r-resource-scheduling-v3-type-preserving-fixed-batch"
 Q0R_BRANCH = "feat/research-line-resource-scheduling"
 Q0R_ROOT = Path(
     os.environ.get(
         "RECCLAW_Q0R_ROOT",
-        "/root/projects/RecClaw_resource_scheduling_runs/q0r_v2_fixed_batch",
+        "/root/projects/RecClaw_resource_scheduling_runs/q0r_v3_type_preserving",
     )
 )
 ARM_ORDER = (
@@ -97,7 +107,7 @@ def build_fixed_batch_prefix_contract() -> dict[str, Any]:
     )
 
 
-def _validate_q0r_v1_seal(repo_root: Path) -> dict[str, str]:
+def _validate_prior_q0r_seals(repo_root: Path) -> dict[str, str]:
     paths = {
         "q0r_v1_repository": (
             repo_root
@@ -110,6 +120,26 @@ def _validate_q0r_v1_seal(repo_root: Path) -> dict[str, str]:
             / "results/research_line/q0r_resource_scheduling_20260802_01/"
             "Q0R_PHYSICAL_HARD_BLOCK_RECEIPT.json",
             Q0R_V1_PHYSICAL_RECEIPT_SHA256,
+        ),
+        "q0r_v2_repository": (
+            repo_root
+            / "docs/research_line/vnext/"
+            "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
+            Q0R_V2_REPO_RECEIPT_SHA256,
+        ),
+        "q0r_v2_physical": (
+            repo_root
+            / "results/research_line/"
+            "q0r_fixed_batch_resource_scheduling_20260802_01/"
+            "Q0R_FIXED_BATCH_PHYSICAL_HARD_BLOCK_RECEIPT.json",
+            Q0R_V2_PHYSICAL_RECEIPT_SHA256,
+        ),
+        "q0r_v2_prefix_contract": (
+            repo_root
+            / "results/research_line/"
+            "q0r_fixed_batch_resource_scheduling_20260802_01/"
+            "FIXED_BATCH_PREFIX_CONTRACT.json",
+            Q0R_V2_PREFIX_CONTRACT_SHA256,
         ),
     }
     observed = {}
@@ -322,6 +352,7 @@ def predict_resources(
 
     predictions: dict[str, dict[str, Any]] = {}
     requested_deadlines: dict[str, int] = {}
+    deferred: dict[str, dict[str, Any]] = {}
     probe_cost_seconds = math.ceil(
         sum(int(probe_runs[arm]["wall_time_ms"]) for arm in ARM_ORDER) / 1000
     )
@@ -351,9 +382,9 @@ def predict_resources(
         ]
         train_rows = [row for row in batches if row.get("phase") == "TRAIN"]
         eval_rows = [row for row in batches if row.get("phase") == "EVAL"]
-        if not train_rows or not eval_rows:
+        if not train_rows:
             raise ResourceSchedulingError(
-                f"fixed-batch prefix has no completed train/eval consumer signal: {arm}"
+                f"fixed-batch prefix has no completed train consumer signal: {arm}"
             )
         if not any(row.get("loss") is not None for row in train_rows):
             raise ResourceSchedulingError(f"fixed-batch loss trend unavailable: {arm}")
@@ -367,18 +398,11 @@ def predict_resources(
             raise ResourceSchedulingError(f"fixed-batch scale inputs unavailable: {arm}")
         train_ms = [float(row["wall_time_ms"]) for row in train_rows]
         eval_ms = [float(row["wall_time_ms"]) for row in eval_rows]
-        point_epoch_ms = (
+        train_point_epoch_ms = (
             sum(train_ms) / len(train_ms) * int(full_train_batches)
-            + sum(eval_ms) / len(eval_ms) * int(full_eval_batches)
         )
-        lower_epoch_ms = (
-            min(train_ms) * int(full_train_batches)
-            + min(eval_ms) * int(full_eval_batches)
-        )
-        upper_epoch_ms = (
-            max(train_ms) * int(full_train_batches)
-            + max(eval_ms) * int(full_eval_batches)
-        )
+        train_lower_epoch_ms = min(train_ms) * int(full_train_batches)
+        train_upper_epoch_ms = max(train_ms) * int(full_train_batches)
         combined_features = canonical_value(
             {
                 **arm_features[arm],
@@ -389,11 +413,6 @@ def predict_resources(
             }
         )
         complexity_count = int(combined_features["bottleneck_feature_count"])
-        point_ms = int(setup_ms) + point_epoch_ms * FULL_EPOCHS
-        lower_ms = int(setup_ms) + lower_epoch_ms * FULL_EPOCHS
-        upper_ms = int(setup_ms) + upper_epoch_ms * FULL_EPOCHS * (
-            1.0 + 0.05 * complexity_count
-        )
         peak_observed = max(
             float(row[key])
             for row in batches
@@ -401,8 +420,46 @@ def predict_resources(
             if isinstance(row.get(key), (int, float))
         )
         peak_prediction = peak_observed * (1.0 + 0.03 * complexity_count)
-        eval_share = (
-            sum(eval_ms) / len(eval_ms) * int(full_eval_batches) / point_epoch_ms
+        training_lower_bound_ms = (
+            int(setup_ms) + train_lower_epoch_ms * FULL_EPOCHS
+        )
+        memory_safe = peak_prediction < GPU_MEMORY_TOTAL_MIB * 0.95
+        if not memory_safe:
+            deferred[arm] = {
+                "reason": "PREDICTED_GPU_MEMORY_CAPACITY",
+                "resource_disposition": "RESOURCE_INFEASIBLE",
+            }
+        elif training_lower_bound_ms / 1000 > full_run_budget_seconds:
+            deferred[arm] = {
+                "reason": "TRAINING_LOWER_BOUND_EXCEEDS_CAMPAIGN_BUDGET",
+                "resource_disposition": "RESOURCE_DEFERRED",
+            }
+        elif not eval_rows:
+            raise ResourceSchedulingError(
+                f"fixed-batch prefix eval signal unavailable for feasible arm: {arm}"
+            )
+
+        if eval_rows:
+            eval_point_epoch_ms = (
+                sum(eval_ms) / len(eval_ms) * int(full_eval_batches)
+            )
+            eval_lower_epoch_ms = min(eval_ms) * int(full_eval_batches)
+            eval_upper_epoch_ms = max(eval_ms) * int(full_eval_batches)
+            point_epoch_ms = train_point_epoch_ms + eval_point_epoch_ms
+            lower_epoch_ms = train_lower_epoch_ms + eval_lower_epoch_ms
+            upper_epoch_ms = train_upper_epoch_ms + eval_upper_epoch_ms
+            estimate_scope = "TRAIN_AND_FULL_SORT_EVAL"
+            eval_share = eval_point_epoch_ms / point_epoch_ms
+        else:
+            point_epoch_ms = train_point_epoch_ms
+            lower_epoch_ms = train_lower_epoch_ms
+            upper_epoch_ms = train_upper_epoch_ms
+            estimate_scope = "TRAINING_ONLY_RESOURCE_LOWER_BOUND"
+            eval_share = 0.0
+        point_ms = int(setup_ms) + point_epoch_ms * FULL_EPOCHS
+        lower_ms = int(setup_ms) + lower_epoch_ms * FULL_EPOCHS
+        upper_ms = int(setup_ms) + upper_epoch_ms * FULL_EPOCHS * (
+            1.0 + 0.05 * complexity_count
         )
         if peak_prediction >= GPU_MEMORY_TOTAL_MIB * 0.90:
             bottleneck = "GPU_MEMORY_CAPACITY"
@@ -423,8 +480,10 @@ def predict_resources(
             if observed_batches == expected_batches and run.get("exit_status") == "SUCCESS"
             else "LOW"
         )
-        raw_deadline = max(180, math.ceil(60 + 1.10 * upper_ms / 1000))
-        requested_deadlines[arm] = raw_deadline
+        if arm not in deferred:
+            requested_deadlines[arm] = max(
+                180, math.ceil(60 + 1.10 * upper_ms / 1000)
+            )
         predictions[arm] = canonical_value(
             {
                 "bottleneck_category": bottleneck,
@@ -432,17 +491,23 @@ def predict_resources(
                 "completed_eval_batches": len(eval_rows),
                 "completed_train_batches": len(train_rows),
                 "estimated_total_wall_time_seconds": point_ms / 1000,
+                "estimate_scope": estimate_scope,
                 "features": combined_features,
-                "fixed_batch_eval_mean_wall_time_ms": sum(eval_ms) / len(eval_ms),
+                "fixed_batch_eval_mean_wall_time_ms": (
+                    sum(eval_ms) / len(eval_ms) if eval_ms else None
+                ),
                 "fixed_batch_train_mean_wall_time_ms": sum(train_ms) / len(train_ms),
                 "full_eval_batches_per_epoch": full_eval_batches,
                 "full_train_batches_per_epoch": full_train_batches,
-                "model": "FIXED_BATCH_THROUGHPUT_LINEAR_EXTRAPOLATION_V2",
+                "model": "FIXED_BATCH_THROUGHPUT_LINEAR_EXTRAPOLATION_V3",
                 "peak_memory_prediction_mib": peak_prediction,
                 "peak_memory_observed_mib": peak_observed,
                 "prediction_interval_seconds": [lower_ms / 1000, upper_ms / 1000],
                 "probe_wall_time_ms": run["wall_time_ms"],
                 "setup_wall_time_ms": setup_ms,
+                "training_only_lower_bound_seconds": (
+                    training_lower_bound_ms / 1000
+                ),
                 "uncertainty_basis": (
                     "min/max completed fixed train and eval batch throughput; "
                     "upper bound widened five percent per visible bottleneck feature"
@@ -453,50 +518,29 @@ def predict_resources(
     if len(contract_digests) != 1:
         raise ResourceSchedulingError("fixed-batch prefix contract differs across arms")
 
-    minimum = 180
-    requested_total = sum(requested_deadlines.values())
-    if requested_total <= full_run_budget_seconds:
-        deadlines = dict(requested_deadlines)
-        scale = 1.0
-    else:
-        scalable_budget = full_run_budget_seconds - minimum * len(ARM_ORDER)
-        scalable_request = sum(
-            requested_deadlines[arm] - minimum for arm in ARM_ORDER
-        )
-        if scalable_budget <= 0 or scalable_request <= 0:
-            raise ResourceSchedulingError("campaign budget cannot fund generic minimums")
-        scale = scalable_budget / scalable_request
-        deadlines = {
-            arm: minimum
-            + math.floor((requested_deadlines[arm] - minimum) * scale)
-            for arm in ARM_ORDER
-        }
     schedule_order = sorted(
-        ARM_ORDER,
+        requested_deadlines,
         key=lambda arm: (
             float(predictions[arm]["estimated_total_wall_time_seconds"]),
             ARM_ORDER.index(arm),
         ),
     )
     schedule: list[dict[str, Any]] = []
-    for ordinal, arm in enumerate(schedule_order, start=1):
+    allocated_seconds = 0
+    for arm in schedule_order:
         prediction = predictions[arm]
         lower, upper = prediction["prediction_interval_seconds"]
         point = prediction["estimated_total_wall_time_seconds"]
-        deadline = deadlines[arm]
-        memory_safe = prediction["peak_memory_prediction_mib"] < (
-            GPU_MEMORY_TOTAL_MIB * 0.95
-        )
-        if not memory_safe:
-            completion_probability = 0.10
-        elif upper <= deadline:
-            completion_probability = 0.90
-        elif point <= deadline:
-            completion_probability = 0.65
-        elif lower <= deadline:
-            completion_probability = 0.35
-        else:
-            completion_probability = 0.10
+        deadline = requested_deadlines[arm]
+        if allocated_seconds + deadline > full_run_budget_seconds:
+            deferred[arm] = {
+                "reason": "REQUESTED_DEADLINE_NOT_ADMITTED_BY_CAMPAIGN_BUDGET",
+                "resource_disposition": "RESOURCE_DEFERRED",
+            }
+            prediction["completion_probability"] = 0.0
+            continue
+        allocated_seconds += deadline
+        completion_probability = 0.90
         prediction["completion_probability"] = completion_probability
         schedule.append(
             {
@@ -510,18 +554,33 @@ def predict_resources(
                     ],
                     "prediction_interval_seconds": [lower, upper],
                 },
-                "ordinal": ordinal,
+                "ordinal": len(schedule) + 1,
+            }
+        )
+    for arm, disposition in deferred.items():
+        predictions[arm]["completion_probability"] = 0.0
+        disposition.update(
+            {
+                "arm": arm,
+                "estimated_total_wall_time_seconds": predictions[arm][
+                    "estimated_total_wall_time_seconds"
+                ],
+                "mechanism_effect_update_allowed": False,
+                "requested_deadline_seconds": requested_deadlines.get(arm),
             }
         )
     return canonical_value(
         {
             "campaign_total_budget_seconds": total_budget_seconds,
-            "deadline_allocation_scale": scale,
+            "deadline_allocation_scale": 1.0,
             "deadline_formula": (
-                "max(180, ceil(60 + 1.10 * upper_fixed_batch_extrapolation)); if sum "
-                "exceeds campaign budget, scale every arm excess above 180 by "
-                "one common factor"
+                "first defer any arm whose training-only lower bound exceeds the "
+                "remaining full-run campaign budget or whose predicted peak exceeds "
+                "95 percent of GPU memory; otherwise request max(180, ceil(60 + "
+                "1.10 * upper_fixed_batch_extrapolation)) and admit in ascending "
+                "predicted-time order while the unified campaign budget remains"
             ),
+            "deferred_arms": list(deferred.values()),
             "full_epochs": FULL_EPOCHS,
             "full_run_budget_after_probes_seconds": full_run_budget_seconds,
             "outcome_fields_consumed": [],
@@ -543,7 +602,7 @@ def predict_resources(
             "schedule_rule": (
                 "ascending predicted total wall time; stable original order tie-break"
             ),
-            "schema": "recclaw.q0r-resource-prediction-and-schedule.v2",
+            "schema": "recclaw.q0r-resource-prediction-and-schedule.v3",
         }
     )
 
@@ -772,13 +831,197 @@ def finalize_fixed_batch_hard_block_receipt(
     return repository_receipt
 
 
+def finalize_type_preserving_hard_block_receipt(
+    campaign_root: Path,
+    *,
+    physical_receipt_path: Path,
+    canonical_receipt_path: Path,
+    external_receipt_ref: str,
+) -> dict[str, Any]:
+    """Seal the exited v3 chain without rerunning or revising its decision."""
+
+    run_root = campaign_root / "run"
+    decision_path = run_root / "PREDICTION_AND_SCHEDULE_BEFORE_OUTCOME.json"
+    input_path = run_root / "INPUT_IDENTITY.json"
+    runtime_path = run_root / "RUNTIME_ENVIRONMENT.json"
+    prefix_path = run_root / "FIXED_BATCH_PREFIX_CONTRACT.json"
+    stderr_path = campaign_root / "launcher.stderr"
+    decision = json.loads(decision_path.read_text(encoding="utf-8"))
+    input_identity = json.loads(input_path.read_text(encoding="utf-8"))
+    runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+    prefix_contract = json.loads(prefix_path.read_text(encoding="utf-8"))
+    stderr = stderr_path.read_text(encoding="utf-8")
+    if decision.get("schedule") != []:
+        raise ResourceSchedulingError("v3 HARD_BLOCK decision schedule is not empty")
+    full_root = run_root / "fresh_full_runs"
+    if full_root.exists() and any(full_root.rglob("*.json")):
+        raise ResourceSchedulingError("v3 HARD_BLOCK unexpectedly has full outcomes")
+    if (
+        "TypeError: object supporting the buffer API required" not in stderr
+        or "resource_scheduling.py\", line 988" not in stderr
+    ):
+        raise ResourceSchedulingError("v3 launcher failure evidence mismatch")
+    if (
+        input_identity.get("held_out_reads") != 0
+        or runtime.get("held_out_reads") != 0
+        or prefix_contract.get("held_out_reads") != 0
+    ):
+        raise ResourceSchedulingError("v3 held-out boundary drift")
+
+    probe_runs = {
+        arm: json.loads(
+            (run_root / "resource_probes" / f"{arm}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        for arm in ARM_ORDER
+    }
+    probe_summary = {}
+    for arm, run in probe_runs.items():
+        telemetry = run.get("resource_telemetry") or {}
+        batches = telemetry.get("batch_records") or []
+        probe_summary[arm] = {
+            "active_progress": telemetry.get("active_progress"),
+            "completed_eval_batches": sum(
+                row.get("phase") == "EVAL" for row in batches
+            ),
+            "completed_train_batches": sum(
+                row.get("phase") == "TRAIN" for row in batches
+            ),
+            "exit_status": run.get("exit_status"),
+            "mechanism_effect_update_allowed": False,
+            "peak_gpu_memory_mib": telemetry.get("peak_gpu_memory_mib"),
+            "resource_telemetry_sha256": run.get("resource_telemetry_sha256"),
+            "wall_time_ms": run.get("wall_time_ms"),
+        }
+    expected_eval_batches = PROBE_EPOCHS * len(FIXED_EVAL_BATCH_INDICES)
+    type_semantics_pass = all(
+        probe_summary[arm]["exit_status"] == "SUCCESS"
+        and probe_summary[arm]["completed_eval_batches"] == expected_eval_batches
+        for arm in ARM_ORDER[:-1]
+    )
+    frontier = probe_summary["frontier_candidate"]
+    durable_telemetry_pass = (
+        frontier["exit_status"] == "RESOURCE_CENSORED"
+        and int(frontier["completed_train_batches"]) > 0
+        and frontier["active_progress"].get("status") == "BATCH_STARTED"
+    )
+    deferred = {row["arm"]: row for row in decision.get("deferred_arms", ())}
+    frontier_deferred_correctly = (
+        deferred.get("frontier_candidate", {}).get("reason")
+        == "TRAINING_LOWER_BOUND_EXCEEDS_CAMPAIGN_BUDGET"
+    )
+    if not (
+        type_semantics_pass
+        and durable_telemetry_pass
+        and frontier_deferred_correctly
+    ):
+        raise ResourceSchedulingError("v3 partial gate evidence mismatch")
+
+    physical = canonical_value(
+        {
+            "cost": {
+                "campaign_budget_seconds": CAMPAIGN_TOTAL_BUDGET_SECONDS,
+                "full_physical_runs": 0,
+                "physical_probe_runs": len(probe_runs),
+                "probe_wall_time_ms": sum(
+                    int(run.get("wall_time_ms", 0)) for run in probe_runs.values()
+                ),
+                "retries": 0,
+            },
+            "decision_before_outcome": {
+                "artifact_ref": str(decision_path),
+                "artifact_sha256": bytes_sha256(decision_path.read_bytes()),
+                "full_outcomes_present_when_written": 0,
+                "schedule": [],
+            },
+            "development_only": True,
+            "engineering_safety_and_research_budget_separation": (
+                _engineering_budget_separation()
+            ),
+            "evaluation": {
+                "all_core_gates_pass": False,
+                "durable_atomic_telemetry": "PASS",
+                "formal_acceptance_self_approved": False,
+                "formal_scientific_experiment": False,
+                "frontier_resource_disposition": "RESOURCE_DEFERRED",
+                "full_sort_loader_type_semantics": "PASS",
+                "gates": {
+                    "end_to_end_result_chain_real_and_valid": False,
+                    "function_real_and_runnable": False,
+                    "no_fixed_66_tuning_static_wrapper_fallback_mock_or_smoke_substitution": True,
+                    "serves_open_algorithm_research_target": True,
+                },
+                "h2_resource_modeling_and_scheduling": "NOT_CLOSED",
+                "mechanism_effect_interpretation": (
+                    "NOT_ADJUDICATED_RESOURCE_OR_SCHEDULER_BLOCKED"
+                ),
+                "q1_allowed": False,
+                "scientific_effect_claim": False,
+            },
+            "full_outcomes_present": 0,
+            "held_out_reads": 0,
+            "input_identity": input_identity,
+            "launcher_failure": {
+                "error_message": "object supporting the buffer API required",
+                "error_type": "TypeError",
+                "stage": "POST_RUN_SEAL_CHECK",
+                "stderr_sha256": bytes_sha256(stderr_path.read_bytes()),
+            },
+            "prediction_and_schedule": decision,
+            "prefix_contract": {
+                "artifact_ref": str(prefix_path),
+                "artifact_sha256": bytes_sha256(prefix_path.read_bytes()),
+                "scientific_outcome": False,
+            },
+            "probe_runs": probe_runs,
+            "probe_summary": probe_summary,
+            "resource_deadline_estimator_blocker": {
+                "observed_behavior": (
+                    "MAX_BATCH_UPPER_EXTRAPOLATION_DEFERRED_EVERY_ARM_AND_LEFT_"
+                    "SCHEDULE_EMPTY"
+                ),
+                "point_estimates_seconds": {
+                    arm: decision["predictions"][arm][
+                        "estimated_total_wall_time_seconds"
+                    ]
+                    for arm in ARM_ORDER
+                },
+                "requested_deadlines_seconds": decision[
+                    "requested_deadlines_seconds"
+                ],
+            },
+            "runtime_environment_identity": runtime,
+            "schema": "recclaw.research-line.q0r-canonical-receipt.v3",
+            "scientific_effect_claim": False,
+            "status": "HARD_BLOCK",
+            "unique_next_recommendation": (
+                "Re-derive the prefix estimator and stopping semantics from first "
+                "principles, including an explicit policy for using prior "
+                "resource-only observations without consuming mechanism effects; "
+                "do not stack a fourth deadline patch or rerun this v3 chain."
+            ),
+        }
+    )
+    physical_digest = _write_new_json(physical_receipt_path, physical)
+    repository_receipt = canonical_value(
+        {
+            **physical,
+            "external_receipt_ref": external_receipt_ref,
+            "external_receipt_sha256": physical_digest,
+        }
+    )
+    _write_new_json(canonical_receipt_path, repository_receipt)
+    return repository_receipt
+
+
 def run_resource_scheduling(
     repo_root: Path,
     *,
     q0_external_receipt_path: Path,
     canonical_receipt_path: Path,
 ) -> dict[str, Any]:
-    """Run fresh probes, freeze decisions, then run every matched full arm once."""
+    """Run fresh probes, freeze decisions, then run each admitted full arm once."""
 
     started_ns = time.monotonic_ns()
     repo_root = repo_root.resolve()
@@ -788,7 +1031,7 @@ def run_resource_scheduling(
         raise ResourceSchedulingError(
             f"Q0R canonical receipt already exists: {canonical_receipt_path}"
         )
-    sealed_q0r_v1 = _validate_q0r_v1_seal(repo_root)
+    sealed_prior_q0r = _validate_prior_q0r_seals(repo_root)
     q0_repo_receipt, q0_external_receipt = _validate_q0_receipts(
         repo_root, q0_external_receipt_path.resolve()
     )
@@ -810,6 +1053,7 @@ def run_resource_scheduling(
             "accepted_q0_parent": ACCEPTED_Q0_PARENT,
             "accepted_q0_tree": ACCEPTED_Q0_TREE,
             "accepted_q0r_v1_commit": ACCEPTED_Q0R_V1_COMMIT,
+            "accepted_q0r_v2_commit": ACCEPTED_Q0R_V2_COMMIT,
             "branch": Q0R_BRANCH,
             "candidate_inputs": {
                 arm: {
@@ -824,9 +1068,9 @@ def run_resource_scheduling(
             "q0_external_receipt_sha256": Q0_EXTERNAL_RECEIPT_SHA256,
             "q0_repo_receipt_sha256": Q0_REPO_RECEIPT_SHA256,
             "q0_status": q0_repo_receipt["status"],
-            "q0r_v1_outcome_fields_consumed": [],
-            "q0r_v1_sealed_receipts": sealed_q0r_v1,
-            "sealed_q0r_v1_modified": False,
+            "prior_q0r_outcome_fields_consumed": [],
+            "prior_q0r_sealed_artifacts": sealed_prior_q0r,
+            "sealed_prior_q0r_modified": False,
             "sealed_q0_modified": False,
         }
     )
@@ -872,7 +1116,7 @@ def run_resource_scheduling(
                 },
                 "probe_runs": probe_runs,
                 "q1_allowed": False,
-                "schema": "recclaw.research-line.q0r-canonical-receipt.v2",
+                "schema": "recclaw.research-line.q0r-canonical-receipt.v3",
                 "scientific_effect_claim": False,
                 "status": "HARD_BLOCK",
                 "unique_next_recommendation": "NONE_WITHIN_AUTHORIZED_Q0R_REPAIR",
@@ -880,7 +1124,7 @@ def run_resource_scheduling(
         )
         external_digest = _write_new_json(
             Q0R_ROOT
-            / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
+            / "Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
             hard_block,
         )
         repository_receipt = canonical_value(
@@ -888,7 +1132,7 @@ def run_resource_scheduling(
                 **hard_block,
                 "external_receipt_ref": str(
                     Q0R_ROOT
-                    / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
+                    / "Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
                 ),
                 "external_receipt_sha256": external_digest,
             }
@@ -918,48 +1162,76 @@ def run_resource_scheduling(
         arm: bytes_sha256(Path(row["source_path"]).read_bytes())
         for arm, row in arm_inputs.items()
     }
-    q0r_v1_unchanged = _validate_q0r_v1_seal(repo_root) == sealed_q0r_v1
+    prior_q0r_unchanged = (
+        _validate_prior_q0r_seals(repo_root) == sealed_prior_q0r
+    )
     sealed_unchanged = (
         initial_source_digests == post_source_digests
         and bytes_sha256(q0_external_receipt_path.read_bytes())
         == Q0_EXTERNAL_RECEIPT_SHA256
         and bytes_sha256(
-            repo_root
-            / "docs/research_line/vnext/Q0_QUALITY_CALIBRATION_CANONICAL_RECEIPT.json"
+            (
+                repo_root
+                / "docs/research_line/vnext/"
+                "Q0_QUALITY_CALIBRATION_CANONICAL_RECEIPT.json"
+            ).read_bytes()
         )
         == Q0_REPO_RECEIPT_SHA256
-        and q0r_v1_unchanged
+        and prior_q0r_unchanged
     )
-    completion = {
-        arm: {
-            "actual_completed": run.get("exit_status") == "SUCCESS",
-            "deadline_seconds": next(
-                row["deadline_seconds"]
-                for row in decision["schedule"]
-                if row["arm"] == arm
-            ),
-            "mechanism_effect_update_allowed": False,
-            "metrics": run.get("metrics", {}),
-            "missingness": _missingness(run),
-            "predicted_completion_probability": decision["predictions"][arm][
-                "completion_probability"
-            ],
-            "wall_time_ms": run.get("wall_time_ms", 0),
-        }
-        for arm, run in full_runs.items()
-    }
+    scheduled_by_arm = {row["arm"]: row for row in decision["schedule"]}
+    deferred_by_arm = {row["arm"]: row for row in decision["deferred_arms"]}
+    completion = {}
+    for arm in ARM_ORDER:
+        run = full_runs.get(arm)
+        if run is not None:
+            completion[arm] = {
+                "actual_completed": run.get("exit_status") == "SUCCESS",
+                "deadline_seconds": scheduled_by_arm[arm]["deadline_seconds"],
+                "mechanism_effect_update_allowed": False,
+                "metrics": run.get("metrics", {}),
+                "missingness": _missingness(run),
+                "physical_run_executed": True,
+                "predicted_completion_probability": decision["predictions"][arm][
+                    "completion_probability"
+                ],
+                "wall_time_ms": run.get("wall_time_ms", 0),
+            }
+        else:
+            disposition = deferred_by_arm[arm]
+            completion[arm] = {
+                "actual_completed": False,
+                "deadline_seconds": None,
+                "mechanism_effect_update_allowed": False,
+                "metrics": {},
+                "missingness": {
+                    "missing": True,
+                    "reason": disposition["reason"],
+                    "resource_disposition": disposition["resource_disposition"],
+                },
+                "physical_run_executed": False,
+                "predicted_completion_probability": 0.0,
+                "wall_time_ms": 0,
+            }
     all_probes_real = all(
         run.get("exit_status") in {"SUCCESS", "RESOURCE_CENSORED"}
         and isinstance(run.get("resource_telemetry"), Mapping)
         for run in probe_runs.values()
     )
-    all_full_complete = all(
-        full_runs.get(arm, {}).get("exit_status") == "SUCCESS" for arm in ARM_ORDER
+    all_full_complete = bool(scheduled_by_arm) and all(
+        full_runs.get(arm, {}).get("exit_status") == "SUCCESS"
+        for arm in scheduled_by_arm
     )
+    all_arms_accounted = set(scheduled_by_arm) | set(deferred_by_arm) == set(ARM_ORDER)
     gates = {
-        "function_real_and_runnable": all_probes_real and all_full_complete,
+        "function_real_and_runnable": (
+            all_probes_real and all_full_complete and all_arms_accounted
+        ),
         "end_to_end_result_chain_real_and_valid": (
-            all_probes_real and len(full_runs) == len(ARM_ORDER) and sealed_unchanged
+            all_probes_real
+            and len(full_runs) == len(scheduled_by_arm)
+            and all_arms_accounted
+            and sealed_unchanged
         ),
         "serves_open_algorithm_research_target": (
             all(arm in decision["predictions"] for arm in ARM_ORDER)
@@ -971,7 +1243,7 @@ def run_resource_scheduling(
         "no_fixed_66_tuning_static_wrapper_fallback_mock_or_smoke_substitution": (
             decision["outcome_fields_consumed"] == []
             and sealed_unchanged
-            and len(full_runs) == len(ARM_ORDER)
+            and len(full_runs) == len(scheduled_by_arm)
         ),
     }
     accepted_pass = all(gates.values())
@@ -1024,9 +1296,9 @@ def run_resource_scheduling(
             "prediction_and_schedule": decision,
             "probe_runs": probe_runs,
             "runtime_environment_identity": runtime,
-            "schema": "recclaw.research-line.q0r-canonical-receipt.v2",
+            "schema": "recclaw.research-line.q0r-canonical-receipt.v3",
             "sealed_q0_unchanged": sealed_unchanged,
-            "sealed_q0r_v1_unchanged": q0r_v1_unchanged,
+            "sealed_prior_q0r_unchanged": prior_q0r_unchanged,
             "status": "PASS" if accepted_pass else "RESOURCE_INFEASIBLE",
             "wall_time_ms": max(
                 1, (time.monotonic_ns() - started_ns) // 1_000_000
@@ -1034,7 +1306,8 @@ def run_resource_scheduling(
         }
     )
     external_digest = _write_new_json(
-        Q0R_ROOT / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
+        Q0R_ROOT
+        / "Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
         receipt,
     )
     repository_receipt = canonical_value(
@@ -1042,7 +1315,7 @@ def run_resource_scheduling(
             **receipt,
             "external_receipt_ref": str(
                 Q0R_ROOT
-                / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
+                / "Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
             ),
             "external_receipt_sha256": external_digest,
         }
@@ -1056,6 +1329,7 @@ __all__ = [
     "build_fixed_batch_prefix_contract",
     "finalize_fixed_batch_hard_block_receipt",
     "finalize_hard_block_receipt",
+    "finalize_type_preserving_hard_block_receipt",
     "predict_resources",
     "run_resource_scheduling",
     "structural_features",

@@ -32,38 +32,37 @@ def _numeric_loss(value: object) -> float | list[float] | None:
     return None
 
 
-class _FixedBatchDataLoaderView:
-    """Expose one prefrozen batch sequence while preserving RecBole attributes."""
+def _install_fixed_batch_iteration(
+    source: object,
+    batches: tuple[object, ...],
+    source_indices: tuple[int, ...],
+    *,
+    on_batch_started: object,
+    on_batch_completed: object,
+) -> object:
+    """Limit one loader in place without changing its concrete RecBole type."""
 
-    def __init__(
-        self,
-        source: object,
-        batches: tuple[object, ...],
-        source_indices: tuple[int, ...],
-        *,
-        on_batch_started: object,
-        on_batch_completed: object,
-    ) -> None:
-        self._source = source
-        self._batches = batches
-        self._source_indices = source_indices
-        self._on_batch_started = on_batch_started
-        self._on_batch_completed = on_batch_completed
+    loader_type = type(source)
+    original_iter = loader_type.__iter__
 
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._source, name)
-
-    def __len__(self) -> int:
-        return len(self._batches)
-
-    def __iter__(self) -> object:
+    def fixed_iter(self: object) -> object:
+        if self is not source:
+            yield from original_iter(self)
+            return
         for position, (source_index, batch) in enumerate(
-            zip(self._source_indices, self._batches, strict=True)
+            zip(source_indices, batches, strict=True)
         ):
+            on_batch_started(position, source_index)
             started_ns = time.monotonic_ns()
-            self._on_batch_started(position, source_index)
             yield batch
-            self._on_batch_completed(position, source_index, started_ns)
+            on_batch_completed(position, source_index, started_ns)
+
+    loader_type.__iter__ = fixed_iter
+
+    def restore() -> None:
+        loader_type.__iter__ = original_iter
+
+    return restore
 
 
 def _preallocate_batches(
@@ -94,7 +93,7 @@ def _install_resource_telemetry(
     preallocated_train_batches: tuple[object, ...] | None,
     preallocated_valid_batches: tuple[object, ...] | None,
     worker_started_ns: int,
-) -> tuple[dict[str, object], object, object]:
+) -> tuple[dict[str, object], object]:
     """Measure RecBole phases and durably preserve fixed-batch progress."""
 
     phases: list[dict[str, object]] = []
@@ -188,27 +187,28 @@ def _install_resource_telemetry(
         )
         flush()
 
-    fit_train_data: object = train_data
-    fit_valid_data: object = valid_data
+    restore_iterations: list[object] = []
     if prefix_contract is not None:
         if preallocated_train_batches is None or preallocated_valid_batches is None:
             raise RuntimeError("fixed-batch prefix was not preallocated")
         train_indices = tuple(int(value) for value in prefix_contract["train_batch_indices"])
         valid_indices = tuple(int(value) for value in prefix_contract["eval_batch_indices"])
-        fit_train_data = _FixedBatchDataLoaderView(
+        if type(train_data) is type(valid_data):
+            raise RuntimeError("fixed-batch train and eval loader types overlap")
+        restore_iterations.append(_install_fixed_batch_iteration(
             train_data,
             preallocated_train_batches,
             train_indices,
             on_batch_started=batch_started,
             on_batch_completed=batch_completed,
-        )
-        fit_valid_data = _FixedBatchDataLoaderView(
+        ))
+        restore_iterations.append(_install_fixed_batch_iteration(
             valid_data,
             preallocated_valid_batches,
             valid_indices,
             on_batch_started=batch_started,
             on_batch_completed=batch_completed,
-        )
+        ))
         original_loss = trainer.model.calculate_loss
 
         def measured_loss(interaction: object) -> object:
@@ -261,8 +261,10 @@ def _install_resource_telemetry(
         }
         phases.append(
             {
-                "batch_count": len(phase_batch_rows) or (
-                    len(fit_train_data) if phase == "TRAIN" else len(fit_valid_data)
+                "batch_count": (
+                    len(phase_batch_rows)
+                    if prefix_contract is not None
+                    else (len(train_data) if phase == "TRAIN" else len(valid_data))
                 ),
                 "epoch": epoch,
                 "loss": _numeric_loss(loss),
@@ -349,7 +351,12 @@ def _install_resource_telemetry(
     trainer._train_epoch = measured_train_epoch
     trainer._valid_epoch = measured_valid_epoch
     flush()
-    return telemetry, fit_train_data, fit_valid_data
+
+    def restore() -> None:
+        for restore_iteration in reversed(restore_iterations):
+            restore_iteration()
+
+    return telemetry, restore
 
 
 def _finalize_resource_telemetry(value: dict[str, object]) -> dict[str, object]:
@@ -826,15 +833,13 @@ def main() -> int:
                 trainer = get_trainer(
                     config["MODEL_TYPE"], config["model"]
                 )(config, model)
-                fit_train_data = train_data
-                fit_valid_data = valid_data
+                restore_fixed_batch_iteration = lambda: None
                 if args.resource_telemetry:
                     if telemetry_path is None:
                         raise RuntimeError("resource telemetry path is unavailable")
                     (
                         resource_telemetry,
-                        fit_train_data,
-                        fit_valid_data,
+                        restore_fixed_batch_iteration,
                     ) = _install_resource_telemetry(
                         trainer,
                         torch=torch,
@@ -846,12 +851,15 @@ def main() -> int:
                         preallocated_valid_batches=preallocated_valid_batches,
                         worker_started_ns=worker_started_ns,
                     )
-                best_valid_score, best_valid_result = trainer.fit(
-                    fit_train_data,
-                    fit_valid_data,
-                    saved=False,
-                    show_progress=False,
-                )
+                try:
+                    best_valid_score, best_valid_result = trainer.fit(
+                        train_data,
+                        valid_data,
+                        saved=False,
+                        show_progress=False,
+                    )
+                finally:
+                    restore_fixed_batch_iteration()
         payload = {
             "best_valid_result": best_valid_result,
             "best_valid_score": best_valid_score,

@@ -28,7 +28,7 @@ def main() -> int:
         default=(
             ROOT
             / "docs/research_line/vnext/"
-            "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
+            "Q0R_TYPE_PRESERVING_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
         ),
     )
     args = parser.parse_args()
