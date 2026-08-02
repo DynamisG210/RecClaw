@@ -11,7 +11,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .canonical import bytes_sha256, canonical_value, sha256_digest
 from .fresh_r1 import (
@@ -85,7 +85,10 @@ class ResourceSchedulingError(RuntimeError):
     """Q0R identity, telemetry, or scheduling failure."""
 
 
-def build_fixed_batch_prefix_contract() -> dict[str, Any]:
+def build_fixed_batch_prefix_contract(
+    *,
+    seed: int = TRAINING_SEED,
+) -> dict[str, Any]:
     return canonical_value(
         {
             "dataset": "ml-1m",
@@ -104,7 +107,7 @@ def build_fixed_batch_prefix_contract() -> dict[str, Any]:
                 "construction under the shared seed; reuse those exact batches "
                 "for every prefix epoch and every arm"
             ),
-            "seed": TRAINING_SEED,
+            "seed": seed,
             "schema": "recclaw.q0r-fixed-batch-prefix-contract.v1",
             "train_batch_indices": list(FIXED_TRAIN_BATCH_INDICES),
             "uniform_across_arms": True,
@@ -585,20 +588,27 @@ def predict_resources(
     arm_features: Mapping[str, Mapping[str, Any]],
     probe_runs: Mapping[str, Mapping[str, Any]],
     total_budget_seconds: int = CAMPAIGN_TOTAL_BUDGET_SECONDS,
+    arm_order: Sequence[str] = ARM_ORDER,
+    probe_seed: int = TRAINING_SEED,
 ) -> dict[str, Any]:
     """Fit the fixed-batch auditable model and allocate one campaign budget."""
 
+    order = tuple(arm_order)
+    if not order or len(set(order)) != len(order):
+        raise ResourceSchedulingError("arm order must be non-empty and unique")
+    if set(arm_features) != set(order) or set(probe_runs) != set(order):
+        raise ResourceSchedulingError("resource inputs do not match frozen arm order")
     predictions: dict[str, dict[str, Any]] = {}
     requested_deadlines: dict[str, int] = {}
     deferred: dict[str, dict[str, Any]] = {}
     probe_cost_seconds = math.ceil(
-        sum(int(probe_runs[arm]["wall_time_ms"]) for arm in ARM_ORDER) / 1000
+        sum(int(probe_runs[arm]["wall_time_ms"]) for arm in order) / 1000
     )
     full_run_budget_seconds = total_budget_seconds - probe_cost_seconds
     if full_run_budget_seconds <= 0:
         raise ResourceSchedulingError("prefix probes exhausted campaign budget")
     contract_digests: set[str] = set()
-    for arm in ARM_ORDER:
+    for arm in order:
         run = probe_runs[arm]
         telemetry = run.get("resource_telemetry")
         if run.get("exit_status") not in {"SUCCESS", "RESOURCE_CENSORED"} or not isinstance(
@@ -760,7 +770,7 @@ def predict_resources(
         requested_deadlines,
         key=lambda arm: (
             float(predictions[arm]["estimated_total_wall_time_seconds"]),
-            ARM_ORDER.index(arm),
+            order.index(arm),
         ),
     )
     schedule: list[dict[str, Any]] = []
@@ -829,7 +839,7 @@ def predict_resources(
                 "eval_batch_indices": list(FIXED_EVAL_BATCH_INDICES),
                 "execution_purpose": "RESOURCE_PROBE_ONLY",
                 "prefix_contract_sha256": next(iter(contract_digests)),
-                "seed": TRAINING_SEED,
+                "seed": probe_seed,
                 "timeout_seconds": PROBE_TIMEOUT_SECONDS,
                 "train_batch_indices": list(FIXED_TRAIN_BATCH_INDICES),
                 "uniform_across_arms": True,

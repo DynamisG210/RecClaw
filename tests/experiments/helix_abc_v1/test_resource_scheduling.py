@@ -181,6 +181,44 @@ def test_q0r_prediction_is_uniform_outcome_blind_and_budget_bounded() -> None:
     assert decision["deadline_formula"].find("1500") == -1
 
 
+def test_resource_prediction_accepts_frozen_two_arm_consumer() -> None:
+    order = ("matched_bpr_control", "sealed_f1_candidate")
+    features = {
+        arm: {
+            "ast_call_count": 1,
+            "bottleneck_feature_count": 0,
+            "dense_compute": False,
+            "full_sort_path": True,
+            "graph_propagation": False,
+            "routing_path": False,
+            "source_bytes": 10,
+            "source_sha256": str(index + 1) * 64,
+            "sparse_compute": False,
+        }
+        for index, arm in enumerate(order)
+    }
+    probes = {arm: _probe(batch_ms=2, peak_mib=100) for arm in order}
+
+    decision = predict_resources(
+        arm_features=features,
+        probe_runs=probes,
+        arm_order=order,
+        probe_seed=53102,
+    )
+
+    assert set(decision["predictions"]) == set(order)
+    assert decision["probe_contract"]["seed"] == 53102
+    assert {row["arm"] for row in decision["schedule"]} == set(order)
+
+
+def test_fixed_batch_prefix_contract_accepts_frozen_campaign_seed() -> None:
+    contract = build_fixed_batch_prefix_contract(seed=53102)
+
+    assert contract["seed"] == 53102
+    assert contract["uniform_across_arms"] is True
+    assert contract["deadline_rule"]["legacy_1500_seconds_controls_probe"] is False
+
+
 def test_q0r_training_lower_bound_defers_arm_without_eval_signal() -> None:
     features = {
         arm: {
