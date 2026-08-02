@@ -28,6 +28,7 @@ from .fresh_r1 import (
     MAX_PHYSICAL_ATTEMPTS,
     MODEL,
     PROTOCOL_REQUIREMENTS,
+    PROJECTS_ROOT,
     PYTHON_EXECUTABLE,
     RECBole_ROOT,
     SEARCH_DATASET_ROOT,
@@ -89,10 +90,10 @@ R2_REPO_RECEIPT_SHA256 = (
 R2_EXTERNAL_RECEIPT_SHA256 = (
     "6de30cd5122084804e3c6b083b236dfbdc28677ace903cccf690f65fe61f9a54"
 )
-R2_EXTERNAL_ROOT = Path(
-    "/root/projects/RecClaw_r1_r2_runs/fresh_r2_registry_effect_v2"
+R2_EXTERNAL_ROOT = (
+    PROJECTS_ROOT / "RecClaw_r1_r2_runs/fresh_r2_registry_effect_v2"
 )
-F1_ROOT = Path("/root/projects/RecClaw_f1_runs/fresh_f1_open_meta_v1")
+F1_ROOT = PROJECTS_ROOT / "RecClaw_f1_runs/fresh_f1_open_meta_v1"
 F1_RUN_IDENTITY = "fresh-f1-open-meta-v1"
 F1_CAMPAIGN_ID = "recclaw-fresh-f1-open-meta-v1"
 F1_CONTEXT_REF = "recclaw-fresh-f1-open-meta-context-v1"
@@ -126,9 +127,7 @@ F1_V1_SELECTION_FILE_SHA256 = (
 F1_V1_QUALIFICATION_FILE_SHA256 = (
     "1709c92bd91f6e332527aeb71a3ec7b501ed10390114aa5dbb3b87df2d04ee9c"
 )
-F1_RECOVERY_ROOT = Path(
-    "/root/projects/RecClaw_f1_runs/fresh_f1_runtime_recovery_v2"
-)
+F1_RECOVERY_ROOT = PROJECTS_ROOT / "RecClaw_f1_runs/fresh_f1_runtime_recovery_v2"
 F1_RECOVERY_RUN_IDENTITY = "fresh-f1-runtime-recovery-v2"
 F1_RECOVERY_CAMPAIGN_ID = "recclaw-fresh-f1-runtime-recovery-v2"
 F1_RECOVERY_TIMEOUT_SECONDS = 2400

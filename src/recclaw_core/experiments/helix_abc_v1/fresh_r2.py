@@ -32,6 +32,7 @@ from .fresh_r1 import (
     MAX_PHYSICAL_ATTEMPTS,
     MODEL,
     PROTOCOL_REQUIREMENTS,
+    PROJECTS_ROOT,
     PYTHON_EXECUTABLE,
     RECBole_ROOT,
     SEARCH_DATA_ROOT,
@@ -82,12 +83,11 @@ R1_REPO_RECEIPT_SHA256 = (
 R1_EXTERNAL_RECEIPT_SHA256 = (
     "3c952acde2efec2d70285b19b3650799ee6d3eeb7826983767e46112872b6427"
 )
-R1_EXTERNAL_ROOT = Path(
-    "/root/projects/RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3"
+R1_EXTERNAL_ROOT = (
+    PROJECTS_ROOT
+    / "RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3"
 )
-R2_ROOT = Path(
-    "/root/projects/RecClaw_r1_r2_runs/fresh_r2_registry_effect_v2"
-)
+R2_ROOT = PROJECTS_ROOT / "RecClaw_r1_r2_runs/fresh_r2_registry_effect_v2"
 R2_RUN_IDENTITY = "fresh-r2-registry-effect-v2"
 R2_CAMPAIGN_ID = "recclaw-fresh-r2-registry-effect-v2"
 R2_LINEAGE = (
@@ -189,9 +189,14 @@ def _r1_receipt(repo_root: Path) -> tuple[Path, dict[str, Any]]:
     ):
         raise FreshR2Error("accepted R1 receipt no longer satisfies its result boundary")
     external = Path(str(receipt.get("external_receipt_ref")))
-    if external != R1_EXTERNAL_ROOT / "R1_CANONICAL_RECEIPT.json":
+    expected_external = Path(
+        "/root/projects/RecClaw_r1_r2_runs/"
+        "fresh_r1_training_filesystem_fix_v3/R1_CANONICAL_RECEIPT.json"
+    )
+    if external != expected_external:
         raise FreshR2Error("accepted R1 external receipt reference drift")
-    if bytes_sha256(external.read_bytes()) != R1_EXTERNAL_RECEIPT_SHA256:
+    relocated_external = R1_EXTERNAL_ROOT / "R1_CANONICAL_RECEIPT.json"
+    if bytes_sha256(relocated_external.read_bytes()) != R1_EXTERNAL_RECEIPT_SHA256:
         raise FreshR2Error("accepted R1 external receipt byte identity drift")
     return path, receipt
 

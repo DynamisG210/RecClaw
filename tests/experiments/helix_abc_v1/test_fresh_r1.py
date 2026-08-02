@@ -32,6 +32,9 @@ from recclaw_core.experiments.helix_abc_v1.open_spec import (
     frozen_search_bindings,
     project_open_producer_draft,
 )
+from recclaw_core.experiments.helix_abc_v1.quality_calibration import (
+    _parent_equivalent_unit_check,
+)
 from recclaw_core.experiments.helix_abc_v1.training_filesystem import (
     build_training_filesystem_capability,
 )
@@ -112,7 +115,16 @@ def _implementation(source: str) -> dict[str, object]:
     }
 
 
-def _qualify_source(tmp_path: Path, *, label: str, source: str):
+def _qualify_source(
+    tmp_path: Path,
+    *,
+    label: str,
+    source: str,
+    unit_check_factory=None,
+):
+    kwargs = {}
+    if unit_check_factory is not None:
+        kwargs["unit_check_factory"] = unit_check_factory
     return _materialize_and_qualify(
         repo_root=ROOT,
         side_root=tmp_path / label,
@@ -126,6 +138,7 @@ def _qualify_source(tmp_path: Path, *, label: str, source: str):
         tool_policy_digest=bytes_sha256(
             (RESOURCE_ROOT / "fresh_open_spec_tool_policy_v1.json").read_bytes()
         ),
+        **kwargs,
     )
 
 
@@ -300,6 +313,45 @@ def test_real_recbole_interface_contract_materializes_and_qualifies(
     assert candidate_root.name == materialized.shared_request["blind_candidate_id"]
     assert qualification.receipt.status is QualificationStatusV1.PASS
     assert behavior["probe_status"] == "PASS"
+
+
+def test_q0_parent_equivalence_is_local_and_default_innovation_gate_stays_strict(
+    tmp_path: Path,
+) -> None:
+    source = (
+        "import torch\n"
+        "from recbole.model.general_recommender.bpr import BPR\n\n"
+        "class FreshCandidateModel(BPR):\n"
+        "    def calculate_loss(self, interaction):\n"
+        "        user = self.user_embedding(interaction[self.USER_ID])\n"
+        "        pos = self.item_embedding(interaction[self.ITEM_ID])\n"
+        "        neg = self.item_embedding(interaction[self.NEG_ITEM_ID])\n"
+        "        return self.loss(torch.mul(user, pos).sum(dim=1), "
+        "torch.mul(user, neg).sum(dim=1))\n\n"
+        "    def predict(self, interaction):\n"
+        "        user = self.user_embedding(interaction[self.USER_ID])\n"
+        "        item = self.item_embedding(interaction[self.ITEM_ID])\n"
+        "        return torch.mul(user, item).sum(dim=1)\n\n"
+        "    def full_sort_predict(self, interaction):\n"
+        "        user = self.user_embedding(interaction[self.USER_ID])\n"
+        "        return torch.matmul(user, self.item_embedding.weight.transpose(0, 1)).view(-1)\n"
+    )
+    _materialized, default_run, default_behavior = _qualify_source(
+        tmp_path, label="default-rejects-null", source=source
+    )
+    _materialized, q0_run, q0_behavior = _qualify_source(
+        tmp_path,
+        label="q0-accepts-null",
+        source=source,
+        unit_check_factory=_parent_equivalent_unit_check,
+    )
+
+    assert default_run.receipt.status is QualificationStatusV1.FAIL
+    assert default_run.receipt.stage is QualificationStageV1.UNIT
+    assert default_behavior == {}
+    assert q0_run.receipt.status is QualificationStatusV1.PASS
+    assert q0_behavior["probe_status"] == "PASS_PARENT_EQUIVALENT"
+    assert q0_behavior["extra_parameter_names"] == ()
 
 
 @pytest.mark.parametrize(

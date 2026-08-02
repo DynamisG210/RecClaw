@@ -115,11 +115,29 @@ SEALED_CORRECTED_R1_EXTERNAL_RECEIPT = Path(
 SEALED_CORRECTED_R1_EXTERNAL_RECEIPT_SHA256 = (
     "a45ad3a13147acdd5b14f9988b28d4d789dce6b2e2d5b27d4803756ed9607431"
 )
-SEARCH_DATA_ROOT = Path("/root/projects/RecClaw_campaign_dataset_v1/search")
+PROJECTS_ROOT = Path(os.environ.get("RECCLAW_PROJECTS_ROOT", "/root/projects"))
+SEARCH_DATA_ROOT = Path(
+    os.environ.get(
+        "RECCLAW_SEARCH_DATA_ROOT",
+        str(PROJECTS_ROOT / "RecClaw_campaign_dataset_v1/search"),
+    )
+)
 SEARCH_DATASET_ROOT = SEARCH_DATA_ROOT / "ml-1m"
-RECBole_ROOT = Path("/root/projects/RecBole")
-PYTHON_EXECUTABLE = Path("/root/miniconda3/envs/recbole/bin/python3.10")
-API_CONFIG = Path("/root/projects/RecClaw_v2_0_Final_Reference/llm_api.md")
+RECBole_ROOT = Path(
+    os.environ.get("RECCLAW_RECBOLE_ROOT", str(PROJECTS_ROOT / "RecBole"))
+)
+PYTHON_EXECUTABLE = Path(
+    os.environ.get(
+        "RECCLAW_PYTHON_EXECUTABLE",
+        "/root/miniconda3/envs/recbole/bin/python3.10",
+    )
+)
+API_CONFIG = Path(
+    os.environ.get(
+        "RECCLAW_API_CONFIG",
+        str(PROJECTS_ROOT / "RecClaw_v2_0_Final_Reference/llm_api.md"),
+    )
+)
 EXPECTED_SEARCH_FILES = {
     "ml-1m.train.inter": "c84b1a4f6c6d974f32f126b173f11f7af8e12e1a143a50ac5a53e9945903491a",
     "ml-1m.dev.inter": "631911b8e59d312e110ba7205151bcda3d52378ecbf510d48d8b9cc162956cc9",
@@ -611,7 +629,11 @@ def _mechanism_kind(dimensions: Sequence[str]) -> CapabilityKindV1:
     return CapabilityKindV1.COMPOSITE_MODULE
 
 
-def _shared_behavioral_unit_check(evidence: dict[str, Any]) -> Callable[[Any, Any, Any], None]:
+def _shared_behavioral_unit_check(
+    evidence: dict[str, Any],
+    *,
+    require_extra_parameters: bool = True,
+) -> Callable[[Any, Any, Any], None]:
     def check(model: Any, config: Any, dataset: Any) -> None:
         import torch
 
@@ -672,7 +694,11 @@ def _shared_behavioral_unit_check(evidence: dict[str, Any]) -> Callable[[Any, An
             raise AssertionError("behavioral difference probe is non-finite")
         if score_delta <= 1e-7 and loss_delta <= 1e-7:
             raise AssertionError("candidate behavior is indistinguishable from inherited BPR")
-        if not extra_parameters and parameter_count <= baseline_parameter_count:
+        if (
+            require_extra_parameters
+            and not extra_parameters
+            and parameter_count <= baseline_parameter_count
+        ):
             raise AssertionError("candidate has no additional trainable mechanism")
         evidence.update(
             {
@@ -718,6 +744,9 @@ def _materialize_and_qualify(
     implementation_prompt_digest: str,
     tool_policy_digest: str,
     run_identity: str = CORRECTED_RUN_IDENTITY,
+    unit_check_factory: Callable[
+        [dict[str, Any]], Callable[[Any, Any, Any], None]
+    ] = _shared_behavioral_unit_check,
 ) -> tuple[MaterializedCandidate, MechanicalQualificationRun, dict[str, Any]]:
     policy = _shared_policy(implementation_prompt_digest, tool_policy_digest)
     request = build_shared_implementer_request(spec, policy=policy)
@@ -752,7 +781,7 @@ def _materialize_and_qualify(
         research_spec=spec,
         candidate_root=candidate_root,
         fixture=fixture,
-        unit_check=_shared_behavioral_unit_check(behavior),
+        unit_check=unit_check_factory(behavior),
     )
     return materialized, qualification, behavior
 
@@ -798,7 +827,12 @@ def run_development_training(
     run_identity: str = CORRECTED_RUN_IDENTITY,
     authority: str = "user-delegated-corrected-formal-fresh-r1",
     timeout_seconds: int = 1500,
+    recbole_commit_identity: str | None = None,
 ) -> dict[str, Any]:
+    if recbole_commit_identity is not None and recbole_commit_identity != (
+        "7b02be5ec80a88310f2d04a27a82adfcbb5dc211"
+    ):
+        raise FreshR1Error("delegated RecBole commit identity mismatch")
     run_root = side_root / "experiments" / run_id
     result_root = run_root / "worker"
     checkpoint_dir = result_root / "checkpoints"
@@ -845,7 +879,11 @@ def run_development_training(
     runtime_binding_digest = sha256_digest(
         {
             "python_sha256": bytes_sha256(PYTHON_EXECUTABLE.read_bytes()),
-            "recbole_commit": _git(RECBole_ROOT, "rev-parse", "HEAD"),
+            "recbole_commit": (
+                recbole_commit_identity
+                if recbole_commit_identity is not None
+                else _git(RECBole_ROOT, "rev-parse", "HEAD")
+            ),
             "runtime_release_digest": release_digest,
             "search_partition": EXPECTED_SEARCH_FILES,
         }

@@ -14,6 +14,12 @@ if str(SRC) not in sys.path:
 from recclaw_core.experiments.helix_abc_v1.canonical import (  # noqa: E402
     sha256_digest,
 )
+from recclaw_core.experiments.helix_abc_v1.fresh_f1 import (  # noqa: E402
+    R2_EXTERNAL_ROOT,
+)
+from recclaw_core.experiments.helix_abc_v1.fresh_r2 import (  # noqa: E402
+    R1_EXTERNAL_ROOT,
+)
 from recclaw_core.experiments.helix_abc_v1.open_meta_f1 import (  # noqa: E402
     F1_POLICY_VERSION,
     build_f1_replay_dataset,
@@ -152,12 +158,8 @@ def test_experiment_policy_prefers_missing_information_not_candidate_id() -> Non
 
 
 def test_real_r1_r2_replay_ingests_full_denominator_when_available() -> None:
-    r1 = Path(
-        "/root/projects/RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3"
-    )
-    r2 = Path(
-        "/root/projects/RecClaw_r1_r2_runs/fresh_r2_registry_effect_v2"
-    )
+    r1 = R1_EXTERNAL_ROOT
+    r2 = R2_EXTERNAL_ROOT
     if not r1.is_dir() or not r2.is_dir():
         pytest.skip("accepted external R1/R2 evidence is not installed")
     dataset = build_f1_replay_dataset(r1_root=r1, r2_root=r2)
