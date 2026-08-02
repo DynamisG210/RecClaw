@@ -489,7 +489,11 @@ def project_open_producer_draft(
             raise OpenSpecProjectionError(
                 "DIAGNOSIS_DRIVEN requires a real observed_failure_mode"
             )
-        if idea_mode is IdeaModeV1.FRONTIER_HYPOTHESIS and observed_failure == "NOT_OBSERVED":
+        if idea_mode is IdeaModeV1.FRONTIER_HYPOTHESIS:
+            if observed_failure not in (None, "NOT_OBSERVED"):
+                raise OpenSpecProjectionError(
+                    "FRONTIER_HYPOTHESIS forbids a fabricated observed_failure_mode"
+                )
             observed_failure = None
         enriched = {
             "idea_mode": idea_mode,

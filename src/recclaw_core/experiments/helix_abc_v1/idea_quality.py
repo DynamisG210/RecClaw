@@ -135,30 +135,6 @@ def derive_enriched_proposal_schema() -> dict[str, Any]:
         raise IdeaQualityError(f"enriched schema duplicates existing fields: {overlap}")
     properties.update(additions)
     proposal["required"] = list(proposal["required"]) + list(additions)
-    proposal["allOf"] = [
-        {
-            "if": {
-                "properties": {"idea_mode": {"const": "DIAGNOSIS_DRIVEN"}},
-                "required": ["idea_mode"],
-            },
-            "then": {
-                "properties": {
-                    "observed_failure_mode": {"minLength": 1, "type": "string"}
-                }
-            },
-        },
-        {
-            "if": {
-                "properties": {"idea_mode": {"const": "FRONTIER_HYPOTHESIS"}},
-                "required": ["idea_mode"],
-            },
-            "then": {
-                "properties": {
-                    "observed_failure_mode": {"enum": [None, "NOT_OBSERVED"]}
-                }
-            },
-        },
-    ]
     schema["title"] = "RecClaw Q1 Enriched OpenSpec Proposal Response"
     jsonschema.validators.validator_for(schema).check_schema(schema)
     return canonical_value(schema)
@@ -272,8 +248,11 @@ def q1_provider_contract_static_matrix() -> dict[str, Any]:
                     "canonical_bytes": len(canonical_json_bytes(enriched)),
                     "proposal_properties": len(enriched_proposal["properties"]),
                     "proposal_required": len(enriched_proposal["required"]),
-                    "conditional_composition": True,
-                    "unique_keywords": ["allOf", "const", "if", "then"],
+                    "conditional_composition": "allOf" in enriched_proposal,
+                    "unique_keywords": [],
+                    "cross_field_semantics_enforced_by": (
+                        "project_open_producer_draft"
+                    ),
                 },
                 "sentinel": {
                     "canonical_bytes": len(canonical_json_bytes(sentinel)),
@@ -976,10 +955,18 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                     path.relative_to(repo_root).as_posix(): bytes_sha256(path.read_bytes())
                     for path in (
                         Path(__file__),
+                        Path(__file__).with_name("open_spec.py"),
                         producer_template_path,
                         implementer_template_path,
                     )
                 },
+            },
+            "provider_schema_realization": {
+                "baseline_schema_sha256": sha256_digest(baseline_schema),
+                "enriched_schema_sha256": sha256_digest(enriched_schema),
+                "provider_conditional_keywords": [],
+                "cross_field_semantic_validator": "project_open_producer_draft",
+                "semantic_quality_gate_relaxed": False,
             },
             "ab_contract": ab_contract,
             "research_context_digest": context_digest,

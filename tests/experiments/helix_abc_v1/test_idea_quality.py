@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
+import jsonschema
 import pytest
 
 from recclaw_core.experiments.helix_abc_v1.idea_quality import (
@@ -15,6 +18,9 @@ from recclaw_core.experiments.helix_abc_v1.idea_quality import (
     q1_provider_contract_static_matrix,
     render_q1_producer_prompt,
     score_preoutcome_testability,
+)
+from recclaw_core.experiments.helix_abc_v1.fresh_r2 import (
+    derive_fresh_r2_proposal_schema,
 )
 from recclaw_core.experiments.helix_abc_v1.open_spec import (
     OpenSpecProjectionError,
@@ -69,7 +75,11 @@ def _enriched_draft(*, mode: str) -> dict[str, object]:
             "capability_diff": ["learned residual propagation gate"],
             "high_change_dimensions": ["PROPAGATION_MECHANISM"],
             "required_dependencies": [],
-            "required_budget": {"implementation_token_ceiling": 20000},
+            "required_budget": {
+                "implementation_token_ceiling": 20000,
+                "qualification_gpu_minutes": 10,
+                "qualification_wall_minutes": 15,
+            },
         },
         "idea_mode": mode,
         "research_question": "Does a residual gate isolate useful propagation from oversmoothing?",
@@ -191,13 +201,25 @@ def test_enriched_schema_and_existing_projection_enforce_mode_semantics() -> Non
         "resource_hypothesis",
         "realization_mode",
     } <= required
+    assert "allOf" not in proposal
+    serialized_schema = canonical_json_bytes(schema)
+    for keyword in (b'"allOf"', b'"if"', b'"then"', b'"const"'):
+        assert keyword not in serialized_schema
 
-    diagnosis, _facts = project_open_producer_draft(
-        _enriched_draft(mode="DIAGNOSIS_DRIVEN"), bindings=_bindings()
-    )
-    frontier, _facts = project_open_producer_draft(
-        _enriched_draft(mode="FRONTIER_HYPOTHESIS"), bindings=_bindings()
-    )
+    projected = {}
+    for mode in ("DIAGNOSIS_DRIVEN", "FRONTIER_HYPOTHESIS"):
+        draft = _enriched_draft(mode=mode)
+        response = {
+            "schema": "recclaw.research-line.fresh-open-spec-proposal-response.v1",
+            "proposals": [draft],
+        }
+        roundtripped = json.loads(canonical_json_bytes(response))
+        jsonschema.validate(roundtripped, schema)
+        projected[mode], _facts = project_open_producer_draft(
+            roundtripped["proposals"][0], bindings=_bindings()
+        )
+    diagnosis = projected["DIAGNOSIS_DRIVEN"]
+    frontier = projected["FRONTIER_HYPOTHESIS"]
     assert diagnosis.idea_mode.value == "DIAGNOSIS_DRIVEN"
     assert diagnosis.observed_failure_mode is not None
     assert frontier.idea_mode.value == "FRONTIER_HYPOTHESIS"
@@ -208,6 +230,38 @@ def test_enriched_schema_and_existing_projection_enforce_mode_semantics() -> Non
     invalid["observed_failure_mode"] = None
     with pytest.raises(OpenSpecProjectionError):
         project_open_producer_draft(invalid, bindings=_bindings())
+
+    invalid = _enriched_draft(mode="FRONTIER_HYPOTHESIS")
+    invalid["observed_failure_mode"] = "Invented failure"
+    jsonschema.validate(
+        {
+            "schema": "recclaw.research-line.fresh-open-spec-proposal-response.v1",
+            "proposals": [invalid],
+        },
+        schema,
+    )
+    with pytest.raises(OpenSpecProjectionError):
+        project_open_producer_draft(invalid, bindings=_bindings())
+
+    missing = _enriched_draft(mode="DIAGNOSIS_DRIVEN")
+    del missing["minimal_testable_wedge"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            {
+                "schema": "recclaw.research-line.fresh-open-spec-proposal-response.v1",
+                "proposals": [missing],
+            },
+            schema,
+        )
+
+
+def test_provider_compatible_realization_preserves_baseline_schema_bytes() -> None:
+    baseline_bytes = canonical_json_bytes(derive_fresh_r2_proposal_schema())
+    assert len(baseline_bytes) == 2885
+    assert (
+        hashlib.sha256(baseline_bytes).hexdigest()
+        == "84e1deee46b6584aa08a1046724157ef03a7492c6e92d9d15b7ddcc45fb9369a"
+    )
 
 
 def test_contract_sentinel_is_small_nonresearch_and_isolates_conditionals() -> None:

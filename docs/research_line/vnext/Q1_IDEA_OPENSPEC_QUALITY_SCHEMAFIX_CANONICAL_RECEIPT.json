@@ -1,0 +1,79 @@
+{
+  "schema": "recclaw.research-line.q1-idea-openspec-quality-schemafix-canonical-receipt.v1",
+  "status": "HARD_BLOCK",
+  "development_only": true,
+  "decision": "PROVIDER_RESPONSE_CONTRACT_TOKEN_CEILING_AFTER_SCHEMA_FLATTENING",
+  "source_parent_commit": "79fa06a776186e80460f6aeba17dc457c7b4bd4f",
+  "source_snapshot_sha256": "92596ec817c615f2f6e6e27a866f8b64067e626c78215167216d41d3edc745b9",
+  "frozen_baseline_identity": {
+    "canonical_bytes": 2885,
+    "canonical_sha256": "84e1deee46b6584aa08a1046724157ef03a7492c6e92d9d15b7ddcc45fb9369a",
+    "behavior_unchanged": true
+  },
+  "schema_realization": {
+    "enriched_required_fields": 22,
+    "provider_conditional_keywords": [],
+    "cross_field_semantics_consumer": "project_open_producer_draft",
+    "semantic_quality_gate_relaxed": false,
+    "two_mode_roundtrip_and_negative_tests": "PASS"
+  },
+  "fresh_ab": {
+    "physical_summary_ref": "results/research_line/q1_schemafix_20260802_01/Q1_SCHEMAFIX_PHYSICAL_CALL_SUMMARY.json",
+    "physical_summary_sha256": "3ef92821390f3f87b88d0e075b53ef7704b2993ce3cb1ccdadbc4279ba36c546",
+    "fresh_root": "/tmp/recclaw_q1_idea_quality_79fa06a_schemafix1_20260802_01/run",
+    "physical_calls": 4,
+    "retries": 0,
+    "baseline_successes": 2,
+    "enriched_successes": 1,
+    "enriched_frontier_status": "HTTP_200_RESPONSE_CONTRACT_ERROR_TOKEN_CEILING",
+    "candidate_pool_frozen": false,
+    "selection_frozen": false,
+    "request_model": "gpt-5.4",
+    "request_endpoint_release": "LAB_API_BROKER_RELEASE_V1",
+    "budget_symmetric": true,
+    "origin_blind": true
+  },
+  "api_availability_check": {
+    "separate_from_q1_ab": true,
+    "http_status": 200,
+    "model": "gpt-5.4",
+    "physical_calls": 1,
+    "retries": 0,
+    "research_candidates_generated": 0,
+    "request_sha256": "88f94a5a4e1a79504d35a028912111f1066328b1cd2eae7de4933fbf477f7e44",
+    "schema_sha256": "7f2f33797c67e8b718093f6e1f6e22f3cced926cf8c628a09a024b83d587248a"
+  },
+  "downstream": {
+    "resolver_calls": 0,
+    "implementer_calls": 0,
+    "materialized_packages": 0,
+    "qualifier_runs": 0,
+    "resource_admission_calls": 0,
+    "gpu_training_lines": 0,
+    "q2_package_created": false
+  },
+  "boundaries": {
+    "held_out_reads": 0,
+    "effect_updates": 0,
+    "effect_untouched": true,
+    "manual_candidate_patches": 0,
+    "provider_retries": 0,
+    "old_http400_or_http503_results_reused": false,
+    "original_q1_and_calibration_roots_read_only": true,
+    "pushes": 0
+  },
+  "four_gates": {
+    "functional_real_execution": "HARD_BLOCK_ENRICHED_FRONTIER_RESPONSE_CONTRACT_FAILURE",
+    "end_to_end_result_chain": "HARD_BLOCK_POOL_NOT_FROZEN",
+    "recclaw_open_recommendation_research_value": "NOT_ESTABLISHED_WITH_CONSUMABLE_PACKAGE",
+    "no_66_item_tuning_static_wrapper_fallback_mock_effect": "PASS"
+  },
+  "interpretation": {
+    "provider_schema_flattening_effect": "REMOVED_PRIOR_HTTP400_BOUNDARY",
+    "token_ceiling_failure_is_idea_evidence": false,
+    "scientific_effect_claim": false,
+    "formal_scientific_experiment": false,
+    "q2_continuation_allowed": false
+  },
+  "next_action": "STOP_WITHOUT_RETRY_OR_SECOND_COMPATIBILITY_SCHEME"
+}

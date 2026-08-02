@@ -1,0 +1,123 @@
+{
+  "schema": "recclaw.research-line.q1-schemafix-physical-call-summary.v1",
+  "development_only": true,
+  "status": "HARD_BLOCK",
+  "fresh_root": "/tmp/recclaw_q1_idea_quality_79fa06a_schemafix1_20260802_01/run",
+  "source_snapshot_sha256": "92596ec817c615f2f6e6e27a866f8b64067e626c78215167216d41d3edc745b9",
+  "frozen_artifacts": {
+    "ab_contract_sha256": "8e9d676ebb822783c9299bb3af11884aec176c4d62824ff7133435fb89ef2538",
+    "research_context_sha256": "0bcb32c7a1b2d27d12f4f6d0dde961aed9f81005353115e45795e742d06dc8cf",
+    "baseline_schema_sha256": "c51a959b7cda232ff580ebd47827f5412a057024670d3382ae08467856a02e99",
+    "enriched_schema_sha256": "196ab592bcfb9c8af3417195364da8539543048984831a857e5114adc9ad7ae7"
+  },
+  "request_invariants": {
+    "model": "gpt-5.4",
+    "temperature": 0.0,
+    "max_tokens": 12000,
+    "response_format": "json_schema",
+    "strict": true,
+    "tools": [],
+    "origin_blind": true
+  },
+  "calls": [
+    {
+      "arm": "baseline",
+      "slot": "diagnosis",
+      "status": "SUCCESS",
+      "http_status": 200,
+      "broker_failure_class": null,
+      "broker_classifier_rule_id": null,
+      "request_digest": "caaa4a402c535d1b0a75e62eeb2e37bbe54e0ffc5de6912d633e7202a11d0cc7",
+      "response_digest": "453d0715f969487f3033c9429b0eb9737dcc1c02cffcf0b820e69703f9d153c8",
+      "receipt_digest": "f53668dcf1027dca8e27124bd44682300c058fe45acb92829fdf0083d49d1a25",
+      "input_tokens": 7711,
+      "output_tokens": 1985,
+      "billed_tokens": 9696,
+      "latency_ms": 38372,
+      "returned_model": "gpt-5.4"
+    },
+    {
+      "arm": "baseline",
+      "slot": "frontier",
+      "status": "SUCCESS",
+      "http_status": 200,
+      "broker_failure_class": null,
+      "broker_classifier_rule_id": null,
+      "request_digest": "12c8e684457376496bcaab562f3e1a5c9cb8bf335f583d72e6820c7ebda98f75",
+      "response_digest": "54585093a99595f1fc4a3ecc13c065fead37ab3ca2a5c0dfae5f313f1f5550a4",
+      "receipt_digest": "c5e774aa2b6ceafef62469f0f572efbf2c01fcd31473403034be945f34fde090",
+      "input_tokens": 7710,
+      "output_tokens": 1402,
+      "billed_tokens": 9112,
+      "latency_ms": 26731,
+      "returned_model": "gpt-5.4"
+    },
+    {
+      "arm": "enriched",
+      "slot": "diagnosis",
+      "status": "SUCCESS",
+      "http_status": 200,
+      "broker_failure_class": null,
+      "broker_classifier_rule_id": null,
+      "request_digest": "eeda9356e287f8d96224774bbcbeae5e49ee81a3ee4bca3a00858ffa4f2b3f91",
+      "response_digest": "95d2d47bebe643b7d3ac805415def55413e6be3cf4e89004e2cd6fc369a98552",
+      "receipt_digest": "1fe7e7189b827cf73a548c078819c4c19c61c06fd40ff3b59600f96a3594ec0a",
+      "input_tokens": 7917,
+      "output_tokens": 3237,
+      "billed_tokens": 11154,
+      "latency_ms": 59846,
+      "returned_model": "gpt-5.4"
+    },
+    {
+      "arm": "enriched",
+      "slot": "frontier",
+      "status": "FAILED",
+      "http_status": 200,
+      "broker_failure_class": "CLI_CONTRACT_ERROR",
+      "broker_classifier_rule_id": "LAB_API_RESPONSE_CONTRACT_ERROR_V1",
+      "response_contract_reason_code": "TOKEN_CEILING",
+      "request_digest": "5f75e202b2b81448c87d2d08e1ec4cb630adfddd37c5d171c040ed3c7d10dccf",
+      "response_digest": null,
+      "receipt_digest": "a022e78c216a89af1bfb894f92b995633a4aa1cf47ca5481b2592f22d756bc39",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "billed_tokens": 0,
+      "latency_ms": 85146,
+      "returned_model": null,
+      "mechanism_negative_evidence": false
+    }
+  ],
+  "usage": {
+    "physical_calls": 4,
+    "successful_calls": 3,
+    "failed_calls": 1,
+    "retries": 0,
+    "input_tokens": 23338,
+    "output_tokens": 6624,
+    "billed_tokens": 29962,
+    "provider_wall_time_ms": 210095
+  },
+  "downstream_execution": {
+    "candidate_pool_frozen": false,
+    "selection_frozen": false,
+    "implementer_calls": 0,
+    "materialized_packages": 0,
+    "qualifier_runs": 0,
+    "resource_admission_calls": 0,
+    "gpu_training_lines": 0
+  },
+  "boundaries": {
+    "held_out_reads": 0,
+    "effect_updates": 0,
+    "manual_candidate_patches": 0,
+    "provider_retries": 0,
+    "api_availability_check_separate": true,
+    "credential_cleanup_verified": true
+  },
+  "interpretation": {
+    "schema_flattening_removed_provider_400_boundary": true,
+    "enriched_frontier_failure_is_schema_contract_failure": false,
+    "enriched_frontier_failure_is_idea_or_mechanism_evidence": false,
+    "q2_package_created": false
+  }
+}
