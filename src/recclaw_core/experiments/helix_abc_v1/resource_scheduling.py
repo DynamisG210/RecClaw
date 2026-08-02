@@ -34,12 +34,19 @@ Q0_REPO_RECEIPT_SHA256 = (
 Q0_EXTERNAL_RECEIPT_SHA256 = (
     "48913312fd7fce0a75115933f24b38a398e968487689b4ca5d97369b8875d49e"
 )
-Q0R_RUN_IDENTITY = "q0r-resource-scheduling-v1"
+ACCEPTED_Q0R_V1_COMMIT = "5d87d755fb8468adccf38a41f416501aca4dd1fd"
+Q0R_V1_REPO_RECEIPT_SHA256 = (
+    "4b6ec74891aeceac44bcd0482bcdc0f05121e26b1d7d8db98d2933b43260e133"
+)
+Q0R_V1_PHYSICAL_RECEIPT_SHA256 = (
+    "bfaa4124c22b55fb9c990f643f2c270c72db962e038e4bceca0b32516277c3b6"
+)
+Q0R_RUN_IDENTITY = "q0r-resource-scheduling-v2-fixed-batch"
 Q0R_BRANCH = "feat/research-line-resource-scheduling"
 Q0R_ROOT = Path(
     os.environ.get(
         "RECCLAW_Q0R_ROOT",
-        "/root/projects/RecClaw_resource_scheduling_runs/q0r_v1",
+        "/root/projects/RecClaw_resource_scheduling_runs/q0r_v2_fixed_batch",
     )
 )
 ARM_ORDER = (
@@ -55,10 +62,63 @@ CAMPAIGN_TOTAL_BUDGET_SECONDS = 7200
 ENGINEERING_WATCHDOG_SECONDS = 10800
 GPU_MEMORY_TOTAL_MIB = 10240
 TRAINING_SEED = 54102
+FIXED_TRAIN_BATCH_INDICES = tuple(range(32))
+FIXED_EVAL_BATCH_INDICES = tuple(range(64))
 
 
 class ResourceSchedulingError(RuntimeError):
     """Q0R identity, telemetry, or scheduling failure."""
+
+
+def build_fixed_batch_prefix_contract() -> dict[str, Any]:
+    return canonical_value(
+        {
+            "dataset": "ml-1m",
+            "dataset_partition": "SEARCH_TRAIN_PLUS_DEVELOPMENT_VALIDATION_ONLY",
+            "deadline_rule": {
+                "engineering_watchdog_seconds": ENGINEERING_WATCHDOG_SECONDS,
+                "legacy_1500_seconds_controls_probe": False,
+                "resource_deadline_seconds": PROBE_TIMEOUT_SECONDS,
+            },
+            "epochs": PROBE_EPOCHS,
+            "eval_batch_indices": list(FIXED_EVAL_BATCH_INDICES),
+            "execution_purpose": "RESOURCE_PROBE_ONLY",
+            "held_out_reads": 0,
+            "selection_rule": (
+                "preallocate the listed source-loader positions before model "
+                "construction under the shared seed; reuse those exact batches "
+                "for every prefix epoch and every arm"
+            ),
+            "seed": TRAINING_SEED,
+            "schema": "recclaw.q0r-fixed-batch-prefix-contract.v1",
+            "train_batch_indices": list(FIXED_TRAIN_BATCH_INDICES),
+            "uniform_across_arms": True,
+        }
+    )
+
+
+def _validate_q0r_v1_seal(repo_root: Path) -> dict[str, str]:
+    paths = {
+        "q0r_v1_repository": (
+            repo_root
+            / "docs/research_line/vnext/"
+            "Q0R_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
+            Q0R_V1_REPO_RECEIPT_SHA256,
+        ),
+        "q0r_v1_physical": (
+            repo_root
+            / "results/research_line/q0r_resource_scheduling_20260802_01/"
+            "Q0R_PHYSICAL_HARD_BLOCK_RECEIPT.json",
+            Q0R_V1_PHYSICAL_RECEIPT_SHA256,
+        ),
+    }
+    observed = {}
+    for name, (path, expected) in paths.items():
+        digest = bytes_sha256(path.read_bytes())
+        if digest != expected:
+            raise ResourceSchedulingError(f"sealed {name} byte drift")
+        observed[name] = digest
+    return observed
 
 
 def _source_tree_digest(root: Path) -> str:
@@ -258,7 +318,7 @@ def predict_resources(
     probe_runs: Mapping[str, Mapping[str, Any]],
     total_budget_seconds: int = CAMPAIGN_TOTAL_BUDGET_SECONDS,
 ) -> dict[str, Any]:
-    """Fit the fixed auditable prefix-extrapolation model and allocate one budget."""
+    """Fit the fixed-batch auditable model and allocate one campaign budget."""
 
     predictions: dict[str, dict[str, Any]] = {}
     requested_deadlines: dict[str, int] = {}
@@ -268,28 +328,57 @@ def predict_resources(
     full_run_budget_seconds = total_budget_seconds - probe_cost_seconds
     if full_run_budget_seconds <= 0:
         raise ResourceSchedulingError("prefix probes exhausted campaign budget")
+    contract_digests: set[str] = set()
     for arm in ARM_ORDER:
         run = probe_runs[arm]
         telemetry = run.get("resource_telemetry")
-        if run.get("exit_status") != "SUCCESS" or not isinstance(telemetry, Mapping):
+        if run.get("exit_status") not in {"SUCCESS", "RESOURCE_CENSORED"} or not isinstance(
+            telemetry, Mapping
+        ):
             raise ResourceSchedulingError(f"real prefix telemetry unavailable: {arm}")
-        phases = list(telemetry.get("phase_records", ()))
-        train_rows = [row for row in phases if row.get("phase") == "TRAIN"]
-        eval_rows = [row for row in phases if row.get("phase") == "EVAL"]
-        if len(train_rows) != PROBE_EPOCHS or len(eval_rows) != PROBE_EPOCHS:
-            raise ResourceSchedulingError(f"prefix phase count mismatch: {arm}")
-        epoch_ms = []
-        for epoch in range(PROBE_EPOCHS):
-            epoch_ms.append(
-                sum(
-                    int(row["wall_time_ms"])
-                    for row in phases
-                    if int(row.get("epoch", -1)) == epoch
-                )
+        contract = telemetry.get("prefix_contract")
+        if not isinstance(contract, Mapping):
+            raise ResourceSchedulingError(f"fixed-batch contract binding missing: {arm}")
+        contract_digest = contract.get("contract_file_sha256")
+        if not isinstance(contract_digest, str):
+            raise ResourceSchedulingError(f"fixed-batch contract digest missing: {arm}")
+        contract_digests.add(contract_digest)
+        batches = [
+            row
+            for row in telemetry.get("batch_records", ())
+            if row.get("status") == "BATCH_COMPLETED"
+            and isinstance(row.get("wall_time_ms"), (int, float))
+        ]
+        train_rows = [row for row in batches if row.get("phase") == "TRAIN"]
+        eval_rows = [row for row in batches if row.get("phase") == "EVAL"]
+        if not train_rows or not eval_rows:
+            raise ResourceSchedulingError(
+                f"fixed-batch prefix has no completed train/eval consumer signal: {arm}"
             )
-        phase_total_ms = sum(int(row["wall_time_ms"]) for row in phases)
-        setup_ms = max(0, int(run["wall_time_ms"]) - phase_total_ms)
-        mean_epoch_ms = sum(epoch_ms) / len(epoch_ms)
+        if not any(row.get("loss") is not None for row in train_rows):
+            raise ResourceSchedulingError(f"fixed-batch loss trend unavailable: {arm}")
+        full_train_batches = telemetry.get("full_train_batches_per_epoch")
+        full_eval_batches = telemetry.get("full_validation_batches_per_eval")
+        setup_ms = telemetry.get("initialization_wall_time_ms")
+        if not all(
+            isinstance(value, int) and value > 0
+            for value in (full_train_batches, full_eval_batches, setup_ms)
+        ):
+            raise ResourceSchedulingError(f"fixed-batch scale inputs unavailable: {arm}")
+        train_ms = [float(row["wall_time_ms"]) for row in train_rows]
+        eval_ms = [float(row["wall_time_ms"]) for row in eval_rows]
+        point_epoch_ms = (
+            sum(train_ms) / len(train_ms) * int(full_train_batches)
+            + sum(eval_ms) / len(eval_ms) * int(full_eval_batches)
+        )
+        lower_epoch_ms = (
+            min(train_ms) * int(full_train_batches)
+            + min(eval_ms) * int(full_eval_batches)
+        )
+        upper_epoch_ms = (
+            max(train_ms) * int(full_train_batches)
+            + max(eval_ms) * int(full_eval_batches)
+        )
         combined_features = canonical_value(
             {
                 **arm_features[arm],
@@ -300,19 +389,21 @@ def predict_resources(
             }
         )
         complexity_count = int(combined_features["bottleneck_feature_count"])
-        point_ms = setup_ms + mean_epoch_ms * FULL_EPOCHS
-        lower_ms = setup_ms + min(epoch_ms) * FULL_EPOCHS
-        upper_ms = setup_ms + max(epoch_ms) * FULL_EPOCHS * (
+        point_ms = int(setup_ms) + point_epoch_ms * FULL_EPOCHS
+        lower_ms = int(setup_ms) + lower_epoch_ms * FULL_EPOCHS
+        upper_ms = int(setup_ms) + upper_epoch_ms * FULL_EPOCHS * (
             1.0 + 0.05 * complexity_count
         )
         peak_observed = max(
             float(row[key])
-            for row in phases
+            for row in batches
             for key in ("peak_allocated_mib", "peak_reserved_mib")
             if isinstance(row.get(key), (int, float))
         )
         peak_prediction = peak_observed * (1.0 + 0.03 * complexity_count)
-        eval_share = sum(int(row["wall_time_ms"]) for row in eval_rows) / phase_total_ms
+        eval_share = (
+            sum(eval_ms) / len(eval_ms) * int(full_eval_batches) / point_epoch_ms
+        )
         if peak_prediction >= GPU_MEMORY_TOTAL_MIB * 0.90:
             bottleneck = "GPU_MEMORY_CAPACITY"
         elif eval_share >= 0.60:
@@ -323,29 +414,44 @@ def predict_resources(
             bottleneck = "GRAPH_PROPAGATION"
         else:
             bottleneck = "TRAINING_THROUGHPUT"
-        coefficient_of_range = (max(epoch_ms) - min(epoch_ms)) / max(mean_epoch_ms, 1)
-        confidence = "MEDIUM" if coefficient_of_range <= 0.25 else "LOW"
+        observed_batches = len(train_rows) + len(eval_rows)
+        expected_batches = PROBE_EPOCHS * (
+            len(FIXED_TRAIN_BATCH_INDICES) + len(FIXED_EVAL_BATCH_INDICES)
+        )
+        confidence = (
+            "MEDIUM"
+            if observed_batches == expected_batches and run.get("exit_status") == "SUCCESS"
+            else "LOW"
+        )
         raw_deadline = max(180, math.ceil(60 + 1.10 * upper_ms / 1000))
         requested_deadlines[arm] = raw_deadline
         predictions[arm] = canonical_value(
             {
                 "bottleneck_category": bottleneck,
                 "confidence": confidence,
-                "epoch_wall_time_ms": epoch_ms,
+                "completed_eval_batches": len(eval_rows),
+                "completed_train_batches": len(train_rows),
                 "estimated_total_wall_time_seconds": point_ms / 1000,
                 "features": combined_features,
-                "model": "PREFIX_PHASE_LINEAR_EXTRAPOLATION_V1",
+                "fixed_batch_eval_mean_wall_time_ms": sum(eval_ms) / len(eval_ms),
+                "fixed_batch_train_mean_wall_time_ms": sum(train_ms) / len(train_ms),
+                "full_eval_batches_per_epoch": full_eval_batches,
+                "full_train_batches_per_epoch": full_train_batches,
+                "model": "FIXED_BATCH_THROUGHPUT_LINEAR_EXTRAPOLATION_V2",
                 "peak_memory_prediction_mib": peak_prediction,
                 "peak_memory_observed_mib": peak_observed,
                 "prediction_interval_seconds": [lower_ms / 1000, upper_ms / 1000],
                 "probe_wall_time_ms": run["wall_time_ms"],
                 "setup_wall_time_ms": setup_ms,
                 "uncertainty_basis": (
-                    "three fresh same-recipe epochs; range widened five percent "
-                    "per visible bottleneck feature"
+                    "min/max completed fixed train and eval batch throughput; "
+                    "upper bound widened five percent per visible bottleneck feature"
                 ),
             }
         )
+
+    if len(contract_digests) != 1:
+        raise ResourceSchedulingError("fixed-batch prefix contract differs across arms")
 
     minimum = 180
     requested_total = sum(requested_deadlines.values())
@@ -412,7 +518,7 @@ def predict_resources(
             "campaign_total_budget_seconds": total_budget_seconds,
             "deadline_allocation_scale": scale,
             "deadline_formula": (
-                "max(180, ceil(60 + 1.10 * upper_prefix_extrapolation)); if sum "
+                "max(180, ceil(60 + 1.10 * upper_fixed_batch_extrapolation)); if sum "
                 "exceeds campaign budget, scale every arm excess above 180 by "
                 "one common factor"
             ),
@@ -423,9 +529,12 @@ def predict_resources(
             "probe_contract": {
                 "dataset_partition": "SEARCH_TRAIN_PLUS_DEVELOPMENT_VALIDATION_ONLY",
                 "epochs": PROBE_EPOCHS,
+                "eval_batch_indices": list(FIXED_EVAL_BATCH_INDICES),
                 "execution_purpose": "RESOURCE_PROBE_ONLY",
+                "prefix_contract_sha256": next(iter(contract_digests)),
                 "seed": TRAINING_SEED,
                 "timeout_seconds": PROBE_TIMEOUT_SECONDS,
+                "train_batch_indices": list(FIXED_TRAIN_BATCH_INDICES),
                 "uniform_across_arms": True,
             },
             "probe_cost_seconds": probe_cost_seconds,
@@ -434,7 +543,7 @@ def predict_resources(
             "schedule_rule": (
                 "ascending predicted total wall time; stable original order tie-break"
             ),
-            "schema": "recclaw.q0r-resource-prediction-and-schedule.v1",
+            "schema": "recclaw.q0r-resource-prediction-and-schedule.v2",
         }
     )
 
@@ -448,6 +557,7 @@ def _run_one(
     epochs: int,
     purpose: str,
     timeout_seconds: int,
+    prefix_contract_path: Path | None = None,
 ) -> dict[str, Any]:
     try:
         return run_development_training(
@@ -466,6 +576,7 @@ def _run_one(
             execution_purpose=purpose,
             resource_telemetry=True,
             watchdog_seconds=ENGINEERING_WATCHDOG_SECONDS,
+            prefix_contract_path=prefix_contract_path,
         )
     except Exception as error:  # one physical arm must not abort the campaign
         return canonical_value(
@@ -595,6 +706,72 @@ def finalize_hard_block_receipt(
     return repository_receipt
 
 
+def finalize_fixed_batch_hard_block_receipt(
+    external_receipt_path: Path,
+    *,
+    canonical_receipt_path: Path,
+    external_receipt_ref: str,
+) -> dict[str, Any]:
+    """Bind the immutable v2 physical block to explicit Q0R gate semantics."""
+
+    external_digest = bytes_sha256(external_receipt_path.read_bytes())
+    receipt = json.loads(external_receipt_path.read_text(encoding="utf-8"))
+    if (
+        receipt.get("schema") != "recclaw.research-line.q0r-canonical-receipt.v2"
+        or receipt.get("status") != "HARD_BLOCK"
+        or receipt.get("held_out_reads") != 0
+        or receipt.get("q1_allowed") is not False
+    ):
+        raise ResourceSchedulingError("not a valid fixed-batch Q0R HARD_BLOCK receipt")
+    blockers = {}
+    for arm, run in receipt.get("probe_runs", {}).items():
+        telemetry = run.get("resource_telemetry") or {}
+        completed = telemetry.get("batch_records") or []
+        blockers[arm] = {
+            "active_progress": telemetry.get("active_progress"),
+            "completed_eval_batches": sum(
+                row.get("phase") == "EVAL" for row in completed
+            ),
+            "completed_train_batches": sum(
+                row.get("phase") == "TRAIN" for row in completed
+            ),
+            "exit_status": run.get("exit_status"),
+            "mechanism_effect_update_allowed": False,
+            "resource_disposition": _missingness(run)["resource_disposition"],
+            "wall_time_ms": run.get("wall_time_ms"),
+            "worker_error_message": run.get("worker_error_message"),
+            "worker_error_type": run.get("worker_error_type"),
+        }
+    repository_receipt = canonical_value(
+        {
+            **receipt,
+            "evaluation": {
+                "all_core_gates_pass": False,
+                "formal_acceptance_self_approved": False,
+                "formal_scientific_experiment": False,
+                "gates": {
+                    "end_to_end_result_chain_real_and_valid": False,
+                    "function_real_and_runnable": False,
+                    "no_fixed_66_tuning_static_wrapper_fallback_mock_or_smoke_substitution": True,
+                    "serves_open_algorithm_research_target": True,
+                },
+                "h2_resource_modeling_and_scheduling": "NOT_CLOSED",
+                "mechanism_effect_interpretation": (
+                    "NOT_ADJUDICATED_RESOURCE_OR_INTERFACE_BLOCKED"
+                ),
+                "q1_allowed": False,
+                "scientific_effect_claim": False,
+            },
+            "external_receipt_ref": external_receipt_ref,
+            "external_receipt_sha256": external_digest,
+            "full_outcomes_present": 0,
+            "resource_blockers": blockers,
+        }
+    )
+    _write_new_json(canonical_receipt_path, repository_receipt)
+    return repository_receipt
+
+
 def run_resource_scheduling(
     repo_root: Path,
     *,
@@ -611,6 +788,7 @@ def run_resource_scheduling(
         raise ResourceSchedulingError(
             f"Q0R canonical receipt already exists: {canonical_receipt_path}"
         )
+    sealed_q0r_v1 = _validate_q0r_v1_seal(repo_root)
     q0_repo_receipt, q0_external_receipt = _validate_q0_receipts(
         repo_root, q0_external_receipt_path.resolve()
     )
@@ -631,6 +809,7 @@ def run_resource_scheduling(
             "accepted_q0_commit": ACCEPTED_Q0_COMMIT,
             "accepted_q0_parent": ACCEPTED_Q0_PARENT,
             "accepted_q0_tree": ACCEPTED_Q0_TREE,
+            "accepted_q0r_v1_commit": ACCEPTED_Q0R_V1_COMMIT,
             "branch": Q0R_BRANCH,
             "candidate_inputs": {
                 arm: {
@@ -645,11 +824,18 @@ def run_resource_scheduling(
             "q0_external_receipt_sha256": Q0_EXTERNAL_RECEIPT_SHA256,
             "q0_repo_receipt_sha256": Q0_REPO_RECEIPT_SHA256,
             "q0_status": q0_repo_receipt["status"],
+            "q0r_v1_outcome_fields_consumed": [],
+            "q0r_v1_sealed_receipts": sealed_q0r_v1,
+            "sealed_q0r_v1_modified": False,
             "sealed_q0_modified": False,
         }
     )
     _write_new_json(Q0R_ROOT / "INPUT_IDENTITY.json", input_identity)
     _write_new_json(Q0R_ROOT / "RUNTIME_ENVIRONMENT.json", runtime)
+    prefix_contract_path = Q0R_ROOT / "FIXED_BATCH_PREFIX_CONTRACT.json"
+    prefix_contract_digest = _write_new_json(
+        prefix_contract_path, build_fixed_batch_prefix_contract()
+    )
 
     probe_runs: dict[str, Any] = {}
     for arm in ARM_ORDER:
@@ -661,6 +847,7 @@ def run_resource_scheduling(
             epochs=PROBE_EPOCHS,
             purpose="RESOURCE_PROBE_ONLY",
             timeout_seconds=PROBE_TIMEOUT_SECONDS,
+            prefix_contract_path=prefix_contract_path,
         )
         _write_new_json(
             Q0R_ROOT / "resource_probes" / f"{arm}.json", probe_runs[arm]
@@ -679,26 +866,29 @@ def run_resource_scheduling(
                 "formal_scientific_experiment": False,
                 "held_out_reads": 0,
                 "input_identity": input_identity,
+                "prefix_contract": {
+                    "artifact_ref": str(prefix_contract_path),
+                    "artifact_sha256": prefix_contract_digest,
+                },
                 "probe_runs": probe_runs,
                 "q1_allowed": False,
-                "schema": "recclaw.research-line.q0r-canonical-receipt.v1",
+                "schema": "recclaw.research-line.q0r-canonical-receipt.v2",
                 "scientific_effect_claim": False,
                 "status": "HARD_BLOCK",
-                "unique_next_recommendation": (
-                    "Persist per-phase telemetry durably inside the existing worker "
-                    "and prefreeze one uniform fixed-batch prefix before a new "
-                    "user-authorized matched Q0R campaign."
-                ),
+                "unique_next_recommendation": "NONE_WITHIN_AUTHORIZED_Q0R_REPAIR",
             }
         )
         external_digest = _write_new_json(
-            Q0R_ROOT / "Q0R_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json", hard_block
+            Q0R_ROOT
+            / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
+            hard_block,
         )
         repository_receipt = canonical_value(
             {
                 **hard_block,
                 "external_receipt_ref": str(
-                    Q0R_ROOT / "Q0R_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
+                    Q0R_ROOT
+                    / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
                 ),
                 "external_receipt_sha256": external_digest,
             }
@@ -720,6 +910,7 @@ def run_resource_scheduling(
             epochs=FULL_EPOCHS,
             purpose="Q0R_FRESH_SCHEDULED_DEVELOPMENT_VALIDATION",
             timeout_seconds=int(scheduled["deadline_seconds"]),
+            prefix_contract_path=None,
         )
         _write_new_json(Q0R_ROOT / "fresh_full_runs" / f"{arm}.json", full_runs[arm])
 
@@ -727,6 +918,7 @@ def run_resource_scheduling(
         arm: bytes_sha256(Path(row["source_path"]).read_bytes())
         for arm, row in arm_inputs.items()
     }
+    q0r_v1_unchanged = _validate_q0r_v1_seal(repo_root) == sealed_q0r_v1
     sealed_unchanged = (
         initial_source_digests == post_source_digests
         and bytes_sha256(q0_external_receipt_path.read_bytes())
@@ -736,6 +928,7 @@ def run_resource_scheduling(
             / "docs/research_line/vnext/Q0_QUALITY_CALIBRATION_CANONICAL_RECEIPT.json"
         )
         == Q0_REPO_RECEIPT_SHA256
+        and q0r_v1_unchanged
     )
     completion = {
         arm: {
@@ -755,7 +948,11 @@ def run_resource_scheduling(
         }
         for arm, run in full_runs.items()
     }
-    all_probes_real = all(run.get("exit_status") == "SUCCESS" for run in probe_runs.values())
+    all_probes_real = all(
+        run.get("exit_status") in {"SUCCESS", "RESOURCE_CENSORED"}
+        and isinstance(run.get("resource_telemetry"), Mapping)
+        for run in probe_runs.values()
+    )
     all_full_complete = all(
         full_runs.get(arm, {}).get("exit_status") == "SUCCESS" for arm in ARM_ORDER
     )
@@ -819,11 +1016,17 @@ def run_resource_scheduling(
             "full_runs": full_runs,
             "held_out_reads": 0,
             "input_identity": input_identity,
+            "prefix_contract": {
+                "artifact_ref": str(prefix_contract_path),
+                "artifact_sha256": prefix_contract_digest,
+                "scientific_outcome": False,
+            },
             "prediction_and_schedule": decision,
             "probe_runs": probe_runs,
             "runtime_environment_identity": runtime,
-            "schema": "recclaw.research-line.q0r-canonical-receipt.v1",
+            "schema": "recclaw.research-line.q0r-canonical-receipt.v2",
             "sealed_q0_unchanged": sealed_unchanged,
+            "sealed_q0r_v1_unchanged": q0r_v1_unchanged,
             "status": "PASS" if accepted_pass else "RESOURCE_INFEASIBLE",
             "wall_time_ms": max(
                 1, (time.monotonic_ns() - started_ns) // 1_000_000
@@ -831,13 +1034,15 @@ def run_resource_scheduling(
         }
     )
     external_digest = _write_new_json(
-        Q0R_ROOT / "Q0R_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json", receipt
+        Q0R_ROOT / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json",
+        receipt,
     )
     repository_receipt = canonical_value(
         {
             **receipt,
             "external_receipt_ref": str(
-                Q0R_ROOT / "Q0R_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
+                Q0R_ROOT
+                / "Q0R_FIXED_BATCH_RESOURCE_SCHEDULING_CANONICAL_RECEIPT.json"
             ),
             "external_receipt_sha256": external_digest,
         }
@@ -848,6 +1053,8 @@ def run_resource_scheduling(
 
 __all__ = [
     "ResourceSchedulingError",
+    "build_fixed_batch_prefix_contract",
+    "finalize_fixed_batch_hard_block_receipt",
     "finalize_hard_block_receipt",
     "predict_resources",
     "run_resource_scheduling",

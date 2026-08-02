@@ -832,6 +832,7 @@ def run_development_training(
     execution_purpose: str = "DEVELOPMENT_PILOT_OFFLINE_TOPN",
     resource_telemetry: bool = False,
     watchdog_seconds: int | None = None,
+    prefix_contract_path: Path | None = None,
 ) -> dict[str, Any]:
     if recbole_commit_identity is not None and recbole_commit_identity != (
         "7b02be5ec80a88310f2d04a27a82adfcbb5dc211"
@@ -891,6 +892,12 @@ def run_development_training(
                 "resource_telemetry": resource_telemetry,
             }
         )
+    if prefix_contract_path is not None:
+        if not resource_telemetry:
+            raise FreshR1Error("fixed-batch prefix requires resource telemetry")
+        binding["prefix_contract_file_sha256"] = bytes_sha256(
+            prefix_contract_path.read_bytes()
+        )
     binding_digest = sha256_digest(binding)
     runtime_binding_digest = sha256_digest(
         {
@@ -919,6 +926,7 @@ def run_development_training(
         "runtime_release_digest": release_digest,
     }
     output_path = result_root / "worker_result.json"
+    telemetry_path = result_root / "resource_telemetry.json"
     log_path = Path(capability.log_root) / "training.log"
     confirmation_path = result_root / "start_confirmation.json"
     gate_path = result_root / "start_gate.json"
@@ -951,7 +959,17 @@ def run_development_training(
         "--start-gate-path", str(gate_path),
     ]
     if resource_telemetry:
-        command.append("--resource-telemetry")
+        command.extend(
+            [
+                "--resource-telemetry",
+                "--resource-telemetry-path",
+                str(telemetry_path),
+            ]
+        )
+    if prefix_contract_path is not None:
+        command.extend(
+            ["--prefix-contract-path", str(prefix_contract_path.resolve())]
+        )
     started_ns = time.monotonic_ns()
     process = subprocess.Popen(
         command,
@@ -1013,6 +1031,9 @@ def run_development_training(
         "error_message": "worker result missing",
         "exit_status": "RUNTIME_FAILURE",
     }
+    durable_telemetry = (
+        _read_json(telemetry_path) if telemetry_path.is_file() else None
+    )
     metrics = {
         str(key).lower(): float(value)
         for key, value in dict(worker.get("best_valid_result", {})).items()
@@ -1043,7 +1064,20 @@ def run_development_training(
         "worker_error_type": worker.get("error_type"),
     }
     if resource_telemetry:
-        result["resource_telemetry"] = worker.get("resource_telemetry")
+        result.update(
+            {
+                "resource_telemetry": (
+                    durable_telemetry
+                    if durable_telemetry is not None
+                    else worker.get("resource_telemetry")
+                ),
+                "resource_telemetry_sha256": (
+                    bytes_sha256(telemetry_path.read_bytes())
+                    if telemetry_path.is_file()
+                    else None
+                ),
+            }
+        )
     if watchdog_seconds is not None:
         result.update(
             {

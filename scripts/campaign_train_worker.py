@@ -21,11 +21,66 @@ def _numeric_loss(value: object) -> float | list[float] | None:
 
     if isinstance(value, (int, float)):
         return float(value)
-    if isinstance(value, tuple) and all(
-        isinstance(item, (int, float)) for item in value
-    ):
-        return [float(item) for item in value]
+    if hasattr(value, "detach") and hasattr(value, "numel"):
+        detached = value.detach()
+        if int(detached.numel()) == 1:
+            return float(detached.item())
+    if isinstance(value, tuple):
+        converted = [_numeric_loss(item) for item in value]
+        if all(isinstance(item, float) for item in converted):
+            return [float(item) for item in converted]
     return None
+
+
+class _FixedBatchDataLoaderView:
+    """Expose one prefrozen batch sequence while preserving RecBole attributes."""
+
+    def __init__(
+        self,
+        source: object,
+        batches: tuple[object, ...],
+        source_indices: tuple[int, ...],
+        *,
+        on_batch_started: object,
+        on_batch_completed: object,
+    ) -> None:
+        self._source = source
+        self._batches = batches
+        self._source_indices = source_indices
+        self._on_batch_started = on_batch_started
+        self._on_batch_completed = on_batch_completed
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._source, name)
+
+    def __len__(self) -> int:
+        return len(self._batches)
+
+    def __iter__(self) -> object:
+        for position, (source_index, batch) in enumerate(
+            zip(self._source_indices, self._batches, strict=True)
+        ):
+            started_ns = time.monotonic_ns()
+            self._on_batch_started(position, source_index)
+            yield batch
+            self._on_batch_completed(position, source_index, started_ns)
+
+
+def _preallocate_batches(
+    source: object,
+    indices: tuple[int, ...],
+) -> tuple[object, ...]:
+    selected: list[object] = []
+    wanted = set(indices)
+    maximum = max(indices)
+    for source_index, batch in enumerate(source):
+        if source_index in wanted:
+            selected.append(batch)
+        if source_index >= maximum:
+            break
+    if len(selected) != len(indices):
+        raise RuntimeError("fixed-batch prefix index exceeds data loader")
+    return tuple(selected)
 
 
 def _install_resource_telemetry(
@@ -34,22 +89,55 @@ def _install_resource_telemetry(
     torch: object,
     train_data: object,
     valid_data: object,
-) -> dict[str, object]:
-    """Measure the existing RecBole train/eval calls without changing their work."""
+    telemetry_path: Path,
+    prefix_contract: dict[str, object] | None,
+    preallocated_train_batches: tuple[object, ...] | None,
+    preallocated_valid_batches: tuple[object, ...] | None,
+    worker_started_ns: int,
+) -> tuple[dict[str, object], object, object]:
+    """Measure RecBole phases and durably preserve fixed-batch progress."""
 
     phases: list[dict[str, object]] = []
+    batches: list[dict[str, object]] = []
     original_train_epoch = trainer._train_epoch
     original_valid_epoch = trainer._valid_epoch
+    active: dict[str, object] = {
+        "epoch": None,
+        "phase": None,
+        "status": "INITIALIZED",
+    }
+    telemetry: dict[str, object] = {
+        "active_progress": active,
+        "batch_records": batches,
+        "full_train_batches_per_epoch": len(train_data),
+        "full_validation_batches_per_eval": len(valid_data),
+        "initialization_wall_time_ms": max(
+            1, (time.monotonic_ns() - worker_started_ns) // 1_000_000
+        ),
+        "parameter_count": sum(
+            parameter.numel() for parameter in trainer.model.parameters()
+        ),
+        "phase_records": phases,
+        "prefix_contract": prefix_contract,
+        "trainable_parameter_count": sum(
+            parameter.numel()
+            for parameter in trainer.model.parameters()
+            if parameter.requires_grad
+        ),
+    }
 
-    def begin_phase() -> int | None:
+    def flush() -> None:
+        _write_durable_json(telemetry_path, _finalize_resource_telemetry(telemetry))
+
+    def memory_begin() -> int | None:
         if not torch.cuda.is_available():
             return None
-        device = torch.cuda.current_device()
+        device = int(torch.cuda.current_device())
         torch.cuda.synchronize(device)
         torch.cuda.reset_peak_memory_stats(device)
-        return int(device)
+        return device
 
-    def finish_phase(device: int | None) -> dict[str, object]:
+    def memory_finish(device: int | None) -> dict[str, object]:
         if device is None:
             return {
                 "peak_allocated_mib": None,
@@ -62,14 +150,142 @@ def _install_resource_telemetry(
             "peak_reserved_mib": torch.cuda.max_memory_reserved(device) / divisor,
         }
 
+    active_batch: dict[str, object] = {"device": None, "loss": None}
+
+    def batch_started(position: int, source_index: int) -> None:
+        active_batch["device"] = memory_begin()
+        active_batch["loss"] = None
+        active.update(
+            {
+                "batch_position": position,
+                "source_batch_index": source_index,
+                "status": "BATCH_STARTED",
+            }
+        )
+        flush()
+
+    def batch_completed(position: int, source_index: int, started_ns: int) -> None:
+        record = {
+            "batch_position": position,
+            "epoch": active["epoch"],
+            "loss": active_batch["loss"],
+            "phase": active["phase"],
+            "source_batch_index": source_index,
+            "status": "BATCH_COMPLETED",
+            "wall_time_ms": max(
+                1, (time.monotonic_ns() - started_ns) // 1_000_000
+            ),
+            **memory_finish(active_batch["device"]),
+        }
+        batches.append(record)
+        active.update(
+            {
+                "batch_position": position,
+                "completed_batch_records": len(batches),
+                "source_batch_index": source_index,
+                "status": "BATCH_COMPLETED",
+            }
+        )
+        flush()
+
+    fit_train_data: object = train_data
+    fit_valid_data: object = valid_data
+    if prefix_contract is not None:
+        if preallocated_train_batches is None or preallocated_valid_batches is None:
+            raise RuntimeError("fixed-batch prefix was not preallocated")
+        train_indices = tuple(int(value) for value in prefix_contract["train_batch_indices"])
+        valid_indices = tuple(int(value) for value in prefix_contract["eval_batch_indices"])
+        fit_train_data = _FixedBatchDataLoaderView(
+            train_data,
+            preallocated_train_batches,
+            train_indices,
+            on_batch_started=batch_started,
+            on_batch_completed=batch_completed,
+        )
+        fit_valid_data = _FixedBatchDataLoaderView(
+            valid_data,
+            preallocated_valid_batches,
+            valid_indices,
+            on_batch_started=batch_started,
+            on_batch_completed=batch_completed,
+        )
+        original_loss = trainer.model.calculate_loss
+
+        def measured_loss(interaction: object) -> object:
+            result = original_loss(interaction)
+            active_batch["loss"] = _numeric_loss(result)
+            active["last_loss_observation"] = active_batch["loss"]
+            flush()
+            return result
+
+        trainer.model.calculate_loss = measured_loss
+
+    def begin_phase(phase: str, epoch: int) -> tuple[int | None, int]:
+        active.clear()
+        active.update({"epoch": epoch, "phase": phase, "status": "PHASE_STARTED"})
+        flush()
+        return memory_begin(), time.monotonic_ns()
+
+    def finish_phase(
+        *,
+        phase: str,
+        epoch: int,
+        device: int | None,
+        started_ns: int,
+        status: str,
+        loss: object = None,
+        valid_score: float | None = None,
+    ) -> None:
+        phase_batch_rows = [
+            row
+            for row in batches
+            if row["phase"] == phase and int(row["epoch"]) == epoch
+        ]
+        allocated_peaks = [
+            float(row["peak_allocated_mib"])
+            for row in phase_batch_rows
+            if isinstance(row.get("peak_allocated_mib"), (int, float))
+        ]
+        reserved_peaks = [
+            float(row["peak_reserved_mib"])
+            for row in phase_batch_rows
+            if isinstance(row.get("peak_reserved_mib"), (int, float))
+        ]
+        memory = memory_finish(device) if not phase_batch_rows else {
+            "peak_allocated_mib": (
+                max(allocated_peaks) if allocated_peaks else None
+            ),
+            "peak_reserved_mib": (
+                max(reserved_peaks) if reserved_peaks else None
+            ),
+        }
+        phases.append(
+            {
+                "batch_count": len(phase_batch_rows) or (
+                    len(fit_train_data) if phase == "TRAIN" else len(fit_valid_data)
+                ),
+                "epoch": epoch,
+                "loss": _numeric_loss(loss),
+                "phase": phase,
+                "status": status,
+                "valid_score": valid_score,
+                "wall_time_ms": max(
+                    1, (time.monotonic_ns() - started_ns) // 1_000_000
+                ),
+                **memory,
+            }
+        )
+        active.clear()
+        active.update({"epoch": epoch, "phase": phase, "status": "PHASE_COMPLETED"})
+        flush()
+
     def measured_train_epoch(
         epoch_train_data: object,
         epoch_idx: int,
         loss_func: object = None,
         show_progress: bool = False,
     ) -> object:
-        device = begin_phase()
-        started_ns = time.monotonic_ns()
+        device, started_ns = begin_phase("TRAIN", int(epoch_idx))
         loss: object = None
         status = "SUCCESS"
         try:
@@ -84,26 +300,24 @@ def _install_resource_telemetry(
             status = "RUNTIME_FAILURE"
             raise
         finally:
-            phases.append(
-                {
-                    "batch_count": len(epoch_train_data),
-                    "epoch": int(epoch_idx),
-                    "loss": _numeric_loss(loss),
-                    "phase": "TRAIN",
-                    "status": status,
-                    "wall_time_ms": max(
-                        1, (time.monotonic_ns() - started_ns) // 1_000_000
-                    ),
-                    **finish_phase(device),
-                }
+            finish_phase(
+                phase="TRAIN",
+                epoch=int(epoch_idx),
+                device=device,
+                started_ns=started_ns,
+                status=status,
+                loss=loss,
             )
 
     def measured_valid_epoch(
         epoch_valid_data: object,
         show_progress: bool = False,
     ) -> object:
-        device = begin_phase()
-        started_ns = time.monotonic_ns()
+        epoch = max(
+            (int(row["epoch"]) for row in phases if row["phase"] == "TRAIN"),
+            default=-1,
+        )
+        device, started_ns = begin_phase("EVAL", epoch)
         result: object = None
         status = "SUCCESS"
         try:
@@ -123,46 +337,24 @@ def _install_resource_telemetry(
                 and isinstance(result[0], (int, float))
             ):
                 valid_score = float(result[0])
-            phases.append(
-                {
-                    "batch_count": len(epoch_valid_data),
-                    "epoch": max(
-                        (
-                            int(row["epoch"])
-                            for row in phases
-                            if row["phase"] == "TRAIN"
-                        ),
-                        default=-1,
-                    ),
-                    "phase": "EVAL",
-                    "status": status,
-                    "valid_score": valid_score,
-                    "wall_time_ms": max(
-                        1, (time.monotonic_ns() - started_ns) // 1_000_000
-                    ),
-                    **finish_phase(device),
-                }
+            finish_phase(
+                phase="EVAL",
+                epoch=epoch,
+                device=device,
+                started_ns=started_ns,
+                status=status,
+                valid_score=valid_score,
             )
 
     trainer._train_epoch = measured_train_epoch
     trainer._valid_epoch = measured_valid_epoch
-    return {
-        "parameter_count": sum(
-            parameter.numel() for parameter in trainer.model.parameters()
-        ),
-        "phase_records": phases,
-        "train_batches_per_epoch": len(train_data),
-        "trainable_parameter_count": sum(
-            parameter.numel()
-            for parameter in trainer.model.parameters()
-            if parameter.requires_grad
-        ),
-        "validation_batches_per_eval": len(valid_data),
-    }
+    flush()
+    return telemetry, fit_train_data, fit_valid_data
 
 
 def _finalize_resource_telemetry(value: dict[str, object]) -> dict[str, object]:
     phases = list(value["phase_records"])
+    batches = list(value.get("batch_records", ()))
     train_rows = [row for row in phases if row["phase"] == "TRAIN"]
     eval_rows = [row for row in phases if row["phase"] == "EVAL"]
     valid_rows = [
@@ -173,17 +365,18 @@ def _finalize_resource_telemetry(value: dict[str, object]) -> dict[str, object]:
         best_epoch = max(valid_rows, key=lambda row: float(row["valid_score"]))["epoch"]
     peaks = [
         float(row[key])
-        for row in phases
+        for row in (*phases, *batches)
         for key in ("peak_allocated_mib", "peak_reserved_mib")
         if isinstance(row.get(key), (int, float))
     ]
     return {
         **value,
         "best_observed_epoch": best_epoch,
+        "completed_batch_records": len(batches),
         "epochs_completed": len(train_rows),
         "loss_trend": [row.get("loss") for row in train_rows],
         "peak_gpu_memory_mib": max(peaks) if peaks else None,
-        "schema": "recclaw.worker-resource-telemetry.v1",
+        "schema": "recclaw.worker-resource-telemetry.v2",
     }
 
 
@@ -200,7 +393,10 @@ def _write_durable_json(path: Path, value: dict[str, object]) -> None:
         0o600,
     )
     try:
-        os.write(descriptor, data)
+        view = memoryview(data)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
@@ -210,6 +406,44 @@ def _write_durable_json(path: Path, value: dict[str, object]) -> None:
         os.fsync(directory)
     finally:
         os.close(directory)
+
+
+def _load_prefix_contract(
+    path: Path,
+    *,
+    epochs: int,
+    seed: int,
+) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    expected = {
+        "dataset": "ml-1m",
+        "epochs": epochs,
+        "execution_purpose": "RESOURCE_PROBE_ONLY",
+        "seed": seed,
+    }
+    drift = {
+        key: {"expected": value, "observed": payload.get(key)}
+        for key, value in expected.items()
+        if payload.get(key) != value
+    }
+    if payload.get("schema") != "recclaw.q0r-fixed-batch-prefix-contract.v1":
+        drift["schema"] = payload.get("schema")
+    for field in ("train_batch_indices", "eval_batch_indices"):
+        values = payload.get(field)
+        if (
+            not isinstance(values, list)
+            or not values
+            or values != sorted(set(values))
+            or any(not isinstance(value, int) or value < 0 for value in values)
+        ):
+            drift[field] = values
+    if drift:
+        raise RuntimeError(
+            "fixed-batch prefix contract mismatch: "
+            + json.dumps(drift, sort_keys=True)
+        )
+    payload["contract_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return payload
 
 
 def _await_start_gate(
@@ -344,6 +578,7 @@ def _activate_hash_audited_filesystem(
 
 
 def main() -> int:
+    worker_started_ns = time.monotonic_ns()
     parser = argparse.ArgumentParser()
     parser.add_argument("--binding-digest", required=True)
     parser.add_argument("--claim-id", required=True)
@@ -367,9 +602,11 @@ def main() -> int:
     parser.add_argument("--model", required=True)
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--permit-digest", required=True)
+    parser.add_argument("--prefix-contract-path")
     parser.add_argument("--project-root", required=True)
     parser.add_argument("--recbole-root", required=True)
     parser.add_argument("--resource-telemetry", action="store_true")
+    parser.add_argument("--resource-telemetry-path")
     parser.add_argument("--round-id", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--runner-abi", required=True)
@@ -379,6 +616,10 @@ def main() -> int:
     parser.add_argument("--start-confirmation-path", required=True)
     parser.add_argument("--start-gate-path", required=True)
     args = parser.parse_args()
+    if args.prefix_contract_path and not args.resource_telemetry:
+        raise RuntimeError("fixed-batch prefix requires resource telemetry")
+    if args.resource_telemetry and not args.resource_telemetry_path:
+        raise RuntimeError("resource telemetry path is required")
 
     project_root = Path(args.project_root).resolve()
     recbole_root = Path(args.recbole_root).resolve()
@@ -488,6 +729,20 @@ def main() -> int:
     argv_before = sys.argv[:]
     device_evidence: dict[str, object] = {}
     resource_telemetry: dict[str, object] | None = None
+    telemetry_path = (
+        Path(args.resource_telemetry_path)
+        if args.resource_telemetry_path is not None
+        else None
+    )
+    prefix_contract = (
+        _load_prefix_contract(
+            Path(args.prefix_contract_path),
+            epochs=args.epochs,
+            seed=args.seed,
+        )
+        if args.prefix_contract_path is not None
+        else None
+    )
     try:
         import torch
 
@@ -544,6 +799,25 @@ def main() -> int:
                 train_data, valid_data, _unused_test_data = data_preparation(
                     config, dataset
                 )
+                preallocated_train_batches = None
+                preallocated_valid_batches = None
+                if prefix_contract is not None:
+                    init_seed(config["seed"], config["reproducibility"])
+                    preallocated_train_batches = _preallocate_batches(
+                        train_data,
+                        tuple(
+                            int(value)
+                            for value in prefix_contract["train_batch_indices"]
+                        ),
+                    )
+                    init_seed(config["seed"], config["reproducibility"])
+                    preallocated_valid_batches = _preallocate_batches(
+                        valid_data,
+                        tuple(
+                            int(value)
+                            for value in prefix_contract["eval_batch_indices"]
+                        ),
+                    )
                 init_seed(config["seed"], config["reproducibility"])
                 model_class = get_model(config["model"])
                 model = model_class(config, train_data._dataset).to(
@@ -552,16 +826,29 @@ def main() -> int:
                 trainer = get_trainer(
                     config["MODEL_TYPE"], config["model"]
                 )(config, model)
+                fit_train_data = train_data
+                fit_valid_data = valid_data
                 if args.resource_telemetry:
-                    resource_telemetry = _install_resource_telemetry(
+                    if telemetry_path is None:
+                        raise RuntimeError("resource telemetry path is unavailable")
+                    (
+                        resource_telemetry,
+                        fit_train_data,
+                        fit_valid_data,
+                    ) = _install_resource_telemetry(
                         trainer,
                         torch=torch,
                         train_data=train_data,
                         valid_data=valid_data,
+                        telemetry_path=telemetry_path,
+                        prefix_contract=prefix_contract,
+                        preallocated_train_batches=preallocated_train_batches,
+                        preallocated_valid_batches=preallocated_valid_batches,
+                        worker_started_ns=worker_started_ns,
                     )
                 best_valid_score, best_valid_result = trainer.fit(
-                    train_data,
-                    valid_data,
+                    fit_train_data,
+                    fit_valid_data,
                     saved=False,
                     show_progress=False,
                 )
@@ -597,6 +884,11 @@ def main() -> int:
             if resource_telemetry is not None
             else None
         )
+        if telemetry_path is not None and resource_telemetry is not None:
+            _write_durable_json(
+                telemetry_path,
+                _finalize_resource_telemetry(resource_telemetry),
+            )
     output_path.write_text(
         json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n",
         encoding="utf-8",
