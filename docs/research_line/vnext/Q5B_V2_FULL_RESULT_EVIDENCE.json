@@ -1,0 +1,41 @@
+{
+  "schema": "recclaw.research-line.q5b-v2-full-result-evidence.v1",
+  "source_commit": "08f7ac8ff75eb3ce36a3b0751ca0f34f204f0444",
+  "campaign_root": "/NAS2020/Workspaces/DMGroup/tingrangan/q5b_v2_conversion_20260804_01_promotion_continuation/campaign",
+  "provider_pool": {
+    "provider_calls": 24,
+    "pools": 3,
+    "pool_size": 8,
+    "retries": 0,
+    "held_out_reads": 0,
+    "closest_parent_counts": {"LIGHTGCN": 15, "BPR_MF": 9}
+  },
+  "conversion": {
+    "union_candidates": 17,
+    "implementer_success": 17,
+    "qualified": 5,
+    "resource_admitted": 3,
+    "stable_screens": 3,
+    "stable_screen_policy_owners": ["STATIC"],
+    "outcome_aware_selection": "UNIFORM_TIE",
+    "full_promoted_candidate": "1e5e14f94986cf974286bf82d0348ab47958fbb9c9249f420c003e70f685504f"
+  },
+  "full_effects": {
+    "full_episodes": 2,
+    "ndcg10_deltas": {"54304": 0.0041, "54305": 0.0031},
+    "screen_signal": 0.0042,
+    "screen_full_direction_consistent": true,
+    "evidence_class": "INCONCLUSIVE_EXPERIMENT",
+    "mechanism_interpretation": "NOT_ADJUDICATED",
+    "scientific_effect_claim": false,
+    "physical_training_runs": 4,
+    "retries": 0,
+    "held_out_reads": 0
+  },
+  "receipts": {
+    "full": "campaign/realizations/004_1e5e14f94986/FULL_MATCHED_EXECUTION_RECEIPT.json",
+    "episode": "campaign/realizations/004_1e5e14f94986/EPISODE_RECEIPT.json",
+    "promotion": "campaign/CONVERSION_PROMOTION_PLAN.json"
+  },
+  "development_only": true
+}
