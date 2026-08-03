@@ -1,7 +1,7 @@
 {
   "schema": "recclaw.research-line.q5-a-foundation-package.v1",
   "package_version": "q5-foundation-a.1",
-  "package_digest": "f031e3f075b64fb6e1ed7548c8c0ba96f0d33943658cb0361c274120dfa154cf",
+  "package_digest": "014bb27987086401de92092164fe715a5dba96f345fc80dc3fb51751dcc8de14",
   "status": "FOUNDATION_READY_Q5A_NOT_RUN",
   "evidence_class": "DEVELOPMENT_ONLY",
   "development_only": true,
@@ -63,7 +63,9 @@
     "schema": "recclaw.research-line.q5-realization-typing-authority.v1",
     "effect_only_type": {
       "realization_typing": "EFFECT_ONLY_NON_NESTED",
-      "effect_authority": "EFFECT",
+      "effect_authority": "NOT_ASSESSED",
+      "effect_input_allowed": false,
+      "effect_eligibility": "ELIGIBLE_ONLY_AFTER_FULL_MATCHED_EPISODE",
       "mechanism_state": "NOT_ASSESSED"
     },
     "nested_type": {
@@ -89,6 +91,8 @@
     "authority_lane": "FEASIBILITY_COMPLETION_HEAD",
     "schema": "recclaw.research-line.q5-stage-conditional-feasibility-projection.v1",
     "factorization": "P(MATERIALIZE)*P(CONSTRUCT|MATERIALIZE)*P(QUALIFY|CONSTRUCT)*P(RESOURCE_ADMITTED|QUALIFY)*P(FULL_EPISODE|RESOURCE_ADMITTED)",
+    "stage_output": "ALL_FIVE_FROZEN_STAGES",
+    "missing_stage_behavior": "FROZEN_PRIOR_WITH_SUPPORT_WEIGHT_ZERO",
     "frozen_prior": {
       "source": "F1_STATIC_BETA_1_1_PRIOR",
       "mean": 0.5

@@ -166,7 +166,35 @@ def test_effect_only_non_nested_cannot_enter_mechanism_information() -> None:
     assert result["mechanism_state"] == "NOT_ASSESSED"
     assert result["mechanism_information_authority"] == "NOT_ASSESSED"
     assert result["mechanism_information_input_allowed"] is False
-    assert result["effect_authority"] == "EFFECT"
+    assert result["effect_authority"] == "NOT_ASSESSED"
+    assert result["effect_input_allowed"] is False
+    assert result["effect_eligibility"] == "ELIGIBLE_ONLY_AFTER_FULL_MATCHED_EPISODE"
+
+
+@pytest.mark.parametrize(
+    ("qualification", "admission"),
+    [
+        (_qualification(complete=False), {"status": "RESOURCE_ADMITTED"}),
+        (_qualification(), {"status": "RESOURCE_DEFERRED"}),
+        (_qualification(), {"status": "RESOURCE_ADMITTED"}),
+    ],
+    ids=["qualification-failure", "resource-deferred", "no-matched-episode"],
+)
+def test_pre_outcome_authority_never_admits_effect_input(
+    qualification: dict[str, object], admission: dict[str, str]
+) -> None:
+    result = classify_realization_authority(
+        realization={
+            "realization_class": "NEW_CANDIDATE",
+            "realization_typing": "EFFECT_ONLY_NON_NESTED",
+        },
+        qualification=qualification,
+        admission=admission,
+    )
+
+    assert result["effect_authority"] == "NOT_ASSESSED"
+    assert result["effect_input_allowed"] is False
+    assert result["effect_eligibility"] == "ELIGIBLE_ONLY_AFTER_FULL_MATCHED_EPISODE"
 
 
 def test_nested_gate_requires_gradients_and_checkpoint_load_equivalence() -> None:
@@ -229,12 +257,26 @@ def test_stage_conditional_feasibility_uses_existing_lane_and_shrinks_sparse_sta
 
     assert projection["authority_lane"] == "FEASIBILITY_COMPLETION_HEAD"
     assert projection["factorization"].startswith("P(FULL_EPISODE)=")
+    assert [row["stage"] for row in projection["stage_stats"]] == [
+        "MATERIALIZE",
+        "CONSTRUCT",
+        "QUALIFY",
+        "RESOURCE_ADMITTED",
+        "FULL_EPISODE",
+    ]
+    assert len(projection["stage_stats"]) == 5
     materialize = projection["stage_stats"][0]
     assert materialize["stage"] == "MATERIALIZE"
     assert materialize["posterior"]["support_weight"] == 0.5
     assert materialize["conditional_probability"] == 0.625
     assert materialize["features_visible_before_stage"] == ["spec_digest"]
-    assert 0.0 < projection["full_episode_probability"] < 1.0
+    for row in projection["stage_stats"][2:]:
+        assert row["input_count"] == 0
+        assert row["observed"] is False
+        assert row["observation_status"] == "FROZEN_PRIOR_NO_OBSERVATION"
+        assert row["posterior"]["support_weight"] == 0.0
+        assert row["conditional_probability"] == 0.5
+    assert projection["full_episode_probability"] == 0.0390625
 
 
 def test_stage_conditional_feasibility_rejects_held_out_input() -> None:

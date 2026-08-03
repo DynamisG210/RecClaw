@@ -812,9 +812,8 @@ def project_stage_conditional_feasibility(
             )
     stage_stats = []
     for stage in Q5_STAGE_CONDITIONAL_FEASIBILITY_STAGES:
-        rows = rows_by_stage.get(stage)
-        if not rows:
-            continue
+        rows = rows_by_stage.get(stage, [])
+        observed = bool(rows)
         posterior = _support_shrinkage(
             _beta_posterior(rows),
             prior_mean=float(Q5_FROZEN_FEASIBILITY_PRIOR["mean"]),
@@ -824,6 +823,10 @@ def project_stage_conditional_feasibility(
             {
                 "stage": stage,
                 "input_count": len(rows),
+                "observed": observed,
+                "observation_status": (
+                    "OBSERVED" if observed else "FROZEN_PRIOR_NO_OBSERVATION"
+                ),
                 "conditional_probability": posterior["shrunk_posterior_mean"],
                 "posterior": posterior,
                 "features_visible_before_stage": tuple(
@@ -831,8 +834,6 @@ def project_stage_conditional_feasibility(
                 ),
             }
         )
-    if not stage_stats:
-        raise OpenMetaQ3Error("stage feasibility projection has no recognized stage")
     full_probability = math.prod(
         float(value["conditional_probability"]) for value in stage_stats
     )

@@ -494,7 +494,9 @@ def classify_realization_authority(
             "mechanism_information_authority": (
                 "MECHANISM_INFORMATION" if mechanism_allowed else "NOT_ASSESSED"
             ),
-            "effect_authority": "EFFECT",
+            "effect_authority": "NOT_ASSESSED",
+            "effect_input_allowed": False,
+            "effect_eligibility": "ELIGIBLE_ONLY_AFTER_FULL_MATCHED_EPISODE",
             "mechanism_information_input_allowed": mechanism_allowed,
             "reason": reason,
             "resource_status_changes_mechanism": False,
