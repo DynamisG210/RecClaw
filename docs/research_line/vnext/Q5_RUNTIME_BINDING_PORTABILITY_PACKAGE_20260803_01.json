@@ -9,6 +9,10 @@
     "persistent_campaign_gate": true,
     "stage_ownership": ["POOL", "REALIZE"],
     "stage_reentry_blocked_by_sealed_release": true,
+    "pool_zero_attempt_invariant": true,
+    "realize_exact_pool_attempt_allowlist": "POOLS_01_TO_03_PROVIDER_SLOT_01_TO_08_PHYSICAL_ATTEMPT_01",
+    "pool_receipt_provider_ledger_digest_bound": true,
+    "realize_missing_extra_and_path_drift_fail_closed": true,
     "no_call_gate_pool_select_realize_lifecycle": "PASS",
     "provider_calls": 0,
     "implementer_calls": 0,
@@ -24,6 +28,7 @@
     "gate_written_once_and_reused": true,
     "realize_prerequisite_validation_before_calls": true,
     "physical_entry_consumes_matching_pass_receipt_before_attempt": true,
+    "physical_entry_distinguishes_sealed_pool_attempts_from_new_realize_attempts": true,
     "missing_stale_hard_block_digest_drift_and_existing_attempt_fail_closed": true,
     "provider_calls_before_gate": 0
   },

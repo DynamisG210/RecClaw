@@ -413,10 +413,12 @@ def pool(args: argparse.Namespace) -> None:
         rows: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
         attempts: list[list[Mapping[str, Any]]] = []
+        provider_attempt_ledger: list[dict[str, Any]] = []
         for slot_offset, (slot, role, mode) in enumerate(SLOT_BLUEPRINT, 1):
             seed = pool_seed * 100 + slot_offset
             if role not in ALLOWED_DIRECTIONS:
                 raise Q5AIdeaFeasibilityError("Q5-A slot direction is outside F1 authority")
+            ledger_recorded = False
             try:
                 prompt = _render_q5_prompt(
                     template,
@@ -438,7 +440,22 @@ def pool(args: argparse.Namespace) -> None:
                     token_ceiling=Q1_PROPOSAL_TOKEN_CEILING,
                     maximum_physical_attempts=1,
                 )
-                attempts.append(list(call.attempts))
+                attempt_rows = list(call.attempts)
+                attempts.append(attempt_rows)
+                call_root = (pool_root / "provider" / slot).resolve()
+                provider_attempt_ledger.append(
+                    {
+                        "slot": slot,
+                        "call_root": str(call_root),
+                        "attempt_paths": [
+                            str((call_root / f"physical_attempt_{int(row['ordinal']):02d}").resolve())
+                            for row in attempt_rows
+                        ],
+                        "attempt_count": len(attempt_rows),
+                        "attempt_record_digest": sha256_digest(attempt_rows),
+                    }
+                )
+                ledger_recorded = True
                 if call.call is None:
                     failures.append({"slot": slot, "stage": "PROVIDER", "failure": call.failure})
                     continue
@@ -477,6 +494,22 @@ def pool(args: argparse.Namespace) -> None:
                     )
                 )
             except Exception as error:
+                if not ledger_recorded:
+                    call_root = (pool_root / "provider" / slot).resolve()
+                    observed_attempts = sorted(
+                        str(path.resolve())
+                        for path in call_root.glob("physical_attempt_*")
+                        if path.is_dir()
+                    )
+                    provider_attempt_ledger.append(
+                        {
+                            "slot": slot,
+                            "call_root": str(call_root),
+                            "attempt_paths": observed_attempts,
+                            "attempt_count": len(observed_attempts),
+                            "attempt_record_digest": None,
+                        }
+                    )
                 failures.append({"slot": slot, "stage": "POOL_SLOT", "failure": repr(error)})
         usage = _provider_usage(attempts)
         raw_pool = canonical_value(
@@ -521,8 +554,20 @@ def pool(args: argparse.Namespace) -> None:
             "development_only": True,
             "scientific_effect_claim": False,
         }
-        _write_new(pool_root / "POOL_RECEIPT.json", receipt)
-        started.append({"pool_index": pool_index, "status": status, "candidate_count": len(rows)})
+        receipt_path = pool_root / "POOL_RECEIPT.json"
+        receipt["provider_attempt_ledger"] = provider_attempt_ledger
+        receipt["provider_attempt_ledger_digest"] = sha256_digest(provider_attempt_ledger)
+        receipt_sha = _write_new(receipt_path, receipt)
+        started.append(
+            {
+                "pool_index": pool_index,
+                "status": status,
+                "candidate_count": len(rows),
+                "pool_receipt_file": str(receipt_path.resolve()),
+                "pool_receipt_sha256": receipt_sha,
+                "provider_attempt_ledger_digest": receipt["provider_attempt_ledger_digest"],
+            }
+        )
     aggregate = {
         "schema": "recclaw.research-line.q5a-pool-generation-receipt.v1",
         "campaign_id": prefreeze_manifest["campaign_id"],
@@ -531,6 +576,15 @@ def pool(args: argparse.Namespace) -> None:
         "pools": started,
         "all_pools_complete": all(row["status"] == "POOL_COMPLETE" for row in started),
         "provider_calls": sum(Q5A_POOL_SIZE for _ in started),
+        "provider_attempt_ledger_digest": sha256_digest(
+            [
+                {
+                    "pool_index": row["pool_index"],
+                    "provider_attempt_ledger_digest": row["provider_attempt_ledger_digest"],
+                }
+                for row in started
+            ]
+        ),
         "retries": 0,
         "replacement": False,
         "held_out_reads": 0,

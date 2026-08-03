@@ -315,10 +315,14 @@ def read_verified_execution_gate(path: Path, binding: RuntimeBindingV1) -> dict[
     return gate
 
 
-def _physical_attempts(root: Path) -> list[str]:
+def _physical_attempt_directories(root: Path) -> list[Path]:
     if not root.exists():
         return []
-    return [str(path) for path in sorted(root.rglob("physical_attempt_01")) if path.is_dir()]
+    return sorted(
+        path.resolve()
+        for path in root.rglob("*")
+        if path.is_dir() and path.name.startswith("physical_attempt_")
+    )
 
 
 def claim_execution_owner(
@@ -330,8 +334,8 @@ def claim_execution_owner(
     stage = str(stage).upper()
     gate = read_verified_execution_gate(gate_receipt_path, binding)
     root = binding.campaign_root
-    if _physical_attempts(root):
-        raise RuntimeBindingError("campaign root already contains physical attempt directories")
+    if stage == "POOL" and _physical_attempt_directories(root):
+        raise RuntimeBindingError("POOL stage requires a campaign root with zero physical attempt directories")
     release_path = _stage_path(root, stage)
     if release_path.exists():
         raise RuntimeBindingError(f"execution stage {stage} already has sealed release evidence")
@@ -351,7 +355,14 @@ def claim_execution_owner(
         "gate_receipt": str(gate_receipt_path.resolve()),
         "status": "CLAIMED",
     }
-    return _write_exclusive(owner_path, payload, "owner_digest")
+    owner = _write_exclusive(owner_path, payload, "owner_digest")
+    if stage == "REALIZE":
+        try:
+            validate_realize_prerequisites(binding)
+        except Exception:
+            release_execution_owner(binding, owner, status="FAILED")
+            raise
+    return owner
 
 
 def verify_execution_owner(binding: RuntimeBindingV1, *, owner_token: str | None = None) -> dict[str, Any]:
@@ -464,6 +475,89 @@ def validate_realize_prerequisites(binding: RuntimeBindingV1) -> dict[str, Any]:
     pool_value = _load(pool_receipt)
     if pool_value.get("schema") != "recclaw.research-line.q5a-pool-generation-receipt.v1" or pool_value.get("all_pools_complete") is not True:
         raise RuntimeBindingError("POOL prerequisite is not complete")
+    if (
+        pool_value.get("pool_count") != 3
+        or pool_value.get("pool_size") != 8
+        or pool_value.get("provider_calls") != 24
+        or pool_value.get("retries") != 0
+    ):
+        raise RuntimeBindingError("POOL denominator or provider ledger summary drifted")
+    pool_entries = pool_value.get("pools")
+    if not isinstance(pool_entries, list) or len(pool_entries) != 3:
+        raise RuntimeBindingError("POOL receipt does not enumerate all three sealed pools")
+    expected_attempts: set[Path] = set()
+    ledger_digests: list[dict[str, Any]] = []
+    for pool_index in range(1, 4):
+        matching = [entry for entry in pool_entries if isinstance(entry, Mapping) and entry.get("pool_index") == pool_index]
+        if len(matching) != 1:
+            raise RuntimeBindingError(f"POOL receipt has an invalid pool entry: {pool_index}")
+        entry = matching[0]
+        pool_root = root / "pools" / f"{pool_index:02d}"
+        pool_receipt_path = pool_root / "POOL_RECEIPT.json"
+        if entry.get("status") != "POOL_COMPLETE" or entry.get("pool_receipt_file") != str(pool_receipt_path.resolve()):
+            raise RuntimeBindingError(f"POOL {pool_index} receipt binding is incomplete")
+        if entry.get("pool_receipt_sha256") != _bytes_digest(pool_receipt_path):
+            raise RuntimeBindingError(f"POOL {pool_index} receipt digest drifted")
+        pool_receipt_value = _load(pool_receipt_path)
+        if (
+            pool_receipt_value.get("schema") != "recclaw.research-line.q5a-pool-receipt.v1"
+            or pool_receipt_value.get("status") != "POOL_COMPLETE"
+            or pool_receipt_value.get("pool_index") != pool_index
+        ):
+            raise RuntimeBindingError(f"POOL {pool_index} sealed receipt is incomplete")
+        usage = pool_receipt_value.get("provider_usage")
+        if not isinstance(usage, Mapping) or usage.get("physical_calls") != 8 or usage.get("retries") != 0:
+            raise RuntimeBindingError(f"POOL {pool_index} Provider ledger denominator drifted")
+        raw_pool_path = pool_root / "RAW_POOL_BEFORE_SELECTION.json"
+        if pool_receipt_value.get("raw_pool_file") != str(raw_pool_path.resolve()):
+            raise RuntimeBindingError(f"POOL {pool_index} raw pool binding drifted")
+        if pool_receipt_value.get("raw_pool_file_sha256") != _bytes_digest(raw_pool_path):
+            raise RuntimeBindingError(f"POOL {pool_index} raw pool digest drifted")
+        raw_pool = _load(raw_pool_path)
+        if raw_pool.get("schema") != "recclaw.research-line.q5a-raw-pool.v1" or raw_pool.get("pool_index") != pool_index:
+            raise RuntimeBindingError(f"POOL {pool_index} raw pool identity drifted")
+        rows = raw_pool.get("candidate_pools", {}).get("shared") if isinstance(raw_pool.get("candidate_pools"), Mapping) else None
+        if not isinstance(rows, list) or len(rows) != 8:
+            raise RuntimeBindingError(f"POOL {pool_index} does not contain the frozen eight-slot ledger")
+        row_by_slot = {str(row.get("slot")): row for row in rows if isinstance(row, Mapping)}
+        if set(row_by_slot) != {f"slot-{slot:02d}" for slot in range(1, 9)}:
+            raise RuntimeBindingError(f"POOL {pool_index} frozen slot allowlist drifted")
+        ledger = pool_receipt_value.get("provider_attempt_ledger")
+        if not isinstance(ledger, list) or len(ledger) != 8:
+            raise RuntimeBindingError(f"POOL {pool_index} Provider attempt ledger is incomplete")
+        ledger_digest = _digest(ledger)
+        if pool_receipt_value.get("provider_attempt_ledger_digest") != ledger_digest or entry.get("provider_attempt_ledger_digest") != ledger_digest:
+            raise RuntimeBindingError(f"POOL {pool_index} Provider attempt ledger digest drifted")
+        seen_slots: set[str] = set()
+        for ledger_row in ledger:
+            if not isinstance(ledger_row, Mapping):
+                raise RuntimeBindingError(f"POOL {pool_index} Provider ledger row is invalid")
+            slot = str(ledger_row.get("slot"))
+            if slot in seen_slots or slot not in row_by_slot:
+                raise RuntimeBindingError(f"POOL {pool_index} Provider ledger slot drifted")
+            seen_slots.add(slot)
+            call_root = (pool_root / "provider" / slot).resolve()
+            if ledger_row.get("call_root") != str(call_root):
+                raise RuntimeBindingError(f"POOL {pool_index} Provider call root drifted")
+            row_attempts = row_by_slot[slot].get("provider_attempts")
+            if not isinstance(row_attempts, list) or ledger_row.get("attempt_record_digest") != _digest(row_attempts):
+                raise RuntimeBindingError(f"POOL {pool_index} Provider attempt record drifted")
+            expected_path = (call_root / "physical_attempt_01").resolve()
+            if ledger_row.get("attempt_paths") != [str(expected_path)] or ledger_row.get("attempt_count") != 1:
+                raise RuntimeBindingError(f"POOL {pool_index} Provider attempt path is not the frozen single call")
+            if not expected_path.is_dir():
+                raise RuntimeBindingError(f"POOL {pool_index} Provider attempt is missing")
+            expected_attempts.add(expected_path)
+        if seen_slots != set(row_by_slot):
+            raise RuntimeBindingError(f"POOL {pool_index} Provider ledger is missing a frozen slot")
+        ledger_digests.append(
+            {"pool_index": pool_index, "provider_attempt_ledger_digest": ledger_digest}
+        )
+    if pool_value.get("provider_attempt_ledger_digest") != _digest(ledger_digests):
+        raise RuntimeBindingError("POOL aggregate Provider ledger digest drifted")
+    actual_attempts = set(_physical_attempt_directories(root))
+    if actual_attempts != expected_attempts:
+        raise RuntimeBindingError("REALIZE physical attempts are missing, extra, or outside the sealed POOL allowlist")
     prefreeze_path = root / "PREFREEZE_MANIFEST.json"
     prefreeze = _load(prefreeze_path)
     _verify_self_digest(prefreeze, "prefreeze_digest", "campaign prefreeze manifest")

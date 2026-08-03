@@ -333,7 +333,10 @@ def test_owner_claim_accepts_only_frozen_prefreeze_artifacts(tmp_path: Path) -> 
     assert (binding.campaign_root / "EXECUTION_STAGE_POOL_RELEASED.json").is_file()
 
 
-def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_use(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("attempt_variant", ("legal", "missing", "extra", "wrong_slot"))
+def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_use(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attempt_variant: str
+) -> None:
     _manifest_path, binding, repo, preflight_root = _manifest_and_binding(tmp_path)
     _preflight_path, prefreeze_path, gate = _write_pass_gate(binding, repo, preflight_root)
     shutil.copy2(prefreeze_path, binding.campaign_root / "PREFREEZE_MANIFEST.json")
@@ -346,13 +349,104 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
             binding, gate_receipt_path=binding.campaign_root / "EXECUTION_GATE.json", stage="REALIZE"
         )
 
+    import run_q5a_idea_feasibility as runner
+
+    physical_calls = {"provider": 0}
+
+    def no_provider_call(*_args: object, **_kwargs: object) -> None:
+        physical_calls["provider"] += 1
+        raise AssertionError("no-call lifecycle must not invoke Provider")
+
+    monkeypatch.setattr(runner, "bounded_provider_call", no_provider_call)
+
+    pool_entries: list[dict[str, object]] = []
+    for pool_index in range(1, 4):
+        pool_root = binding.campaign_root / "pools" / f"{pool_index:02d}"
+        pool_root.mkdir(parents=True)
+        rows = [
+            {
+                "preoutcome_score": {"spec_digest": f"{pool_index:02d}{slot:02d}".ljust(64, "0")},
+                "stage": "OPENSPEC_FROZEN",
+                "slot": f"slot-{slot:02d}",
+                "provider_attempts": [{"ordinal": 1, "status": "SUCCESS"}],
+            }
+            for slot in range(1, 9)
+        ]
+        raw = {
+            "schema": "recclaw.research-line.q5a-raw-pool.v1",
+            "pool_index": pool_index,
+            "candidate_pools": {"shared": rows},
+        }
+        pool_digest = _digest({"pool_index": pool_index})
+        raw_path = pool_root / "RAW_POOL_BEFORE_SELECTION.json"
+        raw_path.write_text(
+            json.dumps(raw, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+        )
+        (pool_root / "POOL_MANIFEST.json").write_text(
+            json.dumps({"pool_digest": pool_digest, "candidate_pools": {"shared": rows}}, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        provider_ledger = [
+            {
+                "slot": f"slot-{slot:02d}",
+                "call_root": str((pool_root / "provider" / f"slot-{slot:02d}").resolve()),
+                "attempt_paths": [
+                    str((pool_root / "provider" / f"slot-{slot:02d}" / "physical_attempt_01").resolve())
+                ],
+                "attempt_count": 1,
+                "attempt_record_digest": _digest(rows[slot - 1]["provider_attempts"]),
+            }
+            for slot in range(1, 9)
+        ]
+        provider_ledger_digest = _digest(provider_ledger)
+        pool_receipt_value = {
+            "schema": "recclaw.research-line.q5a-pool-receipt.v1",
+            "status": "POOL_COMPLETE",
+            "pool_index": pool_index,
+            "raw_pool_file": str(raw_path.resolve()),
+            "raw_pool_file_sha256": _digest(raw),
+            "candidate_count": 8,
+            "provider_usage": {"physical_calls": 8, "retries": 0},
+            "provider_attempt_ledger": provider_ledger,
+            "provider_attempt_ledger_digest": provider_ledger_digest,
+            "failures": [],
+            "retries": 0,
+            "held_out_reads": 0,
+        }
+        pool_receipt_path = pool_root / "POOL_RECEIPT.json"
+        pool_receipt_path.write_text(
+            json.dumps(pool_receipt_value, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+        )
+        pool_entries.append(
+            {
+                "pool_index": pool_index,
+                "status": "POOL_COMPLETE",
+                "candidate_count": 8,
+                "pool_receipt_file": str(pool_receipt_path.resolve()),
+                "pool_receipt_sha256": _digest(pool_receipt_value),
+                "provider_attempt_ledger_digest": provider_ledger_digest,
+            }
+        )
+
     pool_receipt = binding.campaign_root / "POOL_GENERATION_RECEIPT.json"
     pool_receipt.write_text(
         json.dumps(
             {
                 "schema": "recclaw.research-line.q5a-pool-generation-receipt.v1",
                 "all_pools_complete": True,
-                "provider_calls": 0,
+                "pool_count": 3,
+                "pool_size": 8,
+                "provider_calls": 24,
+                "pools": pool_entries,
+                "provider_attempt_ledger_digest": _digest(
+                    [
+                        {
+                            "pool_index": entry["pool_index"],
+                            "provider_attempt_ledger_digest": entry["provider_attempt_ledger_digest"],
+                        }
+                        for entry in pool_entries
+                    ]
+                ),
                 "retries": 0,
                 "held_out_reads": 0,
             },
@@ -368,36 +462,6 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
         )
     with pytest.raises(RuntimeBindingError):
         validate_realize_prerequisites(binding)
-
-    import run_q5a_idea_feasibility as runner
-
-    physical_calls = {"provider": 0}
-
-    def no_provider_call(*_args: object, **_kwargs: object) -> None:
-        physical_calls["provider"] += 1
-        raise AssertionError("no-call lifecycle must not invoke Provider")
-
-    monkeypatch.setattr(runner, "bounded_provider_call", no_provider_call)
-
-    for pool_index in range(1, 4):
-        pool_root = binding.campaign_root / "pools" / f"{pool_index:02d}"
-        pool_root.mkdir(parents=True)
-        rows = [
-            {
-                "preoutcome_score": {"spec_digest": f"{pool_index:02d}{slot:02d}".ljust(64, "0")},
-                "stage": "OPENSPEC_FROZEN",
-            }
-            for slot in range(1, 9)
-        ]
-        raw = {"candidate_pools": {"shared": rows}}
-        pool_digest = _digest({"pool_index": pool_index})
-        (pool_root / "RAW_POOL_BEFORE_SELECTION.json").write_text(
-            json.dumps(raw, sort_keys=True, separators=(",", ":")), encoding="utf-8"
-        )
-        (pool_root / "POOL_MANIFEST.json").write_text(
-            json.dumps({"pool_digest": pool_digest, "candidate_pools": {"shared": rows}}, sort_keys=True, separators=(",", ":")),
-            encoding="utf-8",
-        )
 
     def fake_ranked(pool: dict[str, object], policy: str, **_kwargs: object) -> tuple[object, ...]:
         ids = [str(row["preoutcome_score"]["spec_digest"]) for row in pool["candidate_pools"]["shared"]]
@@ -422,17 +486,43 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
             },
         )()
     )
-    assert validate_realize_prerequisites(binding)["gate_digest"] == gate["gate_digest"]
+    attempt_specs = [(pool_index, slot) for pool_index in range(1, 4) for slot in range(1, 9)]
+    if attempt_variant == "missing":
+        attempt_specs.pop()
+    elif attempt_variant == "extra":
+        attempt_specs.append((1, 9))
+    elif attempt_variant == "wrong_slot":
+        attempt_specs[-1] = (1, 9)
+    for pool_index, slot in attempt_specs:
+        (
+            binding.campaign_root
+            / "pools"
+            / f"{pool_index:02d}"
+            / "provider"
+            / f"slot-{slot:02d}"
+            / "physical_attempt_01"
+        ).mkdir(parents=True)
 
-    realize_owner = claim_execution_owner(
-        binding, gate_receipt_path=binding.campaign_root / "EXECUTION_GATE.json", stage="REALIZE"
-    )
-    (binding.campaign_root / "REALIZATION_EXECUTION_RECEIPT.json").write_text("{}", encoding="utf-8")
-    release_execution_owner(binding, realize_owner, status="COMPLETED")
-    with pytest.raises(RuntimeBindingError):
-        claim_execution_owner(
+    if attempt_variant == "legal":
+        assert validate_realize_prerequisites(binding)["gate_digest"] == gate["gate_digest"]
+        realize_owner = claim_execution_owner(
             binding, gate_receipt_path=binding.campaign_root / "EXECUTION_GATE.json", stage="REALIZE"
         )
+        (binding.campaign_root / "REALIZATION_EXECUTION_RECEIPT.json").write_text("{}", encoding="utf-8")
+        release_execution_owner(binding, realize_owner, status="COMPLETED")
+        with pytest.raises(RuntimeBindingError):
+            claim_execution_owner(
+                binding, gate_receipt_path=binding.campaign_root / "EXECUTION_GATE.json", stage="REALIZE"
+            )
+    else:
+        with pytest.raises(RuntimeBindingError):
+            claim_execution_owner(
+                binding, gate_receipt_path=binding.campaign_root / "EXECUTION_GATE.json", stage="REALIZE"
+            )
+        assert not (binding.campaign_root / "EXECUTION_OWNER.json").exists()
+        assert json.loads(
+            (binding.campaign_root / "EXECUTION_STAGE_REALIZE_RELEASED.json").read_text(encoding="utf-8")
+        )["status"] == "FAILED"
 
     stale_gate = dict(gate)
     stale_gate["gate_contract"] = "OLD_GATE"
@@ -442,4 +532,4 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
     with pytest.raises(RuntimeBindingError):
         read_verified_execution_gate(stale_path, binding)
     assert physical_calls["provider"] == 0
-    assert not list(binding.campaign_root.rglob("physical_attempt_01"))
+    assert len(list(binding.campaign_root.rglob("physical_attempt_01"))) == len(attempt_specs)
