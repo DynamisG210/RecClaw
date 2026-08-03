@@ -924,6 +924,10 @@ def run_full_execution(args: argparse.Namespace) -> Path:
     candidate_root = Path(qualification["candidate_root"])
     source = candidate_root / "recclaw_ext/candidate.py"
     full = contract["full"]
+    full_deadline = int(
+        promotion["promotion"]["full_deadline_seconds_by_candidate"][candidate_id]
+    )
+    parent_deadline = int(promotion["promotion"]["shared_parent_deadline_seconds"])
     results: list[dict[str, Any]] = []
     physical_runs = 0
     for seed in tuple(int(value) for value in full["fresh_development_seeds"]):
@@ -933,7 +937,7 @@ def run_full_execution(args: argparse.Namespace) -> Path:
             kind="full",
             seed=seed,
             epochs=int(full["epochs"]),
-            timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+            timeout_seconds=parent_deadline,
             execution_purpose="DEVELOPMENT_FULL_PARENT",
         )
         candidate = run_development_training(
@@ -946,7 +950,7 @@ def run_full_execution(args: argparse.Namespace) -> Path:
             source_sha256=bytes_sha256(source.read_bytes()),
             run_identity=_round_identity(manifest),
             authority="user-delegated-q5b-conversion-full-development",
-            timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+            timeout_seconds=full_deadline,
             epochs=int(full["epochs"]),
             execution_purpose="DEVELOPMENT_FULL_CANDIDATE",
             watchdog_seconds=int(manifest["frozen_execution"]["engineering_watchdog_seconds"]),

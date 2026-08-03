@@ -19,7 +19,9 @@ from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (  # noq
     build_conversion_execution_plan,
     build_mechanical_repair_request,
     build_stage_feasibility_head,
+    choose_resource_bounded_promotions,
     choose_stable_promotions,
+    derive_resource_deadline_seconds,
     finalize_conversion_execution_plan,
     is_mechanical_repair_failure,
     run_fail_soft_batch,
@@ -274,8 +276,22 @@ def test_screen_promotion_uses_fresh_full_seeds_and_shared_parent_counts() -> No
         ("a", "b", "c"), screen_seed=54303, full_seeds=(54304, 54305), promotion_limit=2
     )
     screens = (
-        {"candidate_id": "a", "status": "COMPLETED_MATCHED_PAIR", "stable": True, "screen_signal": 0.2},
-        {"candidate_id": "b", "status": "COMPLETED_MATCHED_PAIR", "stable": True, "screen_signal": 0.1},
+        {
+            "candidate_id": "a",
+            "status": "COMPLETED_MATCHED_SCREEN",
+            "stable": True,
+            "screen_signal": 0.2,
+            "screen_cost_ms": 100_000,
+            "parent_screen_cost_ms": 10_000,
+        },
+        {
+            "candidate_id": "b",
+            "status": "COMPLETED_MATCHED_SCREEN",
+            "stable": True,
+            "screen_signal": 0.1,
+            "screen_cost_ms": 200_000,
+            "parent_screen_cost_ms": 10_000,
+        },
         {"candidate_id": "c", "status": "MISSING", "stable": False, "screen_signal": 0.9},
     )
     assert choose_stable_promotions(screens, promotion_limit=2) == ("a", "b")
@@ -289,6 +305,57 @@ def test_screen_promotion_uses_fresh_full_seeds_and_shared_parent_counts() -> No
         "screen_seed": 54303,
         "full_seeds": [54304, 54305],
     }
+
+
+def test_screen_resource_budget_censors_slow_arm_before_full() -> None:
+    screens = (
+        {
+            "candidate_id": "fast",
+            "status": "COMPLETED_MATCHED_SCREEN",
+            "stable": True,
+            "screen_signal": 0.0042,
+            "screen_cost_ms": 499_930,
+            "parent_screen_cost_ms": 67_827,
+            "policy_owners": ["STATIC"],
+        },
+        {
+            "candidate_id": "medium",
+            "status": "COMPLETED_MATCHED_SCREEN",
+            "stable": True,
+            "screen_signal": 0.0002,
+            "screen_cost_ms": 95_641,
+            "parent_screen_cost_ms": 67_827,
+            "policy_owners": ["STATIC"],
+        },
+        {
+            "candidate_id": "slow",
+            "status": "COMPLETED_MATCHED_SCREEN",
+            "stable": True,
+            "screen_signal": -0.0246,
+            "screen_cost_ms": 803_867,
+            "parent_screen_cost_ms": 67_827,
+            "policy_owners": ["STATIC"],
+        },
+    )
+    assert choose_stable_promotions(screens, promotion_limit=3) == (
+        "fast",
+        "medium",
+        "slow",
+    )
+    assert derive_resource_deadline_seconds(67_827) == 434
+    assert derive_resource_deadline_seconds(499_930) == 2810
+    assert derive_resource_deadline_seconds(95_641) == 587
+    assert derive_resource_deadline_seconds(803_867) == 4482
+
+    resource = choose_resource_bounded_promotions(screens, promotion_limit=3)
+    assert resource["promoted_candidate_ids"] == ["fast"]
+    assert resource["resource_budget_seconds"] == 7200
+    assert resource["shared_parent_reserve_seconds"] == 868
+    assert resource["resource_budget_used_seconds"] == 6488
+    assert [row["candidate_id"] for row in resource["resource_censored_not_promoted"]] == [
+        "medium",
+        "slow",
+    ]
 
 
 def test_stage_feasibility_head_preserves_17_arm_denominator_and_effect_shrinkage() -> None:

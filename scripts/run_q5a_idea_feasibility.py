@@ -197,7 +197,7 @@ from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (  # noq
     RECBole_INTERFACE_CONTRACT,
     SCREEN_EPOCHS,
     build_conversion_execution_plan,
-    choose_stable_promotions,
+    choose_resource_bounded_promotions,
     finalize_conversion_execution_plan,
 )
 from recclaw_core.experiments.helix_abc_v1.open_meta_f1 import (  # noqa: E402
@@ -1240,6 +1240,7 @@ def _build_conversion_screen_results(
     for entry in entries:
         receipt = _read_optional(Path(entry["realization_root"]) / "MATCHED_EXECUTION_RECEIPT.json")
         candidate = (receipt.get("candidate") or {}) if receipt else {}
+        baseline = (receipt.get("baseline") or {}) if receipt else {}
         candidate_id = str(entry["candidate_id"])
         results.append(
             {
@@ -1248,6 +1249,7 @@ def _build_conversion_screen_results(
                 "stable": bool(receipt and receipt.get("stable")),
                 "screen_signal": receipt.get("screen_signal") if receipt else None,
                 "screen_cost_ms": candidate.get("wall_time_ms") if receipt else None,
+                "parent_screen_cost_ms": baseline.get("wall_time_ms") if receipt else None,
                 "policy_owners": sorted(policy_owners.get(candidate_id, set())),
                 "shared_exploration": candidate_id in exploration_ids,
             }
@@ -1335,10 +1337,11 @@ def realize(args: argparse.Namespace) -> None:
             "scientific_effect_claim": False,
         },
     )
-    promoted = choose_stable_promotions(
+    resource_promotions = choose_resource_bounded_promotions(
         screen_results,
         promotion_limit=int(conversion_plan["promotion"]["limit"]),
     )
+    promoted = tuple(resource_promotions["promoted_candidate_ids"])
     promotion_plan = finalize_conversion_execution_plan(
         conversion_plan,
         screen_results,

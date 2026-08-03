@@ -7,6 +7,7 @@ screen-to-promotion schedule consumed by the existing stage runner.
 
 from __future__ import annotations
 
+from math import ceil
 from typing import Any, Mapping, Sequence
 
 from .canonical import canonical_value, sha256_digest
@@ -20,6 +21,10 @@ SCREEN_EPOCHS = 20
 FULL_EPOCHS = 100
 MAX_REPAIR_TURNS = 2
 FULL_DEVELOPMENT_SEEDS = (54304, 54305)
+FULL_RESOURCE_BUDGET_SECONDS = 7200
+FULL_WATCHDOG_SECONDS = 10800
+RESOURCE_DEADLINE_MIN_SECONDS = 180
+RESOURCE_DEADLINE_MARGIN = 1.10
 CANDIDATE_LOCAL_ALLOWED_FILES = (
     "recclaw_ext/__init__.py",
     "recclaw_ext/candidate.py",
@@ -171,6 +176,28 @@ def build_conversion_execution_plan(
     return {**payload, "plan_digest": sha256_digest(payload)}
 
 
+def derive_resource_deadline_seconds(
+    screen_wall_time_ms: int | float,
+    *,
+    screen_epochs: int = SCREEN_EPOCHS,
+    full_epochs: int = FULL_EPOCHS,
+) -> int:
+    """Project a full-run deadline from pre-outcome screen wall time."""
+
+    wall_seconds = float(screen_wall_time_ms) / 1000.0
+    if wall_seconds <= 0 or int(screen_epochs) <= 0 or int(full_epochs) <= 0:
+        raise ValueError("screen telemetry and epoch counts must be positive")
+    projected = ceil(
+        60.0
+        + RESOURCE_DEADLINE_MARGIN
+        * (wall_seconds * int(full_epochs) / int(screen_epochs))
+    )
+    deadline = max(RESOURCE_DEADLINE_MIN_SECONDS, projected)
+    if deadline > FULL_WATCHDOG_SECONDS:
+        raise ValueError("projected deadline exceeds the frozen watchdog")
+    return int(deadline)
+
+
 def choose_stable_promotions(
     screen_results: Sequence[Mapping[str, Any]],
     *,
@@ -181,7 +208,7 @@ def choose_stable_promotions(
     eligible = []
     for row in screen_results:
         if (
-            row.get("status") == "COMPLETED_MATCHED_PAIR"
+            row.get("status") == "COMPLETED_MATCHED_SCREEN"
             and bool(row.get("stable"))
             and isinstance(row.get("candidate_id"), str)
         ):
@@ -230,6 +257,93 @@ def choose_stable_promotions(
     return tuple(selected[: int(promotion_limit)])
 
 
+def choose_resource_bounded_promotions(
+    screen_results: Sequence[Mapping[str, Any]],
+    *,
+    promotion_limit: int,
+    full_seeds: Sequence[int] = FULL_DEVELOPMENT_SEEDS,
+    total_budget_seconds: int = FULL_RESOURCE_BUDGET_SECONDS,
+) -> dict[str, Any]:
+    """Apply the fixed screen/policy order to the full-run resource budget."""
+
+    ordered = choose_stable_promotions(
+        screen_results,
+        promotion_limit=int(promotion_limit),
+    )
+    seeds = tuple(int(seed) for seed in full_seeds)
+    if not seeds or len(set(seeds)) != len(seeds):
+        raise ValueError("full seeds must be unique")
+    parent_wall_time_ms = next(
+        (
+            row.get("parent_screen_cost_ms")
+            for row in screen_results
+            if row.get("parent_screen_cost_ms") is not None
+        ),
+        None,
+    )
+    if parent_wall_time_ms is None:
+        raise ValueError("stable screen results require shared-parent wall time")
+    parent_deadline = derive_resource_deadline_seconds(parent_wall_time_ms)
+    parent_reserve = parent_deadline * len(seeds)
+    used = parent_reserve
+    promoted: list[str] = []
+    censored: list[dict[str, Any]] = []
+    deadlines: dict[str, int] = {}
+    candidate_costs: dict[str, int] = {}
+    by_id = {str(row["candidate_id"]): row for row in screen_results}
+    for candidate_id in ordered:
+        wall_time_ms = by_id[candidate_id].get("screen_cost_ms")
+        if wall_time_ms is None:
+            censored.append(
+                {
+                    "candidate_id": candidate_id,
+                    "status": "RESOURCE_CENSORED_NOT_PROMOTED",
+                    "reason": "SCREEN_WALL_TIME_MISSING",
+                }
+            )
+            continue
+        try:
+            deadline = derive_resource_deadline_seconds(wall_time_ms)
+        except ValueError:
+            censored.append(
+                {
+                    "candidate_id": candidate_id,
+                    "status": "RESOURCE_CENSORED_NOT_PROMOTED",
+                    "reason": "DEADLINE_EXCEEDS_WATCHDOG",
+                }
+            )
+            continue
+        cost = deadline * len(seeds)
+        deadlines[candidate_id] = deadline
+        candidate_costs[candidate_id] = cost
+        if used + cost <= int(total_budget_seconds):
+            promoted.append(candidate_id)
+            used += cost
+        else:
+            censored.append(
+                {
+                    "candidate_id": candidate_id,
+                    "status": "RESOURCE_CENSORED_NOT_PROMOTED",
+                    "reason": "FULL_RESOURCE_BUDGET_EXCEEDED",
+                    "required_seconds": cost,
+                    "remaining_seconds": max(0, int(total_budget_seconds) - used),
+                }
+            )
+    return canonical_value(
+        {
+            "promoted_candidate_ids": promoted,
+            "resource_censored_not_promoted": censored,
+            "full_deadline_seconds_by_candidate": deadlines,
+            "shared_parent_deadline_seconds": parent_deadline,
+            "shared_parent_reserve_seconds": parent_reserve,
+            "candidate_full_cost_seconds": candidate_costs,
+            "resource_budget_seconds": int(total_budget_seconds),
+            "resource_budget_used_seconds": used,
+            "screen_priority_order": list(ordered),
+        }
+    )
+
+
 def finalize_conversion_execution_plan(
     plan: Mapping[str, Any],
     screen_results: Sequence[Mapping[str, Any]],
@@ -241,17 +355,40 @@ def finalize_conversion_execution_plan(
     promoted = tuple(str(value) for value in promoted_ids)
     if len(set(promoted)) != len(promoted) or not set(promoted).issubset(candidate_ids):
         raise ValueError("promotion set is not a subset of the frozen candidate denominator")
-    stable = set(choose_stable_promotions(screen_results, promotion_limit=len(promoted)))
-    if set(promoted) != stable:
-        raise ValueError("promotion set does not match the frozen screen rule")
     screen_seed = int(plan["screen"]["seed"])
     full_seeds = tuple(int(value) for value in plan["full"]["fresh_development_seeds"])
+    resource = choose_resource_bounded_promotions(
+        screen_results,
+        promotion_limit=int(plan["promotion"]["limit"]),
+        full_seeds=full_seeds,
+    )
+    if tuple(promoted) != tuple(resource["promoted_candidate_ids"]):
+        raise ValueError("promotion set does not match the frozen resource screen rule")
     payload = canonical_value(
         {
             **dict(plan),
             "promotion": {
                 **dict(plan["promotion"]),
                 "promoted_candidate_ids": promoted,
+                "resource_censored_not_promoted": resource[
+                    "resource_censored_not_promoted"
+                ],
+                "full_deadline_seconds_by_candidate": resource[
+                    "full_deadline_seconds_by_candidate"
+                ],
+                "shared_parent_deadline_seconds": resource[
+                    "shared_parent_deadline_seconds"
+                ],
+                "shared_parent_reserve_seconds": resource[
+                    "shared_parent_reserve_seconds"
+                ],
+                "candidate_full_cost_seconds": resource[
+                    "candidate_full_cost_seconds"
+                ],
+                "resource_budget_seconds": resource["resource_budget_seconds"],
+                "resource_budget_used_seconds": resource[
+                    "resource_budget_used_seconds"
+                ],
             },
             "run_counts": {
                 "screen_candidate_runs": len(candidate_ids),
@@ -354,6 +491,8 @@ __all__ = [
     "CONVERSION_SCHEMA",
     "FULL_DEVELOPMENT_SEEDS",
     "FULL_EPOCHS",
+    "FULL_RESOURCE_BUDGET_SECONDS",
+    "FULL_WATCHDOG_SECONDS",
     "MAX_REPAIR_TURNS",
     "MECHANICAL_REPAIR_SCHEMA",
     "MECHANICAL_SHAPE_TEST_HINT",
@@ -362,7 +501,9 @@ __all__ = [
     "build_conversion_execution_plan",
     "build_mechanical_repair_request",
     "build_stage_feasibility_head",
+    "choose_resource_bounded_promotions",
     "choose_stable_promotions",
+    "derive_resource_deadline_seconds",
     "finalize_conversion_execution_plan",
     "is_mechanical_repair_failure",
     "run_fail_soft_batch",
