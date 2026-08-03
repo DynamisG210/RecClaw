@@ -17,6 +17,25 @@ REQUIRED_RECBOLE_COMMIT = "7b02be5ec80a88310f2d04a27a82adfcbb5dc211"
 
 
 def _bootstrap(args: argparse.Namespace) -> None:
+    binding_manifest = os.environ.get("RECCLAW_BINDING_MANIFEST")
+    if not binding_manifest:
+        raise RuntimeError("stage child is missing the frozen runtime binding manifest")
+    sys.path.insert(0, str(args.repo_root / "src"))
+    from recclaw_runtime_binding import RuntimeBindingV1
+
+    binding = RuntimeBindingV1.from_manifest(
+        Path(binding_manifest), repo_root=args.repo_root
+    ).activate()
+    expected_paths = {
+        "projects_root": binding.projects_root,
+        "search_data_root": binding.search_data_root,
+        "recbole_root": binding.recbole_root,
+        "python_executable": binding.python_executable,
+        "api_config": binding.api_config,
+    }
+    for name, expected in expected_paths.items():
+        if Path(getattr(args, name)).resolve() != expected:
+            raise RuntimeError(f"stage runtime argument drift: {name}")
     os.environ["RECCLAW_PROJECTS_ROOT"] = str(args.projects_root)
     os.environ["RECCLAW_SEARCH_DATA_ROOT"] = str(args.search_data_root)
     os.environ["RECCLAW_RECBOLE_ROOT"] = str(args.recbole_root)

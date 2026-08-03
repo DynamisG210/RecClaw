@@ -213,6 +213,7 @@ from recclaw_core.experiments.helix_abc_v1.q5a_idea_feasibility import (  # noqa
     build_q5a_realization_union,
     build_q5a_selection_manifest,
     build_q5a_shared_exploration,
+    build_q5a_stage_denominator,
 )
 from recclaw_core.experiments.helix_abc_v1.v4_response_contract import (  # noqa: E402
     validate_v4_response_contract,

@@ -299,6 +299,98 @@ def test_runner_missing_binding_fails_before_import_or_provider(tmp_path: Path) 
     assert not output_root.exists()
 
 
+def test_stage_child_activates_frozen_binding_before_path_sensitive_import(
+    tmp_path: Path,
+) -> None:
+    manifest_path, binding, repo, _preflight_root = _manifest_and_binding(tmp_path)
+    child = tmp_path / "check_stage_binding.py"
+    child.write_text(
+        """
+import sys
+from argparse import Namespace
+from pathlib import Path
+
+repo = Path(sys.argv[1])
+sys.path.insert(0, str(repo / "scripts"))
+import run_multiround_soak_stage as stage
+
+args = Namespace(
+    stage="selected-resolver",
+    repo_root=repo,
+    round_root=repo / "round",
+    manifest=repo / "manifest.json",
+    input_pool=None,
+    upstream_root=None,
+    previous_policy=None,
+    previous_projection=None,
+    projects_root=Path(sys.argv[2]),
+    search_data_root=Path(sys.argv[3]),
+    recbole_root=Path(sys.argv[4]),
+    python_executable=Path(sys.argv[5]),
+    api_config=Path(sys.argv[6]),
+)
+stage._bootstrap(args)
+from recclaw_core.experiments.helix_abc_v1 import fresh_r1, fresh_r2
+
+assert fresh_r1.PROJECTS_ROOT == Path(sys.argv[2]).resolve()
+assert fresh_r2.R1_EXTERNAL_ROOT == (
+    Path(sys.argv[2]).resolve()
+    / "RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3"
+)
+assert fresh_r2.RECBole_ROOT == Path(sys.argv[4]).resolve()
+print("STAGE_BINDING_PASS")
+""",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["RECCLAW_BINDING_MANIFEST"] = str(manifest_path)
+    for name in (
+        "RECCLAW_PROJECTS_ROOT",
+        "RECCLAW_SEARCH_DATA_ROOT",
+        "RECCLAW_RECBOLE_ROOT",
+        "RECCLAW_API_CONFIG",
+        "RECCLAW_RUNTIME_BINDING_DIGEST",
+    ):
+        env.pop(name, None)
+    completed = subprocess.run(
+        [
+            str(PYTHON),
+            str(child),
+            str(repo),
+            str(binding.projects_root),
+            str(binding.search_data_root),
+            str(binding.recbole_root),
+            str(binding.python_executable),
+            str(binding.api_config),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == "STAGE_BINDING_PASS"
+
+
+def test_q5a_finalization_denominator_import_is_available() -> None:
+    import run_q5a_idea_feasibility as runner
+
+    value = runner.build_q5a_stage_denominator(
+        realization_rows=[
+            {
+                "research_spec_digest": "a" * 64,
+                "stage": "MATERIALIZE",
+                "status": "MISSING_STAGE_RECEIPT",
+                "cost_ms": None,
+            }
+        ],
+        realization_denominator=1,
+    )
+    assert value["stage_order"] == list(runner.Q5A_STAGES)
+    assert all(row["denominator"] == 1 for row in value["stage_stats"])
+    assert value["stage_stats"][0]["missingness_count"] == 0
+
+
 def test_pass_gate_is_consumed_by_runner_before_any_attempt_and_releases_owner(tmp_path: Path) -> None:
     manifest_path, binding, repo, preflight_root = _manifest_and_binding(tmp_path)
     preflight_root.mkdir(parents=True)
