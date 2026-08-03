@@ -21,6 +21,8 @@ from .canonical import bytes_sha256, canonical_value, sha256_digest
 
 Q3_PROJECTION_SCHEMA = "recclaw.research-line.q3-denominator-projection.v1"
 Q3_AUTHORITY_MATRIX_SCHEMA = "recclaw.research-line.q3-head-authority-matrix.v1"
+Q3_ACQUISITION_MANIFEST_SCHEMA = "recclaw.research-line.q3-acquisition-manifest.v2"
+Q3_SELECTION_SCORE_TIE_TOLERANCE = 1e-12
 
 MECHANISM_STATE_ORDER = (
     "NOT_ASSESSED",
@@ -1452,28 +1454,54 @@ def build_q3_acquisition_manifest(
     records.sort(key=lambda value: (-value["selection_score"], value["candidate_id"]))
     if not records:
         raise OpenMetaQ3Error("acquisition pool is empty")
+    top_score = float(records[0]["selection_score"])
+    top_tie_records = [
+        record
+        for record in records
+        if math.isclose(
+            float(record["selection_score"]),
+            top_score,
+            rel_tol=0.0,
+            abs_tol=Q3_SELECTION_SCORE_TIE_TOLERANCE,
+        )
+    ]
+    top_tie_count = len(top_tie_records)
+    top_tie_candidate_ids = tuple(
+        record["candidate_id"] for record in top_tie_records
+    )
     random_draw = rng.random()
     exploratory = random_draw < epsilon
-    selected_index = rng.randrange(len(records)) if exploratory else 0
+    if exploratory:
+        selected_index = rng.randrange(len(records))
+        selected_by = "EXPLORATION"
+    else:
+        selected_index = rng.randrange(top_tie_count)
+        selected_by = "UNIFORM_TIE" if top_tie_count > 1 else "LEARNED_SCORE"
     selected_id = records[selected_index]["candidate_id"]
     for index, record in enumerate(records):
         probability = epsilon / len(records)
-        if index == 0:
-            probability += 1.0 - epsilon
+        in_top_score_tie = index < top_tie_count
+        if in_top_score_tie:
+            probability += (1.0 - epsilon) / top_tie_count
         record["selection_probability"] = round(probability, 12)
+        record["in_top_score_tie"] = in_top_score_tie
         record["selected"] = record["candidate_id"] == selected_id
         record["decision_reason"] = (
             "SELECTED_BY_PREFROZEN_EXPLORATION_DRAW"
-            if record["selected"] and exploratory
+            if record["selected"] and selected_by == "EXPLORATION"
+            else "SELECTED_BY_UNIFORM_TOP_SCORE_TIE"
+            if record["selected"] and selected_by == "UNIFORM_TIE"
             else "SELECTED_BY_TASK_SPECIFIC_POLICY_SCORE"
             if record["selected"]
-            else "NOT_SELECTED_LOWER_TASK_SPECIFIC_SCORE"
-            if index > 0
             else "NOT_SELECTED_DUE_TO_PREFROZEN_EXPLORATION_DRAW"
+            if exploratory
+            else "NOT_SELECTED_UNIFORM_TOP_SCORE_TIE_DRAW"
+            if in_top_score_tie
+            else "NOT_SELECTED_LOWER_TASK_SPECIFIC_SCORE"
         )
     manifest = canonical_value(
         {
-            "schema": "recclaw.research-line.q3-acquisition-manifest.v1",
+            "schema": Q3_ACQUISITION_MANIFEST_SCHEMA,
             "task_type": task_type,
             "policy_ref": policy["policy_ref"],
             "policy_version": policy["policy_version"],
@@ -1489,7 +1517,12 @@ def build_q3_acquisition_manifest(
             "random_seed": random_seed,
             "random_draw": round(random_draw, 12),
             "exploration_selected": exploratory,
+            "selected_by": selected_by,
             "selected_candidate_id": selected_id,
+            "top_score": round(top_score, 12),
+            "top_score_tie_tolerance": Q3_SELECTION_SCORE_TIE_TOLERANCE,
+            "top_score_tie_count": top_tie_count,
+            "top_score_tie_candidate_ids": top_tie_candidate_ids,
             "candidates": records,
             "selection_probabilities_sum": round(
                 sum(float(row["selection_probability"]) for row in records), 12

@@ -410,6 +410,28 @@ def test_shadow_activation_and_real_q1_pool_consumer_close_the_loop(
         "effect" not in row["selection_score_terms"]
         for row in manifest["candidates"]
     )
+    tied_idea = build_q3_acquisition_manifest(
+        policy=policy,
+        activation=activation,
+        frozen_pool=q1_pool,
+        task_type="IDEA",
+        random_seed=56331,
+    )
+    assert tied_idea["exploration_selected"] is False
+    assert tied_idea["schema"] == "recclaw.research-line.q3-acquisition-manifest.v2"
+    assert tied_idea["selected_by"] == "UNIFORM_TIE"
+    assert tied_idea["top_score_tie_count"] == 4
+    assert set(tied_idea["top_score_tie_candidate_ids"]) == {
+        row["candidate_id"] for row in tied_idea["candidates"]
+    }
+    assert {
+        row["selection_probability"] for row in tied_idea["candidates"]
+    } == {0.25}
+    assert all(row["in_top_score_tie"] for row in tied_idea["candidates"])
+    assert sum(row["selected"] for row in tied_idea["candidates"]) == 1
+    assert next(
+        row for row in tied_idea["candidates"] if row["selected"]
+    )["decision_reason"] == "SELECTED_BY_UNIFORM_TOP_SCORE_TIE"
     experiment = consume_q3_active_policy(
         policy_path=policy_path,
         activation_path=activation_path,
