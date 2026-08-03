@@ -1,0 +1,71 @@
+{
+  "schema": "recclaw.research-line.q5a-hard-stop-deployment-preflight-receipt.v1",
+  "campaign_id": "q5a-idea-feasibility-20260803-01",
+  "foundation_commit": "885b81ed0b67ec0cc551a589d6d1e3a852b73c43",
+  "status": "HARD_BLOCK",
+  "stop_reason": "COMPREHENSIVE_REMOTE_PREFLIGHT_FAILED_AFTER_HARD_STOP; NO_NEW_PHYSICAL_ROOT",
+  "frozen_inputs_unchanged": true,
+  "pre_call_failure_traces": [
+    {
+      "ordinal": 1,
+      "phase": "PRE_CALL_IMPORT",
+      "failure": "ModuleNotFoundError: No module named recclaw_core.mechanism_space",
+      "physical_provider_calls": 0,
+      "candidate_retry": 0,
+      "authority": 0
+    },
+    {
+      "ordinal": 2,
+      "phase": "PRE_CALL_CONTEXT",
+      "failure": "FileNotFoundError: docs/research_line/vnext/Q0R2_RESOURCE_ADMISSION_CANONICAL_RECEIPT.json",
+      "physical_provider_calls": 0,
+      "candidate_retry": 0,
+      "authority": 0
+    },
+    {
+      "ordinal": 3,
+      "phase": "PRE_CALL_ACCEPTED_R1_ROOT",
+      "failure": "PermissionError: /root/projects/RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3/R1_CANONICAL_RECEIPT.json",
+      "physical_provider_calls": 0,
+      "candidate_retry": 0,
+      "authority": 0
+    }
+  ],
+  "hard_stop_race": {
+    "remote_pid_terminated": 211416,
+    "actual_provider_attempt_directories": 2,
+    "actual_provider_calls": 2,
+    "attempts": [
+      "q5a-idea-feasibility-20260803-01/pools/01/provider/slot-01/physical_attempt_01",
+      "q5a-idea-feasibility-20260803-01/pools/01/provider/slot-02/physical_attempt_01"
+    ],
+    "provider_denominator": 24,
+    "candidate_retry": 0,
+    "implementer_calls": 0,
+    "qualifier_calls": 0,
+    "training_runs": 0,
+    "authority": 0,
+    "replacement": false,
+    "success_filtering": false,
+    "held_out_reads": 0,
+    "sealed_campaign_root": "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_idea_feasibility_20260803_01/source/results/research_line/q5a_idea_feasibility_20260803_01"
+  },
+  "deployment_manifest": {
+    "local_digest": "7a548de1f54c22c01382c60a56738217c7e57a9f837150f7ed1183f16a66ce4a",
+    "remote_digest": "dbaa5cb94cb4870b0855de82b77cd8c4ffc13882882eebd7e109d1227bba50e7"
+  },
+  "preflight": {
+    "local_status": "PASS",
+    "local_digest": "4cc384f8f3abb2d69d701d914bc1c35f3c2999daf118848daebda48b4dac97c8",
+    "remote_status": "HARD_BLOCK",
+    "remote_digest": "3235fe4b20f0f538d1f36837c703bd967fc45bec0a3404e02cbdd58c5e1728a1",
+    "remote_failed_checks": [
+      "accepted_profile_registry_context: FileNotFoundError",
+      "provider_request_rendering_no_call: FileNotFoundError"
+    ],
+    "provider_calls": 0,
+    "training_runs": 0
+  },
+  "development_only": true,
+  "scientific_effect_claim": false
+}
