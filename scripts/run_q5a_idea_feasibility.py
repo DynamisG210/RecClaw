@@ -198,15 +198,18 @@ def prefreeze(args: argparse.Namespace) -> None:
     if output_root.exists():
         raise Q5AIdeaFeasibilityError(f"output root already exists: {output_root}")
     head = _git("rev-parse", "HEAD")
-    if head != FOUNDATION_COMMIT:
-        raise Q5AIdeaFeasibilityError("Q5-A runner did not start at accepted foundation")
+    if subprocess.run(
+        ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", FOUNDATION_COMMIT, head],
+        check=False,
+    ).returncode != 0:
+        raise Q5AIdeaFeasibilityError("Q5-A runner is not a child of the accepted foundation")
     if _git("status", "--porcelain"):
         raise Q5AIdeaFeasibilityError("Q5-A prefreeze source worktree is not clean")
     tree = _git("rev-parse", "HEAD^{tree}")
     source_tree_digest = sha256_digest({"commit": head, "git_tree": tree})
     manifest = build_q5a_prefreeze_manifest(
         campaign_id=CAMPAIGN_ID,
-        foundation_commit=head,
+        foundation_commit=FOUNDATION_COMMIT,
         foundation_package_digest=FOUNDATION_PACKAGE_DIGEST,
         source_tree_digest=source_tree_digest,
         common_execution={
