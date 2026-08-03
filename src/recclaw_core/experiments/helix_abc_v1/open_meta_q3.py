@@ -23,6 +23,18 @@ Q3_PROJECTION_SCHEMA = "recclaw.research-line.q3-denominator-projection.v1"
 Q3_AUTHORITY_MATRIX_SCHEMA = "recclaw.research-line.q3-head-authority-matrix.v1"
 Q3_ACQUISITION_MANIFEST_SCHEMA = "recclaw.research-line.q3-acquisition-manifest.v2"
 Q3_SELECTION_SCORE_TIE_TOLERANCE = 1e-12
+Q5_FEASIBILITY_SHRINKAGE_SUPPORT_THRESHOLD = 4.0
+Q5_FROZEN_FEASIBILITY_PRIOR = {
+    "source": "F1_STATIC_BETA_1_1_PRIOR",
+    "mean": 0.5,
+}
+Q5_STAGE_CONDITIONAL_FEASIBILITY_STAGES = (
+    "MATERIALIZE",
+    "CONSTRUCT",
+    "QUALIFY",
+    "RESOURCE_ADMITTED",
+    "FULL_EPISODE",
+)
 
 MECHANISM_STATE_ORDER = (
     "NOT_ASSESSED",
@@ -736,6 +748,118 @@ def _beta_posterior(
     )
 
 
+def _support_shrinkage(
+    posterior: Mapping[str, Any],
+    *,
+    prior_mean: float,
+    support_threshold: float = Q5_FEASIBILITY_SHRINKAGE_SUPPORT_THRESHOLD,
+) -> dict[str, Any]:
+    """Shrink sparse predictions toward the frozen lane prior."""
+
+    effective_count = float(posterior["effective_observation_count"])
+    support_weight = min(1.0, max(0.0, effective_count / support_threshold))
+    shrunk_mean = support_weight * float(posterior["posterior_mean"]) + (
+        1.0 - support_weight
+    ) * prior_mean
+    return canonical_value(
+        {
+            **posterior,
+            "frozen_prior_mean": round(prior_mean, 12),
+            "support_threshold": round(support_threshold, 12),
+            "support_weight": round(support_weight, 12),
+            "shrunk_posterior_mean": round(shrunk_mean, 12),
+        }
+    )
+
+
+def project_stage_conditional_feasibility(
+    observations: Sequence[Mapping[str, Any]],
+    *,
+    support_threshold: float = Q5_FEASIBILITY_SHRINKAGE_SUPPORT_THRESHOLD,
+) -> dict[str, Any]:
+    """Project the existing feasibility lane into pre-decision stage factors."""
+
+    if not observations:
+        raise OpenMetaQ3Error("stage feasibility projection received no observations")
+    rows_by_stage: dict[str, list[tuple[int, float]]] = {}
+    features_by_stage: dict[str, set[str]] = {}
+    for observation in observations:
+        if observation.get("held_out_reads", 0) != 0:
+            raise OpenMetaQ3Error("stage feasibility projection attempted held-out use")
+        stages = observation.get("stages")
+        if not isinstance(stages, Mapping):
+            raise OpenMetaQ3Error("stage feasibility observation lacks stage rows")
+        for stage, value in stages.items():
+            stage_name = str(stage)
+            if stage_name not in Q5_STAGE_CONDITIONAL_FEASIBILITY_STAGES:
+                raise OpenMetaQ3Error(f"unknown feasibility stage: {stage_name}")
+            if not isinstance(value, Mapping):
+                raise OpenMetaQ3Error("stage feasibility row must be an object")
+            label = value.get("completion_label")
+            if label not in {0, 1}:
+                raise OpenMetaQ3Error(
+                    "stage feasibility completion_label must be 0 or 1"
+                )
+            weight = float(value.get("observation_weight", 1.0))
+            if not math.isfinite(weight) or weight <= 0.0:
+                raise OpenMetaQ3Error("stage feasibility observation weight is invalid")
+            rows_by_stage.setdefault(stage_name, []).append((int(label), weight))
+            visible = value.get("features_visible_before_stage", ())
+            if not isinstance(visible, (list, tuple)):
+                raise OpenMetaQ3Error("stage feature visibility must be a sequence")
+            features_by_stage.setdefault(stage_name, set()).update(
+                str(item) for item in visible
+            )
+    stage_stats = []
+    for stage in Q5_STAGE_CONDITIONAL_FEASIBILITY_STAGES:
+        rows = rows_by_stage.get(stage)
+        if not rows:
+            continue
+        posterior = _support_shrinkage(
+            _beta_posterior(rows),
+            prior_mean=float(Q5_FROZEN_FEASIBILITY_PRIOR["mean"]),
+            support_threshold=support_threshold,
+        )
+        stage_stats.append(
+            {
+                "stage": stage,
+                "input_count": len(rows),
+                "conditional_probability": posterior["shrunk_posterior_mean"],
+                "posterior": posterior,
+                "features_visible_before_stage": tuple(
+                    sorted(features_by_stage.get(stage, set()))
+                ),
+            }
+        )
+    if not stage_stats:
+        raise OpenMetaQ3Error("stage feasibility projection has no recognized stage")
+    full_probability = math.prod(
+        float(value["conditional_probability"]) for value in stage_stats
+    )
+    payload = canonical_value(
+        {
+            "schema": "recclaw.research-line.q5-stage-conditional-feasibility-projection.v1",
+            "authority_lane": "FEASIBILITY_COMPLETION_HEAD",
+            "factorization": (
+                "P(FULL_EPISODE)=P(MATERIALIZE)*P(CONSTRUCT|MATERIALIZE)*"
+                "P(QUALIFY|CONSTRUCT)*P(RESOURCE_ADMITTED|QUALIFY)*"
+                "P(FULL_EPISODE|RESOURCE_ADMITTED)"
+            ),
+            "stage_stats": stage_stats,
+            "full_episode_probability": round(full_probability, 12),
+            "frozen_prior": Q5_FROZEN_FEASIBILITY_PRIOR,
+            "support_shrinkage": {
+                "method": "LINEAR_EFFECTIVE_COUNT_TO_FROZEN_PRIOR",
+                "support_threshold": round(support_threshold, 12),
+            },
+            "held_out_reads": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        }
+    )
+    return {**payload, "projection_digest": sha256_digest(payload)}
+
+
 def _fit_feasibility_head(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     inputs = [
         row["head_inputs"]["feasibility"]
@@ -746,13 +870,19 @@ def _fit_feasibility_head(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         (int(value["completion_label"]), float(value["observation_weight"]))
         for value in inputs
     ]
-    global_posterior = _beta_posterior(observations)
+    global_posterior = _support_shrinkage(
+        _beta_posterior(observations),
+        prior_mean=float(Q5_FROZEN_FEASIBILITY_PRIOR["mean"]),
+    )
     stage_stats = []
     for stage in sorted({str(value["resource_stage"]) for value in inputs}):
         group = [value for value in inputs if value["resource_stage"] == stage]
-        posterior = _beta_posterior(
-            (int(value["completion_label"]), float(value["observation_weight"]))
-            for value in group
+        posterior = _support_shrinkage(
+            _beta_posterior(
+                (int(value["completion_label"]), float(value["observation_weight"]))
+                for value in group
+            ),
+            prior_mean=float(Q5_FROZEN_FEASIBILITY_PRIOR["mean"]),
         )
         successful_costs = sorted(
             int(value["wall_time_ms"])
@@ -769,7 +899,9 @@ def _fit_feasibility_head(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                 "resource_stage": stage,
                 "posterior": posterior,
                 "feature_contribution_vs_beta_prior": round(
-                    float(posterior["posterior_mean"]) - 0.5, 12
+                    float(posterior["shrunk_posterior_mean"])
+                    - float(Q5_FROZEN_FEASIBILITY_PRIOR["mean"]),
+                    12,
                 ),
                 "successful_cost_interval_ms": (
                     (min(successful_costs), max(successful_costs))
@@ -787,6 +919,15 @@ def _fit_feasibility_head(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         {
             "head": "FEASIBILITY_COMPLETION",
             "method": "CENSOR_WEIGHTED_BETA_BINOMIAL_BY_RESOURCE_STAGE",
+            "stage_conditional_projection": (
+                "P(MATERIALIZE)*P(CONSTRUCT|MATERIALIZE)*P(QUALIFY|CONSTRUCT)*"
+                "P(RESOURCE_ADMITTED|QUALIFY)*P(FULL_EPISODE|RESOURCE_ADMITTED)"
+            ),
+            "frozen_prior": Q5_FROZEN_FEASIBILITY_PRIOR,
+            "support_shrinkage": {
+                "method": "LINEAR_EFFECTIVE_COUNT_TO_FROZEN_PRIOR",
+                "support_threshold": Q5_FEASIBILITY_SHRINKAGE_SUPPORT_THRESHOLD,
+            },
             "authority_matrix_digest": sha256_digest(HEAD_AUTHORITY_MATRIX),
             "input_count": len(inputs),
             "global_posterior": global_posterior,
@@ -1053,6 +1194,12 @@ def _stage_posterior(
     return feasibility_head["global_posterior"]
 
 
+def _prediction_mean(posterior: Mapping[str, Any]) -> float:
+    return float(
+        posterior.get("shrunk_posterior_mean", posterior["posterior_mean"])
+    )
+
+
 def predict_q3_heads(
     policy: Mapping[str, Any], candidate_features: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -1063,7 +1210,12 @@ def predict_q3_heads(
     feasibility_posterior = _stage_posterior(feasibility_head, resource_stage)
     global_feasibility = feasibility_head["global_posterior"]
     feasibility = {
-        "posterior_mean": feasibility_posterior["posterior_mean"],
+        "posterior_mean": round(_prediction_mean(feasibility_posterior), 12),
+        "raw_posterior_mean": feasibility_posterior["posterior_mean"],
+        "support_weight": feasibility_posterior.get("support_weight", 1.0),
+        "frozen_prior_mean": feasibility_posterior.get(
+            "frozen_prior_mean", Q5_FROZEN_FEASIBILITY_PRIOR["mean"]
+        ),
         "approximate_95_interval": feasibility_posterior[
             "approximate_95_interval"
         ],
@@ -1072,8 +1224,8 @@ def predict_q3_heads(
         "authority": "FEASIBILITY_COMPLETION_HEAD",
         "feature_contributions": {
             "resource_stage": round(
-                float(feasibility_posterior["posterior_mean"])
-                - float(global_feasibility["posterior_mean"]),
+                _prediction_mean(feasibility_posterior)
+                - _prediction_mean(global_feasibility),
                 12,
             )
         },
@@ -1837,6 +1989,9 @@ __all__ = [
     "HEAD_AUTHORITY_MATRIX",
     "MECHANISM_STATES",
     "OpenMetaQ3Error",
+    "Q5_FEASIBILITY_SHRINKAGE_SUPPORT_THRESHOLD",
+    "Q5_FROZEN_FEASIBILITY_PRIOR",
+    "Q5_STAGE_CONDITIONAL_FEASIBILITY_STAGES",
     "Q3_AUTHORITY_MATRIX_SCHEMA",
     "Q3_PROJECTION_SCHEMA",
     "build_q3_acquisition_manifest",
@@ -1851,6 +2006,7 @@ __all__ = [
     "project_q1_frozen_pool",
     "project_q2_evidence_row",
     "project_resource_receipt_rows",
+    "project_stage_conditional_feasibility",
     "run_group_aware_offline_replay",
     "shadow_compare_q3_policy",
 ]

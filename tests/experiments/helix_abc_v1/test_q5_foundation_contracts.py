@@ -10,6 +10,10 @@ from recclaw_core.experiments.helix_abc_v1.prospective_policy_comparison import 
     build_shared_realization_pool,
     classify_realization_authority,
 )
+from recclaw_core.experiments.helix_abc_v1.open_meta_q3 import (
+    OpenMetaQ3Error,
+    project_stage_conditional_feasibility,
+)
 
 
 def _contract(
@@ -191,3 +195,57 @@ def test_nested_parent_equivalent_realization_can_enter_mechanism_information() 
 
     assert result["mechanism_state"] == "ACTIVE_SUPPORTED"
     assert result["mechanism_information_authority"] == "MECHANISM_INFORMATION"
+
+
+def test_stage_conditional_feasibility_uses_existing_lane_and_shrinks_sparse_stage() -> None:
+    projection = project_stage_conditional_feasibility(
+        [
+            {
+                "stages": {
+                    "MATERIALIZE": {
+                        "completion_label": 1,
+                        "features_visible_before_stage": ["spec_digest"],
+                    },
+                    "CONSTRUCT": {
+                        "completion_label": 1,
+                        "features_visible_before_stage": ["package_digest"],
+                    },
+                }
+            },
+            {
+                "stages": {
+                    "MATERIALIZE": {
+                        "completion_label": 1,
+                        "features_visible_before_stage": ["spec_digest"],
+                    },
+                    "CONSTRUCT": {
+                        "completion_label": 0,
+                        "features_visible_before_stage": ["package_digest"],
+                    },
+                }
+            },
+        ]
+    )
+
+    assert projection["authority_lane"] == "FEASIBILITY_COMPLETION_HEAD"
+    assert projection["factorization"].startswith("P(FULL_EPISODE)=")
+    materialize = projection["stage_stats"][0]
+    assert materialize["stage"] == "MATERIALIZE"
+    assert materialize["posterior"]["support_weight"] == 0.5
+    assert materialize["conditional_probability"] == 0.625
+    assert materialize["features_visible_before_stage"] == ["spec_digest"]
+    assert 0.0 < projection["full_episode_probability"] < 1.0
+
+
+def test_stage_conditional_feasibility_rejects_held_out_input() -> None:
+    with pytest.raises(OpenMetaQ3Error, match="held-out"):
+        project_stage_conditional_feasibility(
+            [
+                {
+                    "held_out_reads": 1,
+                    "stages": {
+                        "MATERIALIZE": {"completion_label": 1},
+                    },
+                }
+            ]
+        )
