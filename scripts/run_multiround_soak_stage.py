@@ -673,7 +673,10 @@ def _conversion_parent(
     timeout_seconds: int,
     execution_purpose: str,
 ) -> tuple[dict[str, Any], bool]:
-    from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
+    from recclaw_core.experiments.helix_abc_v1.canonical import (
+        bytes_sha256,
+        sha256_digest,
+    )
     from recclaw_core.experiments.helix_abc_v1.fresh_r1 import run_development_training
 
     contract = manifest["conversion_efficiency"]
@@ -681,14 +684,27 @@ def _conversion_parent(
     receipt_path = parent_root / "PARENT_RECEIPT.json"
     source = args.recbole_root / "recbole/model/general_recommender/bpr.py"
     source_digest = bytes_sha256(source.read_bytes())
+    parent_reuse_key = sha256_digest(
+        {
+            "shared_parent_root": str(Path(str(contract["shared_parent_root"])).resolve()),
+            "kind": kind,
+            "seed": int(seed),
+            "epochs": int(epochs),
+            "source_sha256": source_digest,
+            "recbole_commit": REQUIRED_RECBOLE_COMMIT,
+        }
+    )
     if receipt_path.is_file():
         receipt = _read(receipt_path)
         if (
             receipt.get("seed") != int(seed)
             or receipt.get("epochs") != int(epochs)
             or receipt.get("source_sha256") != source_digest
+            or receipt.get("parent_reuse_key") != parent_reuse_key
         ):
             raise RuntimeError("conversion shared parent binding drift")
+        if receipt.get("run", {}).get("exit_status") != "SUCCESS":
+            raise RuntimeError("conversion shared parent receipt is not reusable")
         return receipt, True
     parent = run_development_training(
         repo_root=args.repo_root,
@@ -712,6 +728,8 @@ def _conversion_parent(
         "seed": int(seed),
         "epochs": int(epochs),
         "source_sha256": source_digest,
+        "parent_reuse_key": parent_reuse_key,
+        "shared_parent_scope": str(parent_root.parent.resolve()),
         "run": parent,
         "held_out_reads": 0,
         "development_only": True,

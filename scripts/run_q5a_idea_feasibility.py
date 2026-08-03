@@ -283,6 +283,24 @@ Q5A_AGGREGATE_CONTEXT = {
         "complete_episode_count": 2,
         "signal_summary": "two near-zero negative development signals; no scientific effect claim",
     },
+    "q5b_failure_summary": {
+        "implementer_success_count": 17,
+        "qualified_count": 5,
+        "resource_admitted_count": 3,
+        "qualifier_failure_taxonomy": {
+            "API_OR_TENSOR": 4,
+            "UNIT_OR_MECHANISM_OFF": 5,
+            "CONSTRUCTION_IMPORT": 3,
+        },
+        "revision_turns_bounded_at_two": True,
+        "candidate_specific_results": False,
+    },
+    "parent_family_observation": {
+        "distinct_parent_families": 2,
+        "family_counts": {"LIGHTGCN15": 15, "BPR_MF9": 9},
+        "mechanism_signatures_unique": 24,
+        "oa_selection_shape": "UNIFORM_TIE",
+    },
     "candidate_specific_results": False,
     "held_out_reads": 0,
 }
@@ -568,6 +586,7 @@ def pool(args: argparse.Namespace) -> None:
                         "parent_catalog": catalog,
                         "pool_signatures": pool_signatures,
                         "required_budget": facts.get("required_budget"),
+                        "failure_summary": Q5A_AGGREGATE_CONTEXT["q5b_failure_summary"],
                         "mode": mode,
                         "role": role,
                     },

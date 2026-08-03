@@ -94,6 +94,14 @@ def test_mechanical_repair_is_blind_and_qualification_or_effect_failure_is_not()
     assert not is_mechanical_repair_failure(
         {"stage": "API_CONTRACT", "failure_class": "INTERFACE", "effect": -0.1}
     )
+    assert is_mechanical_repair_failure(
+        {
+            "stage": "ONE_EPOCH_SMOKE",
+            "failure_class": "RUNTIME",
+            "reason_code": "SHAPE_MISMATCH",
+            "message": "predict shape mismatch",
+        }
+    )
     with pytest.raises(ValueError):
         build_mechanical_repair_request(
             original,
@@ -380,3 +388,28 @@ def test_stage_feasibility_head_preserves_17_arm_denominator_and_effect_shrinkag
         "shrinkage": "STRONG",
         "claim_allowed": False,
     }
+
+
+def test_stage_feasibility_head_calibrates_visible_preoutcome_features() -> None:
+    labels = []
+    for index in range(17):
+        labels.append(
+            {
+                "policies": ("OUTCOME_AWARE",),
+                "CONSTRUCT": "PASS",
+                "MATERIALIZE": "PASS",
+                "QUALIFY": "PASS" if index < 10 else "MISSING",
+                "RESOURCE_ADMITTED": "PASS" if index < 8 else "MISSING",
+                "FULL_EPISODE": "PASS" if index < 2 else "MISSING",
+                "preoutcome_features": {
+                    "parent_family_novelty": 1.0 if index % 2 else 0.0,
+                    "qualifier_risk": 1.0 if index < 10 else 0.0,
+                },
+            }
+        )
+    head = build_stage_feasibility_head(labels, policy_order=("OUTCOME_AWARE",))
+    assert set(head["preoutcome_feature_calibration"]) == {
+        "parent_family_novelty",
+        "qualifier_risk",
+    }
+    assert head["preoutcome_feature_calibration"]["qualifier_risk"]["bands"]["HIGH"]["count"] == 10

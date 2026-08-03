@@ -401,6 +401,8 @@ def test_shadow_activation_and_real_q1_pool_consumer_close_the_loop(
     assert manifest["exploration_probability"] == 0.15
     assert manifest["selection_probabilities_sum"] == 1.0
     assert sum(row["selected"] for row in manifest["candidates"]) == 1
+
+
     assert all(
         set(row["head_predictions"])
         == {"feasibility", "mechanism_information", "effect"}
@@ -455,4 +457,64 @@ def test_shadow_activation_and_real_q1_pool_consumer_close_the_loop(
         set(row["selection_score_terms"])
         == {"effect_interval_width", "comparability", "reproduction_value"}
         for row in replication["candidates"]
+    )
+
+
+def test_q5_structural_selection_features_break_oa_tie_without_effect_input() -> None:
+    projection = _real_projection()
+    parent_policy = _read(F1_ROOT / "policy/versioned_policy.json")
+    policy = fit_q3_three_head_policy(
+        projection, parent_policy_digest=parent_policy["policy_digest"]
+    )
+    replay = run_group_aware_offline_replay(
+        projection, parent_policy_digest=parent_policy["policy_digest"]
+    )
+    q1_pool = _read(
+        ROOT
+        / "results/research_line/q1_prompt_contract_20260802_01/"
+        "FROZEN_SELECTION_BEFORE_IMPLEMENTATION.json"
+    )
+    shadow = shadow_compare_q3_policy(
+        projection=projection,
+        q1_pool=q1_pool,
+        parent_policy=parent_policy,
+        q3_policy=policy,
+    )
+    promotion = evaluate_q3_development_activation(
+        projection, replay, shadow, policy
+    )
+    activation = build_q3_policy_activation(
+        policy,
+        promotion,
+        projection_digest=projection["projection_digest"],
+        activation_id="q3-structural-selection-fixture",
+    )
+    pool = copy.deepcopy(q1_pool)
+    rows = [
+        row
+        for group in sorted(pool["candidate_pools"])
+        for row in pool["candidate_pools"][group]
+    ]
+    for index, row in enumerate(rows):
+        row["preoutcome_score"]["features"] = {
+            "scientific_falsifiability": 1.0,
+            "wedge_specificity": 1.0 if index == 0 else 0.1,
+            "mechanism_off_executability": 1.0 if index == 0 else 0.1,
+            "parent_family_novelty": 1.0 if index == 0 else 0.0,
+            "causal_operator_novelty": 1.0 if index == 0 else 0.0,
+            "qualifier_risk": 1.0 if index == 0 else 0.2,
+            "resource_margin": 1.0 if index == 0 else 0.1,
+        }
+    manifest = build_q3_acquisition_manifest(
+        policy=policy,
+        activation=activation,
+        frozen_pool=pool,
+        task_type="IDEA",
+        random_seed=56331,
+    )
+    assert manifest["top_score_tie_count"] < manifest["candidate_count"]
+    assert manifest["selected_by"] == "LEARNED_SCORE"
+    assert all(
+        "effect" not in row["selection_score_terms"]
+        for row in manifest["candidates"]
     )

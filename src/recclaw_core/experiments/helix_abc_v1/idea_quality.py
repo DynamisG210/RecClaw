@@ -471,8 +471,24 @@ def score_preoutcome_testability(
             0.25 if parent_text else 0.0
         )
         signature_texts = []
+        parent_signature_sets = []
+        operator_signature_sets = []
         for item in structural_context.get("pool_signatures", ()):
             if isinstance(item, Mapping):
+                parent_signature_sets.append(
+                    set(re.findall(r"[a-z0-9]+", str(item.get("closest_parent", "")).lower()))
+                )
+                operator_signature_sets.append(
+                    set(
+                        re.findall(
+                            r"[a-z0-9]+",
+                            " ".join(
+                                str(item.get(field) or "")
+                                for field in ("causal_operator", "mechanism_change")
+                            ).lower(),
+                        )
+                    )
+                )
                 signature_texts.append(
                     " ".join(
                         str(item.get(field) or "")
@@ -481,6 +497,24 @@ def score_preoutcome_testability(
                 )
             else:
                 signature_texts.append(str(item).lower())
+        parent_tokens = set(re.findall(r"[a-z0-9]+", parent_text))
+        operator_text = " ".join(str(value or "") for value in spec.causal_chain)
+        operator_tokens = set(re.findall(r"[a-z0-9]+", operator_text.lower()))
+
+        def _max_overlap(tokens: set[str], prior: Sequence[set[str]]) -> float:
+            if not tokens or not prior:
+                return 0.0
+            return max(
+                len(tokens & candidate) / max(1, len(tokens | candidate))
+                for candidate in prior
+            )
+
+        parent_family_novelty = round(
+            1.0 - _max_overlap(parent_tokens, parent_signature_sets), 6
+        )
+        causal_operator_novelty = round(
+            1.0 - _max_overlap(operator_tokens, operator_signature_sets), 6
+        )
         mechanism_text = " ".join(
             str(value or "")
             for value in (spec.mechanism_change, spec.causal_chain, spec.minimal_testable_wedge)
@@ -510,29 +544,71 @@ def score_preoutcome_testability(
                 spec.minimal_testable_wedge,
                 ("tensor", "loss", "score", "off"),
             ),
-            "resource_margin": round(
-                text_score(
-                    " ".join(
-                        (
-                            str(spec.resource_hypothesis or ""),
-                            str(structural_context.get("required_budget") or ""),
-                        )
-                    ),
-                    ("memory", "gpu", "time"),
-                )
-                * (1.0 if q0r2_resource_feasible else 0.25),
-                6,
-            ),
+            "resource_margin": 0.0,
             "mechanism_off_executability": text_score(
                 spec.mechanism_off_definition,
                 ("disable", "parent", "equivalent"),
             ),
             "pool_mechanism_novelty": round(1.0 - overlap, 6),
+            "parent_family_novelty": parent_family_novelty,
+            "causal_operator_novelty": causal_operator_novelty,
+            "qualifier_risk": 0.0,
             "scientific_falsifiability": text_score(
                 spec.falsifier,
                 ("reject", "compare", "control"),
             ),
         }
+        budget_text = " ".join(
+            (
+                str(spec.resource_hypothesis or ""),
+                str(structural_context.get("required_budget") or ""),
+            )
+        )
+        text_margin = text_score(budget_text, ("memory", "gpu", "time"))
+        budget = structural_context.get("required_budget")
+        limits = {
+            "implementation_token_ceiling": 20_000.0,
+            "implementation_tokens": 20_000.0,
+            "token_ceiling": 20_000.0,
+            "qualification_gpu_minutes": 10.0,
+            "gpu_minutes": 10.0,
+            "qualification_wall_minutes": 30.0,
+            "wall_minutes": 30.0,
+        }
+        ratios = []
+        if isinstance(budget, Mapping):
+            for key, limit in limits.items():
+                value = budget.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    ratios.append(max(0.0, float(value)) / limit)
+        numeric_margin = max(0.0, 1.0 - max(ratios, default=0.0))
+        features["resource_margin"] = round(
+            0.5 * text_margin + 0.5 * numeric_margin,
+            6,
+        ) * (1.0 if q0r2_resource_feasible else 0.25)
+
+        failure_summary = structural_context.get("failure_summary", {})
+        taxonomy = (
+            failure_summary.get("qualifier_failure_taxonomy", {})
+            if isinstance(failure_summary, Mapping)
+            else {}
+        )
+        failure_count = sum(
+            float(value)
+            for value in taxonomy.values()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        )
+        denominator = (
+            float(failure_summary.get("implementer_success_count", 0))
+            if isinstance(failure_summary, Mapping)
+            else 0.0
+        )
+        observed_failure_rate = min(0.95, failure_count / denominator) if denominator else 0.5
+        mechanism_off_score = features["mechanism_off_executability"]
+        qualifier_risk_margin = 1.0 - observed_failure_rate * (1.0 - mechanism_off_score)
+        if realization_mode == "PARENT_PRESERVING" and mechanism_off_score < 0.5:
+            qualifier_risk_margin *= 0.75
+        features["qualifier_risk"] = round(max(0.0, min(1.0, qualifier_risk_margin)), 6)
     return canonical_value(
         {
             "features": features,

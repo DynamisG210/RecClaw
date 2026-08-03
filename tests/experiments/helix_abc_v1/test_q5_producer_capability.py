@@ -166,6 +166,14 @@ def test_graded_preoutcome_features_are_structural_and_not_all_tied() -> None:
         "parent_catalog": [{"profile_ref": "BL_ICF_EXECUTABLE_PROFILE_V2"}],
         "pool_signatures": ({"causal_operator": "other operator"},),
         "required_budget": {"gpu_minutes": 10, "wall_minutes": 30},
+        "failure_summary": {
+            "implementer_success_count": 17,
+            "qualifier_failure_taxonomy": {
+                "API_OR_TENSOR": 4,
+                "UNIT_OR_MECHANISM_OFF": 5,
+                "CONSTRUCTION_IMPORT": 3,
+            },
+        },
         "mode": "DIAGNOSIS_DRIVEN",
     }
     rich_score = score_preoutcome_testability(
@@ -179,4 +187,8 @@ def test_graded_preoutcome_features_are_structural_and_not_all_tied() -> None:
     assert rich_score["features"]["wedge_specificity"] > weak_score["features"]["wedge_specificity"]
     assert rich_score["features"]["causal_component_count"] > weak_score["features"]["causal_component_count"]
     assert rich_score["features"]["role_mode_fit"] > weak_score["features"]["role_mode_fit"]
+    assert rich_score["features"]["parent_family_novelty"] >= weak_score["features"]["parent_family_novelty"]
+    assert "causal_operator_novelty" in rich_score["features"]
+    assert "qualifier_risk" in rich_score["features"]
+    assert "resource_margin" in rich_score["features"]
     assert rich_score["total"] != weak_score["total"]

@@ -1475,6 +1475,34 @@ def project_q1_frozen_pool(pool: Mapping[str, Any]) -> dict[str, Any]:
                     12,
                 )
             )
+            structural_values: dict[str, float] = {}
+            selection_structure: float | None = None
+            if graded:
+                structural_values = {
+                    "parent_family_novelty": float(
+                        score_features.get("parent_family_novelty", 0.0)
+                    ),
+                    "causal_operator_novelty": float(
+                        score_features.get("causal_operator_novelty", 0.0)
+                    ),
+                    "qualifier_risk": float(
+                        score_features.get("qualifier_risk", 0.5)
+                    ),
+                    "resource_margin": float(
+                        score_features.get("resource_margin", 0.0)
+                    ),
+                }
+                selection_structure = round(
+                    (
+                        structural_values["parent_family_novelty"]
+                        + structural_values["causal_operator_novelty"]
+                        + structural_values["qualifier_risk"]
+                        + structural_values["resource_margin"]
+                        + float(score_features.get("wedge_specificity", 0.0))
+                    )
+                    / 5.0,
+                    12,
+                )
             candidates.append(
                 canonical_value(
                     {
@@ -1504,6 +1532,14 @@ def project_q1_frozen_pool(pool: Mapping[str, Any]) -> dict[str, Any]:
                             and bool(spec.get("protocol_digest"))
                         ),
                         "reproduction_value": reproduction_value,
+                        **(
+                            {
+                                "preoutcome_structural_features": structural_values,
+                                "selection_structure": selection_structure,
+                            }
+                            if graded
+                            else {}
+                        ),
                         "probe_design_features": {
                             "declared_parent_surface_equivalence_verified": bool(
                                 spec.get("parent_equivalence_preverified", False)
@@ -1557,9 +1593,14 @@ def _score_candidate(
             "mechanism_information_probability": mechanism,
             "feasibility_probability": feasibility,
         }
+        if "selection_structure" in candidate:
+            terms["selection_structure"] = float(candidate["selection_structure"])
         score = math.prod(terms.values())
         formula = (
-            "SCIENTIFIC_FALSIFIABILITY_X_MECHANISM_INFORMATION_PROBABILITY_"
+            "SCIENTIFIC_FALSIFIABILITY_X_SELECTION_STRUCTURE_X_"
+            "MECHANISM_INFORMATION_PROBABILITY_X_FEASIBILITY_PROBABILITY"
+            if "selection_structure" in candidate
+            else "SCIENTIFIC_FALSIFIABILITY_X_MECHANISM_INFORMATION_PROBABILITY_"
             "X_FEASIBILITY_PROBABILITY"
         )
     elif task_type == "EXPERIMENT":

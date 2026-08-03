@@ -46,9 +46,16 @@ MECHANICAL_SHAPE_TEST_HINT = {
     "complexity_hint": "avoid full_catalog_by_embedding_dim_by_embedding_dim intermediates",
 }
 MECHANICAL_REPAIR_STAGES = frozenset(
-    {"SCHEMA", "STATIC_VALIDATION", "CONSTRUCTION", "API_CONTRACT", "UNIT"}
+    {
+        "SCHEMA",
+        "STATIC_VALIDATION",
+        "CONSTRUCTION",
+        "API_CONTRACT",
+        "UNIT",
+        "ONE_EPOCH_SMOKE",
+    }
 )
-MECHANICAL_REPAIR_CLASSES = frozenset({"IMPLEMENTATION", "INTERFACE"})
+MECHANICAL_REPAIR_CLASSES = frozenset({"IMPLEMENTATION", "INTERFACE", "RUNTIME"})
 _OUTCOME_WORDS = frozenset(
     {
         "effect",
@@ -466,6 +473,51 @@ def build_stage_feasibility_head(
         round(by_policy[str(policy)]["RESOURCE_ADMITTED"], 12)
         for policy in policy_order
     )
+    feature_names = sorted(
+        {
+            str(name)
+            for row in labels
+            for name in (
+                row.get("preoutcome_features", {})
+                if isinstance(row.get("preoutcome_features", {}), Mapping)
+                else {}
+            )
+        }
+    )
+    feature_calibration: dict[str, Any] = {}
+    for feature in feature_names:
+        observed = []
+        for row in labels:
+            features = row.get("preoutcome_features", {})
+            if not isinstance(features, Mapping):
+                continue
+            value = features.get(feature)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                observed.append((float(value), row))
+        if not observed:
+            continue
+        bands = {
+            "LOW": [row for value, row in observed if value < 0.5],
+            "HIGH": [row for value, row in observed if value >= 0.5],
+        }
+        feature_calibration[feature] = {
+            "observed_count": len(observed),
+            "authority": "PRE_OUTCOME_STRUCTURAL_FEATURE_ONLY",
+            "bands": {
+                band: {
+                    "count": len(rows),
+                    "stage_completion": {
+                        stage: (
+                            sum(row.get(stage) == "PASS" for row in rows) / len(rows)
+                            if rows
+                            else None
+                        )
+                        for stage in stages
+                    },
+                }
+                for band, rows in bands.items()
+            },
+        }
     return canonical_value(
         {
             "schema": CONVERSION_SCHEMA,
@@ -473,6 +525,7 @@ def build_stage_feasibility_head(
             "stage_completion_head": stage_rates,
             "policy_stage_completion_head": by_policy,
             "policy_output": "NONUNIFORM" if len(set(values)) > 1 else "TIE",
+            "preoutcome_feature_calibration": feature_calibration,
             "effect_head": {
                 "observed_full_episode_count": sum(row.get("FULL_EPISODE") == "PASS" for row in labels),
                 "shrinkage": "STRONG",
