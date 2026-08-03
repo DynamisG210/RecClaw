@@ -24,6 +24,10 @@ def test_deployment_manifest_declares_complete_static_and_runtime_boundary() -> 
         recbole_root=Path("/root/projects/RecBole"),
         python_executable=Path("/root/miniconda3/envs/recbole/bin/python"),
         api_config=Path("/root/projects/RecClaw_v2_0_Final_Reference/llm_api.md"),
+        prefreeze_manifest=Path(
+            "/root/projects/RecClaw_q5a_idea_feasibility/results/research_line/"
+            "q5a_idea_feasibility_20260803_01/PREFREEZE_MANIFEST.json"
+        ),
     )
 
     assert manifest["schema"] == "recclaw.research-line.q5a-deployment-manifest.v1"
@@ -31,3 +35,5 @@ def test_deployment_manifest_declares_complete_static_and_runtime_boundary() -> 
     assert manifest["provider"]["endpoint_digest"] == EXPECTED_PROVIDER_ENDPOINT_DIGEST
     assert manifest["runtime"]["recbole_head"] == EXPECTED_RECBOLE_COMMIT
     assert manifest["stage_consumers"]["dynamic_candidate_entrypoint"] == "candidate_package_relative:recclaw_ext/candidate.py"
+    assert manifest["frozen_inputs"]["prefreeze_digest"]
+    assert manifest["execution_binding"]["campaign_root"]

@@ -12,6 +12,7 @@ import ast
 import importlib
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -22,7 +23,7 @@ from .canonical import bytes_sha256, canonical_value, sha256_digest
 Q5A_DEPLOYMENT_SCHEMA = "recclaw.research-line.q5a-deployment-manifest.v1"
 Q5A_PREFLIGHT_SCHEMA = "recclaw.research-line.q5a-comprehensive-preflight.v1"
 EXPECTED_RECBOLE_COMMIT = "7b02be5ec80a88310f2d04a27a82adfcbb5dc211"
-EXPECTED_PROVIDER_ENDPOINT_DIGEST = "810326f35f8f2ef5c4fa6f73d8df3300f60b4a7f3367fdab3ad73ec3363fcc"
+EXPECTED_PROVIDER_ENDPOINT_DIGEST = "810326f35f8f2efce5f4ca6f73d8df3300f60b4a7f3367fdab3ad73ec3363fcc"
 EXPECTED_SEARCH_MANIFEST_DIGEST = "99213591aa3344b023e2d07f99f9f970fcdf49e80ef0122db29e89660d8fdf98"
 
 
@@ -77,6 +78,8 @@ def _module_path(module_name: str, *, src_root: Path, scripts_root: Path) -> Pat
     if module_name.startswith("recclaw_core"):
         base = src_root / Path(*module_name.split("."))
         candidates = (base.with_suffix(".py"), base / "__init__.py")
+    elif module_name == "recclaw_runtime_binding":
+        candidates = (src_root / "recclaw_runtime_binding.py",)
     elif module_name.startswith("run_"):
         candidates = (scripts_root / f"{module_name}.py",)
     else:
@@ -159,10 +162,32 @@ def build_q5a_deployment_manifest(
     recbole_root: Path,
     python_executable: Path,
     api_config: Path,
+    prefreeze_manifest: Path | None = None,
+    preflight_root: Path | None = None,
+    campaign_root: Path | None = None,
 ) -> dict[str, Any]:
     """Inventory every known Q5-A source and runtime dependency without calls."""
 
     repo_root = repo_root.resolve()
+    if prefreeze_manifest is None:
+        prefreeze_manifest = repo_root / "results/research_line/q5a_idea_feasibility_20260803_01/PREFREEZE_MANIFEST.json"
+    prefreeze_manifest = prefreeze_manifest.resolve()
+    if not prefreeze_manifest.is_file():
+        raise Q5ADeploymentError(f"missing prefreeze manifest: {prefreeze_manifest}")
+    prefreeze = _load(prefreeze_manifest)
+    observed_prefreeze_digest = prefreeze.get("prefreeze_digest")
+    prefreeze_payload = dict(prefreeze)
+    prefreeze_payload.pop("prefreeze_digest", None)
+    if not isinstance(observed_prefreeze_digest, str) or observed_prefreeze_digest != sha256_digest(prefreeze_payload):
+        raise Q5ADeploymentError("prefreeze manifest self-digest mismatch")
+    for field in ("source_tree_digest", "foundation_package_digest"):
+        if not isinstance(prefreeze.get(field), str) or len(prefreeze[field]) != 64:
+            raise Q5ADeploymentError(f"prefreeze manifest lacks {field}")
+    foundation_commit = prefreeze.get("foundation_commit")
+    if not isinstance(foundation_commit, str) or len(foundation_commit) != 40:
+        raise Q5ADeploymentError("prefreeze foundation commit is invalid")
+    preflight_root = (preflight_root or repo_root / "results/research_line/q5a_runtime_binding_preflight").resolve()
+    campaign_root = (campaign_root or repo_root / "results/research_line/q5a_runtime_binding_campaign").resolve()
     source_graph = _static_import_graph(repo_root)
     q4_fixture = repo_root / "results/research_line/q4_prospective_policy_comparison_20260803_01/shared_pool/FROZEN_SHARED_POOL_BEFORE_SELECTION.json"
     accepted_r1_receipt = repo_root / "docs/research_line/vnext/R1_FRESH_TRAINING_FILESYSTEM_FIX_V3_CANONICAL_RECEIPT.json"
@@ -174,17 +199,22 @@ def build_q5a_deployment_manifest(
     ]
     required_files.extend(
         [
+            _file_record(repo_root / "src/recclaw_runtime_binding.py", role="runtime_binding_bootstrap", relative_to=repo_root),
             _file_record(q4_fixture, role="accepted_outcome_blind_fixture", relative_to=repo_root),
             _file_record(accepted_r1_receipt, role="accepted_r1_repository_receipt", relative_to=repo_root),
             _file_record(accepted_profile, role="accepted_active_profile_source", relative_to=repo_root),
             _file_record(search_manifest, role="search_partition_manifest"),
             _file_record(api_config, role="provider_config_reference"),
             _file_record(recbole_root / "recbole/model/general_recommender/bpr.py", role="recbole_baseline_entrypoint"),
+            _file_record(prefreeze_manifest, role="prefreeze_manifest", relative_to=repo_root if repo_root in prefreeze_manifest.parents else None),
         ]
     )
     accepted_external_root = projects_root / "RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3"
     required_files.append(_file_record(accepted_external_root / "R1_CANONICAL_RECEIPT.json", role="accepted_r1_external_receipt"))
     test_files = _directory_files(repo_root / "tests/experiments/helix_abc_v1", role="q5a_contract_tests", relative_to=repo_root)
+    provider_config = next(record for record in required_files if record["role"] == "provider_config_reference")
+    search_record = next(record for record in required_files if record["role"] == "search_partition_manifest")
+    external_receipt = required_files[-1]
     payload = canonical_value(
         {
             "schema": Q5A_DEPLOYMENT_SCHEMA,
@@ -200,12 +230,12 @@ def build_q5a_deployment_manifest(
             "accepted_external_roots": {
                 "projects_root": str(projects_root.resolve()),
                 "r1_external_root": str(accepted_external_root.resolve()),
-                "r1_external_receipt_sha256": required_files[-1]["sha256"],
+                "r1_external_receipt_sha256": external_receipt["sha256"],
             },
             "provider": {
                 "model": "gpt-5.4",
                 "endpoint_digest": EXPECTED_PROVIDER_ENDPOINT_DIGEST,
-                "config_reference": required_files[7],
+                "config_reference": provider_config,
                 "temperature": 0,
                 "proposal_token_ceiling": 16000,
                 "implementation_token_ceiling": 20000,
@@ -218,8 +248,20 @@ def build_q5a_deployment_manifest(
                 "recbole_head": _git_head(recbole_root),
                 "expected_recbole_commit": EXPECTED_RECBOLE_COMMIT,
                 "search_data_root": str(search_data_root.resolve()),
-                "search_manifest_digest": required_files[6]["sha256"],
+                "search_manifest_digest": search_record["sha256"],
                 "expected_search_manifest_digest": EXPECTED_SEARCH_MANIFEST_DIGEST,
+            },
+            "frozen_inputs": {
+                "prefreeze_digest": observed_prefreeze_digest,
+                "source_tree_digest": prefreeze["source_tree_digest"],
+                "foundation_commit": foundation_commit,
+                "foundation_package_digest": prefreeze["foundation_package_digest"],
+            },
+            "execution_binding": {
+                "prefreeze_manifest": next(record for record in required_files if record["role"] == "prefreeze_manifest"),
+                "preflight_root": str(preflight_root),
+                "campaign_root": str(campaign_root),
+                "execution_owner_contract": "ONE_PID_ONE_UNIQUE_CAMPAIGN_ROOT_EXCLUSIVE_OWNER",
             },
             "stage_consumers": {
                 "stage_script": str((repo_root / "scripts/run_multiround_soak_stage.py").resolve()),
@@ -259,7 +301,27 @@ def run_q5a_comprehensive_preflight(*, manifest_path: Path, repo_root: Path, out
     if manifest.get("schema") != Q5A_DEPLOYMENT_SCHEMA:
         raise Q5ADeploymentError("deployment manifest schema drift")
     repo_root = repo_root.resolve()
+    from recclaw_runtime_binding import RuntimeBindingV1
+
+    binding = RuntimeBindingV1.from_manifest(manifest_path, repo_root=repo_root).activate()
     checks: list[dict[str, Any]] = []
+    _check(checks, "runtime_binding_activation", all(
+        os.environ.get(name) == str(value)
+        for name, value in (
+            ("RECCLAW_PROJECTS_ROOT", binding.projects_root),
+            ("RECCLAW_SEARCH_DATA_ROOT", binding.search_data_root),
+            ("RECCLAW_RECBOLE_ROOT", binding.recbole_root),
+            ("RECCLAW_API_CONFIG", binding.api_config),
+        )
+    ), str(binding.binding_digest))
+    pre_sensitive_imports = sorted(
+        name for name in sys.modules
+        if name in {
+            "recclaw_core.experiments.helix_abc_v1.fresh_r1",
+            "recclaw_core.experiments.helix_abc_v1.fresh_r2",
+        }
+    )
+    _check(checks, "path_sensitive_import_order", not pre_sensitive_imports, str(pre_sensitive_imports))
     for record in manifest["required_files"]:
         path = Path(str(record["path"]))
         if not path.is_file() and record.get("relative_path"):
@@ -318,6 +380,19 @@ def run_q5a_comprehensive_preflight(*, manifest_path: Path, repo_root: Path, out
     except Exception as error:
         _check(checks, "accepted_profile_registry_context", False, repr(error))
     try:
+        from . import fresh_r1, fresh_r2
+
+        exact = (
+            fresh_r1.PROJECTS_ROOT == binding.projects_root
+            and fresh_r1.SEARCH_DATA_ROOT == binding.search_data_root
+            and fresh_r1.RECBole_ROOT == binding.recbole_root
+            and fresh_r2.PROJECTS_ROOT == binding.projects_root
+            and fresh_r2.R1_EXTERNAL_ROOT == binding.projects_root / "RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3"
+        )
+        _check(checks, "import_time_runtime_paths_exact", exact, f"fresh_r1.PROJECTS_ROOT={fresh_r1.PROJECTS_ROOT}; fresh_r2.R1_EXTERNAL_ROOT={fresh_r2.R1_EXTERNAL_ROOT}")
+    except Exception as error:
+        _check(checks, "import_time_runtime_paths_exact", False, repr(error))
+    try:
         from .idea_quality import build_research_context, derive_enriched_proposal_schema
         from .fresh_r2 import build_active_r2_profile, build_r1_registry, load_registered_r1_artifacts, public_active_profile_catalog, _r2_bindings, _r2_environment
         from .q5a_idea_feasibility import Q5A_POLICIES
@@ -358,6 +433,14 @@ def run_q5a_comprehensive_preflight(*, manifest_path: Path, repo_root: Path, out
         {
             "schema": Q5A_PREFLIGHT_SCHEMA,
             "deployment_manifest_digest": manifest.get("deployment_digest"),
+            "deployment_digest": binding.deployment_digest,
+            "binding_digest": binding.binding_digest,
+            "prefreeze_digest": binding.prefreeze_digest,
+            "source_tree_digest": binding.source_tree_digest,
+            "foundation_commit": binding.foundation_commit,
+            "foundation_package_digest": binding.foundation_package_digest,
+            "preflight_root": str(binding.preflight_root),
+            "campaign_root": str(binding.campaign_root),
             "status": "PASS" if passed else "HARD_BLOCK",
             "checks": checks,
             "provider_calls": 0,

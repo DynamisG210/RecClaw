@@ -189,11 +189,11 @@ def _r1_receipt(repo_root: Path) -> tuple[Path, dict[str, Any]]:
     ):
         raise FreshR2Error("accepted R1 receipt no longer satisfies its result boundary")
     external = Path(str(receipt.get("external_receipt_ref")))
-    expected_external = Path(
-        "/root/projects/RecClaw_r1_r2_runs/"
-        "fresh_r1_training_filesystem_fix_v3/R1_CANONICAL_RECEIPT.json"
-    )
-    if external != expected_external:
+    expected_external = R1_EXTERNAL_ROOT / "R1_CANONICAL_RECEIPT.json"
+    # The sealed repository receipt preserves its original absolute locator;
+    # RuntimeBinding owns the relocated root.  Compare the accepted relative
+    # identity, then read bytes only from the bound R1_EXTERNAL_ROOT.
+    if tuple(external.parts[-3:]) != tuple(expected_external.parts[-3:]):
         raise FreshR2Error("accepted R1 external receipt reference drift")
     relocated_external = R1_EXTERNAL_ROOT / "R1_CANONICAL_RECEIPT.json"
     if bytes_sha256(relocated_external.read_bytes()) != R1_EXTERNAL_RECEIPT_SHA256:

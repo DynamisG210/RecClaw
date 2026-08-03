@@ -14,10 +14,7 @@ for path in (ROOT, ROOT / "src", ROOT / "scripts"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from recclaw_core.experiments.helix_abc_v1.q5a_deployment import (  # noqa: E402
-    build_q5a_deployment_manifest,
-    run_q5a_comprehensive_preflight,
-)
+from recclaw_runtime_binding import RuntimeBindingV1  # noqa: E402
 
 
 def main() -> int:
@@ -31,12 +28,17 @@ def main() -> int:
     manifest.add_argument("--recbole-root", type=Path, required=True)
     manifest.add_argument("--python-executable", type=Path, required=True)
     manifest.add_argument("--api-config", type=Path, required=True)
+    manifest.add_argument("--prefreeze-manifest", type=Path, required=True)
+    manifest.add_argument("--preflight-root", type=Path, required=True)
+    manifest.add_argument("--campaign-root", type=Path, required=True)
     preflight = sub.add_parser("preflight")
     preflight.add_argument("--repo-root", type=Path, default=ROOT)
     preflight.add_argument("--manifest", type=Path, required=True)
     preflight.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "manifest":
+        from recclaw_core.experiments.helix_abc_v1.q5a_deployment import build_q5a_deployment_manifest
+
         value = build_q5a_deployment_manifest(
             repo_root=args.repo_root,
             projects_root=args.projects_root,
@@ -44,11 +46,19 @@ def main() -> int:
             recbole_root=args.recbole_root,
             python_executable=args.python_executable,
             api_config=args.api_config,
+            prefreeze_manifest=args.prefreeze_manifest,
+            preflight_root=args.preflight_root,
+            campaign_root=args.campaign_root,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")), encoding="utf-8")
         print(json.dumps({"status": "MANIFEST_BUILT", "deployment_digest": value["deployment_digest"]}, sort_keys=True))
         return 0
+    binding = RuntimeBindingV1.from_manifest(args.manifest, repo_root=args.repo_root).activate()
+    if "recclaw_core.experiments.helix_abc_v1.fresh_r1" in sys.modules or "recclaw_core.experiments.helix_abc_v1.fresh_r2" in sys.modules:
+        raise RuntimeError("path-sensitive modules were imported before runtime binding")
+    from recclaw_core.experiments.helix_abc_v1.q5a_deployment import run_q5a_comprehensive_preflight
+
     value = run_q5a_comprehensive_preflight(
         manifest_path=args.manifest,
         repo_root=args.repo_root,

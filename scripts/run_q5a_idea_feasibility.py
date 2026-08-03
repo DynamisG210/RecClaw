@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import random
@@ -20,6 +21,133 @@ SCRIPTS = ROOT / "scripts"
 for path in (ROOT, SRC, SCRIPTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
+
+from recclaw_runtime_binding import (  # noqa: E402
+    RuntimeBindingError,
+    RuntimeBindingV1,
+    claim_execution_owner,
+    release_execution_owner,
+    verify_execution_gate,
+    verify_execution_owner,
+    write_execution_gate,
+)
+
+
+_RUNTIME_CHILD = os.environ.get("RECCLAW_RUNTIME_CHILD") == "1"
+_RUNTIME_BINDING: RuntimeBindingV1 | None = None
+_EXECUTION_OWNER: dict[str, Any] | None = None
+_CHILD_STATUS = "FAILED"
+
+
+def _argv_value(name: str) -> str | None:
+    for index, value in enumerate(sys.argv[:-1]):
+        if value == name:
+            return sys.argv[index + 1]
+    return None
+
+
+def _bootstrap_execution_binding() -> None:
+    """Gate and bind before the first path-sensitive import, then exec once."""
+
+    global _RUNTIME_BINDING, _EXECUTION_OWNER
+    command = sys.argv[1] if len(sys.argv) > 1 else None
+    if command not in {"pool", "realize"}:
+        return
+    manifest_value = _argv_value("--deployment-manifest")
+    preflight_value = _argv_value("--preflight-receipt")
+    prefreeze_value = _argv_value("--prefreeze-manifest")
+    output_value = _argv_value("--output-root")
+    if not all((manifest_value, preflight_value, prefreeze_value, output_value)):
+        raise RuntimeBindingError("physical campaign requires manifest, PASS receipt, prefreeze, and output root")
+    repo_value = _argv_value("--repo-root")
+    repo_root = Path(repo_value).resolve() if repo_value else ROOT
+    manifest_path = Path(manifest_value).resolve()
+    preflight_path = Path(preflight_value).resolve()
+    prefreeze_path = Path(prefreeze_value).resolve()
+    output_root = Path(output_value).resolve()
+    binding = RuntimeBindingV1.from_manifest(manifest_path, repo_root=repo_root).activate()
+    if output_root != binding.campaign_root:
+        raise RuntimeBindingError("campaign output root does not match manifest campaign_root")
+    gate = verify_execution_gate(
+        binding=binding,
+        preflight_receipt_path=preflight_path,
+        prefreeze_manifest_path=prefreeze_path,
+    )
+    gate_path = output_root / "EXECUTION_GATE.json"
+    if gate_path.exists():
+        raise RuntimeBindingError("execution gate path already exists; campaign root is not fresh")
+    owner = claim_execution_owner(binding, gate_receipt_path=gate_path)
+    try:
+        written_gate = write_execution_gate(gate_path, gate)
+    except Exception:
+        release_execution_owner(binding, owner, status="GATE_WRITE_FAILED")
+        raise
+    os.environ.update(
+        {
+            "RECCLAW_RUNTIME_CHILD": "1",
+            "RECCLAW_BINDING_MANIFEST": str(manifest_path),
+            "RECCLAW_PREFLIGHT_RECEIPT": str(preflight_path),
+            "RECCLAW_PREFREEZE_MANIFEST": str(prefreeze_path),
+            "RECCLAW_EXECUTION_GATE": str(gate_path),
+            "RECCLAW_EXECUTION_OWNER_TOKEN": str(owner["owner_token"]),
+            "RECCLAW_EXECUTION_GATE_DIGEST": str(written_gate["gate_digest"]),
+        }
+    )
+    _RUNTIME_BINDING = binding
+    _EXECUTION_OWNER = owner
+    executable = str(binding.python_executable)
+    os.execve(executable, [executable, str(Path(__file__).resolve()), *sys.argv[1:]], os.environ.copy())
+
+
+def _activate_child_binding() -> None:
+    global _RUNTIME_BINDING, _EXECUTION_OWNER
+    if not _RUNTIME_CHILD:
+        return
+    manifest_value = os.environ.get("RECCLAW_BINDING_MANIFEST")
+    if not manifest_value:
+        raise RuntimeBindingError("runtime child is missing binding manifest")
+    try:
+        _RUNTIME_BINDING = RuntimeBindingV1.from_manifest(Path(manifest_value), repo_root=ROOT).activate()
+        gate_path = Path(os.environ["RECCLAW_EXECUTION_GATE"])
+        gate = verify_execution_gate(
+            binding=_RUNTIME_BINDING,
+            preflight_receipt_path=Path(os.environ["RECCLAW_PREFLIGHT_RECEIPT"]),
+            prefreeze_manifest_path=Path(os.environ["RECCLAW_PREFREEZE_MANIFEST"]),
+        )
+        if gate["gate_digest"] != os.environ.get("RECCLAW_EXECUTION_GATE_DIGEST"):
+            raise RuntimeBindingError("execution gate digest drift in child")
+        _EXECUTION_OWNER = verify_execution_owner(
+            _RUNTIME_BINDING,
+            owner_token=os.environ.get("RECCLAW_EXECUTION_OWNER_TOKEN"),
+        )
+        if gate_path.resolve() != _RUNTIME_BINDING.campaign_root / "EXECUTION_GATE.json":
+            raise RuntimeBindingError("execution gate root drift in child")
+    except BaseException:
+        if _RUNTIME_BINDING is not None and _RUNTIME_BINDING.campaign_root.joinpath("EXECUTION_OWNER.json").is_file():
+            try:
+                observed = json.loads(_RUNTIME_BINDING.campaign_root.joinpath("EXECUTION_OWNER.json").read_text(encoding="utf-8"))
+                if observed.get("owner_pid") == os.getpid() and observed.get("owner_token") == os.environ.get("RECCLAW_EXECUTION_OWNER_TOKEN"):
+                    release_execution_owner(_RUNTIME_BINDING, observed, status="CHILD_BOOTSTRAP_FAILED")
+            except Exception:
+                pass
+        raise
+
+
+def _release_owned_at_exit() -> None:
+    if _RUNTIME_CHILD and _RUNTIME_BINDING is not None and _EXECUTION_OWNER is not None:
+        owner_path = _RUNTIME_BINDING.campaign_root / "EXECUTION_OWNER.json"
+        if owner_path.is_file():
+            try:
+                release_execution_owner(_RUNTIME_BINDING, _EXECUTION_OWNER, status="ABNORMAL_EXIT")
+            except Exception:
+                pass
+
+
+if _RUNTIME_CHILD:
+    _activate_child_binding()
+    atexit.register(_release_owned_at_exit)
+else:
+    _bootstrap_execution_binding()
 
 from recclaw_core.experiments.helix_abc_v1.canonical import (  # noqa: E402
     bytes_sha256,
@@ -176,11 +304,18 @@ def _render_q5_prompt(
 
 
 def _set_runtime_environment(args: argparse.Namespace) -> None:
-    os.environ["RECCLAW_PROJECTS_ROOT"] = str(args.projects_root.resolve())
-    os.environ["RECCLAW_SEARCH_DATA_ROOT"] = str(args.search_data_root.resolve())
-    os.environ["RECCLAW_RECBOLE_ROOT"] = str(args.recbole_root.resolve())
-    os.environ["RECCLAW_PYTHON_EXECUTABLE"] = str(args.python_executable.resolve())
-    os.environ["RECCLAW_API_CONFIG"] = str(args.api_config.resolve())
+    if _RUNTIME_BINDING is None:
+        raise RuntimeBindingError("campaign runtime binding is not active")
+    expected = {
+        "projects_root": _RUNTIME_BINDING.projects_root,
+        "search_data_root": _RUNTIME_BINDING.search_data_root,
+        "recbole_root": _RUNTIME_BINDING.recbole_root,
+        "python_executable": _RUNTIME_BINDING.python_executable,
+        "api_config": _RUNTIME_BINDING.api_config,
+    }
+    for name, value in expected.items():
+        if Path(str(getattr(args, name))).resolve() != value:
+            raise RuntimeBindingError(f"campaign runtime argument drift: {name}")
 
 
 def _require_prefreeze(output_root: Path) -> dict[str, Any]:
@@ -1088,6 +1223,9 @@ def main() -> int:
     p.add_argument("--recbole-root", type=Path, required=True)
     p.add_argument("--python-executable", type=Path, required=True)
     p.add_argument("--api-config", type=Path, required=True)
+    p.add_argument("--deployment-manifest", type=Path, required=True)
+    p.add_argument("--preflight-receipt", type=Path, required=True)
+    p.add_argument("--prefreeze-manifest", type=Path, required=True)
     p = sub.add_parser("select")
     p.add_argument("--output-root", type=Path, required=True)
     p.add_argument("--f1-policy", type=Path, required=True)
@@ -1101,6 +1239,9 @@ def main() -> int:
     p.add_argument("--recbole-root", type=Path, required=True)
     p.add_argument("--python-executable", type=Path, required=True)
     p.add_argument("--api-config", type=Path, required=True)
+    p.add_argument("--deployment-manifest", type=Path, required=True)
+    p.add_argument("--preflight-receipt", type=Path, required=True)
+    p.add_argument("--prefreeze-manifest", type=Path, required=True)
     p = sub.add_parser("summarize")
     p.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
@@ -1118,4 +1259,15 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = 1
+    try:
+        exit_code = main()
+    except BaseException:
+        _CHILD_STATUS = "FAILED"
+        raise
+    else:
+        _CHILD_STATUS = "COMPLETED"
+    finally:
+        if _RUNTIME_CHILD and _RUNTIME_BINDING is not None and _EXECUTION_OWNER is not None:
+            release_execution_owner(_RUNTIME_BINDING, _EXECUTION_OWNER, status=_CHILD_STATUS)
+    raise SystemExit(exit_code)

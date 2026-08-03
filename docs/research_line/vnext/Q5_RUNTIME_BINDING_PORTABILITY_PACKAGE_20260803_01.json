@@ -1,0 +1,37 @@
+{
+  "schema": "recclaw.research-line.q5-runtime-binding-portability-package.v1",
+  "status": "LOCAL_RUNTIME_GATE_VALIDATED_NO_PILOT",
+  "runtime_binding": {
+    "schema": "recclaw.research-line.q5a-runtime-binding.v1",
+    "manifest_digest_verified": true,
+    "path_and_byte_hash_verification": true,
+    "relocated_child_preflight": "PASS",
+    "provider_calls": 0,
+    "implementer_calls": 0,
+    "qualification_calls": 0,
+    "training_runs": 0,
+    "held_out_reads": 0,
+    "retries": 0,
+    "unique_pid_and_campaign_root": true,
+    "abnormal_exit_owner_release": true
+  },
+  "execution_gate": {
+    "schema": "recclaw.research-line.q5a-execution-gate.v1",
+    "physical_entry_consumes_matching_pass_receipt_before_attempt": true,
+    "missing_stale_hard_block_digest_drift_and_existing_attempt_fail_closed": true,
+    "provider_calls_before_gate": 0
+  },
+  "prior_q5a_hard_stop": {
+    "status": "HARD_BLOCK",
+    "commit": "3b1393a7c9bd28d9e32f6b4d68224ae8854f76b6",
+    "receipt": "docs/research_line/vnext/Q5A_HARD_STOP_DEPLOYMENT_PREFLIGHT_RECEIPT_20260803_01.json",
+    "physical_provider_calls": 2,
+    "authority": 0,
+    "held_out_reads": 0,
+    "retries": 0,
+    "scientific_evidence": false,
+    "receipt_and_old_root_modified": false
+  },
+  "pilot_rerun": false,
+  "q5b_release": "NOT_PERMITTED"
+}
