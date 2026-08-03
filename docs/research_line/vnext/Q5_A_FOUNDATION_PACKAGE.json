@@ -1,0 +1,167 @@
+{
+  "schema": "recclaw.research-line.q5-a-foundation-package.v1",
+  "package_version": "q5-foundation-a.1",
+  "package_digest": "f031e3f075b64fb6e1ed7548c8c0ba96f0d33943658cb0361c274120dfa154cf",
+  "status": "FOUNDATION_READY_Q5A_NOT_RUN",
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "development_only": true,
+  "held_out_reads": 0,
+  "scientific_effect_claim": false,
+  "sealed_evidence_modified": false,
+  "source": {
+    "base_commit": "3b133583d22bea6f5727857bfd61184d0fe3777f",
+    "base_branch": "feat/research-line-q5-foundation",
+    "execution_branch": "feat/research-line-q5-foundation-execution",
+    "execution_head": "988d9479aa385708394cbadd95690d4af6ca555e"
+  },
+  "diagnosis": {
+    "failure_classification": "CANDIDATE_LOCAL",
+    "failure_stage": "CONSTRUCTION",
+    "failure_domain": "INTERFACE",
+    "reason_code": "KEYERROR",
+    "missing_field": "timestamp",
+    "evidence_root": "results/research_line/q4_prospective_policy_comparison_20260803_01/arms/03_outcome_aware",
+    "selected_candidate_id": "146af84a1c273a5df82f1f5d3141f14874272367121c14344b5a9ec1d560609a",
+    "candidate_package_digest": "546c792b7487a343fb7ccf93ba4c1dc883e1c3d2119bdad1bdaedd00dd38d498",
+    "source_tree_digest": "0249f4900aa176bafb48c0c9b42b42afff2e2ca0b8946778e30af978fdf695f9",
+    "protocol_digest": "7f623fd953001f999e8b5d2657749f6a3ca86c7be5410a48bb8281241a258bbe",
+    "traceback_artifact": "docs/research_line/vnext/Q5_Q4_OUTCOME_AWARE_KEYERROR_ROOT_CAUSE_DIAGNOSIS.md",
+    "old_candidate_repaired": false,
+    "shared_contract_relaxed": false,
+    "new_outcome_created": false
+  },
+  "shared_realization_contract": {
+    "schema": "recclaw.research-line.vnext.shared-realization-contract.v1",
+    "realization_classes": [
+      "ORIGINAL_BYTES",
+      "SEMANTICS_EQUIVALENT_REALIZATION",
+      "NEW_CANDIDATE"
+    ],
+    "required_bindings": [
+      "research_spec_ref",
+      "research_spec_digest",
+      "candidate_package_ref",
+      "candidate_package_digest",
+      "source_tree_ref",
+      "source_tree_digest",
+      "equivalence_ref",
+      "equivalence_digest",
+      "protocol_ref",
+      "protocol_digest"
+    ],
+    "one_open_spec_one_implementation": true,
+    "old_receipt_requires_current_realization_digest": true
+  },
+  "outcome_ledger": {
+    "schema": "recclaw.research-line.q5-shared-package-seed-outcome-ledger.v1",
+    "key": "candidate_package_digest:development_seed",
+    "one_outcome_per_package_seed": true,
+    "policy_role": "ATTRIBUTION_ONLY",
+    "policy_must_not_duplicate_physical_outcome": true
+  },
+  "realization_authority": {
+    "schema": "recclaw.research-line.q5-realization-typing-authority.v1",
+    "effect_only_type": {
+      "realization_typing": "EFFECT_ONLY_NON_NESTED",
+      "effect_authority": "EFFECT",
+      "mechanism_state": "NOT_ASSESSED"
+    },
+    "nested_type": {
+      "realization_typing": "NESTED_MECHANISM",
+      "required_equivalence": [
+        "same_declared_parent",
+        "loss",
+        "predict",
+        "full_sort",
+        "gradients",
+        "checkpoint_load",
+        "dataset",
+        "evaluator",
+        "seed",
+        "optimizer",
+        "batch"
+      ],
+      "mechanism_information_requires_all": true
+    },
+    "no_off_switch_rule": "NOT_ASSESSED_NOT_NEGATIVE_MECHANISM_EVIDENCE"
+  },
+  "feasibility_projection": {
+    "authority_lane": "FEASIBILITY_COMPLETION_HEAD",
+    "schema": "recclaw.research-line.q5-stage-conditional-feasibility-projection.v1",
+    "factorization": "P(MATERIALIZE)*P(CONSTRUCT|MATERIALIZE)*P(QUALIFY|CONSTRUCT)*P(RESOURCE_ADMITTED|QUALIFY)*P(FULL_EPISODE|RESOURCE_ADMITTED)",
+    "frozen_prior": {
+      "source": "F1_STATIC_BETA_1_1_PRIOR",
+      "mean": 0.5
+    },
+    "support_shrinkage": {
+      "method": "LINEAR_EFFECTIVE_COUNT_TO_FROZEN_PRIOR",
+      "effective_observation_threshold": 4.0,
+      "no_parallel_head": true
+    }
+  },
+  "tie_contract": {
+    "score_tolerance": 1e-12,
+    "exploration_probability": 0.15,
+    "top_score_tie_selection": "UNIFORM_TIE",
+    "selected_by_values": [
+      "UNIFORM_TIE",
+      "EXPLORATION",
+      "LEARNED_SCORE"
+    ],
+    "input_order_breaking_forbidden": true,
+    "tie_set_and_probabilities_recorded": true
+  },
+  "consumers": {
+    "shared_realization_pool": "recclaw_core.experiments.helix_abc_v1.prospective_policy_comparison:build_shared_realization_pool",
+    "package_seed_outcome_ledger": "recclaw_core.experiments.helix_abc_v1.prospective_policy_comparison:build_shared_package_seed_outcome_ledger",
+    "realization_authority": "recclaw_core.experiments.helix_abc_v1.prospective_policy_comparison:classify_realization_authority",
+    "stage_feasibility": "recclaw_core.experiments.helix_abc_v1.open_meta_q3:project_stage_conditional_feasibility",
+    "existing_q3_prediction_consumer": "recclaw_core.experiments.helix_abc_v1.open_meta_q3:predict_q3_heads"
+  },
+  "verification": {
+    "q4_keyerror_reproduction": "PASS_REPRODUCED_WITH_RAW_TRACEBACK",
+    "candidate_local_generic_regression": "PASS",
+    "shared_realization_and_authority_targeted": "13 passed",
+    "stage_feasibility_and_adjacent_q3": "24 passed",
+    "held_out_reads": 0,
+    "provider_calls": 0,
+    "gpu_campaigns": 0,
+    "sealed_q4_files_overwritten": 0
+  },
+  "q5a_gate": {
+    "status": "NOT_RUN",
+    "next_consumer": "Q5-A IDEA_FEASIBILITY_PILOT",
+    "frozen_pilot_contract": {
+      "fresh_pool_count": 3,
+      "openspecs_per_pool": 8,
+      "policy_names": [
+        "STATIC",
+        "CURRENT_F1",
+        "OUTCOME_AWARE"
+      ],
+      "policy_selections_per_pool": 2,
+      "shared_random_exploration_per_pool": 1,
+      "provider_or_implementer_retries": 0,
+      "held_out_reads": 0,
+      "outcome_leakage": false,
+      "candidate_specific_repair": false,
+      "successful_candidate_filtering": false
+    },
+    "entry_checks": {
+      "foundation_contract_tests": "PASS",
+      "fresh_pool_generation": "NOT_RUN",
+      "shared_realization_execution": "NOT_RUN",
+      "stage_denominator_and_missingness": "NOT_RUN",
+      "nested_mechanism_off_evidence": "NOT_RUN"
+    },
+    "pass_only_if": [
+      "at least two policies produce non-empty executable selections",
+      "shared realization has no cross-policy byte drift",
+      "at least two nested packages pass the full off-equivalence gate",
+      "stage denominators, missingness, and cost are complete",
+      "tie contract is honored on any exact or near tie",
+      "zero held-out reads, outcome leakage, retries, replacement, and success filtering"
+    ],
+    "current_gate_decision": "DO_NOT_CLAIM_Q5A_PASS_BEFORE_THE_FRESH_PILOT"
+  }
+}
