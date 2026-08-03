@@ -108,7 +108,7 @@ def test_candidate_local_multifile_package_materializes_with_actual_file_set(tmp
         execution_contract={"gpu_budget_gb": 10, "recbole_interface": "frozen"},
     )
     response = {
-        "entrypoint": "recclaw_ext.candidate:CandidateModel",
+        "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
         "files": [
             {"path": "recclaw_ext/__init__.py", "content": "# candidate package\n"},
             {
@@ -116,7 +116,7 @@ def test_candidate_local_multifile_package_materializes_with_actual_file_set(tmp
                 "content": (
                     "from recbole.model.general_recommender.bpr import BPR\n"
                     "from recclaw_ext.layers import helper\n\n"
-                    "class CandidateModel(BPR):\n"
+                    "class FreshCandidateModel(BPR):\n"
                     "    pass\n"
                 ),
             },
