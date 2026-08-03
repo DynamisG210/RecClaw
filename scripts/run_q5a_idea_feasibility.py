@@ -1231,6 +1231,30 @@ def _stage_rows(realization_root: Path, candidate_id: str) -> list[dict[str, Any
     return rows
 
 
+def _build_conversion_screen_results(
+    entries: Sequence[Mapping[str, Any]],
+    policy_owners: Mapping[str, set[str]],
+    exploration_ids: set[str],
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for entry in entries:
+        receipt = _read_optional(Path(entry["realization_root"]) / "MATCHED_EXECUTION_RECEIPT.json")
+        candidate = (receipt.get("candidate") or {}) if receipt else {}
+        candidate_id = str(entry["candidate_id"])
+        results.append(
+            {
+                "candidate_id": candidate_id,
+                "status": receipt.get("status") if receipt else "MISSING",
+                "stable": bool(receipt and receipt.get("stable")),
+                "screen_signal": receipt.get("screen_signal") if receipt else None,
+                "screen_cost_ms": candidate.get("wall_time_ms") if receipt else None,
+                "policy_owners": sorted(policy_owners.get(candidate_id, set())),
+                "shared_exploration": candidate_id in exploration_ids,
+            }
+        )
+    return results
+
+
 def realize(args: argparse.Namespace) -> None:
     output_root = args.output_root.resolve()
     prefreeze, _frozen, union = _frozen_selection(output_root)
@@ -1294,20 +1318,11 @@ def realize(args: argparse.Namespace) -> None:
                 "stage_ok": stage_ok,
             }
         )
-    screen_results = []
-    for entry in entries:
-        receipt = _read_optional(entry["realization_root"] / "MATCHED_EXECUTION_RECEIPT.json")
-        screen_results.append(
-            {
-                "candidate_id": entry["candidate_id"],
-                "status": receipt.get("status") if receipt else "MISSING",
-                "stable": bool(receipt and receipt.get("stable")),
-                "screen_signal": receipt.get("screen_signal") if receipt else None,
-                "screen_cost_ms": receipt.get("candidate", {}).get("wall_time_ms") if receipt else None,
-                "policy_owners": sorted(policy_owners.get(entry["candidate_id"], set())),
-                "shared_exploration": entry["candidate_id"] in exploration_ids,
-            }
-        )
+    screen_results = _build_conversion_screen_results(
+        entries,
+        policy_owners,
+        exploration_ids,
+    )
     _write_new(
         output_root / "CONVERSION_SCREEN_RESULTS.json",
         {

@@ -356,10 +356,10 @@ def _validate_implementation_response(
         allowed_files=policy.allowed_files,
     )
     raw_files = response["files"]
-    if not isinstance(raw_files, list) or not raw_files:
+    if not isinstance(raw_files, list) or not 2 <= len(raw_files) <= 5:
         raise _implementation_failure(
-            "IMPLEMENTATION_FILES_MISSING",
-            "implementation response must provide complete files",
+            "IMPLEMENTATION_FILE_COUNT_INVALID",
+            "implementation response must provide between two and five files",
         )
     normalized_files: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -402,12 +402,16 @@ def _validate_implementation_response(
             "implementation response must include its entrypoint source",
         )
     if "recclaw_ext/candidate.py" in policy.allowed_files:
-        if "recclaw_ext/candidate.py" not in seen or not str(
+        required_package_files = {
+            "recclaw_ext/__init__.py",
+            "recclaw_ext/candidate.py",
+        }
+        if not required_package_files.issubset(seen) or not str(
             response["entrypoint"]
         ).startswith("recclaw_ext.candidate:"):
             raise _implementation_failure(
-                "CANDIDATE_ENTRYPOINT_REQUIRED",
-                "conversion packages must include recclaw_ext/candidate.py as the entrypoint",
+                "REQUIRED_PACKAGE_FILES_MISSING",
+                "conversion packages must include recclaw_ext/__init__.py and recclaw_ext/candidate.py",
             )
     return canonical_value(
         {

@@ -7,22 +7,12 @@
         "additionalProperties": false,
         "properties": {
           "entrypoint": {
-            "const": "recclaw_ext.candidate:FreshCandidateModel",
+            "enum": [
+              "recclaw_ext.candidate:FreshCandidateModel"
+            ],
             "type": "string"
           },
           "files": {
-            "allOf": [
-              {
-                "contains": {
-                  "properties": {
-                    "path": {
-                      "const": "recclaw_ext/candidate.py"
-                    }
-                  },
-                  "required": ["path"]
-                }
-              }
-            ],
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -31,7 +21,13 @@
                   "type": "string"
                 },
                 "path": {
-                  "pattern": "^recclaw_ext/[A-Za-z_][A-Za-z0-9_]*\\.py$",
+                  "enum": [
+                    "recclaw_ext/__init__.py",
+                    "recclaw_ext/candidate.py",
+                    "recclaw_ext/layers.py",
+                    "recclaw_ext/modules.py",
+                    "recclaw_ext/ops.py"
+                  ],
                   "type": "string"
                 }
               },
@@ -40,8 +36,7 @@
             },
             "maxItems": 5,
             "minItems": 2,
-            "type": "array",
-            "uniqueItems": true
+            "type": "array"
           },
           "implementation_summary": {
             "minLength": 1,
@@ -56,7 +51,9 @@
       "type": "array"
     },
     "schema": {
-      "const": "recclaw.research-line.q5-conversion-implementer-response.v1",
+      "enum": [
+        "recclaw.research-line.q5-conversion-implementer-response.v1"
+      ],
       "type": "string"
     }
   },

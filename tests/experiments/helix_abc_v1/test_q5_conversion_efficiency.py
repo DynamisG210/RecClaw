@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -24,9 +25,13 @@ from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (  # noq
     run_fail_soft_batch,
 )
 from recclaw_core.experiments.helix_abc_v1.innovation_spine import (  # noqa: E402
+    InnovationSpineError,
     SharedImplementerPolicy,
     build_shared_implementer_request,
     materialize_candidate_package,
+)
+from recclaw_core.experiments.helix_abc_v1.lab_api_broker import (  # noqa: E402
+    validate_provider_strict_schema,
 )
 from recclaw_core.experiments.helix_abc_v1.vnext_contracts import (  # noqa: E402
     CurrentProfileExpressibilityV1,
@@ -154,6 +159,102 @@ def test_candidate_local_multifile_package_materializes_with_actual_file_set(tmp
         "recclaw_ext/layers.py",
     )
     assert request["service_policy"]["execution_contract"]["gpu_budget_gb"] == 10
+
+
+def test_conversion_schema_uses_provider_strict_subset_and_consumer_rejects_bad_files(
+    tmp_path: Path,
+) -> None:
+    schema_path = (
+        ROOT
+        / "src/recclaw_core/experiments/helix_abc_v1/resources/"
+        "q5_conversion_implementer_response_v1.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    validate_provider_strict_schema(schema)
+
+    spec = _spec()
+    policy = SharedImplementerPolicy(
+        allowed_files=CANDIDATE_LOCAL_ALLOWED_FILES,
+        dependency_identity_ref="dependencies:fixture",
+        dependency_identity_digest=_digest("dependencies"),
+        runtime_identity_ref="runtime:fixture",
+        runtime_identity_digest=_digest("runtime"),
+        prompt_digest=_digest("prompt"),
+        tool_policy_digest=_digest("tools"),
+        implementation_token_ceiling=4096,
+        execution_contract={"gpu_budget_gb": 10, "recbole_interface": "frozen"},
+    )
+    base_response = {
+        "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
+        "files": [
+            {"path": "recclaw_ext/__init__.py", "content": "# package\n"},
+            {"path": "recclaw_ext/candidate.py", "content": "class FreshCandidateModel: pass\n"},
+        ],
+        "implementation_summary": "fixture",
+    }
+
+    missing_init = {**base_response, "files": base_response["files"][1:]}
+    with pytest.raises(InnovationSpineError, match="between two and five"):
+        materialize_candidate_package(
+            spec,
+            policy=policy,
+            implementation_response=missing_init,
+            candidate_root=tmp_path / "missing-init",
+            candidate_root_ref="conversion-fixture-root",
+        )
+
+    duplicate_path = {
+        **base_response,
+        "files": [*base_response["files"], base_response["files"][1]],
+    }
+    with pytest.raises(InnovationSpineError, match="duplicated"):
+        materialize_candidate_package(
+            spec,
+            policy=policy,
+            implementation_response=duplicate_path,
+            candidate_root=tmp_path / "duplicate-path",
+            candidate_root_ref="conversion-fixture-root",
+        )
+
+
+def test_conversion_screen_summary_keeps_seventeen_none_candidates_missing(tmp_path: Path) -> None:
+    module_spec = importlib.util.spec_from_file_location(
+        "q5a_idea_feasibility_runner",
+        ROOT / "scripts/run_q5a_idea_feasibility.py",
+    )
+    assert module_spec is not None and module_spec.loader is not None
+    runner = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(runner)
+
+    entries = []
+    for index in range(17):
+        realization_root = tmp_path / f"realization-{index:02d}"
+        realization_root.mkdir()
+        (realization_root / "MATCHED_EXECUTION_RECEIPT.json").write_text(
+            json.dumps(
+                {
+                    "status": "NO_LEGAL_ADMITTED_ARM",
+                    "baseline": None,
+                    "candidate": None,
+                    "stable": False,
+                    "screen_signal": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+        entries.append(
+            {
+                "candidate_id": f"candidate-{index}",
+                "realization_root": realization_root,
+            }
+        )
+
+    rows = runner._build_conversion_screen_results(entries, {}, set())
+
+    assert len(rows) == 17
+    assert all(row["status"] == "NO_LEGAL_ADMITTED_ARM" for row in rows)
+    assert all(row["screen_cost_ms"] is None for row in rows)
+    assert all(not row["stable"] for row in rows)
 
 
 def test_fail_soft_batch_continues_after_one_arm_failure() -> None:
