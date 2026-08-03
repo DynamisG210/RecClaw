@@ -73,6 +73,8 @@ def _package(
     *,
     class_name: str,
     research_spec: OpenResearchSpecV1,
+    candidate_module: str = "recclaw_ext.fixture_model",
+    candidate_file: str = "recclaw_ext/fixture_model.py",
 ) -> CandidatePackageV1:
     candidate_root_ref = "fixture-root:" + candidate_root.name
     source_digest, root_digest = candidate_tree_identity(
@@ -88,9 +90,9 @@ def _package(
         candidate_root_ref=candidate_root_ref,
         candidate_root_digest=root_digest,
         executable_entrypoint=(
-            f"recclaw_ext.fixture_model:{class_name}"
+            f"{candidate_module}:{class_name}"
         ),
-        allowed_files=("recclaw_ext/fixture_model.py",),
+        allowed_files=(candidate_file,),
         dependency_identity_ref="dependencies:recbole-bpr-fixture",
         dependency_identity_digest=sha256_digest(
             {"base_model_config": "BPR", "dataset": "mini"}
@@ -241,3 +243,35 @@ def test_invalid_input_fixture_stops_before_unit_and_smoke(
     }
     assert result.smoke_executions == 0
     assert "ONE_EPOCH_SMOKE" not in result.stage_observations
+
+
+def test_candidate_local_missing_declared_time_field_stays_typed_failure(
+    qualification_fixture: RecBoleQualificationFixture,
+) -> None:
+    candidate_root = FIXTURE_ROOT / "missing_time_field_candidate"
+    research_spec = _research_spec()
+    package = _package(
+        candidate_root,
+        class_name="MissingDeclaredTimeFieldModel",
+        candidate_module="recclaw_ext.fixture_model",
+        candidate_file="recclaw_ext/fixture_model.py",
+        research_spec=research_spec,
+    )
+
+    result = MechanicalRecBoleAdapterV1().qualify(
+        package,
+        research_spec=research_spec,
+        candidate_root=candidate_root,
+        fixture=qualification_fixture,
+        unit_check=_shared_unit_check,
+    )
+
+    assert result.receipt.stage is QualificationStageV1.CONSTRUCTION
+    assert result.receipt.failure_class is QualificationFailureClassV1.INTERFACE
+    assert result.failure_detail == {
+        "error_type": "_QualificationStageFailure",
+        "failure_class": "INTERFACE",
+        "reason_code": "KEYERROR",
+        "stage": "CONSTRUCTION",
+    }
+    assert result.smoke_executions == 0
