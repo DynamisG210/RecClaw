@@ -192,7 +192,42 @@ def choose_stable_promotions(
                 )
             )
     eligible.sort()
-    return tuple(candidate_id for _signal, candidate_id in eligible[: int(promotion_limit)])
+    by_id = {
+        str(row["candidate_id"]): row
+        for row in screen_results
+        if isinstance(row.get("candidate_id"), str)
+        and str(row["candidate_id"]) in {candidate_id for _signal, candidate_id in eligible}
+    }
+    selected: list[str] = []
+    policies = sorted(
+        {
+            str(policy)
+            for row in by_id.values()
+            for policy in row.get("policy_owners", ())
+        }
+    )
+    for policy in policies:
+        policy_candidates = [
+            item
+            for item in eligible
+            if policy in tuple(str(value) for value in by_id[item[1]].get("policy_owners", ()))
+        ]
+        if policy_candidates:
+            candidate_id = policy_candidates[0][1]
+            if candidate_id not in selected:
+                selected.append(candidate_id)
+    exploration = [
+        item
+        for item in eligible
+        if bool(by_id[item[1]].get("shared_exploration"))
+    ]
+    fallback = exploration or eligible
+    for _signal, candidate_id in fallback:
+        if candidate_id not in selected:
+            selected.append(candidate_id)
+        if len(selected) >= int(promotion_limit):
+            break
+    return tuple(selected[: int(promotion_limit)])
 
 
 def finalize_conversion_execution_plan(

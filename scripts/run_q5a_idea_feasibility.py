@@ -190,6 +190,16 @@ from recclaw_core.experiments.helix_abc_v1.idea_quality import (  # noqa: E402
     derive_enriched_proposal_schema,
     score_preoutcome_testability,
 )
+from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (  # noqa: E402
+    FULL_DEVELOPMENT_SEEDS,
+    FULL_EPOCHS,
+    MAX_REPAIR_TURNS,
+    RECBole_INTERFACE_CONTRACT,
+    SCREEN_EPOCHS,
+    build_conversion_execution_plan,
+    choose_stable_promotions,
+    finalize_conversion_execution_plan,
+)
 from recclaw_core.experiments.helix_abc_v1.open_meta_f1 import (  # noqa: E402
     ALLOWED_DIRECTIONS,
 )
@@ -244,6 +254,8 @@ FOUNDATION_PACKAGE_DIGEST = (
 )
 POOL_SEEDS = (71001, 71002, 71003)
 EXPLORATION_SEEDS = (72001, 72002, 72003)
+CONVERSION_SCREEN_SEED = 54303
+CONVERSION_PROMOTION_LIMIT = 4
 SLOT_BLUEPRINT = (
     ("slot-01", "mechanism_composer", "DIAGNOSIS_DRIVEN"),
     ("slot-02", "lineage_refiner", "DIAGNOSIS_DRIVEN"),
@@ -1033,6 +1045,7 @@ def _q4_realization_manifest(
     candidate_id: str,
     raw_pool_path: Path,
     round_index: int,
+    conversion_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     execution = dict(prefreeze["common_execution"])
     execution.update(
@@ -1042,8 +1055,7 @@ def _q4_realization_manifest(
             "provider_schema_consumer": "fresh_r1.bounded_provider_call",
         }
     )
-    payload = canonical_value(
-        {
+    payload_value: dict[str, Any] = {
             "schema": "recclaw.research-line.q4-prospective-arm-manifest.v1",
             "campaign_id": f"{CAMPAIGN_ID}-shared-realization",
             "round_index": round_index,
@@ -1068,7 +1080,22 @@ def _q4_realization_manifest(
             "development_only": True,
             "scientific_effect_claim": False,
         }
-    )
+    if conversion_plan is not None:
+        payload_value["conversion_efficiency"] = {
+            **dict(conversion_plan),
+            "implementation": {
+                "schema": "recclaw.research-line.q5-conversion-implementer.v1",
+                "max_revision_turns": MAX_REPAIR_TURNS,
+                "candidate_local_multi_file": True,
+                "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
+                "held_out_reads": 0,
+            },
+            "execution_contract": RECBole_INTERFACE_CONTRACT,
+            "shared_parent_root": str(
+                (Path(str(raw_pool_path)).resolve().parents[2] / "shared_parents").resolve()
+            ),
+        }
+    payload = canonical_value(payload_value)
     return {**payload, "manifest_digest": sha256_digest(payload)}
 
 
@@ -1214,6 +1241,22 @@ def realize(args: argparse.Namespace) -> None:
     realization_records: list[dict[str, Any]] = []
     stage_rows: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
+    conversion_plan = build_conversion_execution_plan(
+        selected_ids,
+        screen_seed=CONVERSION_SCREEN_SEED,
+        full_seeds=FULL_DEVELOPMENT_SEEDS,
+        promotion_limit=min(CONVERSION_PROMOTION_LIMIT, len(selected_ids)),
+    )
+    _write_new(output_root / "CONVERSION_EXECUTION_PLAN.json", conversion_plan)
+    entries: list[dict[str, Any]] = []
+    policy_owners: dict[str, set[str]] = {candidate_id: set() for candidate_id in selected_ids}
+    for policy, pool_rows in union["policy_attribution"].items():
+        for candidate_ids in pool_rows.values():
+            for candidate_id in candidate_ids:
+                policy_owners.setdefault(str(candidate_id), set()).add(str(policy))
+    exploration_ids = {
+        str(candidate_id) for candidate_id in union["shared_exploration_by_pool"].values()
+    }
     for ordinal, candidate_id in enumerate(sorted(selected_ids), 1):
         raw_pool_path, row = index[candidate_id]
         realization_root = output_root / "realizations" / f"{ordinal:03d}_{candidate_id[:12]}"
@@ -1226,11 +1269,12 @@ def realize(args: argparse.Namespace) -> None:
             candidate_id=candidate_id,
             raw_pool_path=raw_pool_path,
             round_index=ordinal,
+            conversion_plan=conversion_plan,
         )
         manifest_path = realization_root / "ARM_MANIFEST.json"
         _write_new(manifest_path, manifest)
         stage_ok = True
-        for stage in REALIZATION_STAGE_ORDER:
+        for stage in REALIZATION_STAGE_ORDER[:-1]:
             if not stage_ok:
                 break
             stage_ok = _invoke_realization_stage(
@@ -1240,13 +1284,79 @@ def realize(args: argparse.Namespace) -> None:
                 raw_pool_path=raw_pool_path,
                 stage=stage,
             )
+        entries.append(
+            {
+                "candidate_id": candidate_id,
+                "row": row,
+                "raw_pool_path": raw_pool_path,
+                "realization_root": realization_root,
+                "manifest_path": manifest_path,
+                "stage_ok": stage_ok,
+            }
+        )
+    screen_results = []
+    for entry in entries:
+        receipt = _read_optional(entry["realization_root"] / "MATCHED_EXECUTION_RECEIPT.json")
+        screen_results.append(
+            {
+                "candidate_id": entry["candidate_id"],
+                "status": receipt.get("status") if receipt else "MISSING",
+                "stable": bool(receipt and receipt.get("stable")),
+                "screen_signal": receipt.get("screen_signal") if receipt else None,
+                "screen_cost_ms": receipt.get("candidate", {}).get("wall_time_ms") if receipt else None,
+                "policy_owners": sorted(policy_owners.get(entry["candidate_id"], set())),
+                "shared_exploration": entry["candidate_id"] in exploration_ids,
+            }
+        )
+    _write_new(
+        output_root / "CONVERSION_SCREEN_RESULTS.json",
+        {
+            "schema": "recclaw.research-line.q5-conversion-screen-results.v1",
+            "plan_digest": conversion_plan["plan_digest"],
+            "results": screen_results,
+            "held_out_reads": 0,
+            "retries": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        },
+    )
+    promoted = choose_stable_promotions(
+        screen_results,
+        promotion_limit=int(conversion_plan["promotion"]["limit"]),
+    )
+    promotion_plan = finalize_conversion_execution_plan(
+        conversion_plan,
+        screen_results,
+        promoted,
+    )
+    _write_new(output_root / "CONVERSION_PROMOTION_PLAN.json", promotion_plan)
+    promoted_set = set(promoted)
+    for entry in entries:
+        candidate_id = entry["candidate_id"]
+        realization_root = entry["realization_root"]
+        if entry["stage_ok"]:
+            if candidate_id in promoted_set:
+                _invoke_realization_stage(
+                    args,
+                    realization_root=realization_root,
+                    manifest_path=entry["manifest_path"],
+                    raw_pool_path=entry["raw_pool_path"],
+                    stage="full-execution",
+                )
+            _invoke_realization_stage(
+                args,
+                realization_root=realization_root,
+                manifest_path=entry["manifest_path"],
+                raw_pool_path=entry["raw_pool_path"],
+                stage="episode",
+            )
         rows = _stage_rows(realization_root, candidate_id)
         stage_rows.extend(rows)
         qualification = _read_optional(realization_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
         if qualification and qualification.get("status") == "QUALIFICATION_PASS":
             record = _realization_contract(
                 candidate_id=candidate_id,
-                row=row,
+                row=entry["row"],
                 realization_root=realization_root,
                 qualification=qualification,
             )
@@ -1258,7 +1368,7 @@ def realize(args: argparse.Namespace) -> None:
                     "research_spec_digest": candidate_id,
                     "status": "REALIZATION_MISSING",
                     "qualification_status": qualification.get("status") if qualification else None,
-                    "stage_process_failure": not stage_ok,
+                    "stage_process_failure": not entry["stage_ok"],
                 }
             )
     denominator = build_q5a_stage_denominator(

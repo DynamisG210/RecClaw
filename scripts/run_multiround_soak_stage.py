@@ -663,7 +663,157 @@ def run_resource_admission(args: argparse.Namespace) -> Path:
     )
 
 
+def _conversion_parent(
+    args: argparse.Namespace,
+    manifest: Mapping[str, Any],
+    *,
+    kind: str,
+    seed: int,
+    epochs: int,
+    timeout_seconds: int,
+    execution_purpose: str,
+) -> tuple[dict[str, Any], bool]:
+    from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
+    from recclaw_core.experiments.helix_abc_v1.fresh_r1 import run_development_training
+
+    contract = manifest["conversion_efficiency"]
+    parent_root = Path(str(contract["shared_parent_root"])) / kind / f"seed-{seed}"
+    receipt_path = parent_root / "PARENT_RECEIPT.json"
+    source = args.recbole_root / "recbole/model/general_recommender/bpr.py"
+    source_digest = bytes_sha256(source.read_bytes())
+    if receipt_path.is_file():
+        receipt = _read(receipt_path)
+        if (
+            receipt.get("seed") != int(seed)
+            or receipt.get("epochs") != int(epochs)
+            or receipt.get("source_sha256") != source_digest
+        ):
+            raise RuntimeError("conversion shared parent binding drift")
+        return receipt, True
+    parent = run_development_training(
+        repo_root=args.repo_root,
+        side_root=parent_root,
+        run_id=f"matched-bpr-{kind}-{seed}",
+        seed=int(seed),
+        candidate_root=None,
+        entrypoint="recbole.model.general_recommender.bpr:BPR",
+        source_sha256=source_digest,
+        run_identity=_round_identity(manifest),
+        authority="user-delegated-q5b-conversion-shared-parent",
+        timeout_seconds=timeout_seconds,
+        epochs=int(epochs),
+        execution_purpose=execution_purpose,
+        watchdog_seconds=int(manifest["frozen_execution"]["engineering_watchdog_seconds"]),
+        recbole_commit_identity=REQUIRED_RECBOLE_COMMIT,
+    )
+    receipt = {
+        "schema": "recclaw.research-line.q5-conversion-shared-parent.v1",
+        "kind": kind,
+        "seed": int(seed),
+        "epochs": int(epochs),
+        "source_sha256": source_digest,
+        "run": parent,
+        "held_out_reads": 0,
+        "development_only": True,
+        "scientific_effect_claim": False,
+    }
+    _receipt(receipt_path, receipt)
+    return _read(receipt_path), False
+
+
+def _run_conversion_screen(args: argparse.Namespace, manifest: Mapping[str, Any]) -> Path:
+    from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
+    from recclaw_core.experiments.helix_abc_v1.fresh_r1 import run_development_training
+
+    contract = manifest["conversion_efficiency"]
+    screen = contract["screen"]
+    seed = int(screen["seed"])
+    epochs = int(screen["epochs"])
+    admission = _read(args.round_root / "RESOURCE_ADMISSION_RECEIPT.json")
+    if not admission.get("admitted"):
+        return _receipt(
+            args.round_root / "MATCHED_EXECUTION_RECEIPT.json",
+            {
+                "schema": "recclaw.research-line.q5-conversion-screen-stage.v1",
+                "status": "NO_LEGAL_ADMITTED_ARM",
+                "baseline": None,
+                "candidate": None,
+                "matched_seed": seed,
+                "screen_epochs": epochs,
+                "screen_signal": None,
+                "stable": False,
+                "parent_reused": False,
+                "physical_training_runs": 0,
+                "retries": 0,
+                "held_out_reads": 0,
+                "development_only": True,
+                "scientific_effect_claim": False,
+            },
+        )
+    parent, parent_reused = _conversion_parent(
+        args,
+        manifest,
+        kind="screen",
+        seed=seed,
+        epochs=epochs,
+        timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+        execution_purpose="DEVELOPMENT_SCREEN_PARENT",
+    )
+    qualification = _read(args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
+    candidate_root = Path(qualification["candidate_root"])
+    source = candidate_root / "recclaw_ext/candidate.py"
+    candidate = run_development_training(
+        repo_root=args.repo_root,
+        side_root=args.round_root / "matched_execution" / "screen",
+        run_id="selected-candidate-screen",
+        seed=seed,
+        candidate_root=candidate_root,
+        entrypoint=str(qualification["entrypoint"]),
+        source_sha256=bytes_sha256(source.read_bytes()),
+        run_identity=_round_identity(manifest),
+        authority="user-delegated-q5b-conversion-screen",
+        timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+        epochs=epochs,
+        execution_purpose="DEVELOPMENT_SCREEN_CANDIDATE",
+        watchdog_seconds=int(manifest["frozen_execution"]["engineering_watchdog_seconds"]),
+        recbole_commit_identity=REQUIRED_RECBOLE_COMMIT,
+    )
+    closed = all(
+        run.get("exit_status") == "SUCCESS" and "ndcg@10" in run.get("metrics", {})
+        for run in (parent["run"], candidate)
+    )
+    signal = None
+    if closed:
+        signal = float(candidate["metrics"]["ndcg@10"]) - float(parent["run"]["metrics"]["ndcg@10"])
+    return _receipt(
+        args.round_root / "MATCHED_EXECUTION_RECEIPT.json",
+        {
+            "schema": "recclaw.research-line.q5-conversion-screen-stage.v1",
+            "status": "COMPLETED_MATCHED_SCREEN" if closed else "MATCHED_PAIR_INCOMPLETE",
+            "baseline": parent["run"],
+            "candidate": candidate,
+            "matched_seed": seed,
+            "screen_epochs": epochs,
+            "screen_signal": signal,
+            "stable": closed,
+            "parent_reused": parent_reused,
+            "physical_training_runs": 1 + (0 if parent_reused else 1),
+            "retries": 0,
+            "held_out_reads": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        },
+    )
+
+
 def run_matched_execution(args: argparse.Namespace) -> Path:
+    manifest = _manifest(args)
+    if manifest.get("conversion_efficiency") is not None:
+        return _run_conversion_screen(args, manifest)
+    return _run_standard_matched_execution(args)
+
+
+def _run_standard_matched_execution(args: argparse.Namespace) -> Path:
     from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
     from recclaw_core.experiments.helix_abc_v1.fresh_r1 import run_development_training
 
@@ -744,6 +894,105 @@ def run_matched_execution(args: argparse.Namespace) -> Path:
     )
 
 
+def run_full_execution(args: argparse.Namespace) -> Path:
+    from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
+    from recclaw_core.experiments.helix_abc_v1.fresh_r1 import run_development_training
+
+    manifest = _manifest(args)
+    contract = manifest["conversion_efficiency"]
+    candidate_id = str(manifest["selected_candidate"]["candidate_id"])
+    campaign_root = args.round_root.parents[1]
+    promotion_path = campaign_root / "CONVERSION_PROMOTION_PLAN.json"
+    promotion = _read(promotion_path)
+    promoted = tuple(str(value) for value in promotion["promotion"]["promoted_candidate_ids"])
+    if candidate_id not in promoted:
+        return _receipt(
+            args.round_root / "FULL_MATCHED_EXECUTION_RECEIPT.json",
+            {
+                "schema": "recclaw.research-line.q5-conversion-full-stage.v1",
+                "status": "NOT_PROMOTED_AFTER_SCREEN",
+                "candidate_id": candidate_id,
+                "full_seed_results": [],
+                "physical_training_runs": 0,
+                "retries": 0,
+                "held_out_reads": 0,
+                "development_only": True,
+                "scientific_effect_claim": False,
+            },
+        )
+    qualification = _read(args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
+    candidate_root = Path(qualification["candidate_root"])
+    source = candidate_root / "recclaw_ext/candidate.py"
+    full = contract["full"]
+    results: list[dict[str, Any]] = []
+    physical_runs = 0
+    for seed in tuple(int(value) for value in full["fresh_development_seeds"]):
+        parent, parent_reused = _conversion_parent(
+            args,
+            manifest,
+            kind="full",
+            seed=seed,
+            epochs=int(full["epochs"]),
+            timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+            execution_purpose="DEVELOPMENT_FULL_PARENT",
+        )
+        candidate = run_development_training(
+            repo_root=args.repo_root,
+            side_root=args.round_root / "matched_execution" / f"full_seed_{seed}",
+            run_id=f"selected-candidate-full-{seed}",
+            seed=seed,
+            candidate_root=candidate_root,
+            entrypoint=str(qualification["entrypoint"]),
+            source_sha256=bytes_sha256(source.read_bytes()),
+            run_identity=_round_identity(manifest),
+            authority="user-delegated-q5b-conversion-full-development",
+            timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+            epochs=int(full["epochs"]),
+            execution_purpose="DEVELOPMENT_FULL_CANDIDATE",
+            watchdog_seconds=int(manifest["frozen_execution"]["engineering_watchdog_seconds"]),
+            recbole_commit_identity=REQUIRED_RECBOLE_COMMIT,
+        )
+        physical_runs += 1 + (0 if parent_reused else 1)
+        results.append(
+            {
+                "seed": seed,
+                "baseline": parent["run"],
+                "candidate": candidate,
+                "parent_reused": parent_reused,
+                "status": (
+                    "COMPLETED_MATCHED_PAIR"
+                    if parent["run"].get("exit_status") == "SUCCESS"
+                    and candidate.get("exit_status") == "SUCCESS"
+                    and "ndcg@10" in parent["run"].get("metrics", {})
+                    and "ndcg@10" in candidate.get("metrics", {})
+                    else "MATCHED_PAIR_INCOMPLETE"
+                ),
+            }
+        )
+    complete = all(row["status"] == "COMPLETED_MATCHED_PAIR" for row in results)
+    first = results[0] if results else None
+    return _receipt(
+        args.round_root / "FULL_MATCHED_EXECUTION_RECEIPT.json",
+        {
+            "schema": "recclaw.research-line.q5-conversion-full-stage.v1",
+            "status": "COMPLETED_MATCHED_PAIR" if complete else "MATCHED_PAIR_INCOMPLETE",
+            "candidate_id": candidate_id,
+            "baseline": first["baseline"] if first else None,
+            "candidate": first["candidate"] if first else None,
+            "matched_seed": first["seed"] if first else None,
+            "full_epochs": int(full["epochs"]),
+            "full_seed_results": results,
+            "physical_training_runs": physical_runs,
+            "screen_outcomes_reused_as_effect": False,
+            "fresh_development_seeds": [row["seed"] for row in results],
+            "retries": 0,
+            "held_out_reads": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        },
+    )
+
+
 def run_episode(args: argparse.Namespace) -> Path:
     from recclaw_core.experiments.helix_abc_v1.canonical import canonical_value, sha256_digest
     from recclaw_core.experiments.helix_abc_v1.vnext_contracts import (
@@ -756,7 +1005,11 @@ def run_episode(args: argparse.Namespace) -> Path:
     _arm, record = _selected_record(manifest, args.input_pool)
     spec = _rehydrate_spec(record)
     qualification = _read_upstream(args, "MATERIALIZE_QUALIFIER_RECEIPT.json")
-    matched = _read(args.round_root / "MATCHED_EXECUTION_RECEIPT.json")
+    conversion = manifest.get("conversion_efficiency")
+    matched_path = args.round_root / "MATCHED_EXECUTION_RECEIPT.json"
+    if conversion is not None and (args.round_root / "FULL_MATCHED_EXECUTION_RECEIPT.json").is_file():
+        matched_path = args.round_root / "FULL_MATCHED_EXECUTION_RECEIPT.json"
+    matched = _read(matched_path)
     if matched["status"] != "COMPLETED_MATCHED_PAIR":
         return _receipt(
             args.round_root / "EPISODE_RECEIPT.json",
@@ -766,6 +1019,8 @@ def run_episode(args: argparse.Namespace) -> Path:
                 "missingness": (
                     "RESOURCE_OR_UPSTREAM_DEFERRED"
                     if matched["status"] == "NO_LEGAL_ADMITTED_ARM"
+                    else "SCREEN_NOT_PROMOTED"
+                    if matched["status"] == "COMPLETED_MATCHED_SCREEN"
                     else "INCOMPLETE_MATCHED_DEVELOPMENT_EXECUTION"
                 ),
                 "typed_episode": None,
@@ -775,33 +1030,6 @@ def run_episode(args: argparse.Namespace) -> Path:
                 "scientific_effect_claim": False,
             },
         )
-    baseline = matched["baseline"]
-    candidate = matched["candidate"]
-    outcome = canonical_value(
-        {
-            "baseline_metrics": baseline["metrics"],
-            "candidate_metrics": candidate["metrics"],
-            "metric": "ndcg@10",
-            "partition": "DEVELOPMENT_VALIDATION",
-            "seed": matched["matched_seed"],
-            "single_seed_interpretation": "INCONCLUSIVE",
-        }
-    )
-    cost = canonical_value(
-        {
-            "baseline_wall_time_ms": baseline["wall_time_ms"],
-            "candidate_wall_time_ms": candidate["wall_time_ms"],
-            "physical_training_runs": 2,
-        }
-    )
-    binding = canonical_value(
-        {
-            "baseline_binding_digest": baseline["binding_digest"],
-            "candidate_binding_digest": candidate["binding_digest"],
-            "matched_seed": matched["matched_seed"],
-            "protocol_digest": spec.protocol_digest,
-        }
-    )
     capability = canonical_value(
         {
             "candidate_package_digest": qualification["candidate_package_digest"],
@@ -811,44 +1039,95 @@ def run_episode(args: argparse.Namespace) -> Path:
         }
     )
     identity = _round_identity(manifest)
-    episode = TypedResearchEpisodeV1(
-        campaign_id=identity,
-        context_ref=spec.context_ref,
-        context_digest=spec.context_digest,
-        hypothesis=spec.hypothesis,
-        executable_capability_ref=f"{identity}-qualified:{sha256_digest(capability)}",
-        executable_capability_digest=sha256_digest(capability),
-        executable_profile_ref=f"{identity}-profile:{sha256_digest(capability)}",
-        executable_profile_digest=sha256_digest(capability),
-        experiment_binding_ref=f"{identity}-binding:{sha256_digest(binding)}",
-        experiment_binding_digest=sha256_digest(binding),
-        comparator_ref=f"{identity}-bpr:{baseline['binding_digest']}",
-        comparator_digest=sha256_digest(baseline),
-        outcome_ref=f"{identity}-outcome:{sha256_digest(outcome)}",
-        outcome_digest=sha256_digest(outcome),
-        cost_ref=f"{identity}-cost:{sha256_digest(cost)}",
-        cost_digest=sha256_digest(cost),
-        protocol_ref=spec.protocol_ref,
-        protocol_digest=spec.protocol_digest,
-        evidence_class=EpisodeEvidenceClassV1.INCONCLUSIVE_EXPERIMENT,
-        experiment_executed=True,
-        mechanism_interpretation="NOT_ADJUDICATED",
-        competing_explanation=spec.competing_explanation,
-        failure_class=ResearchFailureClassV1.INCONCLUSIVE,
-        mechanism_negative_evidence=False,
-        next_discriminative_test=spec.falsifier,
-        qualification_receipt_ref=qualification["qualification_receipt_ref"],
-        qualification_receipt_digest=qualification["qualification_receipt_digest"],
-        qualification_evidence_used_as_scientific=False,
-    )
+    seed_results = matched.get("full_seed_results")
+    if not isinstance(seed_results, list) or not seed_results:
+        seed_results = [
+            {
+                "seed": matched["matched_seed"],
+                "baseline": matched["baseline"],
+                "candidate": matched["candidate"],
+            }
+        ]
+    episodes = []
+    outcomes = []
+    costs = []
+    for result in seed_results:
+        baseline = result["baseline"]
+        candidate = result["candidate"]
+        seed = int(result["seed"])
+        outcome = canonical_value(
+            {
+                "baseline_metrics": baseline["metrics"],
+                "candidate_metrics": candidate["metrics"],
+                "metric": "ndcg@10",
+                "partition": "DEVELOPMENT_VALIDATION",
+                "seed": seed,
+                "single_seed_interpretation": "INCONCLUSIVE",
+            }
+        )
+        cost = canonical_value(
+            {
+                "baseline_wall_time_ms": baseline["wall_time_ms"],
+                "candidate_wall_time_ms": candidate["wall_time_ms"],
+                "physical_training_runs": 2,
+            }
+        )
+        binding = canonical_value(
+            {
+                "baseline_binding_digest": baseline["binding_digest"],
+                "candidate_binding_digest": candidate["binding_digest"],
+                "matched_seed": seed,
+                "protocol_digest": spec.protocol_digest,
+            }
+        )
+        episode_identity = (
+            identity if len(seed_results) == 1 else f"{identity}-seed-{seed}"
+        )
+        episode = TypedResearchEpisodeV1(
+            campaign_id=episode_identity,
+            context_ref=spec.context_ref,
+            context_digest=spec.context_digest,
+            hypothesis=spec.hypothesis,
+            executable_capability_ref=f"{episode_identity}-qualified:{sha256_digest(capability)}",
+            executable_capability_digest=sha256_digest(capability),
+            executable_profile_ref=f"{episode_identity}-profile:{sha256_digest(capability)}",
+            executable_profile_digest=sha256_digest(capability),
+            experiment_binding_ref=f"{episode_identity}-binding:{sha256_digest(binding)}",
+            experiment_binding_digest=sha256_digest(binding),
+            comparator_ref=f"{episode_identity}-bpr:{baseline['binding_digest']}",
+            comparator_digest=sha256_digest(baseline),
+            outcome_ref=f"{episode_identity}-outcome:{sha256_digest(outcome)}",
+            outcome_digest=sha256_digest(outcome),
+            cost_ref=f"{episode_identity}-cost:{sha256_digest(cost)}",
+            cost_digest=sha256_digest(cost),
+            protocol_ref=spec.protocol_ref,
+            protocol_digest=spec.protocol_digest,
+            evidence_class=EpisodeEvidenceClassV1.INCONCLUSIVE_EXPERIMENT,
+            experiment_executed=True,
+            mechanism_interpretation="NOT_ADJUDICATED",
+            competing_explanation=spec.competing_explanation,
+            failure_class=ResearchFailureClassV1.INCONCLUSIVE,
+            mechanism_negative_evidence=False,
+            next_discriminative_test=spec.falsifier,
+            qualification_receipt_ref=qualification["qualification_receipt_ref"],
+            qualification_receipt_digest=qualification["qualification_receipt_digest"],
+            qualification_evidence_used_as_scientific=False,
+        )
+        episodes.append(episode.canonical_dict())
+        outcomes.append(outcome)
+        costs.append(cost)
     return _receipt(
         args.round_root / "EPISODE_RECEIPT.json",
         {
             "schema": "recclaw.research-line.q4-episode-stage.v1",
             "status": "EPISODE_CREATED",
             "missingness": None,
-            "typed_episode": episode.canonical_dict(),
-            "outcome_summary": outcome,
+            "typed_episode": episodes[0] if len(episodes) == 1 else None,
+            "typed_episodes": episodes,
+            "outcome_summary": outcomes[0] if len(outcomes) == 1 else None,
+            "outcome_summaries": outcomes,
+            "cost_summaries": costs,
+            "full_seed_count": len(episodes),
             "effect_update_allowed": True,
             "held_out_reads": 0,
             "development_only": True,
@@ -1073,6 +1352,7 @@ STAGES = {
     "resource-admission": run_resource_admission,
     "mechanism-probe": run_mechanism_probe,
     "matched-execution": run_matched_execution,
+    "full-execution": run_full_execution,
     "episode": run_episode,
     "authority-update": run_authority_update,
     "activation": run_activation,
