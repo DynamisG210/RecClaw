@@ -13,6 +13,7 @@ for path in (SRC, SCRIPTS):
         sys.path.insert(0, str(path))
 
 from recclaw_core.experiments.helix_abc_v1.idea_quality import (  # noqa: E402
+    render_q1_producer_prompt,
     score_preoutcome_testability,
 )
 from recclaw_core.experiments.helix_abc_v1.vnext_contracts import (  # noqa: E402
@@ -115,6 +116,32 @@ def test_q5_prompt_injects_distinct_role_modes_and_pool_signatures() -> None:
     assert "candidate_specific_results" in diagnosis
     assert "{{" not in diagnosis and "{{" not in frontier
     assert Q5A_AGGREGATE_CONTEXT["candidate_specific_results"] is False
+
+
+def test_legacy_q1_renderer_supplies_new_shared_template_defaults() -> None:
+    template = (
+        ROOT / "src/recclaw_core/experiments/helix_abc_v1/resources/"
+        "idea_quality_producer_prompt_v1.txt"
+    ).read_text(encoding="utf-8")
+    rendered = render_q1_producer_prompt(
+        template,
+        arm="enriched",
+        slot="diagnosis",
+        role="mechanism_composer",
+        seed=55011,
+        context={},
+        profile_catalog=(),
+        protocol_ref="protocol:q1",
+        protocol_digest=_digest("protocol-q1"),
+        context_ref="context:q1",
+        context_digest=_digest("context-q1"),
+        profile_ref="profile:q1",
+        profile_digest=_digest("profile-q1"),
+    )
+    assert "Compose a genuinely new" in rendered
+    assert "Previously proposed mechanism signatures in this pool" in rendered
+    assert "{{ROLE_INSTRUCTION}}" not in rendered
+    assert "{{POOL_MECHANISM_SIGNATURES}}" not in rendered
 
 
 def test_graded_preoutcome_features_are_structural_and_not_all_tied() -> None:

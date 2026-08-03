@@ -27,6 +27,7 @@ from .fresh_r1 import (
     BUDGET_LIMITS,
     MODEL,
     PROTOCOL_REQUIREMENTS,
+    ROLE_INSTRUCTIONS,
     _materialize_and_qualify,
     _shared_policy,
     _write_new_json,
@@ -386,6 +387,8 @@ def render_q1_producer_prompt(
         "{{LOGICAL_SLOT_ID}}": slot,
         "{{PROPOSAL_SEED}}": str(seed),
         "{{PRODUCER_ROLE}}": role,
+        "{{ROLE_INSTRUCTION}}": ROLE_INSTRUCTIONS[role],
+        "{{POOL_MECHANISM_SIGNATURES}}": json.dumps([], separators=(",", ":")),
         "{{CONTRACT_INSTRUCTION}}": _contract_instruction(arm, slot),
         "{{RESEARCH_CONTEXT_JSON}}": json.dumps(
             context, sort_keys=True, separators=(",", ":")
