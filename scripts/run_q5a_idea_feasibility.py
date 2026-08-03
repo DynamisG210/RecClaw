@@ -231,7 +231,7 @@ from run_prospective_policy_comparison import (  # noqa: E402
 )
 
 
-CAMPAIGN_ID = "q5a-idea-feasibility-20260803-01"
+CAMPAIGN_ID = os.environ.get("RECCLAW_Q5A_CAMPAIGN_ID", "q5a-idea-feasibility-20260803-01")
 FOUNDATION_COMMIT = "885b81ed0b67ec0cc551a589d6d1e3a852b73c43"
 FOUNDATION_PACKAGE_DIGEST = (
     "014bb27987086401de92092164fe715a5dba96f345fc80dc3fb51751dcc8de14"
