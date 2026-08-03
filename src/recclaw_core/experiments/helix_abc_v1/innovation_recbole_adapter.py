@@ -623,12 +623,18 @@ def _generic_failure(
 def _failure_detail(
     failure: _QualificationStageFailure,
 ) -> dict[str, Any]:
+    message = str(failure)
     return canonical_value(
         {
             "error_type": type(failure).__name__,
             "failure_class": failure.failure_class.value,
+            "message": message[:2000],
             "reason_code": failure.reason_code,
             "stage": failure.stage.value,
+            "traceback": (
+                f"{failure.failure_class.value}/"
+                f"{failure.stage.value}/{failure.reason_code}: {message[:1000]}"
+            ),
         }
     )
 

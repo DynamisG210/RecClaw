@@ -311,6 +311,9 @@ def run_implementer(args: argparse.Namespace) -> Path:
     from recclaw_core.experiments.helix_abc_v1.innovation_spine import (
         build_shared_implementer_request,
     )
+    from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (
+        CANDIDATE_LOCAL_ALLOWED_FILES,
+    )
 
     manifest = _manifest(args)
     arm, record = _selected_record(manifest, args.input_pool)
@@ -320,9 +323,22 @@ def run_implementer(args: argparse.Namespace) -> Path:
     schema_path = resources / "fresh_r1_implementation_response_v1.schema.json"
     tool_policy_path = resources / "fresh_open_spec_tool_policy_v1.json"
     template = template_path.read_text(encoding="utf-8")
+    conversion_contract = manifest.get("conversion_efficiency")
+    if conversion_contract is not None:
+        template_path = resources / "q5_conversion_implementer_prompt_v1.txt"
+        schema_path = resources / "q5_conversion_implementer_response_v1.schema.json"
+        template = template_path.read_text(encoding="utf-8")
     policy = _shared_policy(
         bytes_sha256(template_path.read_bytes()),
         bytes_sha256(tool_policy_path.read_bytes()),
+        **(
+            {
+                "allowed_files": CANDIDATE_LOCAL_ALLOWED_FILES,
+                "execution_contract": conversion_contract,
+            }
+            if conversion_contract is not None
+            else {}
+        ),
     )
     prompt = render_implementation_prompt(
         template, build_shared_implementer_request(spec, policy=policy)
@@ -363,10 +379,30 @@ def run_implementer(args: argparse.Namespace) -> Path:
 
 
 def run_materialize_qualifier(args: argparse.Namespace) -> Path:
-    from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
-    from recclaw_core.experiments.helix_abc_v1.fresh_r1 import _materialize_and_qualify
+    from recclaw_core.experiments.helix_abc_v1.canonical import (
+        bytes_sha256,
+        sha256_digest,
+    )
+    from recclaw_core.experiments.helix_abc_v1.fresh_r1 import (
+        _materialize_and_qualify,
+        _shared_policy,
+        bounded_provider_call,
+        render_implementation_prompt,
+    )
+    from recclaw_core.experiments.helix_abc_v1.innovation_spine import (
+        build_shared_implementer_request,
+    )
     from recclaw_core.experiments.helix_abc_v1.idea_quality import _q1_unit_check
     from recclaw_core.experiments.helix_abc_v1.vnext_contracts import QualificationStatusV1
+    from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (
+        CANDIDATE_LOCAL_ALLOWED_FILES,
+        MAX_REPAIR_TURNS,
+        build_mechanical_repair_request,
+        is_mechanical_repair_failure,
+    )
+    from recclaw_core.experiments.helix_abc_v1.innovation_spine import (
+        InnovationSpineError,
+    )
 
     manifest = _manifest(args)
     _arm, record = _selected_record(manifest, args.input_pool)
@@ -389,23 +425,147 @@ def run_materialize_qualifier(args: argparse.Namespace) -> Path:
         )
     resources = args.repo_root / "src/recclaw_core/experiments/helix_abc_v1/resources"
     template_path = resources / "idea_quality_implementer_prompt_v1.txt"
+    schema_path = resources / "fresh_r1_implementation_response_v1.schema.json"
     tool_policy_path = resources / "fresh_open_spec_tool_policy_v1.json"
-    materialized, qualification, behavior = _materialize_and_qualify(
-        repo_root=args.repo_root,
-        side_root=args.round_root / "materialized",
-        slot_id="selected",
-        seed=int(manifest["frozen_execution"]["qualification_seed"]),
-        spec=spec,
-        implementation=implementation["implementation_response"],
-        implementation_prompt_digest=bytes_sha256(template_path.read_bytes()),
-        tool_policy_digest=bytes_sha256(tool_policy_path.read_bytes()),
-        run_identity=_round_identity(manifest),
-        unit_check_factory=_q1_unit_check(spec),
+    conversion_contract = manifest.get("conversion_efficiency")
+    if conversion_contract is not None:
+        template_path = resources / "q5_conversion_implementer_prompt_v1.txt"
+        schema_path = resources / "q5_conversion_implementer_response_v1.schema.json"
+    policy = _shared_policy(
+        bytes_sha256(template_path.read_bytes()),
+        bytes_sha256(tool_policy_path.read_bytes()),
+        **(
+            {
+                "allowed_files": CANDIDATE_LOCAL_ALLOWED_FILES,
+                "execution_contract": conversion_contract,
+            }
+            if conversion_contract is not None
+            else {}
+        ),
     )
-    candidate_root = (
-        args.round_root
-        / "materialized/candidates/selected"
-        / str(materialized.shared_request["blind_candidate_id"])
+    current_implementation = implementation["implementation_response"]
+    materialized = None
+    qualification = None
+    behavior: dict[str, Any] = {}
+    failure_detail: Mapping[str, Any] | None = None
+    materialized_root = args.round_root / "materialized"
+    revision_history: list[dict[str, Any]] = []
+    for attempt in range(0, MAX_REPAIR_TURNS + 1):
+        materialized_root = (
+            args.round_root / "materialized"
+            if attempt == 0
+            else args.round_root / f"materialized_revision_{attempt:02d}"
+        )
+        try:
+            materialized, qualification, behavior = _materialize_and_qualify(
+                repo_root=args.repo_root,
+                side_root=materialized_root,
+                slot_id="selected",
+                seed=int(manifest["frozen_execution"]["qualification_seed"]),
+                spec=spec,
+                implementation=current_implementation,
+                implementation_prompt_digest=bytes_sha256(template_path.read_bytes()),
+                tool_policy_digest=bytes_sha256(tool_policy_path.read_bytes()),
+                run_identity=_round_identity(manifest),
+                policy=policy,
+                unit_check_factory=_q1_unit_check(spec),
+            )
+            failure_detail = qualification.failure_detail
+            revision_history.append(
+                {
+                    "turn": attempt,
+                    "root": str(materialized_root),
+                    "status": "PASS" if qualification.receipt.status is QualificationStatusV1.PASS else "FAIL",
+                    "failure": failure_detail,
+                }
+            )
+        except InnovationSpineError as error:
+            materialized = None
+            qualification = None
+            behavior = {}
+            failure_detail = {
+                "failure_class": error.failure_class,
+                "reason_code": error.reason_code,
+                "stage": "SCHEMA",
+                "message": str(error),
+                "traceback": f"InnovationSpineError: {error.reason_code}: {str(error)[:1000]}",
+            }
+            revision_history.append(
+                {"turn": attempt, "root": str(materialized_root), "status": "FAIL", "failure": failure_detail}
+            )
+        except Exception as error:  # noqa: BLE001 - isolate one candidate failure.
+            materialized = None
+            qualification = None
+            behavior = {}
+            failure_detail = {
+                "failure_class": "RUNTIME",
+                "reason_code": type(error).__name__,
+                "stage": "QUALIFY",
+                "message": str(error),
+                "traceback": f"{type(error).__name__}: {str(error)[:1000]}",
+            }
+            revision_history.append(
+                {"turn": attempt, "root": str(materialized_root), "status": "FAIL", "failure": failure_detail}
+            )
+        if qualification is not None and qualification.receipt.status is QualificationStatusV1.PASS:
+            break
+        if (
+            conversion_contract is None
+            or attempt >= MAX_REPAIR_TURNS
+            or not isinstance(failure_detail, Mapping)
+            or not is_mechanical_repair_failure(failure_detail)
+        ):
+            break
+        current_source = {
+            str(item["path"]): str(item["content"])
+            for item in current_implementation.get("files", [])
+        }
+        repair_request = build_mechanical_repair_request(
+            build_shared_implementer_request(spec, policy=policy),
+            failure_detail,
+            current_source=current_source,
+            failure_message=str(failure_detail.get("message", "")),
+            short_trace=str(failure_detail.get("traceback", "")),
+            repair_attempt=attempt + 1,
+        )
+        repair_prompt = render_implementation_prompt(
+            template_path.read_text(encoding="utf-8"), repair_request
+        )
+        repair_call = bounded_provider_call(
+            call_root=args.round_root / f"provider/implementation_revision_{attempt + 1:02d}",
+            schema_path=schema_path,
+            logical_call_id=f"{_round_identity(manifest)}:selected:implementation-revision-{attempt + 1}",
+            session_id=f"{_round_identity(manifest)}:implementation-revision-session-{attempt + 1}",
+            prompt=repair_prompt,
+            token_ceiling=int(manifest["frozen_execution"]["implementation_token_ceiling"]),
+            maximum_physical_attempts=1,
+        )
+        revision_history[-1]["revision_request_digest"] = sha256_digest(repair_request)
+        revision_history[-1]["revision_provider_attempts"] = repair_call.attempts
+        if repair_call.call is None:
+            revision_history[-1]["revision_status"] = "PROVIDER_FAILURE"
+            break
+        current_implementation = repair_call.call.response["proposals"][0]
+        revision_history[-1]["revision_status"] = "PROVIDER_SUCCESS"
+    if materialized is None or qualification is None:
+        return _receipt(
+            args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json",
+            {
+                "schema": "recclaw.research-line.q4-materialize-qualifier-stage.v1",
+                "status": "QUALIFICATION_FAILURE",
+                "selected_candidate_id": spec.digest,
+                "candidate_root": None,
+                "qualification_status": None,
+                "failure_detail": failure_detail,
+                "revision_history": revision_history,
+                "manual_candidate_patches": 0,
+                "held_out_reads": 0,
+                "development_only": True,
+                "scientific_effect_claim": False,
+            },
+        )
+    candidate_root = materialized_root / "candidates" / "selected" / str(
+        materialized.shared_request["blind_candidate_id"]
     )
     passed = qualification.receipt.status is QualificationStatusV1.PASS
     return _receipt(
@@ -424,6 +584,7 @@ def run_materialize_qualifier(args: argparse.Namespace) -> Path:
             "qualification_receipt_ref": qualification.receipt.receipt_id,
             "qualification_receipt_digest": qualification.receipt.digest,
             "behavioral_evidence": behavior,
+            "revision_history": revision_history,
             "manual_candidate_patches": 0,
             "held_out_reads": 0,
             "development_only": True,

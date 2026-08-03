@@ -749,11 +749,12 @@ def _materialize_and_qualify(
     implementation_prompt_digest: str,
     tool_policy_digest: str,
     run_identity: str = CORRECTED_RUN_IDENTITY,
+    policy: SharedImplementerPolicy | None = None,
     unit_check_factory: Callable[
         [dict[str, Any]], Callable[[Any, Any, Any], None]
     ] = _shared_behavioral_unit_check,
 ) -> tuple[MaterializedCandidate, MechanicalQualificationRun, dict[str, Any]]:
-    policy = _shared_policy(implementation_prompt_digest, tool_policy_digest)
+    policy = policy or _shared_policy(implementation_prompt_digest, tool_policy_digest)
     request = build_shared_implementer_request(spec, policy=policy)
     candidate_parent = side_root / "candidates" / slot_id
     candidate_parent.mkdir(parents=True, exist_ok=True)
@@ -1185,9 +1186,16 @@ def _episode(
     )
 
 
-def _shared_policy(implementation_prompt_digest: str, tool_policy_digest: str) -> SharedImplementerPolicy:
+def _shared_policy(
+    implementation_prompt_digest: str,
+    tool_policy_digest: str,
+    *,
+    allowed_files: tuple[str, ...] | None = None,
+    execution_contract: Mapping[str, Any] | None = None,
+) -> SharedImplementerPolicy:
     return SharedImplementerPolicy(
-        allowed_files=("recclaw_ext/__init__.py", "recclaw_ext/candidate.py"),
+        allowed_files=allowed_files
+        or ("recclaw_ext/__init__.py", "recclaw_ext/candidate.py"),
         dependency_identity_ref=(
             "repo:docs/research_line/vnext/R1_R2_RUNTIME_DEPENDENCY_LOCK_V1#dependency_identity"
         ),
@@ -1203,6 +1211,7 @@ def _shared_policy(implementation_prompt_digest: str, tool_policy_digest: str) -
         prompt_digest=implementation_prompt_digest,
         tool_policy_digest=tool_policy_digest,
         implementation_token_ceiling=IMPLEMENTATION_TOKEN_CEILING,
+        execution_contract=execution_contract,
     )
 
 

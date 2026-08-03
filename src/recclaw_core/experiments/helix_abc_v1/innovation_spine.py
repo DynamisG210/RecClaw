@@ -103,6 +103,7 @@ class SharedImplementerPolicy:
     prompt_digest: str
     tool_policy_digest: str
     implementation_token_ceiling: int
+    execution_contract: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -165,6 +166,14 @@ class SharedImplementerPolicy:
                 failure_class="IMPLEMENTATION",
                 reason_code="INVALID_TOKEN_CEILING",
                 message="implementation_token_ceiling must be positive",
+            )
+        if self.execution_contract is not None and not isinstance(
+            self.execution_contract, Mapping
+        ):
+            raise InnovationSpineError(
+                failure_class="IMPLEMENTATION",
+                reason_code="INVALID_EXECUTION_CONTRACT",
+                message="execution_contract must be a mapping when supplied",
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -267,6 +276,21 @@ def build_shared_implementer_request(
         )
     projection = origin_blind_projection(spec)
     projection_digest = sha256_digest(projection)
+    service_policy: dict[str, Any] = {
+        "candidate_local_write_only": True,
+        "dependency_identity_digest": policy.dependency_identity_digest,
+        "dependency_identity_ref": policy.dependency_identity_ref,
+        "implementation_token_ceiling": policy.implementation_token_ceiling,
+        "prompt_digest": policy.prompt_digest,
+        "response_mode": "STRICT_JSON_FULL_FILE_CONTENTS",
+        "runtime_identity_digest": policy.runtime_identity_digest,
+        "runtime_identity_ref": policy.runtime_identity_ref,
+        "tool_policy_digest": policy.tool_policy_digest,
+    }
+    if policy.execution_contract is not None:
+        service_policy["execution_contract"] = canonical_value(
+            policy.execution_contract
+        )
     request = canonical_value(
         {
             "blind_candidate_id": (
@@ -275,19 +299,7 @@ def build_shared_implementer_request(
             "blind_research_spec": projection,
             "candidate_local_write_allowlist": policy.allowed_files,
             "schema": "recclaw.shared-implementer-request.v1",
-            "service_policy": {
-                "candidate_local_write_only": True,
-                "dependency_identity_digest": policy.dependency_identity_digest,
-                "dependency_identity_ref": policy.dependency_identity_ref,
-                "implementation_token_ceiling": (
-                    policy.implementation_token_ceiling
-                ),
-                "prompt_digest": policy.prompt_digest,
-                "response_mode": "STRICT_JSON_FULL_FILE_CONTENTS",
-                "runtime_identity_digest": policy.runtime_identity_digest,
-                "runtime_identity_ref": policy.runtime_identity_ref,
-                "tool_policy_digest": policy.tool_policy_digest,
-            },
+            "service_policy": service_policy,
         }
     )
     _reject_forbidden_request_keys(request)
@@ -378,11 +390,25 @@ def _validate_implementation_response(
             )
         seen.add(path)
         normalized_files.append({"content": content, "path": path})
-    if seen != set(policy.allowed_files):
+    if not seen or not seen.issubset(set(policy.allowed_files)):
         raise _implementation_failure(
             "IMPLEMENTATION_FILE_SET_MISMATCH",
-            "implementation response must materialize the exact allowlist",
+            "implementation response must materialize candidate-local files only",
         )
+    entrypoint_path = response["entrypoint"].split(":", 1)[0].replace(".", "/") + ".py"
+    if entrypoint_path not in seen:
+        raise _implementation_failure(
+            "ENTRYPOINT_SOURCE_MISSING",
+            "implementation response must include its entrypoint source",
+        )
+    if "recclaw_ext/candidate.py" in policy.allowed_files:
+        if "recclaw_ext/candidate.py" not in seen or not str(
+            response["entrypoint"]
+        ).startswith("recclaw_ext.candidate:"):
+            raise _implementation_failure(
+                "CANDIDATE_ENTRYPOINT_REQUIRED",
+                "conversion packages must include recclaw_ext/candidate.py as the entrypoint",
+            )
     return canonical_value(
         {
             "entrypoint": entrypoint,
@@ -484,9 +510,12 @@ def materialize_candidate_package(
                 content=str(item["content"]),
             )
         manifest = snapshot_candidate_tree(root)
+        package_allowed_files = tuple(
+            str(item["path"]) for item in response["files"]
+        )
         if (
-            any(row["path"] not in policy.allowed_files for row in manifest)
-            or tuple(row["path"] for row in manifest) != policy.allowed_files
+            any(row["path"] not in package_allowed_files for row in manifest)
+            or tuple(row["path"] for row in manifest) != package_allowed_files
             or any((root / row["path"]).is_symlink() for row in manifest)
         ):
             raise _package_failure(
@@ -533,7 +562,7 @@ def materialize_candidate_package(
             candidate_root_ref=candidate_root_ref,
             candidate_root_digest=candidate_root_digest,
             executable_entrypoint=str(response["entrypoint"]),
-            allowed_files=policy.allowed_files,
+            allowed_files=package_allowed_files,
             dependency_identity_ref=policy.dependency_identity_ref,
             dependency_identity_digest=policy.dependency_identity_digest,
             runtime_identity_ref=policy.runtime_identity_ref,

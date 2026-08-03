@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "proposals": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "entrypoint": {
+            "const": "recclaw_ext.candidate:FreshCandidateModel",
+            "type": "string"
+          },
+          "files": {
+            "allOf": [
+              {
+                "contains": {
+                  "properties": {
+                    "path": {
+                      "const": "recclaw_ext/candidate.py"
+                    }
+                  },
+                  "required": ["path"]
+                }
+              }
+            ],
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "path": {
+                  "pattern": "^recclaw_ext/[A-Za-z_][A-Za-z0-9_]*\\.py$",
+                  "type": "string"
+                }
+              },
+              "required": ["content", "path"],
+              "type": "object"
+            },
+            "maxItems": 5,
+            "minItems": 2,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "implementation_summary": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["entrypoint", "files", "implementation_summary"],
+        "type": "object"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema": {
+      "const": "recclaw.research-line.q5-conversion-implementer-response.v1",
+      "type": "string"
+    }
+  },
+  "required": ["proposals", "schema"],
+  "title": "RecClaw Q5 Conversion Implementer Response V1",
+  "type": "object"
+}
