@@ -44,6 +44,7 @@ REQUIRED_STAGE_SYMBOLS = (
     "run_resource_admission",
     "run_mechanism_probe",
     "run_matched_execution",
+    "run_full_execution",
     "run_episode",
 )
 REQUIRED_RUNTIME_SYMBOLS = (
