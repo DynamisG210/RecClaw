@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_valid_pilot_20260803_03/source/scripts/run_q5a_idea_feasibility.py", line 1464, in <module>
+    exit_code = main()
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_valid_pilot_20260803_03/source/scripts/run_q5a_idea_feasibility.py", line 1455, in main
+    realize(args)
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_valid_pilot_20260803_03/source/scripts/run_q5a_idea_feasibility.py", line 1172, in realize
+    denominator = build_q5a_stage_denominator(
+NameError: name 'build_q5a_stage_denominator' is not defined
