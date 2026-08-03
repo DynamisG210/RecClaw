@@ -6,6 +6,10 @@
     "manifest_digest_verified": true,
     "path_and_byte_hash_verification": true,
     "relocated_child_preflight": "PASS",
+    "persistent_campaign_gate": true,
+    "stage_ownership": ["POOL", "REALIZE"],
+    "stage_reentry_blocked_by_sealed_release": true,
+    "no_call_gate_pool_select_realize_lifecycle": "PASS",
     "provider_calls": 0,
     "implementer_calls": 0,
     "qualification_calls": 0,
@@ -17,6 +21,8 @@
   },
   "execution_gate": {
     "schema": "recclaw.research-line.q5a-execution-gate.v1",
+    "gate_written_once_and_reused": true,
+    "realize_prerequisite_validation_before_calls": true,
     "physical_entry_consumes_matching_pass_receipt_before_attempt": true,
     "missing_stale_hard_block_digest_drift_and_existing_attempt_fail_closed": true,
     "provider_calls_before_gate": 0

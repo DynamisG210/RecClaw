@@ -22,6 +22,9 @@ PREFLIGHT_SCHEMA = "recclaw.research-line.q5a-comprehensive-preflight.v1"
 RUNTIME_BINDING_SCHEMA = "recclaw.research-line.q5a-runtime-binding.v1"
 EXECUTION_GATE_SCHEMA = "recclaw.research-line.q5a-execution-gate.v1"
 EXECUTION_OWNER_SCHEMA = "recclaw.research-line.q5a-execution-owner.v1"
+EXECUTION_STAGE_RELEASE_SCHEMA = "recclaw.research-line.q5a-execution-stage-release.v1"
+SELECTION_STAGE_SCHEMA = "recclaw.research-line.q5a-selection-stage-receipt.v1"
+EXECUTION_STAGES = ("POOL", "REALIZE")
 
 
 class RuntimeBindingError(RuntimeError):
@@ -41,7 +44,10 @@ def _bytes_digest(path: Path) -> str:
 
 
 def _load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise RuntimeBindingError(f"runtime receipt is missing: {path}") from error
     if not isinstance(value, dict):
         raise RuntimeBindingError(f"JSON root is not an object: {path}")
     return value
@@ -104,6 +110,13 @@ def _write_exclusive(path: Path, value: Mapping[str, Any], digest_field: str) ->
     with path.open("xb") as handle:
         handle.write(_canonical(payload))
     return payload
+
+
+def _stage_path(root: Path, stage: str) -> Path:
+    stage = str(stage).upper()
+    if stage not in EXECUTION_STAGES:
+        raise RuntimeBindingError(f"unsupported physical execution stage: {stage}")
+    return root / f"EXECUTION_STAGE_{stage}_RELEASED.json"
 
 
 @dataclass(frozen=True)
@@ -272,19 +285,56 @@ def read_verified_preflight(receipt_path: Path, binding: RuntimeBindingV1) -> di
     return receipt
 
 
+def read_signed_execution_gate(path: Path) -> dict[str, Any]:
+    gate = _load(path.resolve())
+    if gate.get("schema") != EXECUTION_GATE_SCHEMA or gate.get("status") != "PASS":
+        raise RuntimeBindingError("execution gate is absent or not PASS")
+    _verify_self_digest(gate, "gate_digest", "execution gate")
+    if gate.get("gate_contract") != "CAMPAIGN_PERSISTENT_V1":
+        raise RuntimeBindingError("execution gate contract is stale")
+    return gate
+
+
+def read_verified_execution_gate(path: Path, binding: RuntimeBindingV1) -> dict[str, Any]:
+    gate = read_signed_execution_gate(path)
+    expected = {
+        "deployment_digest": binding.deployment_digest,
+        "binding_digest": binding.binding_digest,
+        "prefreeze_digest": binding.prefreeze_digest,
+        "source_tree_digest": binding.source_tree_digest,
+        "foundation_commit": binding.foundation_commit,
+        "foundation_package_digest": binding.foundation_package_digest,
+        "preflight_root": str(binding.preflight_root),
+        "campaign_root": str(binding.campaign_root),
+        "provider_calls_before_gate": 0,
+        "held_out_reads": 0,
+        "retries": 0,
+    }
+    if any(gate.get(field) != value for field, value in expected.items()):
+        raise RuntimeBindingError("execution gate deployment or frozen identity drift")
+    return gate
+
+
 def _physical_attempts(root: Path) -> list[str]:
     if not root.exists():
         return []
     return [str(path) for path in sorted(root.rglob("physical_attempt_01")) if path.is_dir()]
 
 
-def claim_execution_owner(binding: RuntimeBindingV1, *, gate_receipt_path: Path) -> dict[str, Any]:
+def claim_execution_owner(
+    binding: RuntimeBindingV1,
+    *,
+    gate_receipt_path: Path,
+    stage: str = "POOL",
+) -> dict[str, Any]:
+    stage = str(stage).upper()
+    gate = read_verified_execution_gate(gate_receipt_path, binding)
     root = binding.campaign_root
     if _physical_attempts(root):
         raise RuntimeBindingError("campaign root already contains physical attempt directories")
-    allowed_prefreeze = {"PREFREEZE_MANIFEST.json", "POOL_GENERATION_PLAN.json"}
-    if root.exists() and any(path.name not in allowed_prefreeze for path in root.iterdir()):
-        raise RuntimeBindingError("campaign root contains non-prefreeze campaign state")
+    release_path = _stage_path(root, stage)
+    if release_path.exists():
+        raise RuntimeBindingError(f"execution stage {stage} already has sealed release evidence")
     owner_path = root / "EXECUTION_OWNER.json"
     if owner_path.exists():
         raise RuntimeBindingError("campaign root already has an execution owner")
@@ -294,8 +344,10 @@ def claim_execution_owner(binding: RuntimeBindingV1, *, gate_receipt_path: Path)
         "owner_pid": os.getpid(),
         "owner_token": uuid.uuid4().hex,
         "campaign_root": str(root),
+        "stage": stage,
         "deployment_digest": binding.deployment_digest,
         "binding_digest": binding.binding_digest,
+        "gate_digest": gate["gate_digest"],
         "gate_receipt": str(gate_receipt_path.resolve()),
         "status": "CLAIMED",
     }
@@ -317,22 +369,129 @@ def verify_execution_owner(binding: RuntimeBindingV1, *, owner_token: str | None
     return owner
 
 
-def release_execution_owner(binding: RuntimeBindingV1, owner: Mapping[str, Any], *, status: str) -> None:
+def release_execution_owner(
+    binding: RuntimeBindingV1,
+    owner: Mapping[str, Any],
+    *,
+    status: str,
+    artifact_path: Path | None = None,
+) -> None:
     owner_path = binding.campaign_root / "EXECUTION_OWNER.json"
     if not owner_path.is_file():
         raise RuntimeBindingError("execution owner disappeared")
     observed = _load(owner_path)
     if observed.get("owner_pid") != owner.get("owner_pid") or observed.get("owner_token") != owner.get("owner_token"):
         raise RuntimeBindingError("execution owner identity drift")
+    stage = str(owner.get("stage", "")).upper()
+    gate = read_verified_execution_gate(binding.campaign_root / "EXECUTION_GATE.json", binding)
+    if owner.get("gate_digest") != gate["gate_digest"]:
+        raise RuntimeBindingError("execution owner gate identity drift")
+    release_path = _stage_path(binding.campaign_root, stage)
+    if release_path.exists():
+        raise RuntimeBindingError(f"execution stage {stage} already has sealed release evidence")
+    if artifact_path is None:
+        artifact_path = binding.campaign_root / {
+            "POOL": "POOL_GENERATION_RECEIPT.json",
+            "REALIZE": "REALIZATION_EXECUTION_RECEIPT.json",
+        }[stage]
+    artifact_path = artifact_path.resolve()
+    artifact_sha256 = _bytes_digest(artifact_path) if artifact_path.is_file() else None
     released = {
-        **owner,
+        "schema": EXECUTION_STAGE_RELEASE_SCHEMA,
+        "stage": stage,
         "status": status,
+        "owner_pid": owner["owner_pid"],
+        "owner_token": owner["owner_token"],
+        "campaign_root": str(binding.campaign_root),
+        "deployment_digest": binding.deployment_digest,
+        "binding_digest": binding.binding_digest,
+        "gate_digest": gate["gate_digest"],
+        "artifact_path": str(artifact_path),
+        "artifact_sha256": artifact_sha256,
         "released_pid": os.getpid(),
     }
-    release_path = binding.campaign_root / "EXECUTION_OWNER_RELEASED.json"
-    with release_path.open("xb") as handle:
-        handle.write(_canonical({**released, "release_digest": _digest(released)}))
+    _write_exclusive(release_path, released, "release_digest")
     owner_path.unlink()
+
+
+def read_signed_stage_release(path: Path, *, stage: str) -> dict[str, Any]:
+    release = _load(path.resolve())
+    _verify_self_digest(release, "release_digest", "execution stage release")
+    stage = str(stage).upper()
+    if release.get("schema") != EXECUTION_STAGE_RELEASE_SCHEMA or release.get("stage") != stage:
+        raise RuntimeBindingError(f"execution stage release schema drift: {stage}")
+    return release
+
+
+def read_verified_stage_release(
+    path: Path,
+    binding: RuntimeBindingV1,
+    *,
+    stage: str,
+    required_status: str | None = None,
+) -> dict[str, Any]:
+    stage = str(stage).upper()
+    release = read_signed_stage_release(path, stage=stage)
+    if required_status is not None and release.get("status") != required_status:
+        raise RuntimeBindingError(f"execution stage {stage} is not {required_status}")
+    if release.get("campaign_root") != str(binding.campaign_root):
+        raise RuntimeBindingError("execution stage release root drift")
+    if release.get("deployment_digest") != binding.deployment_digest or release.get("binding_digest") != binding.binding_digest:
+        raise RuntimeBindingError("execution stage release binding drift")
+    gate = read_verified_execution_gate(binding.campaign_root / "EXECUTION_GATE.json", binding)
+    if release.get("gate_digest") != gate["gate_digest"]:
+        raise RuntimeBindingError("execution stage release gate drift")
+    artifact_value = release.get("artifact_path")
+    artifact_sha = release.get("artifact_sha256")
+    if artifact_value is not None and artifact_sha is not None:
+        artifact = Path(str(artifact_value)).resolve()
+        if not artifact.is_file() or _bytes_digest(artifact) != artifact_sha:
+            raise RuntimeBindingError("execution stage release artifact drift")
+    return release
+
+
+def validate_realize_prerequisites(binding: RuntimeBindingV1) -> dict[str, Any]:
+    """Validate all pre-Implementer inputs for the existing REALIZE consumer."""
+
+    root = binding.campaign_root
+    gate = read_verified_execution_gate(root / "EXECUTION_GATE.json", binding)
+    pool_release = read_verified_stage_release(
+        _stage_path(root, "POOL"), binding, stage="POOL", required_status="COMPLETED"
+    )
+    pool_receipt = root / "POOL_GENERATION_RECEIPT.json"
+    if pool_release.get("artifact_path") != str(pool_receipt.resolve()):
+        raise RuntimeBindingError("POOL release does not bind POOL_GENERATION_RECEIPT.json")
+    pool_value = _load(pool_receipt)
+    if pool_value.get("schema") != "recclaw.research-line.q5a-pool-generation-receipt.v1" or pool_value.get("all_pools_complete") is not True:
+        raise RuntimeBindingError("POOL prerequisite is not complete")
+    prefreeze_path = root / "PREFREEZE_MANIFEST.json"
+    prefreeze = _load(prefreeze_path)
+    _verify_self_digest(prefreeze, "prefreeze_digest", "campaign prefreeze manifest")
+    if prefreeze.get("prefreeze_digest") != binding.prefreeze_digest or prefreeze.get("source_tree_digest") != binding.source_tree_digest:
+        raise RuntimeBindingError("campaign prefreeze identity drift")
+    selection_receipt = _load(root / "SELECTION_STAGE_RECEIPT.json")
+    _verify_self_digest(selection_receipt, "selection_stage_digest", "selection stage receipt")
+    if selection_receipt.get("schema") != SELECTION_STAGE_SCHEMA or selection_receipt.get("status") != "SELECT_COMPLETE":
+        raise RuntimeBindingError("SELECT prerequisite is absent or incomplete")
+    if selection_receipt.get("campaign_root") != str(root):
+        raise RuntimeBindingError("SELECT prerequisite campaign root drift")
+    if selection_receipt.get("gate_digest") != gate["gate_digest"] or selection_receipt.get("pool_release_digest") != pool_release["release_digest"]:
+        raise RuntimeBindingError("SELECT prerequisite gate or POOL release drift")
+    if selection_receipt.get("pool_generation_receipt_sha256") != _bytes_digest(pool_receipt):
+        raise RuntimeBindingError("SELECT prerequisite POOL receipt digest drift")
+    frozen_path = root / "FROZEN_SELECTIONS_BEFORE_REALIZATION.json"
+    if selection_receipt.get("frozen_selection_path") != str(frozen_path.resolve()) or _bytes_digest(frozen_path) != selection_receipt.get("frozen_selection_sha256"):
+        raise RuntimeBindingError("frozen selection input path or digest drift")
+    frozen = _load(frozen_path)
+    union = frozen.get("union")
+    if not isinstance(union, Mapping) or union.get("prefreeze_digest") != binding.prefreeze_digest or union.get("union_digest") != selection_receipt.get("selection_union_digest"):
+        raise RuntimeBindingError("selection union identity drift")
+    return {
+        "gate_digest": gate["gate_digest"],
+        "pool_release_digest": pool_release["release_digest"],
+        "selection_stage_digest": selection_receipt["selection_stage_digest"],
+        "selection_union_digest": union["union_digest"],
+    }
 
 
 def verify_execution_gate(
@@ -354,6 +513,7 @@ def verify_execution_gate(
     payload = {
         "schema": EXECUTION_GATE_SCHEMA,
         "status": "PASS",
+        "gate_contract": "CAMPAIGN_PERSISTENT_V1",
         "deployment_digest": binding.deployment_digest,
         "binding_digest": binding.binding_digest,
         "prefreeze_digest": binding.prefreeze_digest,
@@ -363,7 +523,6 @@ def verify_execution_gate(
         "preflight_digest": preflight["preflight_digest"],
         "preflight_root": str(binding.preflight_root),
         "campaign_root": str(binding.campaign_root),
-        "owner_pid": os.getpid(),
         "provider_calls_before_gate": 0,
         "held_out_reads": 0,
         "retries": 0,
@@ -380,11 +539,18 @@ def write_execution_gate(path: Path, gate: Mapping[str, Any]) -> dict[str, Any]:
 __all__ = [
     "EXECUTION_GATE_SCHEMA",
     "EXECUTION_OWNER_SCHEMA",
+    "EXECUTION_STAGE_RELEASE_SCHEMA",
+    "SELECTION_STAGE_SCHEMA",
     "RuntimeBindingError",
     "RuntimeBindingV1",
     "claim_execution_owner",
     "read_verified_preflight",
+    "read_signed_execution_gate",
+    "read_signed_stage_release",
+    "read_verified_execution_gate",
+    "read_verified_stage_release",
     "release_execution_owner",
+    "validate_realize_prerequisites",
     "verify_execution_owner",
     "verify_execution_gate",
     "write_execution_gate",

@@ -26,7 +26,11 @@ from recclaw_runtime_binding import (  # noqa: E402
     RuntimeBindingError,
     RuntimeBindingV1,
     claim_execution_owner,
+    read_signed_execution_gate,
+    read_signed_stage_release,
     release_execution_owner,
+    read_verified_execution_gate,
+    validate_realize_prerequisites,
     verify_execution_gate,
     verify_execution_owner,
     write_execution_gate,
@@ -68,19 +72,22 @@ def _bootstrap_execution_binding() -> None:
     binding = RuntimeBindingV1.from_manifest(manifest_path, repo_root=repo_root).activate()
     if output_root != binding.campaign_root:
         raise RuntimeBindingError("campaign output root does not match manifest campaign_root")
-    gate = verify_execution_gate(
-        binding=binding,
-        preflight_receipt_path=preflight_path,
-        prefreeze_manifest_path=prefreeze_path,
-    )
     gate_path = output_root / "EXECUTION_GATE.json"
     if gate_path.exists():
-        raise RuntimeBindingError("execution gate path already exists; campaign root is not fresh")
-    owner = claim_execution_owner(binding, gate_receipt_path=gate_path)
+        gate = read_verified_execution_gate(gate_path, binding)
+    else:
+        gate = verify_execution_gate(
+            binding=binding,
+            preflight_receipt_path=preflight_path,
+            prefreeze_manifest_path=prefreeze_path,
+        )
+        write_execution_gate(gate_path, gate)
+    owner = claim_execution_owner(binding, gate_receipt_path=gate_path, stage=command.upper())
     try:
-        written_gate = write_execution_gate(gate_path, gate)
+        if command == "realize":
+            validate_realize_prerequisites(binding)
     except Exception:
-        release_execution_owner(binding, owner, status="GATE_WRITE_FAILED")
+        release_execution_owner(binding, owner, status="FAILED")
         raise
     os.environ.update(
         {
@@ -90,13 +97,17 @@ def _bootstrap_execution_binding() -> None:
             "RECCLAW_PREFREEZE_MANIFEST": str(prefreeze_path),
             "RECCLAW_EXECUTION_GATE": str(gate_path),
             "RECCLAW_EXECUTION_OWNER_TOKEN": str(owner["owner_token"]),
-            "RECCLAW_EXECUTION_GATE_DIGEST": str(written_gate["gate_digest"]),
+            "RECCLAW_EXECUTION_GATE_DIGEST": str(gate["gate_digest"]),
         }
     )
     _RUNTIME_BINDING = binding
     _EXECUTION_OWNER = owner
     executable = str(binding.python_executable)
-    os.execve(executable, [executable, str(Path(__file__).resolve()), *sys.argv[1:]], os.environ.copy())
+    try:
+        os.execve(executable, [executable, str(Path(__file__).resolve()), *sys.argv[1:]], os.environ.copy())
+    except BaseException:
+        release_execution_owner(binding, owner, status="EXEC_FAILED")
+        raise
 
 
 def _activate_child_binding() -> None:
@@ -109,10 +120,8 @@ def _activate_child_binding() -> None:
     try:
         _RUNTIME_BINDING = RuntimeBindingV1.from_manifest(Path(manifest_value), repo_root=ROOT).activate()
         gate_path = Path(os.environ["RECCLAW_EXECUTION_GATE"])
-        gate = verify_execution_gate(
-            binding=_RUNTIME_BINDING,
-            preflight_receipt_path=Path(os.environ["RECCLAW_PREFLIGHT_RECEIPT"]),
-            prefreeze_manifest_path=Path(os.environ["RECCLAW_PREFREEZE_MANIFEST"]),
+        gate = read_verified_execution_gate(
+            Path(os.environ["RECCLAW_EXECUTION_GATE"]), _RUNTIME_BINDING
         )
         if gate["gate_digest"] != os.environ.get("RECCLAW_EXECUTION_GATE_DIGEST"):
             raise RuntimeBindingError("execution gate digest drift in child")
@@ -120,6 +129,8 @@ def _activate_child_binding() -> None:
             _RUNTIME_BINDING,
             owner_token=os.environ.get("RECCLAW_EXECUTION_OWNER_TOKEN"),
         )
+        if len(sys.argv) > 1 and sys.argv[1] == "realize":
+            validate_realize_prerequisites(_RUNTIME_BINDING)
         if gate_path.resolve() != _RUNTIME_BINDING.campaign_root / "EXECUTION_GATE.json":
             raise RuntimeBindingError("execution gate root drift in child")
     except BaseException:
@@ -626,6 +637,14 @@ def select(args: argparse.Namespace) -> None:
     pool_receipt = _read(output_root / "POOL_GENERATION_RECEIPT.json")
     if not pool_receipt.get("all_pools_complete"):
         raise Q5AIdeaFeasibilityError("Q5-A cannot select from an incomplete pool set")
+    gate = read_signed_execution_gate(output_root / "EXECUTION_GATE.json")
+    pool_release = read_signed_stage_release(
+        output_root / "EXECUTION_STAGE_POOL_RELEASED.json", stage="POOL"
+    )
+    if pool_release.get("status") != "COMPLETED" or pool_release.get("artifact_path") != str((output_root / "POOL_GENERATION_RECEIPT.json").resolve()):
+        raise Q5AIdeaFeasibilityError("Q5-A SELECT requires a completed POOL stage release")
+    if pool_release.get("artifact_sha256") != bytes_sha256((output_root / "POOL_GENERATION_RECEIPT.json").read_bytes()):
+        raise Q5AIdeaFeasibilityError("Q5-A POOL receipt digest drifted before SELECT")
     f1_policy = _read(args.f1_policy.resolve())
     outcome_policy = _read(args.outcome_policy.resolve())
     outcome_activation = _read(args.outcome_activation.resolve())
@@ -681,7 +700,28 @@ def select(args: argparse.Namespace) -> None:
         selections=selections,
         explorations=explorations,
     )
-    _write_new(output_root / "FROZEN_SELECTIONS_BEFORE_REALIZATION.json", {"selections": selections, "explorations": explorations, "union": union})
+    frozen_path = output_root / "FROZEN_SELECTIONS_BEFORE_REALIZATION.json"
+    frozen_value = {"selections": selections, "explorations": explorations, "union": union}
+    frozen_sha = _write_new(frozen_path, frozen_value)
+    selection_payload = {
+        "schema": "recclaw.research-line.q5a-selection-stage-receipt.v1",
+        "status": "SELECT_COMPLETE",
+        "campaign_root": str(output_root),
+        "gate_digest": gate["gate_digest"],
+        "pool_release_digest": pool_release["release_digest"],
+        "pool_generation_receipt_sha256": bytes_sha256((output_root / "POOL_GENERATION_RECEIPT.json").read_bytes()),
+        "frozen_selection_path": str(frozen_path.resolve()),
+        "frozen_selection_sha256": frozen_sha,
+        "selection_union_digest": union["union_digest"],
+        "held_out_reads": 0,
+        "retries": 0,
+        "development_only": True,
+        "scientific_effect_claim": False,
+    }
+    _write_new(
+        output_root / "SELECTION_STAGE_RECEIPT.json",
+        {**selection_payload, "selection_stage_digest": sha256_digest(selection_payload)},
+    )
     print(json.dumps({"status": "SELECTIONS_FROZEN", "unique_spec_count": union["selected_unique_spec_count"]}, sort_keys=True))
 
 
