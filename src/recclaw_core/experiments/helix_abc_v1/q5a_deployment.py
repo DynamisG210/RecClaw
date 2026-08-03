@@ -190,6 +190,10 @@ def build_q5a_deployment_manifest(
     campaign_root = (campaign_root or repo_root / "results/research_line/q5a_runtime_binding_campaign").resolve()
     source_graph = _static_import_graph(repo_root)
     q4_fixture = repo_root / "results/research_line/q4_prospective_policy_comparison_20260803_01/shared_pool/FROZEN_SHARED_POOL_BEFORE_SELECTION.json"
+    policy_root = repo_root / "results/research_line/q4_prospective_policy_comparison_20260803_01/policy_bindings"
+    accepted_f1_policy = policy_root / "current_f1/policy/versioned_policy.json"
+    accepted_outcome_policy = policy_root / "outcome_aware/versioned_policy.json"
+    accepted_outcome_activation = policy_root / "outcome_aware/active_policy.json"
     accepted_r1_receipt = repo_root / "docs/research_line/vnext/R1_FRESH_TRAINING_FILESYSTEM_FIX_V3_CANONICAL_RECEIPT.json"
     accepted_profile = repo_root / "docs/research_line/vnext/WAVE2_INTEGRATED_GATE_RECEIPT.json"
     search_manifest = search_data_root / "search_partition_manifest.json"
@@ -201,6 +205,9 @@ def build_q5a_deployment_manifest(
         [
             _file_record(repo_root / "src/recclaw_runtime_binding.py", role="runtime_binding_bootstrap", relative_to=repo_root),
             _file_record(q4_fixture, role="accepted_outcome_blind_fixture", relative_to=repo_root),
+            _file_record(accepted_f1_policy, role="accepted_current_f1_policy", relative_to=repo_root),
+            _file_record(accepted_outcome_policy, role="accepted_outcome_aware_policy", relative_to=repo_root),
+            _file_record(accepted_outcome_activation, role="accepted_outcome_aware_activation", relative_to=repo_root),
             _file_record(accepted_r1_receipt, role="accepted_r1_repository_receipt", relative_to=repo_root),
             _file_record(accepted_profile, role="accepted_active_profile_source", relative_to=repo_root),
             _file_record(search_manifest, role="search_partition_manifest"),
@@ -350,6 +357,52 @@ def run_q5a_comprehensive_preflight(*, manifest_path: Path, repo_root: Path, out
             _check(checks, f"import:{module_name}", True, "imported")
         except Exception as error:
             _check(checks, f"import:{module_name}", False, repr(error))
+    try:
+        from run_q5a_idea_feasibility import (
+            _q5a_outcome_pool_view,
+            _validate_outcome_policy_activation_pair,
+        )
+
+        policy_paths = {
+            str(record["role"]): (
+                Path(str(record["path"]))
+                if Path(str(record["path"])).is_file()
+                else repo_root / str(record["relative_path"])
+            )
+            for record in manifest["required_files"]
+            if record.get("role")
+            in {
+                "accepted_outcome_aware_policy",
+                "accepted_outcome_aware_activation",
+            }
+        }
+        outcome_policy = _load(policy_paths["accepted_outcome_aware_policy"])
+        outcome_activation = _load(policy_paths["accepted_outcome_aware_activation"])
+        _validate_outcome_policy_activation_pair(outcome_policy, outcome_activation)
+        projection_view = _q5a_outcome_pool_view(
+            {
+                "schema": "recclaw.research-line.q5a-raw-pool.v1",
+                "candidate_pools": {"shared": []},
+            }
+        )
+        _check(
+            checks,
+            "accepted_outcome_policy_activation_pair",
+            outcome_activation.get("status") == "ACTIVE_DEVELOPMENT_ONLY"
+            and outcome_activation.get("policy_digest")
+            == outcome_policy.get("policy_digest"),
+            str(outcome_activation.get("policy_digest")),
+        )
+        _check(
+            checks,
+            "q5a_q3_selection_rule_adapter",
+            projection_view.get("selection_rule")
+            == "NONE_POOL_ONLY_POLICIES_SELECT_AFTER_BYTE_FREEZE",
+            str(projection_view.get("selection_rule")),
+        )
+    except Exception as error:
+        _check(checks, "accepted_outcome_policy_activation_pair", False, repr(error))
+        _check(checks, "q5a_q3_selection_rule_adapter", False, repr(error))
     try:
         stage_path = scripts_root / "run_multiround_soak_stage.py"
         spec = importlib.util.spec_from_file_location("q5a_stage_preflight", stage_path)

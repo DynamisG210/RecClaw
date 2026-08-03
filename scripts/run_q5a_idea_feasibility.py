@@ -11,6 +11,7 @@ import random
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -641,7 +642,7 @@ def _ranked_selection(
         if outcome_policy is None or outcome_activation is None:
             raise Q5AIdeaFeasibilityError("outcome-aware policy snapshot is missing")
         acquisition = select_outcome_aware(
-            pool,
+            _q5a_outcome_pool_view(pool),
             pool_digest=sha256_digest(pool),
             policy=outcome_policy,
             activation=outcome_activation,
@@ -685,8 +686,46 @@ def _ranked_selection(
         return selected, tie_set, selected_by, probabilities, None, source_digest, semantics, tie_tolerance, "NONE"
 
 
+def _validate_outcome_policy_activation_pair(
+    outcome_policy: Mapping[str, Any], outcome_activation: Mapping[str, Any]
+) -> None:
+    """Reject an outcome policy unless its declared active pair is exact."""
+
+    if outcome_activation.get("status") != "ACTIVE_DEVELOPMENT_ONLY":
+        raise Q5AIdeaFeasibilityError(
+            "OUTCOME_AWARE activation is not ACTIVE_DEVELOPMENT_ONLY"
+        )
+    if outcome_activation.get("policy_digest") != outcome_policy.get("policy_digest"):
+        raise Q5AIdeaFeasibilityError(
+            "OUTCOME_AWARE policy/activation policy_digest mismatch"
+        )
+
+
+def _q5a_outcome_pool_view(pool: Mapping[str, Any]) -> dict[str, Any]:
+    """Adapt the frozen Q5-A envelope to the accepted Q3 projection metadata."""
+
+    if "selection_rule" in pool:
+        return dict(pool)
+    return {
+        **pool,
+        "selection_rule": "NONE_POOL_ONLY_POLICIES_SELECT_AFTER_BYTE_FREEZE",
+    }
+
+
 def select(args: argparse.Namespace) -> None:
     output_root = args.output_root.resolve()
+    select_artifacts = (
+        output_root / "F1_POLICY_SNAPSHOT.json",
+        output_root / "OUTCOME_POLICY_SNAPSHOT.json",
+        output_root / "OUTCOME_ACTIVATION_SNAPSHOT.json",
+        output_root / "selections",
+        output_root / "FROZEN_SELECTIONS_BEFORE_REALIZATION.json",
+        output_root / "SELECTION_STAGE_RECEIPT.json",
+    )
+    if any(path.exists() for path in select_artifacts):
+        raise Q5AIdeaFeasibilityError(
+            "Q5-A SELECT output already exists; write-once stage cannot be re-entered"
+        )
     prefreeze_manifest = _require_prefreeze(output_root)
     pool_receipt = _read(output_root / "POOL_GENERATION_RECEIPT.json")
     if not pool_receipt.get("all_pools_complete"):
@@ -702,12 +741,11 @@ def select(args: argparse.Namespace) -> None:
     f1_policy = _read(args.f1_policy.resolve())
     outcome_policy = _read(args.outcome_policy.resolve())
     outcome_activation = _read(args.outcome_activation.resolve())
-    _write_new(output_root / "F1_POLICY_SNAPSHOT.json", f1_policy)
-    _write_new(output_root / "OUTCOME_POLICY_SNAPSHOT.json", outcome_policy)
-    _write_new(output_root / "OUTCOME_ACTIVATION_SNAPSHOT.json", outcome_activation)
+    _validate_outcome_policy_activation_pair(outcome_policy, outcome_activation)
     selections: dict[str, list[dict[str, Any]]] = {policy: [] for policy in Q5A_POLICIES}
-    explorations = []
-    pool_values = []
+    selection_files: dict[tuple[int, str], dict[str, Any]] = {}
+    explorations: list[dict[str, Any]] = []
+    pool_values: list[dict[str, Any]] = []
     for pool_index in range(1, Q5A_POOL_COUNT + 1):
         pool_root = output_root / "pools" / f"{pool_index:02d}"
         pool_manifest = _read(pool_root / "POOL_MANIFEST.json")
@@ -738,15 +776,13 @@ def select(args: argparse.Namespace) -> None:
                 tie_tolerance=tie_tolerance,
                 prior_usage=prior_usage,
             )
-            selection_path = output_root / "selections" / f"pool-{pool_index:02d}" / f"{policy}.json"
-            _write_new(selection_path, selection)
             selections[policy].append(selection)
+            selection_files[(pool_index, policy)] = selection
         exploration = build_q5a_shared_exploration(
             pool=raw_pool,
             pool_digest=pool_digest,
             random_seed=EXPLORATION_SEEDS[pool_index - 1],
         )
-        _write_new(output_root / "selections" / f"pool-{pool_index:02d}" / "SHARED_EXPLORATION.json", exploration)
         explorations.append(exploration)
     union = build_q5a_realization_union(
         prefreeze=prefreeze_manifest,
@@ -756,7 +792,7 @@ def select(args: argparse.Namespace) -> None:
     )
     frozen_path = output_root / "FROZEN_SELECTIONS_BEFORE_REALIZATION.json"
     frozen_value = {"selections": selections, "explorations": explorations, "union": union}
-    frozen_sha = _write_new(frozen_path, frozen_value)
+    frozen_sha = sha256_digest(frozen_value)
     selection_payload = {
         "schema": "recclaw.research-line.q5a-selection-stage-receipt.v1",
         "status": "SELECT_COMPLETE",
@@ -772,10 +808,80 @@ def select(args: argparse.Namespace) -> None:
         "development_only": True,
         "scientific_effect_claim": False,
     }
-    _write_new(
-        output_root / "SELECTION_STAGE_RECEIPT.json",
-        {**selection_payload, "selection_stage_digest": sha256_digest(selection_payload)},
+    staged_relative_paths: list[Path] = [
+        Path("F1_POLICY_SNAPSHOT.json"),
+        Path("OUTCOME_POLICY_SNAPSHOT.json"),
+        Path("OUTCOME_ACTIVATION_SNAPSHOT.json"),
+    ]
+    staged_relative_paths.extend(
+        Path("selections") / f"pool-{pool_index:02d}" / f"{policy}.json"
+        for pool_index in range(1, Q5A_POOL_COUNT + 1)
+        for policy in Q5A_POLICIES
     )
+    staged_relative_paths.extend(
+        Path("selections") / f"pool-{pool_index:02d}" / "SHARED_EXPLORATION.json"
+        for pool_index in range(1, Q5A_POOL_COUNT + 1)
+    )
+    staged_relative_paths.extend(
+        (Path("FROZEN_SELECTIONS_BEFORE_REALIZATION.json"), Path("SELECTION_STAGE_RECEIPT.json"))
+    )
+    with tempfile.TemporaryDirectory(
+        prefix=".q5a-select-staging-", dir=output_root
+    ) as staging_value:
+        staging_root = Path(staging_value)
+        _write_new(staging_root / "F1_POLICY_SNAPSHOT.json", f1_policy)
+        _write_new(staging_root / "OUTCOME_POLICY_SNAPSHOT.json", outcome_policy)
+        _write_new(staging_root / "OUTCOME_ACTIVATION_SNAPSHOT.json", outcome_activation)
+        for (pool_index, policy), selection in selection_files.items():
+            _write_new(
+                staging_root
+                / "selections"
+                / f"pool-{pool_index:02d}"
+                / f"{policy}.json",
+                selection,
+            )
+        for pool_index, exploration in enumerate(explorations, 1):
+            _write_new(
+                staging_root
+                / "selections"
+                / f"pool-{pool_index:02d}"
+                / "SHARED_EXPLORATION.json",
+                exploration,
+            )
+        staged_frozen_sha = _write_new(
+            staging_root / "FROZEN_SELECTIONS_BEFORE_REALIZATION.json", frozen_value
+        )
+        if staged_frozen_sha != frozen_sha:
+            raise Q5AIdeaFeasibilityError("Q5-A frozen selection digest changed during staging")
+        selection_payload["frozen_selection_sha256"] = frozen_sha
+        _write_new(
+            staging_root / "SELECTION_STAGE_RECEIPT.json",
+            {**selection_payload, "selection_stage_digest": sha256_digest(selection_payload)},
+        )
+        published: list[Path] = []
+        try:
+            for relative_path in staged_relative_paths:
+                destination = output_root / relative_path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(staging_root / relative_path, destination)
+                published.append(destination)
+        except Exception:
+            for destination in reversed(published):
+                destination.unlink(missing_ok=True)
+            for directory in sorted(
+                {
+                    path.parent
+                    for path in published
+                    if path.parent != output_root
+                },
+                key=lambda path: len(path.parts),
+                reverse=True,
+            ):
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
+            raise
     print(json.dumps({"status": "SELECTIONS_FROZEN", "unique_spec_count": union["selected_unique_spec_count"]}, sort_keys=True))
 
 

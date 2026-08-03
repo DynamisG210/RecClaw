@@ -1,0 +1,14 @@
+Q5-A SELECT pre-call failure 03 (no Provider/GPU/qualification/training calls)
+
+Cause: The first run with the pre-outcome Q5A-to-Q3 selection metadata adapter reached the accepted consumer, but write-once snapshots from that run remained at campaign root.
+
+Traceback (most recent call last):
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 732, in select
+    _write_new(output_root / "F1_POLICY_SNAPSHOT.json", f1_policy)
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 263, in _write_new
+    with path.open("xb") as handle:
+FileExistsError: [Errno 17] File exists: '/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/campaign/F1_POLICY_SNAPSHOT.json'
+
+Observed after failure: FROZEN_SELECTIONS_BEFORE_REALIZATION absent; SELECTION_STAGE_RECEIPT absent; POOL physical_attempt_01 count 24; owner absent; Provider/GPU/qualification/training/held-out/retry activity 0.
+
+Disposition: sealed write-once artifact relocation only.

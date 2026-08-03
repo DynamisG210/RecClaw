@@ -1,0 +1,16 @@
+Q5-A REALIZE pre-call failure 01 (no Provider/GPU/implementer/qualification/training calls)
+
+Cause: The remote campaign source runner had the post-prefreeze pre-outcome pair/adapter correction deployed, but the existing RuntimeBindingV1 manifest was frozen against the d3f8317 runner entrypoint. The mandatory physical gate rejected the drift before ownership/attempt creation.
+
+Traceback (most recent call last):
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 161, in <module>
+    _bootstrap_execution_binding()
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 72, in _bootstrap_execution_binding
+    binding = RuntimeBindingV1.from_manifest(manifest_path, repo_root=repo_root).activate()
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/src/recclaw_runtime_binding.py", line 158, in from_manifest
+    raise RuntimeBindingError(f"runtime dependency hash drift: {record.get('role')}")
+recclaw_runtime_binding.RuntimeBindingError: runtime dependency hash drift: runner_entrypoint
+
+Observed after failure: EXECUTION_OWNER absent; REALIZE attempt/realization count 0; POOL physical_attempt_01 count 24; SELECT_COMPLETE remains sealed; Provider/GPU/implementer/qualification/training/held-out/retry calls 0.
+
+Disposition: restore the exact prefreeze runner entrypoint before the only physical REALIZE. The pair/adapter correction remains a branch-level pre-outcome validation and is not injected into this frozen campaign source after the gate.

@@ -1,0 +1,87 @@
+{
+  "schema": "recclaw.research-line.q5a-hard-block-invalid-protocol-binding.v1",
+  "status": "HARD_BLOCK_INVALID_PROTOCOL_BINDING",
+  "campaign_id": "q5a-runtime-bound-pilot-20260803-01",
+  "development_only": true,
+  "scientific_effect_claim": false,
+  "frozen_inputs": {
+    "foundation_commit": "885b81ed0b67ec0cc551a589d6d1e3a852b73c43",
+    "foundation_package_digest": "014bb27987086401de92092164fe715a5dba96f345fc80dc3fb51751dcc8de14",
+    "source_tree_digest": "2d48bf8b3f83012f328fac4dc4f6f88a1c72bc808dde22317143398d04f8b04a",
+    "prefreeze_digest": "30759b606b790609ae5ca503bd4eaf138d36773c6d32adce5d9513eb80611e49",
+    "deployment_digest": "e9ee462085720e0ebc4968e62e586fdb8f86f98ee13df0216784c3924fa1e146",
+    "gate_digest": "572ae8e581e8cda70130a5462ce086da7092a069337698accb768bfe9a174c5c",
+    "remote_preflight_digest": "6951b2bd6035ce48b5e928e2eec498c5f43f8aeb916ec2534a4ee61e0ec76d1a"
+  },
+  "pool": {
+    "pool_count": 3,
+    "pool_size": 8,
+    "provider_calls": 24,
+    "provider_attempt_ledger_digest": "4e63c30a2bf5bd20d4ef49b35b53618d6642a04d7fe272e9db065ce89d4558b3",
+    "retries": 0,
+    "replacement": false,
+    "success_filtering": false,
+    "held_out_reads": 0,
+    "status": "POOL_COMPLETE"
+  },
+  "selection": {
+    "precall_failure_classes": [
+      "policy_activation_pair_mismatch",
+      "write_once_partial_snapshot_or_selection_artifact",
+      "q5a_pool_missing_q3_selection_rule_metadata"
+    ],
+    "precall_trace_files": [
+      "SELECT_PRECALL_FAILURE_01_TRACEBACK.txt",
+      "SELECT_PRECALL_FAILURE_02_TRACEBACK.txt",
+      "SELECT_PRECALL_FAILURE_03_TRACEBACK.txt"
+    ],
+    "frozen_selection_artifacts_present": true,
+    "selection_receipt_status": "SELECT_COMPLETE",
+    "selection_union_digest": "d342880580f38111faf7340d4f40267f53f6f986ccf6c3773977c1921aa90dec",
+    "frozen_selection_sha256": "e337a5f580c7ca49bbf6e6593034645c79e64c2e992f6fcc722e29c70d7f9ab6",
+    "policy_selection_counts": {
+      "STATIC": "3 pools x 2",
+      "CURRENT_F1": "3 pools x 2",
+      "OUTCOME_AWARE": "3 pools x 2"
+    },
+    "unique_spec_count": 16,
+    "valid_for_campaign": false,
+    "invalid_reason": "SELECT artifacts were produced after a prefreeze-bound runner correction; gate/source lineage does not match the frozen source tree."
+  },
+  "realize_interruption": {
+    "runtime_binding_precall_failure_file": "RUNTIME_BINDING_PRECALL_FAILURE_01.txt",
+    "patched_runner_hash": "96cad9b7302f6f53c013d5ec2e8062c10c6664948366e7e585baa94250daea0f",
+    "frozen_runner_hash": "f860b3f78d6dc059914216b32e62eccfd5b6c3ab6442d2dcb9d7c68e083fa079",
+    "realization_dirs_created": 14,
+    "stage_invocations_created": 26,
+    "stage_failures_created": 13,
+    "physical_realize_provider_calls": 0,
+    "implementer_calls": 0,
+    "qualification_calls": 0,
+    "training_runs": 0,
+    "mechanism_probe_calls": 0,
+    "effect_episode_calls": 0,
+    "new_physical_attempt_dirs": 0,
+    "authority": 0,
+    "owner_file": "EXECUTION_OWNER.json",
+    "owner_status": "CLAIMED_STALE_AFTER_EXPLICIT_HARD_STOP",
+    "active_campaign_workers_after_stop": 0
+  },
+  "authority": {
+    "selection": 0,
+    "realization": 0,
+    "effect": 0,
+    "mechanism_information": 0,
+    "feasibility_claim": 0,
+    "reason": "Invalid frozen source/selection lineage; no Q5-A scientific evidence is consumable."
+  },
+  "sealed_scope": {
+    "old_q4_sealed_modified": false,
+    "old_q5a_hard_stop_modified": false,
+    "old_runtime_binding_root_modified": false,
+    "campaign_root": "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01",
+    "remote_campaign_root_is_sealed": true,
+    "restart_permitted": false
+  },
+  "next_gate": "NO_Q5B; repair transaction-boundary/preflight contract, obtain independent acceptance, then decide on a wholly new campaign root."
+}

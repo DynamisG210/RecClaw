@@ -45,6 +45,36 @@ RECBole = PROJECTS / "RecBole"
 API_CONFIG = PROJECTS / "RecClaw_v2_0_Final_Reference/llm_api.md"
 
 
+def test_outcome_policy_activation_pair_mismatch_fails_closed() -> None:
+    import run_q5a_idea_feasibility as runner
+
+    with pytest.raises(
+        runner.Q5AIdeaFeasibilityError,
+        match="policy/activation policy_digest mismatch",
+    ):
+        runner._validate_outcome_policy_activation_pair(
+            {"policy_digest": "accepted-policy"},
+            {
+                "status": "ACTIVE_DEVELOPMENT_ONLY",
+                "policy_digest": "wrong-policy",
+            },
+        )
+
+
+def test_q5a_outcome_pool_view_preserves_frozen_pool_and_adds_projection_metadata() -> None:
+    import run_q5a_idea_feasibility as runner
+
+    pool = {
+        "schema": "recclaw.research-line.q5a-raw-pool.v1",
+        "candidate_pools": {"shared": []},
+    }
+    view = runner._q5a_outcome_pool_view(pool)
+
+    assert "selection_rule" not in pool
+    assert view["selection_rule"] == "NONE_POOL_ONLY_POLICIES_SELECT_AFTER_BYTE_FREEZE"
+    assert view["candidate_pools"] == pool["candidate_pools"]
+
+
 def _copy_tree(source: Path, target: Path) -> None:
     shutil.copytree(
         source,
@@ -64,6 +94,12 @@ def _relocated_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     fixture_target = repo / "results/research_line/q4_prospective_policy_comparison_20260803_01/shared_pool/FROZEN_SHARED_POOL_BEFORE_SELECTION.json"
     fixture_target.parent.mkdir(parents=True)
     shutil.copy2(Q4_FIXTURE, fixture_target)
+    _copy_tree(
+        ROOT
+        / "results/research_line/q4_prospective_policy_comparison_20260803_01/policy_bindings",
+        repo
+        / "results/research_line/q4_prospective_policy_comparison_20260803_01/policy_bindings",
+    )
     prefreeze_target = repo / "results/research_line/q5a_idea_feasibility_20260803_01/PREFREEZE_MANIFEST.json"
     prefreeze_target.parent.mkdir(parents=True)
     shutil.copy2(PREFREEZE, prefreeze_target)
@@ -173,6 +209,8 @@ def test_relocated_preflight_binds_import_time_paths_and_renders_without_calls(t
     assert receipt["preflight_root"] == str(preflight_root.resolve())
     checks = {row["name"]: row["status"] for row in receipt["checks"]}
     assert checks["runtime_binding_activation"] == "PASS"
+    assert checks["accepted_outcome_policy_activation_pair"] == "PASS"
+    assert checks["q5a_q3_selection_rule_adapter"] == "PASS"
     assert checks["path_sensitive_import_order"] == "PASS"
     assert checks["import_time_runtime_paths_exact"] == "PASS"
     assert checks["accepted_profile_registry_context"] == "PASS"
@@ -350,6 +388,7 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
         )
 
     import run_q5a_idea_feasibility as runner
+    original_ranked = runner._ranked_selection
 
     physical_calls = {"provider": 0}
 
@@ -365,10 +404,36 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
         pool_root.mkdir(parents=True)
         rows = [
             {
-                "preoutcome_score": {"spec_digest": f"{pool_index:02d}{slot:02d}".ljust(64, "0")},
+                "preoutcome_score": {
+                    "spec_digest": f"{pool_index:02d}{slot:02d}".ljust(64, "0"),
+                    "features": {
+                        "discriminative_value": 1,
+                        "scientific_testability": 1,
+                    },
+                },
+                "producer_role": "mechanism_composer",
+                "research_spec": {
+                    "falsifier": "matched control",
+                    "matched_control_requirement": "same protocol",
+                    "expected_evidence": "full-sort comparison",
+                    "competing_explanation": "parameter count",
+                    "mechanism_off_definition": "disable proposed pathway",
+                    "protocol_ref": "recclaw.campaign.ml1m-full-sort.v1",
+                    "protocol_digest": "a" * 64,
+                },
+                "resolution": {"resolution": "INNOVATION_REQUIRED"},
+                "resolution_facts": {
+                    "high_change_dimensions": ["MODEL_STRUCTURE"],
+                    "required_budget": {
+                        "implementation_token_ceiling": 20000,
+                        "qualification_gpu_minutes": 10,
+                        "qualification_wall_minutes": 30,
+                    },
+                },
                 "stage": "OPENSPEC_FROZEN",
                 "slot": f"slot-{slot:02d}",
                 "provider_attempts": [{"ordinal": 1, "status": "SUCCESS"}],
+                "outcome_fields_consumed": [],
             }
             for slot in range(1, 9)
         ]
@@ -376,6 +441,9 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
             "schema": "recclaw.research-line.q5a-raw-pool.v1",
             "pool_index": pool_index,
             "candidate_pools": {"shared": rows},
+            "held_out_reads": 0,
+            "implementation_or_qualification_outcomes_present_when_written": 0,
+            "outcome_fields_consumed": [],
         }
         pool_digest = _digest({"pool_index": pool_index})
         raw_path = pool_root / "RAW_POOL_BEFORE_SELECTION.json"
@@ -468,24 +536,102 @@ def test_stage_aware_gate_pool_select_realize_lifecycle_is_no_call_and_single_us
         selected = ids[:2]
         return selected, [], {candidate_id: "TEST" for candidate_id in selected}, {candidate_id: float(candidate_id in selected) for candidate_id in ids}, None, None, "TEST", None, "NONE"
 
-    monkeypatch.setattr(runner, "_ranked_selection", fake_ranked)
     f1_policy = tmp_path / "f1.json"
     outcome_policy = tmp_path / "outcome.json"
     outcome_activation = tmp_path / "activation.json"
-    for path in (f1_policy, outcome_policy, outcome_activation):
-        path.write_text("{}", encoding="utf-8")
-    runner.select(
-        type(
-            "Args",
-            (),
-            {
-                "output_root": binding.campaign_root,
-                "f1_policy": f1_policy,
-                "outcome_policy": outcome_policy,
-                "outcome_activation": outcome_activation,
-            },
-        )()
+    f1_policy.write_text("{}", encoding="utf-8")
+    outcome_policy.write_text(
+        json.dumps({"policy_digest": "test-outcome-policy"}),
+        encoding="utf-8",
     )
+    outcome_activation.write_text(
+        json.dumps(
+            {
+                "status": "ACTIVE_DEVELOPMENT_ONLY",
+                "policy_digest": "test-outcome-policy",
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = type(
+        "Args",
+        (),
+        {
+            "output_root": binding.campaign_root,
+            "f1_policy": f1_policy,
+            "outcome_policy": outcome_policy,
+            "outcome_activation": outcome_activation,
+        },
+    )()
+    selection_artifacts = (
+        binding.campaign_root / "F1_POLICY_SNAPSHOT.json",
+        binding.campaign_root / "OUTCOME_POLICY_SNAPSHOT.json",
+        binding.campaign_root / "OUTCOME_ACTIVATION_SNAPSHOT.json",
+        binding.campaign_root / "selections",
+        binding.campaign_root / "FROZEN_SELECTIONS_BEFORE_REALIZATION.json",
+        binding.campaign_root / "SELECTION_STAGE_RECEIPT.json",
+    )
+    outcome_activation.write_text(
+        json.dumps(
+            {
+                "status": "ACTIVE_DEVELOPMENT_ONLY",
+                "policy_digest": "wrong-outcome-policy",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        runner.Q5AIdeaFeasibilityError,
+        match="policy/activation policy_digest mismatch",
+    ):
+        runner.select(args)
+    assert not any(path.exists() for path in selection_artifacts)
+
+    outcome_activation.write_text(
+        json.dumps(
+            {
+                "status": "ACTIVE_DEVELOPMENT_ONLY",
+                "policy_digest": "test-outcome-policy",
+            }
+        ),
+        encoding="utf-8",
+    )
+    original_pool_view = runner._q5a_outcome_pool_view
+
+    def adapter_mismatch_ranked(
+        pool: dict[str, object], policy: str, **kwargs: object
+    ) -> tuple[object, ...]:
+        if policy == "OUTCOME_AWARE":
+            runner._q5a_outcome_pool_view(pool)
+        return fake_ranked(pool, policy, **kwargs)
+
+    def fail_adapter(_pool: object) -> dict[str, object]:
+        raise runner.Q5AIdeaFeasibilityError("selection_rule adapter mismatch")
+
+    monkeypatch.setattr(runner, "_q5a_outcome_pool_view", fail_adapter)
+    monkeypatch.setattr(runner, "_ranked_selection", adapter_mismatch_ranked)
+    with pytest.raises(
+        runner.Q5AIdeaFeasibilityError,
+        match="selection_rule adapter mismatch",
+    ):
+        runner.select(args)
+    assert not any(path.exists() for path in selection_artifacts)
+
+    monkeypatch.setattr(runner, "_q5a_outcome_pool_view", original_pool_view)
+    monkeypatch.setattr(runner, "_ranked_selection", original_ranked)
+    args.f1_policy = (
+        ROOT
+        / "results/research_line/q4_prospective_policy_comparison_20260803_01/policy_bindings/current_f1/policy/versioned_policy.json"
+    )
+    args.outcome_policy = (
+        ROOT
+        / "results/research_line/q4_prospective_policy_comparison_20260803_01/policy_bindings/outcome_aware/versioned_policy.json"
+    )
+    args.outcome_activation = (
+        ROOT
+        / "results/research_line/q4_prospective_policy_comparison_20260803_01/policy_bindings/outcome_aware/active_policy.json"
+    )
+    runner.select(args)
     attempt_specs = [(pool_index, slot) for pool_index in range(1, 4) for slot in range(1, 9)]
     if attempt_variant == "missing":
         attempt_specs.pop()

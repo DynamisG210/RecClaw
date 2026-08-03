@@ -1,0 +1,20 @@
+Q5-A SELECT pre-call failure 02 (no Provider/GPU/qualification/training calls)
+
+Cause: SELECT pre-call failure 01 had already written the first STATIC/CURRENT_F1 selection files before rejecting the mismatched OUTCOME_AWARE activation. The corrected invocation was therefore rejected by the runner's write-once output contract before any physical stage.
+
+Traceback (most recent call last):
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 1358, in <module>
+    exit_code = main()
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 1347, in main
+    select(args)
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 742, in select
+    _write_new(selection_path, selection)
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 263, in _write_new
+    with path.open("xb") as handle:
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/project2_asr/.tools/kaldi_env/lib/python3.10/pathlib.py", line 1119, in open
+    return self._accessor.open(self, mode, buffering, encoding, errors)
+FileExistsError: [Errno 17] File exists: '/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/campaign/selections/pool-01/STATIC.json'
+
+Observed after failure: Provider physical_attempt_01 count 24; POOL_GENERATION_RECEIPT complete; EXECUTION_OWNER absent; no SELECT receipt; no Provider/GPU/qualification/training/held-out/retry activity.
+
+Disposition: write-once partial-output sealing only. Frozen pool, seeds, policy artifacts, Provider/model/endpoint/budget, and scientific contract unchanged.

@@ -1,0 +1,24 @@
+Q5-A SELECT pre-call failure 01 (no Provider/GPU/qualification/training calls)
+
+Command stage: SELECT
+Campaign: q5a-runtime-bound-pilot-20260803-01
+Cause: CURRENT_F1 activation was passed to the OUTCOME_AWARE consumer. The accepted OUTCOME_AWARE versioned policy has policy_digest 1827be7da1792c8044454db04f6335c72cd1bae793e95ff5b76cf63f8c4a1e39, while the passed CURRENT_F1 activation had policy_digest bde1af2801cf2de15de5034fff6f5f39afcb9bb161cb7fd23ec88eb51e4314ca. The consumer rejected the mismatched active policy before acquisition.
+
+Traceback (most recent call last):
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 1358, in <module>
+    exit_code = main()
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 1347, in main
+    select(args)
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 718, in select
+    selected, tie_set, selected_by, probabilities, draw, source_digest, semantics, tie_tolerance, prior_usage = _ranked_selection(
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/scripts/run_q5a_idea_feasibility.py", line 643, in _ranked_selection
+    acquisition = select_outcome_aware(
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/src/recclaw_core/experiments/helix_abc_v1/prospective_policy_comparison.py", line 747, in select_outcome_aware
+    manifest = build_q3_acquisition_manifest(
+  File "/NAS2020/Workspaces/DMGroup/tingrangan/q5a_runtime_bound_pilot_20260803_01/source/src/recclaw_core/experiments/helix_abc_v1/open_meta_q3.py", line 1572, in build_q3_acquisition_manifest
+    raise OpenMetaQ3Error("consumer did not receive a valid active Q3 policy")
+recclaw_core.experiments.helix_abc_v1.open_meta_q3.OpenMetaQ3Error: consumer did not receive a valid active Q3 policy
+
+Observed after failure: POOL_GENERATION_RECEIPT remains complete; physical_attempt_01 count remains 24; EXECUTION_OWNER absent; no SELECT receipt; no Provider/GPU/qualification/training/held-out/retry activity.
+
+Disposition: pre-outcome input-binding correction only. The frozen pool, seeds, Provider/model/endpoint/budget, and scientific contract are unchanged.
