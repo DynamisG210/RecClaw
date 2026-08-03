@@ -1,0 +1,144 @@
+{
+  "schema": "recclaw.research-line.q2-mechanism-characterization-receipt.v1",
+  "status": "Q2_COMPLETE_NON_IDENTIFIABLE",
+  "development_only": true,
+  "scientific_superiority_claim": false,
+  "held_out_reads": 0,
+  "q1_input": {
+    "commit": "d10083908a64a0d05a0cbbb1a6eddc2055b2f710",
+    "tree": "4f44fa0165292a442ec9e5b3ddafb2335e3ae36c",
+    "candidate_package_digest": "0f4567d20b96d84b2cddcc39de6f1bea5be531966a8a210ccd95bb97f6010783",
+    "candidate_package_file_sha256": "f828081be48a0bfc12b219c24e9e82afdc0905154805f7a9e27a31844341e462",
+    "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
+    "selected_package_consumed_by_physical_worker": true
+  },
+  "frozen_contract": {
+    "path": "docs/research_line/vnext/Q2_MECHANISM_PROBE_CONTRACT.json",
+    "sha256": "fb1a7efe58db69928898c70a1b410f7034b00e5cf025a7230d7f87600240475e",
+    "frozen_before_outcome": true,
+    "origin_blind": true
+  },
+  "runtime_import_gate": {
+    "status": "PASS",
+    "normal_package_import": true,
+    "python_version": "3.10.20",
+    "rfc8785_version": "0.1.4",
+    "artifact_sha256": "26bf28a8782f14251049ca5f7bbe9f6efe2277be9d207591630c15d0e99b068a"
+  },
+  "resource_probe": {
+    "status": "RESOURCE_CENSORED",
+    "feasibility_status": "RESOURCE_DEFERRED",
+    "deadline_seconds": 300,
+    "resource_probe_executions": 1,
+    "resource_probe_reexecuted": false,
+    "train_batches_completed": 90,
+    "eval_batches_completed": 128,
+    "epochs_completed_field_in_source_artifact": 3,
+    "epochs_completed_field_interpretation": "instrumented train phases started/finalized; the third 32-batch train prefix stopped after 26 batches and is not a completed third epoch",
+    "loss_trend": [
+      22.174099504947662,
+      21.87941884994507,
+      null
+    ],
+    "train_peak_allocated_mib": 1360.6689453125,
+    "train_peak_reserved_mib": 1382.0,
+    "train_batches_per_second": 0.3136719131198506,
+    "eval_batches_per_second": 9.608166941900617,
+    "resource_result_sha256": "7016b717f9f0df1d9c44ae24f3994e7faf0f0243fa1bc6063b2b4bf51950a7c5",
+    "resource_updates_mechanism_effect": false
+  },
+  "telemetry_integrity": {
+    "resource_result_bound_telemetry_sha256": "6cfdfd347566c22dd22a1e1cd30833e9fde2cdea60e101ff7e217c37db5a19da",
+    "post_seal_polluted_telemetry_sha256": "6aafc8be9b74523ba6047724708cc98c1cf9cb943fce99cb4d4b042b28356c78",
+    "pollution_occurred": true,
+    "pollution_cause": "the resource telemetry loss wrapper remained active and the first mechanism loss call appended active_progress.last_loss_observation after the resource result had sealed its telemetry digest",
+    "sole_post_resource_field": "active_progress.last_loss_observation",
+    "post_resource_field_belongs_to_resource_result": false,
+    "reconstruction": "the contaminated source was preserved; deleting the sole post-resource field from an in-memory copy reproduced the receipt-bound exact bytes and SHA, which were written only to the new continuation root",
+    "contaminated_snapshot_sha256": "6aafc8be9b74523ba6047724708cc98c1cf9cb943fce99cb4d4b042b28356c78",
+    "authoritative_copy_sha256": "6cfdfd347566c22dd22a1e1cd30833e9fde2cdea60e101ff7e217c37db5a19da",
+    "integrity_correction_artifact_sha256": "b1ee88aea6cf052e6426d17031e2b4a722623b83889b0d7c40224e9f50f4a4d6"
+  },
+  "continuation_boundary": {
+    "sealed_resource_root_became_read_only": true,
+    "canonical_continuation_used_new_root": true,
+    "sealed_resource_root_writes_during_canonical_continuation": 0,
+    "read_only_attestation_sha256": "68050498a8cc73090b77fcaae8bf62ca8530cc3ccb9538662a0bcd8be09dc90e",
+    "pre_boundary_same_root_continuation_occurred": true,
+    "pre_boundary_same_root_continuation_disposition": "preserved without overwrite or deletion and excluded from canonical Q2 evidence",
+    "pre_boundary_noncanonical_physical_result_sha256": "f3cac76e955da635ef98d78a3ca91c4767c76d6670bba03bc746a9c30f4e8862",
+    "pre_boundary_noncanonical_q3_package_sha256": "3e095370771d56652185cca906f028b48553f6e834348a86e59a5b57d61c11b0"
+  },
+  "protocol_consumer_missingness": {
+    "status": "NOT_ASSESSED_PROTOCOL_NO_CHECKPOINT",
+    "class": "PROTOCOL_CONSUMER_MISSINGNESS",
+    "cause": "the resource-only worker used saved=False, so the continuation could only instantiate a fresh untrained model",
+    "is_resource_censoring": false,
+    "learned_activation_assessed": false,
+    "learned_mechanism_effect_assessed": false
+  },
+  "mechanism_evidence": {
+    "loss_participation": {
+      "status": "PASS",
+      "scope": "UNTRAINED_STRUCTURAL_ONLY",
+      "full_off_abs_delta": 0.00002682209014892578,
+      "support_gate_weight_gradient_l2": 0.000008852799510350451
+    },
+    "gate_activation": {
+      "status": "NOT_ASSESSED_PROTOCOL_NO_CHECKPOINT",
+      "structural_variability_status": "PASS",
+      "learned_activation_assessed": false
+    },
+    "routing_and_propagation": {
+      "status": "PASS",
+      "scope": "UNTRAINED_STRUCTURAL_ONLY",
+      "support_gate_call_count": 96,
+      "pairwise_margin_max_abs_delta": 0.002423346508294344
+    },
+    "target_conditioning": {
+      "status": "FAIL",
+      "compared_user_count": 8,
+      "max_centered_common_logit_delta": 0.0,
+      "pairwise_order_change_count": 0,
+      "target_input_observed_in_gate": false
+    },
+    "mechanism_off_parent_equivalence": {
+      "status": "FAIL",
+      "declared_parent": "recclaw_ext.models.composable_v2:LightGCNComposableV2",
+      "predict_max_abs_delta": 0.010050018317997456,
+      "full_sort_predict_max_abs_delta": 0.016176993027329445,
+      "calculate_loss_abs_delta": 0.00018966197967529297,
+      "shared_parameter_gradient_max_abs_delta": 0.0013552060117945075
+    },
+    "discriminative_prediction": {
+      "status": "NOT_ASSESSED_PROTOCOL_NO_CHECKPOINT",
+      "mechanism_effect_assessed": false
+    }
+  },
+  "decision": {
+    "mechanism_state": "NON_IDENTIFIABLE",
+    "decisive_frozen_failures": [
+      "target_conditioning",
+      "mechanism_off_parent_equivalence"
+    ],
+    "mechanism_effect_update_allowed": false,
+    "full_ablation_eligible": false,
+    "full_ablation_executed": false,
+    "full_ablation_stop_reason": "two frozen identifiability discriminators failed; full matched ablation would not isolate the declared mechanism",
+    "retries": 0
+  },
+  "four_gates": {
+    "functional_real_and_runnable": "PASS",
+    "end_to_end_result_chain_real": "PASS",
+    "recclaw_open_recommendation_research_relevance": "PASS_NEGATIVE_MECHANISM_EVIDENCE",
+    "no_preimplementation_tuning_static_or_mock_effect": "PASS"
+  },
+  "canonical_artifacts": {
+    "physical_result_path": "results/research_line/q2_mechanism_characterization_20260802_01/Q2_PHYSICAL_RESULT.json",
+    "physical_result_sha256": "453ee9883f5d2e284713f1c5dd5761e8383fdcc9ede1bdad279cca87daab88ad",
+    "q3_package_path": "results/research_line/q2_mechanism_characterization_20260802_01/Q3_MECHANISM_EVIDENCE_PACKAGE.json",
+    "q3_package_sha256": "a0b131dcf7782103ca75538b6215443219036ce95230b628c318aede423d44ab",
+    "continuation_input_binding_sha256": "3b7ab14acef1c371e017a769c288f345f40bc0e2dd250e10444e688101892fda"
+  },
+  "q3_next_input": "results/research_line/q2_mechanism_characterization_20260802_01/Q3_MECHANISM_EVIDENCE_PACKAGE.json"
+}

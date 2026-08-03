@@ -188,6 +188,7 @@ def _install_resource_telemetry(
         flush()
 
     restore_iterations: list[object] = []
+    original_loss_for_restore: object | None = None
     if prefix_contract is not None:
         if preallocated_train_batches is None or preallocated_valid_batches is None:
             raise RuntimeError("fixed-batch prefix was not preallocated")
@@ -210,6 +211,7 @@ def _install_resource_telemetry(
             on_batch_completed=batch_completed,
         ))
         original_loss = trainer.model.calculate_loss
+        original_loss_for_restore = original_loss
 
         def measured_loss(interaction: object) -> object:
             result = original_loss(interaction)
@@ -355,6 +357,8 @@ def _install_resource_telemetry(
     def restore() -> None:
         for restore_iteration in reversed(restore_iterations):
             restore_iteration()
+        if original_loss_for_restore is not None:
+            trainer.model.calculate_loss = original_loss_for_restore
 
     return telemetry, restore
 

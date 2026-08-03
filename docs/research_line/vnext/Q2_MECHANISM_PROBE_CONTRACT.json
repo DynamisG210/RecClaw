@@ -1,0 +1,197 @@
+{
+  "schema": "recclaw.research-line.q2-mechanism-probe-contract.v1",
+  "status": "FROZEN_BEFORE_Q2_OUTCOME",
+  "development_only": true,
+  "scientific_effect_claim_allowed": false,
+  "input": {
+    "q1_commit": "d10083908a64a0d05a0cbbb1a6eddc2055b2f710",
+    "q1_tree": "4f44fa0165292a442ec9e5b3ddafb2335e3ae36c",
+    "q1_physical_receipt_path": "results/research_line/q1_prompt_contract_20260802_01/Q1_CANONICAL_RECEIPT.json",
+    "q1_physical_receipt_sha256": "cbb2e8db9ee07cdb923061686dc8f7a44e8eddb65c504ab7803b079ee8935005",
+    "candidate_package_path": "results/research_line/q1_prompt_contract_20260802_01/selected/enriched/candidate_package.json",
+    "candidate_package_file_sha256": "f828081be48a0bfc12b219c24e9e82afdc0905154805f7a9e27a31844341e462",
+    "candidate_package_digest": "0f4567d20b96d84b2cddcc39de6f1bea5be531966a8a210ccd95bb97f6010783",
+    "candidate_source_tree_digest": "ba87decc9e72d8fde853ed17de1520cd9de9a2b436837ec2868734af2ff7c757",
+    "candidate_source_sha256": "30b0d22b0d25ec7444d5dd3137ffce4bdc10bc611099ff48aac5e711b1e180bd",
+    "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
+    "research_spec_digest": "1871d8c0dfd6f36cbce380a78e1e1a11a610629d8770522d867fc2f13d074988",
+    "held_out_reads_before_freeze": 0
+  },
+  "declared_mechanism": {
+    "claim": "learned support selector plus counterfactual support-ablation stability objective",
+    "closest_parent_mechanism_id": "LIGHTGCN__LGCN_DUAL_PATH",
+    "closest_parent_entrypoint": "recclaw_ext.models.composable_v2:LightGCNComposableV2",
+    "closest_parent_base_model_config": "LightGCN",
+    "closest_parent_config": {
+      "composition_operators": [
+        "LGCN_DUAL_PATH"
+      ],
+      "dual_path_weight": 0.35
+    },
+    "mechanism_off_definition": "same declared parent/backbone and weights with learned support selection and the stability term disabled"
+  },
+  "static_input_facts_not_counted_as_probe_results": {
+    "candidate_base_class": "recbole.model.general_recommender.bpr:BPR",
+    "candidate_mechanism_switch": "set_mechanism_enabled",
+    "candidate_mechanism_parameter_names": [
+      "support_gate.weight"
+    ],
+    "candidate_active_path": "user embedding plus softmax-weighted training-history item summary; pairwise BPR loss plus 0.1 times leave-one-support-out squared margin penalty",
+    "candidate_off_path": "candidate-owned direct BPR dot-product predict/full-sort/pairwise loss",
+    "q1_off_reference_class": "recbole.model.general_recommender.bpr:BPR",
+    "q1_off_reference_tolerance_max_abs": 1e-07,
+    "q2_recheck_requirement": "Q1 BPR equivalence is input evidence only; Q2 must compare the off path with the declared LIGHTGCN__LGCN_DUAL_PATH parent on real data"
+  },
+  "probe_population": {
+    "dataset": "ml-1m",
+    "read_scope": "SEARCH_TRAIN_PLUS_DEVELOPMENT_VALIDATION_ONLY",
+    "held_out_reads": 0,
+    "seed": 54102,
+    "probe_train_batch_indices": [
+      0,
+      15,
+      31
+    ],
+    "maximum_examples_per_probe_batch": 32,
+    "minimum_distinct_users": 32,
+    "minimum_eligible_users_with_two_supports": 8,
+    "origin_blind_selection_rule": "first, midpoint, and last batch of the frozen Q0R2 32-batch training prefix; within each batch take at most 32 structurally eligible examples in ascending (user_id,positive_item_id,negative_item_id) order with no outcome-based filtering"
+  },
+  "numeric_rules": {
+    "finite_nonzero_floor": 1e-12,
+    "mechanism_gradient_l2_floor": 1e-10,
+    "activation_std_floor": 1e-06,
+    "routing_score_or_margin_delta_floor": 1e-07,
+    "parent_equivalence_atol": 1e-07,
+    "parent_equivalence_rtol": 1e-06,
+    "support_saturation_weight": 0.99,
+    "maximum_support_saturation_rate": 0.95,
+    "discriminative_relative_damage_margin": 0.05,
+    "derivation": {
+      "finite_nonzero_floor": "selected candidate _EPS",
+      "parent_equivalence_atol": "existing Q1 parent-preserving unit-check maximum absolute tolerance",
+      "parent_equivalence_rtol": "float32 same-weight same-input comparison tolerance; Q1 observed exact zero",
+      "participation_and_activation_floors": "strictly above float32 numerical noise without defining an effect-size claim",
+      "discriminative_relative_damage_margin": "five percent of the matched random-removal absolute damage, frozen as a direction-identification margin rather than a recommendation-metric PASS threshold"
+    }
+  },
+  "cheap_probes": {
+    "loss_participation": {
+      "required": [
+        "full and mechanism-off total losses are finite",
+        "stability contribution is finite and greater than finite_nonzero_floor",
+        "full versus mechanism-off loss absolute delta is greater than routing_score_or_margin_delta_floor",
+        "every declared mechanism parameter has a finite gradient with L2 norm greater than mechanism_gradient_l2_floor"
+      ]
+    },
+    "gate_activation": {
+      "required": [
+        "record raw support logits and normalized support weights across all eligible probe users",
+        "raw-logit standard deviation exceeds activation_std_floor",
+        "support-weight saturation rate is no greater than maximum_support_saturation_rate",
+        "at least two users have distinct centered support-logit signatures"
+      ]
+    },
+    "target_conditioning": {
+      "required": [
+        "for the same user and two distinct positive targets, compare the common support set",
+        "centered logits or pairwise support ordering on the common support set changes above activation_std_floor",
+        "a denominator-only softmax rescaling after excluding a target does not count as target-conditioned selection"
+      ],
+      "failure_disposition": "NON_IDENTIFIABLE"
+    },
+    "routing_and_propagation": {
+      "required": [
+        "under identical weights and inputs, toggling only the declared mechanism changes positive score or pairwise margin above routing_score_or_margin_delta_floor",
+        "the changed path is traced through support_gate and the history summary, not ordinary stochastic forward variation",
+        "record whether declared LightGCN propagation is actually present in the candidate active and off paths"
+      ]
+    },
+    "mechanism_off_parent_equivalence": {
+      "reference": "declared LIGHTGCN__LGCN_DUAL_PATH executable parent",
+      "same_weights_and_inputs": true,
+      "surfaces": [
+        "predict",
+        "full_sort_predict",
+        "calculate_loss",
+        "shared_parameter_gradients"
+      ],
+      "pass_rule": "every finite maximum absolute delta is at most parent_equivalence_atol plus parent_equivalence_rtol times the reference maximum absolute value",
+      "failure_disposition": "NON_IDENTIFIABLE"
+    },
+    "discriminative_prediction": {
+      "prediction": "removing the learned highest-weight support causes more absolute pairwise-margin damage than removing one same-cardinality uniformly selected non-top support",
+      "comparison": "learned top-one removal versus deterministic same-cardinality control removal selected by SHA256(seed,user_id,positive_item_id) from non-top supports",
+      "aggregation": "mean per-example absolute margin damage over all eligible origin-blind examples",
+      "support_rule": "learned damage is at least control damage plus discriminative_relative_damage_margin times max(control damage, finite_nonzero_floor)",
+      "contradiction_rule": "control damage is at least learned damage plus discriminative_relative_damage_margin times max(learned damage, finite_nonzero_floor)",
+      "otherwise": "NON_IDENTIFIABLE"
+    }
+  },
+  "resource_probe": {
+    "must_run_before_mechanism_effect_interpretation": true,
+    "execution_purpose": "RESOURCE_PROBE_ONLY",
+    "prefix_contract_sha256": "c87190d7a1a0b997f2f513c8bc7605a5e9c7d2cf6ec3ad6cf3c6f2c7351e446c",
+    "epochs": 3,
+    "deadline_seconds": 300,
+    "seed": 54102,
+    "train_batch_indices": "0..31 inclusive",
+    "eval_batch_indices": "0..63 inclusive",
+    "telemetry": [
+      "train and eval peak allocated MiB",
+      "train and eval peak reserved MiB",
+      "batch throughput",
+      "loss trend",
+      "phase wall time"
+    ],
+    "resource_failure_updates_mechanism_effect": false,
+    "missingness_states": [
+      "RESOURCE_CENSORED",
+      "RESOURCE_DEFERRED"
+    ]
+  },
+  "state_machine": {
+    "states": [
+      "NOT_ASSESSED",
+      "INACTIVE",
+      "ACTIVE_SUPPORTED",
+      "ACTIVE_CONTRADICTED",
+      "NON_IDENTIFIABLE"
+    ],
+    "precedence": [
+      "NOT_ASSESSED when required physical evidence has not run",
+      "INACTIVE when loss participation, mechanism gradients, gate activation, or traced routing fails",
+      "NON_IDENTIFIABLE when declared-parent equivalence, target conditioning, fairness, or discriminative separation fails",
+      "ACTIVE_SUPPORTED when participation and identifiability pass and the preregistered discriminative support rule passes",
+      "ACTIVE_CONTRADICTED when participation and identifiability pass and the preregistered contradiction rule passes"
+    ],
+    "resource_missingness_is_orthogonal": true,
+    "resource_missingness_may_change_state": false,
+    "mechanism_effect_update_allowed_only_for": [
+      "ACTIVE_SUPPORTED",
+      "ACTIVE_CONTRADICTED"
+    ]
+  },
+  "full_ablation_gate": {
+    "allowed_only_if": "cheap state is ACTIVE_SUPPORTED or ACTIVE_CONTRADICTED, all identifiability probes pass, and resource feasibility is not RESOURCE_DEFERRED",
+    "otherwise": "stop after emitting the Q2 canonical receipt and Q3 package",
+    "arms_if_allowed": [
+      "declared_parent_control",
+      "full_candidate",
+      "declared_mechanism_off"
+    ],
+    "fresh_runs_per_arm": 1,
+    "retries": 0,
+    "epochs": 100,
+    "seed": 54102,
+    "metric": "NDCG@10",
+    "held_out_reads": 0
+  },
+  "authority_boundaries": {
+    "receipts_and_hashes_create_gates": false,
+    "probe_is_scientific_effect": false,
+    "self_approval": false,
+    "candidate_specific_source_patch_allowed": false,
+    "protocol_or_outcome_rule_change_after_freeze_allowed": false
+  }
+}

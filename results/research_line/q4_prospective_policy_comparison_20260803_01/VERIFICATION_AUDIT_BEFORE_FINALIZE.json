@@ -1,0 +1,58 @@
+{
+  "schema": "recclaw.research-line.q4-prospective-verification-audit.v1",
+  "status": "PASS_WITH_PRESERVED_ENVIRONMENT_NEGATIVE_EVIDENCE",
+  "development_only": true,
+  "scientific_effect_claim": false,
+  "source_identity": {
+    "branch": "feat/research-line-prospective-policy-comparison",
+    "accepted_start_commit": "63e44341bd1da982f00a9db7de2be7e779c7a63d",
+    "accepted_start_tree": "af8803eabaa89f56c5d53afbf60bc201187d5556"
+  },
+  "accepted_input_sha256": {
+    "soak_canonical": "8c86853f6676fa03da317d0211e27f747299f9df851530f68b0c02ae5034cad3",
+    "soak_physical": "b71c3a1215e9af01e5802d7362ea87384ba5565254fd2c74e5224a35cc49b438",
+    "soak_package": "631b0f7f28dc5567d776526f51f6a2c009ae02d4105f47bc49be7fb69cf38102",
+    "shared_pool": "cbbdf7a5ea5fe71bde60b514af353cffddd61a0e749158994bf2f1b9c10f2cac",
+    "fairness_v2_contract": "76e8ee755b457cc8b0d93af33e9b2d67fe2793100b22393378f665dd26dfce29"
+  },
+  "runtime": {
+    "local_python": "/root/miniconda3/envs/recbole/bin/python",
+    "python_version": "3.10.20",
+    "pytest_version": "9.1.1",
+    "rfc8785_imported_from_project_environment": true,
+    "gpu_host": "gpu35-tingrangan",
+    "gpu": "NVIDIA GeForce RTX 3080",
+    "gpu_maximum_training_concurrency": 1
+  },
+  "tests": [
+    {
+      "scope": "local targeted comparator and accepted policy contracts",
+      "command": "PYTHONPATH=src /root/miniconda3/envs/recbole/bin/python -m pytest -q tests/experiments/helix_abc_v1/test_prospective_policy_comparison.py tests/experiments/helix_abc_v1/test_open_meta_vnext.py tests/experiments/helix_abc_v1/test_open_meta_f1.py tests/experiments/helix_abc_v1/test_open_meta_q3_projection.py",
+      "result": "26 passed",
+      "wall_time_seconds": 0.56
+    },
+    {
+      "scope": "remote prospective contract",
+      "result": "5 passed",
+      "wall_time_seconds": 0.27
+    },
+    {
+      "scope": "remote broader comparator suite",
+      "result": "11 passed, 6 failed",
+      "failure_class": "REMOTE_ENVIRONMENT_EXTERNAL_EVIDENCE_PERMISSION",
+      "detail": "gpu35 user could not stat /root/projects/RecClaw_r1_r2_runs/fresh_r1_training_filesystem_fix_v3; prospective focused tests passed and this negative evidence was not hidden"
+    }
+  ],
+  "preserved_entrypoint_failures": [
+    "system python lacked pytest",
+    "base conda python lacked rfc8785"
+  ],
+  "audits": {
+    "git_diff_check_before_finalize": "PASS",
+    "secret_pattern_scan": "PASS_ZERO_MATCHES",
+    "remote_result_tar_sha256": "05efbdb657c6efadc32fc6d3245b0c31b3af29f90830eaac179ab518382e5e5a",
+    "held_out_reads": 0,
+    "candidate_retries": 0,
+    "invalid_protocol_launches_disclosed": 2
+  }
+}

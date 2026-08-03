@@ -1,0 +1,1 @@
+{"execution_recipe":{"base_model_config":"BPR","config":{},"entrypoint":"recclaw_ext.candidate:FreshCandidateModel","entrypoint_source_sha256":"c52cabe84f5db02d4792ee59f9948549b77a9fef5323a1f2d25f0944be6945b8","mechanism_id":"selected-candidate-prefix","model":"BPR"}}

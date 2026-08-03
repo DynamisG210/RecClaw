@@ -1,0 +1,70 @@
+{
+  "base_activation_digest": "1200c43eabf1afa0e1816c42dae13a45cac70741d962ddd3d5086ceebe01980b",
+  "campaign_id": "q4-multiround-soak-20260803-01",
+  "development_only": true,
+  "execution_task_type": "EXPERIMENT",
+  "frozen_execution_common": {
+    "budget_seconds": 7200,
+    "config_digest": "80453dd68a7fb47af90e89674f0f8d349110526f4245d8e4004da145fd0bc54e",
+    "data_digest": "99213591aa3344b023e2d07f99f9f970fcdf49e80ef0122db29e89660d8fdf98",
+    "deadline_seconds": 900,
+    "denominator_rule": "FULL_POOL_ROWS_ALWAYS_RETAINED_SELECTED_RESOURCE_AND_PROTOCOL_OBSERVATIONS_ONLY",
+    "denominator_rule_digest": "144dea26bf6217d71971e7ac73489c751151642e037a749c05bf6e07ae30787f",
+    "engineering_watchdog_seconds": 10800,
+    "held_out_reads": 0,
+    "implementation_token_ceiling": 20000,
+    "outcome_interpretation": "DEVELOPMENT_ONLY_SINGLE_SEED_INCONCLUSIVE_NO_SCIENTIFIC_EFFECT_CLAIM",
+    "outcome_interpretation_digest": "f11ab395958817b6b4fe56a1241f6e96e7dbf9448f821c081c0b9aba1fb8814a",
+    "provider_endpoint_digest": "810326f35f8f2efce5f4ca6f73d8df3300f60b4a7f3367fdab3ad73ec3363fcc",
+    "provider_model": "gpt-5.4",
+    "provider_model_digest": "2a7b79b0151aa44a0abee17adc0e18df1c07d8d15d7affa989c3b3afb6bee0a0",
+    "qualification_seed": 54101,
+    "resource_deadline_seconds": 300,
+    "resource_prefix_contract_sha256": "c87190d7a1a0b997f2f513c8bc7605a5e9c7d2cf6ec3ad6cf3c6f2c7351e446c",
+    "resource_probe_epochs": 3,
+    "resource_probe_seed": 54102,
+    "retries": 0,
+    "training_deadline_seconds": 900,
+    "training_epochs": 100,
+    "training_seed": 54103
+  },
+  "held_out_reads": 0,
+  "planned_round_count": 3,
+  "rounds": {
+    "1": {
+      "acquisition_seeds": {
+        "EXPERIMENT": 56032,
+        "IDEA": 56031,
+        "REPLICATION": 56033
+      },
+      "provider_proposal_seeds": {
+        "diagnosis": 55011,
+        "frontier": 55012
+      }
+    },
+    "2": {
+      "acquisition_seeds": {
+        "EXPERIMENT": 56132,
+        "IDEA": 56131,
+        "REPLICATION": 56133
+      },
+      "provider_proposal_seeds": {
+        "diagnosis": 55111,
+        "frontier": 55112
+      }
+    },
+    "3": {
+      "acquisition_seeds": {
+        "EXPERIMENT": 56232,
+        "IDEA": 56231,
+        "REPLICATION": 56233
+      },
+      "provider_proposal_seeds": {
+        "diagnosis": 55211,
+        "frontier": 55212
+      }
+    }
+  },
+  "schema": "recclaw.research-line.q4-multiround-campaign-plan.v1",
+  "scientific_effect_claim": false
+}
