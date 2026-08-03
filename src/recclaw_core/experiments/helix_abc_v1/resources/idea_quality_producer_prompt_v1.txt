@@ -4,6 +4,7 @@ Frozen call inputs:
 - logical slot: {{LOGICAL_SLOT_ID}}
 - proposal seed: {{PROPOSAL_SEED}}
 - producer role: {{PRODUCER_ROLE}}
+- role capability instruction: {{ROLE_INSTRUCTION}}
 - protocol ref: {{PROTOCOL_REF}}
 - protocol digest: {{PROTOCOL_DIGEST}}
 - context ref: {{CONTEXT_REF}}
@@ -16,6 +17,9 @@ Research evidence and context:
 
 Origin-blind active profile catalog:
 {{PROFILE_CATALOG_JSON}}
+
+Previously proposed mechanism signatures in this pool (pre-outcome only):
+{{POOL_MECHANISM_SIGNATURES}}
 
 Contract instruction:
 {{CONTRACT_INSTRUCTION}}

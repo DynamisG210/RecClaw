@@ -1430,6 +1430,51 @@ def project_q1_frozen_pool(pool: Mapping[str, Any]) -> dict[str, Any]:
             probe_fields = falsifiability_fields + (
                 spec.get("mechanism_off_definition"),
             )
+            graded = "wedge_specificity" in score_features
+            fallback_falsifiability = round(
+                sum(bool(value) for value in falsifiability_fields)
+                / len(falsifiability_fields),
+                12,
+            )
+            scientific_falsifiability = float(
+                score_features.get("scientific_falsifiability", fallback_falsifiability)
+            )
+            probe_design_completeness = (
+                round(
+                    (
+                        float(score_features.get("wedge_specificity", 0.0))
+                        + float(score_features.get("mechanism_off_executability", 0.0))
+                        + sum(bool(value) for value in probe_fields) / len(probe_fields)
+                    )
+                    / 3.0,
+                    12,
+                )
+                if graded
+                else round(
+                    sum(bool(value) for value in probe_fields) / len(probe_fields),
+                    12,
+                )
+            )
+            reproduction_value = (
+                round(
+                    (
+                        float(score_features.get("pool_mechanism_novelty", 0.0))
+                        + float(score_features.get("wedge_specificity", 0.0))
+                        + float(score_features.get("executable_parent", 0.0))
+                    )
+                    / 3.0,
+                    12,
+                )
+                if graded
+                else round(
+                    (
+                        float(bool(score_features.get("discriminative_value")))
+                        + float(bool(score_features.get("scientific_testability")))
+                    )
+                    / 2.0,
+                    12,
+                )
+            )
             candidates.append(
                 canonical_value(
                     {
@@ -1444,32 +1489,21 @@ def project_q1_frozen_pool(pool: Mapping[str, Any]) -> dict[str, Any]:
                         "high_change_dimensions": record["resolution_facts"][
                             "high_change_dimensions"
                         ],
-                        "resource_stage": "QUALIFICATION",
+                        "resource_stage": (
+                            "PRE_OUTCOME_ESTIMATE"
+                            if graded and float(score_features.get("resource_margin", 0.0)) > 0.0
+                            else "QUALIFICATION"
+                        ),
                         "required_budget": record["resolution_facts"][
                             "required_budget"
                         ],
-                        "scientific_falsifiability": round(
-                            sum(bool(value) for value in falsifiability_fields)
-                            / len(falsifiability_fields),
-                            12,
-                        ),
-                        "probe_design_completeness": round(
-                            sum(bool(value) for value in probe_fields)
-                            / len(probe_fields),
-                            12,
-                        ),
+                        "scientific_falsifiability": scientific_falsifiability,
+                        "probe_design_completeness": probe_design_completeness,
                         "comparability": float(
                             bool(spec.get("matched_control_requirement"))
                             and bool(spec.get("protocol_digest"))
                         ),
-                        "reproduction_value": round(
-                            (
-                                float(bool(score_features.get("discriminative_value")))
-                                + float(bool(score_features.get("scientific_testability")))
-                            )
-                            / 2.0,
-                            12,
-                        ),
+                        "reproduction_value": reproduction_value,
                         "probe_design_features": {
                             "declared_parent_surface_equivalence_verified": bool(
                                 spec.get("parent_equivalence_preverified", False)

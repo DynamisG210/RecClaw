@@ -424,22 +424,112 @@ def score_preoutcome_testability(
     *,
     q0r2_resource_feasible: bool,
     outcome_features: Mapping[str, Any] | None = None,
+    structural_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Score only scientific clarity and resource feasibility before outcomes."""
 
     if outcome_features:
         raise ValueError("outcome or implementation features are forbidden in Q1 selection")
-    features = {
-        "scientific_testability": int(bool(spec.falsifier and spec.expected_evidence)),
-        "parent_clarity": int(bool(spec.closest_parent or spec.matched_control_requirement)),
-        "discriminative_value": int(
-            bool(spec.discriminative_predictions or spec.competing_explanation)
-        ),
-        "mechanism_off_executability": int(
-            bool(spec.mechanism_off_definition or spec.matched_control_requirement)
-        ),
-        "q0r2_resource_feasibility": int(q0r2_resource_feasible),
-    }
+    if structural_context is None:
+        features = {
+            "scientific_testability": int(bool(spec.falsifier and spec.expected_evidence)),
+            "parent_clarity": int(bool(spec.closest_parent or spec.matched_control_requirement)),
+            "discriminative_value": int(
+                bool(spec.discriminative_predictions or spec.competing_explanation)
+            ),
+            "mechanism_off_executability": int(
+                bool(spec.mechanism_off_definition or spec.matched_control_requirement)
+            ),
+            "q0r2_resource_feasibility": int(q0r2_resource_feasible),
+        }
+    else:
+        def text_score(value: Any, keywords: tuple[str, ...] = ()) -> float:
+            text = str(value or "").strip().lower()
+            if not text:
+                return 0.0
+            length_score = min(1.0, len(text) / 240.0)
+            keyword_score = sum(token in text for token in keywords) / max(1, len(keywords))
+            return round(0.5 * length_score + 0.5 * keyword_score, 6)
+
+        parent_text = str(spec.closest_parent or "").lower()
+        parent_catalog = structural_context.get("parent_catalog", ())
+        catalog_refs = {
+            str(value).lower()
+            for item in parent_catalog
+            if isinstance(item, Mapping)
+            for value in (
+                item.get("profile_ref"),
+                item.get("ref"),
+                item.get("semantics_digest"),
+            )
+            if value
+        }
+        executable_parent = 1.0 if any(ref and ref in parent_text for ref in catalog_refs) else (
+            0.25 if parent_text else 0.0
+        )
+        signature_texts = []
+        for item in structural_context.get("pool_signatures", ()):
+            if isinstance(item, Mapping):
+                signature_texts.append(
+                    " ".join(
+                        str(item.get(field) or "")
+                        for field in ("closest_parent", "mechanism_change", "causal_operator")
+                    ).lower()
+                )
+            else:
+                signature_texts.append(str(item).lower())
+        mechanism_text = " ".join(
+            str(value or "")
+            for value in (spec.mechanism_change, spec.causal_chain, spec.minimal_testable_wedge)
+        ).lower()
+        overlap = max(
+            (
+                len(set(mechanism_text.split()) & set(signature.split()))
+                / max(1, len(set(mechanism_text.split())))
+                for signature in signature_texts
+            ),
+            default=0.0,
+        )
+        realization_mode = getattr(spec.realization_mode, "value", spec.realization_mode)
+        idea_mode = getattr(spec.idea_mode, "value", spec.idea_mode)
+        expected_mode = structural_context.get("mode") or idea_mode
+        expected_realization = (
+            "PARENT_PRESERVING"
+            if expected_mode == "DIAGNOSIS_DRIVEN"
+            else "NON_NESTED"
+        )
+        features = {
+            "executable_parent": round(executable_parent, 6),
+            "parent_preserving": float(realization_mode == "PARENT_PRESERVING"),
+            "causal_component_count": round(min(1.0, len(spec.causal_chain) / 3.0), 6),
+            "role_mode_fit": float(realization_mode == expected_realization),
+            "wedge_specificity": text_score(
+                spec.minimal_testable_wedge,
+                ("tensor", "loss", "score", "off"),
+            ),
+            "resource_margin": round(
+                text_score(
+                    " ".join(
+                        (
+                            str(spec.resource_hypothesis or ""),
+                            str(structural_context.get("required_budget") or ""),
+                        )
+                    ),
+                    ("memory", "gpu", "time"),
+                )
+                * (1.0 if q0r2_resource_feasible else 0.25),
+                6,
+            ),
+            "mechanism_off_executability": text_score(
+                spec.mechanism_off_definition,
+                ("disable", "parent", "equivalent"),
+            ),
+            "pool_mechanism_novelty": round(1.0 - overlap, 6),
+            "scientific_falsifiability": text_score(
+                spec.falsifier,
+                ("reject", "compare", "control"),
+            ),
+        }
     return canonical_value(
         {
             "features": features,

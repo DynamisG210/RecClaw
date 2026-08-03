@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -168,7 +168,11 @@ from recclaw_core.experiments.helix_abc_v1.canonical import (  # noqa: E402
     sha256_digest,
 )
 from recclaw_core.experiments.helix_abc_v1.fresh_r1 import (  # noqa: E402
+    AVAILABLE_DEPENDENCIES,
+    BUDGET_LIMITS,
     MODEL,
+    PROTOCOL_REQUIREMENTS,
+    ROLE_INSTRUCTIONS,
     bounded_provider_call,
 )
 from recclaw_core.experiments.helix_abc_v1.fresh_r2 import (  # noqa: E402
@@ -241,15 +245,35 @@ FOUNDATION_PACKAGE_DIGEST = (
 POOL_SEEDS = (71001, 71002, 71003)
 EXPLORATION_SEEDS = (72001, 72002, 72003)
 SLOT_BLUEPRINT = (
-    ("slot-01", "mechanism_composer", "FRONTIER_HYPOTHESIS"),
-    ("slot-02", "lineage_refiner", "FRONTIER_HYPOTHESIS"),
-    ("slot-03", "falsification_designer", "FRONTIER_HYPOTHESIS"),
-    ("slot-04", "frontier_architect", "FRONTIER_HYPOTHESIS"),
+    ("slot-01", "mechanism_composer", "DIAGNOSIS_DRIVEN"),
+    ("slot-02", "lineage_refiner", "DIAGNOSIS_DRIVEN"),
+    ("slot-03", "falsification_designer", "DIAGNOSIS_DRIVEN"),
+    ("slot-04", "frontier_architect", "DIAGNOSIS_DRIVEN"),
     ("slot-05", "mechanism_composer", "FRONTIER_HYPOTHESIS"),
     ("slot-06", "lineage_refiner", "FRONTIER_HYPOTHESIS"),
     ("slot-07", "falsification_designer", "FRONTIER_HYPOTHESIS"),
     ("slot-08", "frontier_architect", "FRONTIER_HYPOTHESIS"),
 )
+
+Q5A_AGGREGATE_CONTEXT = {
+    "source": "Q5A_DEVELOPMENT_ONLY_AGGREGATE",
+    "provider_denominator": 24,
+    "construct_count": 17,
+    "qualified_count": 10,
+    "resource_admitted_count": 8,
+    "full_episode_count": 2,
+    "timeout_cluster": {
+        "count": 6,
+        "frozen_training_deadline_seconds": 900,
+        "observed_elapsed_seconds": (901, 902),
+    },
+    "development_signals": {
+        "complete_episode_count": 2,
+        "signal_summary": "two near-zero negative development signals; no scientific effect claim",
+    },
+    "candidate_specific_results": False,
+    "held_out_reads": 0,
+}
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -278,6 +302,32 @@ def _git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def _q5_contract_instruction(mode: str) -> str:
+    realization = (
+        "Use realization_mode PARENT_PRESERVING and make mechanism_off_definition an executable switch. "
+        if mode == "DIAGNOSIS_DRIVEN"
+        else "Use realization_mode NON_NESTED and state the matched parent/control explicitly. "
+    )
+    return (
+        _shared_contract_instruction(mode)
+        + " Quote closest_parent from the supplied executable profile/catalog parent references; a natural-language hypothesis is not a parent. "
+        + realization
+        + " Make minimal_testable_wedge concrete: name the tensor/data flow, loss or scoring path, off implementation, and rough memory/time complexity. "
+        + " Give a minimal credible resource estimate instead of copying the maximum budget. "
+    )
+
+
+def _pool_mechanism_signatures(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "closest_parent": str(row.get("closest_parent", "")),
+            "mechanism_change": str(row.get("mechanism_change", "")),
+            "causal_operator": str(row.get("causal_chain", "")),
+        }
+        for row in rows
+    ]
+
+
 def _render_q5_prompt(
     template: str,
     *,
@@ -289,12 +339,30 @@ def _render_q5_prompt(
     catalog: list[dict[str, str]],
     active: Any,
     context_digest: str,
+    pool_signatures: Sequence[Mapping[str, Any]] = (),
 ) -> str:
+    role_instruction = ROLE_INSTRUCTIONS[role] + (
+        " Prefer a single parent-preserving operator change on one executable parent."
+        if mode == "DIAGNOSIS_DRIVEN"
+        else " Keep the frontier mechanism genuinely non-nested and distinguish its causal operator from prior pool signatures."
+    ) + (
+        " Copy compatibility_requirements only from the frozen protocol list: "
+        + ", ".join(PROTOCOL_REQUIREMENTS)
+        + ". Copy required_dependencies only from the frozen dependency list: "
+        + ", ".join(AVAILABLE_DEPENDENCIES)
+        + ". Estimate the minimum credible implementation tokens, GPU minutes, and wall minutes; do not copy the ceiling: "
+        + json.dumps(BUDGET_LIMITS, sort_keys=True)
+        + "."
+    )
     replacements = {
         "{{LOGICAL_SLOT_ID}}": slot,
         "{{PROPOSAL_SEED}}": str(seed),
         "{{PRODUCER_ROLE}}": role,
-        "{{CONTRACT_INSTRUCTION}}": _shared_contract_instruction(mode),
+        "{{CONTRACT_INSTRUCTION}}": _q5_contract_instruction(mode),
+        "{{ROLE_INSTRUCTION}}": role_instruction,
+        "{{POOL_MECHANISM_SIGNATURES}}": json.dumps(
+            list(pool_signatures), sort_keys=True, separators=(",", ":")
+        ),
         "{{RESEARCH_CONTEXT_JSON}}": json.dumps(context, sort_keys=True, separators=(",", ":")),
         "{{PROFILE_CATALOG_JSON}}": json.dumps(catalog, sort_keys=True, separators=(",", ":")),
         "{{PROTOCOL_REF}}": active.protocol_ref,
@@ -392,7 +460,12 @@ def pool(args: argparse.Namespace) -> None:
     output_root = args.output_root.resolve()
     prefreeze_manifest = _require_prefreeze(output_root)
     _set_runtime_environment(args)
-    context = build_research_context(args.repo_root.resolve())
+    context = canonical_value(
+        {
+            **build_research_context(args.repo_root.resolve()),
+            "q5a_aggregate_facts": Q5A_AGGREGATE_CONTEXT,
+        }
+    )
     artifacts, _receipt = load_registered_r1_artifacts(args.repo_root.resolve())
     registry = build_r1_registry(artifacts)
     _current, _build, _next, _build_receipt, active = build_active_r2_profile(registry)
@@ -413,6 +486,7 @@ def pool(args: argparse.Namespace) -> None:
         _write_new(pool_root / "RESEARCH_CONTEXT.json", context)
         template = template_path.read_text(encoding="utf-8")
         rows: list[dict[str, Any]] = []
+        pool_signatures: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
         attempts: list[list[Mapping[str, Any]]] = []
         provider_attempt_ledger: list[dict[str, Any]] = []
@@ -432,6 +506,7 @@ def pool(args: argparse.Namespace) -> None:
                     catalog=catalog,
                     active=active,
                     context_digest=sha256_digest(context),
+                    pool_signatures=pool_signatures,
                 )
                 call = bounded_provider_call(
                     call_root=pool_root / "provider" / slot,
@@ -474,6 +549,17 @@ def pool(args: argparse.Namespace) -> None:
                     CapabilityResolutionResultV1.SEARCH_READY,
                     CapabilityResolutionResultV1.INNOVATION_REQUIRED,
                 }
+                score = score_preoutcome_testability(
+                    spec,
+                    q0r2_resource_feasible=feasible,
+                    structural_context={
+                        "parent_catalog": catalog,
+                        "pool_signatures": pool_signatures,
+                        "required_budget": facts.get("required_budget"),
+                        "mode": mode,
+                        "role": role,
+                    },
+                )
                 rows.append(
                     canonical_value(
                         {
@@ -486,14 +572,19 @@ def pool(args: argparse.Namespace) -> None:
                             "research_spec": spec.canonical_dict(),
                             "resolution_facts": facts,
                             "resolution": resolution.canonical_dict(),
-                            "preoutcome_score": score_preoutcome_testability(
-                                spec, q0r2_resource_feasible=feasible
-                            ),
+                            "preoutcome_score": score,
                             "manual_candidate_patches": 0,
                             "stage": "OPENSPEC_FROZEN",
                             "outcome_fields_consumed": [],
                         }
                     )
+                )
+                pool_signatures.append(
+                    {
+                        "closest_parent": str(spec.closest_parent),
+                        "mechanism_change": str(spec.mechanism_change),
+                        "causal_operator": str(spec.causal_chain),
+                    }
                 )
             except Exception as error:
                 if not ledger_recorded:
