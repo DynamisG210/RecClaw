@@ -13,7 +13,12 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .canonical import bytes_sha256, canonical_value, sha256_digest
+from .canonical import (
+    bytes_sha256,
+    canonical_value,
+    sha256_digest,
+    validate_sha256,
+)
 from .open_meta import (
     AcquisitionDispositionV1,
     IdeaBudgetV1,
@@ -24,6 +29,7 @@ from .open_meta import (
     run_static_idea_policy,
 )
 from .open_meta_q3 import build_q3_acquisition_manifest
+from .vnext_contracts import RealizationClassV1, RealizationTypingV1
 
 
 POLICY_ORDER = ("STATIC", "CURRENT_F1", "OUTCOME_AWARE")
@@ -43,6 +49,462 @@ MECHANISM_IDENTIFIABLE_STATES = frozenset(
 
 class ProspectivePolicyComparisonError(RuntimeError):
     """A frozen comparison identity, authority, or denominator drifted."""
+
+
+REALIZATION_CONTRACT_SCHEMA = (
+    "recclaw.research-line.vnext.shared-realization-contract.v1"
+)
+SHARED_REALIZATION_POOL_SCHEMA = (
+    "recclaw.research-line.q5-shared-realization-pool.v1"
+)
+SHARED_OUTCOME_LEDGER_SCHEMA = (
+    "recclaw.research-line.q5-shared-package-seed-outcome-ledger.v1"
+)
+REALIZATION_CLASSES = frozenset(item.value for item in RealizationClassV1)
+REALIZATION_TYPINGS = frozenset(item.value for item in RealizationTypingV1)
+REALIZATION_EQUIVALENCE_TOLERANCE = 1e-8
+
+
+def _require_identity_fields(
+    value: Mapping[str, Any], fields: Sequence[str], *, label: str
+) -> None:
+    for field in fields:
+        observed = value.get(field)
+        if field.endswith("_digest"):
+            try:
+                validate_sha256(observed, field_name=f"{label}.{field}")
+            except Exception as error:
+                raise ProspectivePolicyComparisonError(
+                    f"{label}.{field} is not a SHA-256 digest"
+                ) from error
+        elif not isinstance(observed, str) or not observed or observed != observed.strip():
+            raise ProspectivePolicyComparisonError(
+                f"{label}.{field} must be a normalized non-empty reference"
+            )
+
+
+def build_shared_realization_contract(
+    *,
+    research_spec_ref: str,
+    research_spec_digest: str,
+    candidate_package_ref: str,
+    candidate_package_digest: str,
+    source_tree_ref: str,
+    source_tree_digest: str,
+    equivalence_ref: str,
+    equivalence_digest: str,
+    protocol_ref: str,
+    protocol_digest: str,
+    realization_class: RealizationClassV1 | str,
+) -> dict[str, Any]:
+    """Bind one executable realization to the exact pre-outcome identity."""
+
+    try:
+        realization_class = RealizationClassV1(realization_class).value
+    except ValueError as error:
+        raise ProspectivePolicyComparisonError(
+            f"unsupported realization_class: {realization_class}"
+        ) from error
+    payload = canonical_value(
+        {
+            "schema": REALIZATION_CONTRACT_SCHEMA,
+            "research_spec_ref": research_spec_ref,
+            "research_spec_digest": research_spec_digest,
+            "candidate_package_ref": candidate_package_ref,
+            "candidate_package_digest": candidate_package_digest,
+            "source_tree_ref": source_tree_ref,
+            "source_tree_digest": source_tree_digest,
+            "equivalence_ref": equivalence_ref,
+            "equivalence_digest": equivalence_digest,
+            "protocol_ref": protocol_ref,
+            "protocol_digest": protocol_digest,
+            "realization_class": realization_class,
+        }
+    )
+    _require_identity_fields(
+        payload,
+        (
+            "research_spec_ref",
+            "research_spec_digest",
+            "candidate_package_ref",
+            "candidate_package_digest",
+            "source_tree_ref",
+            "source_tree_digest",
+            "equivalence_ref",
+            "equivalence_digest",
+            "protocol_ref",
+            "protocol_digest",
+        ),
+        label="realization",
+    )
+    digest = sha256_digest(payload)
+    return canonical_value(
+        {
+            **payload,
+            "realization_ref": f"recclaw-realization-contract-v1:{digest}",
+            "realization_digest": digest,
+        }
+    )
+
+
+def _validate_realization_contract(
+    contract: Mapping[str, Any], *, expected_protocol_digest: str | None = None
+) -> dict[str, Any]:
+    if contract.get("schema") != REALIZATION_CONTRACT_SCHEMA:
+        raise ProspectivePolicyComparisonError("realization contract schema drift")
+    required = (
+        "research_spec_ref",
+        "research_spec_digest",
+        "candidate_package_ref",
+        "candidate_package_digest",
+        "source_tree_ref",
+        "source_tree_digest",
+        "equivalence_ref",
+        "equivalence_digest",
+        "protocol_ref",
+        "protocol_digest",
+        "realization_class",
+        "realization_ref",
+        "realization_digest",
+    )
+    missing = [field for field in required if field not in contract]
+    if missing:
+        raise ProspectivePolicyComparisonError(
+            "realization contract missing fields: " + ", ".join(missing)
+        )
+    payload = {
+        key: contract[key]
+        for key in (
+            "research_spec_ref",
+            "research_spec_digest",
+            "candidate_package_ref",
+            "candidate_package_digest",
+            "source_tree_ref",
+            "source_tree_digest",
+            "equivalence_ref",
+            "equivalence_digest",
+            "protocol_ref",
+            "protocol_digest",
+            "realization_class",
+        )
+    }
+    normalized = build_shared_realization_contract(**payload)
+    if (
+        contract.get("realization_digest") != normalized["realization_digest"]
+        or contract.get("realization_ref") != normalized["realization_ref"]
+    ):
+        raise ProspectivePolicyComparisonError(
+            "realization contract digest or reference does not match its bindings"
+        )
+    if expected_protocol_digest is not None and contract["protocol_digest"] != expected_protocol_digest:
+        raise ProspectivePolicyComparisonError("realization protocol digest drift")
+    return normalized
+
+
+def bind_observation_to_realization(
+    observation: Mapping[str, Any],
+    realization: Mapping[str, Any],
+    *,
+    observation_kind: str,
+) -> dict[str, Any]:
+    """Reject receipts/outcomes that do not name the current realization."""
+
+    contract = _validate_realization_contract(realization)
+    required_bindings = {
+        "realization_digest": contract["realization_digest"],
+        "candidate_package_digest": contract["candidate_package_digest"],
+        "source_tree_digest": contract["source_tree_digest"],
+        "research_spec_digest": contract["research_spec_digest"],
+        "protocol_digest": contract["protocol_digest"],
+    }
+    for field, expected in required_bindings.items():
+        if observation.get(field) != expected:
+            raise ProspectivePolicyComparisonError(
+                f"{observation_kind} is not bound to the current realization: {field}"
+            )
+    return canonical_value(
+        {
+            "observation_kind": observation_kind,
+            "realization_ref": contract["realization_ref"],
+            "realization_digest": contract["realization_digest"],
+            "candidate_package_digest": contract["candidate_package_digest"],
+            "source_tree_digest": contract["source_tree_digest"],
+            "research_spec_digest": contract["research_spec_digest"],
+            "protocol_digest": contract["protocol_digest"],
+        }
+    )
+
+
+def _selected_candidate_ids(selection: Mapping[str, Any]) -> tuple[str, ...]:
+    records = selection.get("candidates")
+    if isinstance(records, Sequence) and not isinstance(records, (str, bytes)):
+        selected = tuple(
+            str(row["candidate_id"])
+            for row in records
+            if isinstance(row, Mapping) and row.get("selected") is True
+        )
+        if selected:
+            return tuple(sorted(set(selected)))
+    raw = selection.get("selected_candidate_ids")
+    if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)):
+        return tuple(sorted({str(value) for value in raw}))
+    if selection.get("selected_candidate_id") is not None:
+        return (str(selection["selected_candidate_id"]),)
+    raise ProspectivePolicyComparisonError("policy selection has no selected candidates")
+
+
+def build_shared_realization_pool(
+    *,
+    policy_selections: Mapping[str, Mapping[str, Any]],
+    realizations: Sequence[Mapping[str, Any]],
+    protocol_ref: str,
+    protocol_digest: str,
+) -> dict[str, Any]:
+    """Deduplicate implementation/package work while retaining policy attribution."""
+
+    validate_sha256(protocol_digest, field_name="protocol_digest")
+    attribution_ids = {
+        str(policy): _selected_candidate_ids(selection)
+        for policy, selection in policy_selections.items()
+    }
+    selected_ids = {item for values in attribution_ids.values() for item in values}
+    by_spec: dict[str, dict[str, Any]] = {}
+    for raw in realizations:
+        contract = raw.get("contract", raw)
+        normalized = _validate_realization_contract(
+            contract, expected_protocol_digest=protocol_digest
+        )
+        spec_digest = normalized["research_spec_digest"]
+        if spec_digest not in selected_ids:
+            raise ProspectivePolicyComparisonError(
+                "shared realization pool contains an unselected OpenSpec"
+            )
+        previous = by_spec.get(spec_digest)
+        if previous is not None and previous["realization_digest"] != normalized["realization_digest"]:
+            raise ProspectivePolicyComparisonError(
+                "one OpenSpec has more than one physical realization"
+            )
+        by_spec[spec_digest] = normalized
+    missing = selected_ids - set(by_spec)
+    if missing:
+        raise ProspectivePolicyComparisonError(
+            "selected OpenSpec has no shared realization: " + ", ".join(sorted(missing))
+        )
+    realization_attribution = {
+        policy: tuple(
+            sorted(by_spec[spec_digest]["realization_digest"] for spec_digest in ids)
+        )
+        for policy, ids in attribution_ids.items()
+    }
+    payload = canonical_value(
+        {
+            "schema": SHARED_REALIZATION_POOL_SCHEMA,
+            "protocol_ref": protocol_ref,
+            "protocol_digest": protocol_digest,
+            "selected_open_spec_digests": tuple(sorted(selected_ids)),
+            "realization_count": len(by_spec),
+            "implementations_per_open_spec": 1,
+            "realizations": tuple(
+                by_spec[key] for key in sorted(by_spec)
+            ),
+            "policy_attribution": realization_attribution,
+            "held_out_reads": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        }
+    )
+    return {**payload, "pool_digest": sha256_digest(payload)}
+
+
+def build_shared_package_seed_outcome_ledger(
+    *,
+    realization_pool: Mapping[str, Any],
+    outcomes: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Emit one outcome per package×seed and keep policy attribution separate."""
+
+    contracts = {
+        value["realization_digest"]: _validate_realization_contract(value)
+        for value in realization_pool["realizations"]
+    }
+    by_package = {
+        value["candidate_package_digest"]: value
+        for value in contracts.values()
+    }
+    ledger: dict[str, dict[str, Any]] = {}
+    for raw in outcomes:
+        if any(key in raw for key in ("policy", "policy_name", "arm")):
+            raise ProspectivePolicyComparisonError(
+                "outcome ledger must not duplicate policy-specific physical outcomes"
+            )
+        package_digest = raw.get("candidate_package_digest")
+        contract = by_package.get(package_digest)
+        if contract is None:
+            raise ProspectivePolicyComparisonError(
+                "outcome names a package outside the shared realization pool"
+            )
+        bind_observation_to_realization(
+            raw, contract, observation_kind="package_seed_outcome"
+        )
+        seed = raw.get("seed")
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            raise ProspectivePolicyComparisonError("package×seed outcome seed is invalid")
+        key = f"{package_digest}:{seed}"
+        if key in ledger:
+            raise ProspectivePolicyComparisonError(
+                "package×seed outcome was emitted more than once"
+            )
+        ledger[key] = canonical_value({**raw, "outcome_key": key})
+    policy_attribution: dict[str, tuple[str, ...]] = {}
+    for policy, realization_digests in realization_pool["policy_attribution"].items():
+        keys = []
+        for realization_digest in realization_digests:
+            contract = contracts[realization_digest]
+            keys.extend(
+                key
+                for key, value in ledger.items()
+                if value["candidate_package_digest"]
+                == contract["candidate_package_digest"]
+            )
+        policy_attribution[str(policy)] = tuple(sorted(set(keys)))
+    payload = canonical_value(
+        {
+            "schema": SHARED_OUTCOME_LEDGER_SCHEMA,
+            "realization_pool_digest": realization_pool.get("pool_digest"),
+            "outcome_count": len(ledger),
+            "package_seed_uniqueness": "ONE_OUTCOME_PER_PACKAGE_PER_SEED",
+            "outcomes": tuple(ledger[key] for key in sorted(ledger)),
+            "policy_attribution": policy_attribution,
+            "held_out_reads": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        }
+    )
+    return {**payload, "ledger_digest": sha256_digest(payload)}
+
+
+def _probe_status_pass(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return value.get("status") == "PASS" or value.get("equivalent") is True
+    return value is True or value == "PASS"
+
+
+def _probe_delta(behavior: Mapping[str, Any], names: Sequence[str]) -> float | None:
+    for name in names:
+        if behavior.get(name) is not None:
+            try:
+                return float(behavior[name])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _protocol_equivalence_pass(
+    behavior: Mapping[str, Any], realization: Mapping[str, Any]
+) -> bool:
+    evidence = (
+        behavior.get("mechanism_off_protocol_equivalence")
+        or behavior.get("protocol_equivalence")
+        or realization.get("protocol_equivalence")
+    )
+    if isinstance(evidence, Mapping):
+        required = ("dataset", "evaluator", "seed", "optimizer", "batch")
+        return all(_probe_status_pass(evidence.get(name)) for name in required)
+    return _probe_status_pass(evidence)
+
+
+def classify_realization_authority(
+    *,
+    realization: Mapping[str, Any],
+    qualification: Mapping[str, Any],
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Route only parent-equivalent nested realizations to mechanism authority."""
+
+    realization_class = str(realization.get("realization_class", ""))
+    if realization_class not in REALIZATION_CLASSES:
+        raise ProspectivePolicyComparisonError("realization_class is not frozen")
+    declared_typing = str(
+        realization.get("realization_typing")
+        or realization.get("realization_type")
+        or (
+            RealizationTypingV1.EFFECT_ONLY_NON_NESTED.value
+            if realization.get("realization_mode") == "NON_NESTED"
+            or realization_class == RealizationClassV1.NEW_CANDIDATE.value
+            else RealizationTypingV1.NESTED_MECHANISM.value
+        )
+    )
+    if declared_typing not in REALIZATION_TYPINGS:
+        raise ProspectivePolicyComparisonError("realization_typing is not frozen")
+    behavior = dict(qualification.get("behavioral_evidence") or {})
+    admitted = admission.get("status") == "RESOURCE_ADMITTED"
+    qualified = qualification.get("status") in {"QUALIFICATION_PASS", "PASS"}
+    active = (
+        behavior.get("probe_status") == "PASS_STRUCTURAL_BEHAVIOR_ACTIVE"
+        and bool(behavior.get("overridden_behavioral_methods"))
+        and max(
+            _probe_delta(behavior, ("behavioral_loss_max_abs_delta",)) or 0.0,
+            _probe_delta(behavior, ("behavioral_score_max_abs_delta",)) or 0.0,
+        )
+        > 0.0
+    )
+    reason = ""
+    mechanism_state = "NOT_ASSESSED"
+    mechanism_allowed = False
+    if declared_typing == RealizationTypingV1.EFFECT_ONLY_NON_NESTED.value:
+        reason = "NON_NESTED_REALIZATION_EFFECT_ONLY"
+    elif not admitted:
+        reason = "RESOURCE_FAILURE_HAS_NO_MECHANISM_AUTHORITY"
+    elif not qualified:
+        reason = "QUALIFICATION_FAILURE_HAS_NO_MECHANISM_AUTHORITY"
+    else:
+        parent_pass = _probe_status_pass(
+            behavior.get("mechanism_off_parent_equivalence")
+            or behavior.get("parent_equivalence")
+            or realization.get("parent_equivalence")
+        )
+        deltas = {
+            name: _probe_delta(behavior, aliases)
+            for name, aliases in {
+                "loss": ("mechanism_off_loss_max_abs_delta", "mechanism_off_loss_abs_delta"),
+                "predict": ("mechanism_off_predict_max_abs_delta", "mechanism_off_predict_abs_delta"),
+                "full_sort": ("mechanism_off_full_sort_max_abs_delta", "mechanism_off_full_sort_abs_delta"),
+                "gradients": ("mechanism_off_gradients_max_abs_delta", "mechanism_off_gradients_abs_delta"),
+                "checkpoint_load": ("mechanism_off_checkpoint_load_max_abs_delta", "mechanism_off_checkpoint_load_abs_delta"),
+            }.items()
+        }
+        equivalence_pass = (
+            behavior.get("mechanism_off_execution") == "PASS"
+            and parent_pass
+            and all(value is not None and value <= REALIZATION_EQUIVALENCE_TOLERANCE for value in deltas.values())
+            and _protocol_equivalence_pass(behavior, realization)
+        )
+        if equivalence_pass:
+            mechanism_allowed = True
+            mechanism_state = "ACTIVE_SUPPORTED" if active else "INACTIVE"
+            reason = "NESTED_MECHANISM_PARENT_AND_PROTOCOL_EQUIVALENCE_CONFIRMED"
+        else:
+            reason = "NESTED_MECHANISM_GATE_NOT_SATISFIED"
+    payload = canonical_value(
+        {
+            "schema": "recclaw.research-line.q5-realization-typing-authority.v1",
+            "realization_class": realization_class,
+            "realization_typing": declared_typing,
+            "mechanism_state": mechanism_state,
+            "mechanism_information_authority": (
+                "MECHANISM_INFORMATION" if mechanism_allowed else "NOT_ASSESSED"
+            ),
+            "effect_authority": "EFFECT",
+            "mechanism_information_input_allowed": mechanism_allowed,
+            "reason": reason,
+            "resource_status_changes_mechanism": False,
+            "no_off_switch_is_not_negative_mechanism_evidence": True,
+            "held_out_reads": 0,
+            "development_only": True,
+            "scientific_effect_claim": False,
+        }
+    )
+    return {**payload, "authority_digest": sha256_digest(payload)}
 
 
 def read_object(path: Path) -> dict[str, Any]:
@@ -356,9 +818,19 @@ def build_arm_manifest(
 
 
 def classify_mechanism_probe(
-    *, qualification: Mapping[str, Any], admission: Mapping[str, Any]
+    *,
+    qualification: Mapping[str, Any],
+    admission: Mapping[str, Any],
+    realization: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Classify only real qualifier/resource probe evidence before full outcome."""
+
+    if realization is not None:
+        return classify_realization_authority(
+            realization=realization,
+            qualification=qualification,
+            admission=admission,
+        )
 
     if admission.get("status") != "RESOURCE_ADMITTED":
         state = "NOT_ASSESSED"
@@ -529,7 +1001,17 @@ __all__ = [
     "MECHANISM_STATES",
     "POLICY_ORDER",
     "ProspectivePolicyComparisonError",
+    "REALIZATION_CLASSES",
+    "REALIZATION_CONTRACT_SCHEMA",
+    "REALIZATION_TYPINGS",
+    "SHARED_OUTCOME_LEDGER_SCHEMA",
+    "SHARED_REALIZATION_POOL_SCHEMA",
+    "bind_observation_to_realization",
     "build_arm_manifest",
+    "build_shared_package_seed_outcome_ledger",
+    "build_shared_realization_contract",
+    "build_shared_realization_pool",
+    "classify_realization_authority",
     "classify_mechanism_probe",
     "compute_four_metrics",
     "flatten_frozen_pool",
