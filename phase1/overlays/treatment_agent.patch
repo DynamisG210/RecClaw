@@ -87,7 +87,7 @@ diff --git a/scripts/agent.py b/scripts/agent.py
      def run(self) -> None:
          start_round = max(1, self.config.start_round)
          end_round = max(start_round, self.config.rounds)
-@@ -3477,3 +3522,16 @@ class RecClawAgent:
+@@ -3477,3 +3522,18 @@ class RecClawAgent:
                  self.refresh_candidate_proposals(round_id)
                  candidate, params, context = self.plan()
 +                if self.guard_hook is not None:
@@ -99,12 +99,14 @@ diff --git a/scripts/agent.py b/scripts/agent.py
 +                        )
 +                        feedback_recorded = self.remember_guard_feedback(guard_event)
 +                        if feedback_recorded and self.guard_hook.should_defer(guard_precheck):
-+                            print(f"[Round {round_id}] Evidence Guard requested revision or protocol branch")
-+                            continue
++                            print(
++                                f"[Round {round_id}] Evidence Guard requested revision or protocol branch; "
++                                "development execution continues, but evidence admission remains bounded"
++                            )
 +                    except Exception as exc:  # Guard cannot block on integration failure
 +                        print(f"[EvidenceGuard] precheck failed open: {type(exc).__name__}: {exc}", file=sys.stderr)
                  candidate_id = str(candidate.get("candidate_id"))
-@@ -3545,5 +3603,23 @@ class RecClawAgent:
+@@ -3545,5 +3605,23 @@ class RecClawAgent:
                      seed_validation=seed_validation,
                  )
 -                self.remember(record)

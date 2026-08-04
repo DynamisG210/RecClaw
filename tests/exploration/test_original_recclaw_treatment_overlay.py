@@ -166,7 +166,8 @@ class OriginalRecClawTreatmentOverlayTests(unittest.TestCase):
         feedback_method = ast.get_source_segment(
             self.source_text, _method(self.tree, "remember_guard_feedback")
         )
-        run_method = ast.get_source_segment(self.source_text, _method(self.tree, "run"))
+        run = _method(self.tree, "run")
+        run_method = ast.get_source_segment(self.source_text, run)
         validation_method = ast.get_source_segment(
             self.source_text, _method(self.tree, "verify_last_keep")
         )
@@ -175,6 +176,16 @@ class OriginalRecClawTreatmentOverlayTests(unittest.TestCase):
         self.assertIn(
             "if feedback_recorded and self.guard_hook.should_defer(guard_precheck)",
             run_method,
+        )
+        defer_nodes = [
+            node
+            for node in ast.walk(run)
+            if isinstance(node, ast.If)
+            and "should_defer" in ast.unparse(node.test)
+        ]
+        self.assertEqual(1, len(defer_nodes))
+        self.assertFalse(
+            any(isinstance(node, ast.Continue) for node in ast.walk(defer_nodes[0]))
         )
         self.assertIn(
             'if feedback_recorded and disposition == "QUARANTINE_ORIGINAL_TRIAL"',

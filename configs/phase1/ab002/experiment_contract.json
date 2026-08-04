@@ -258,7 +258,7 @@
   "common_paired_llm_broker": {
     "implementation": "recclaw_phase1.paired_llm_broker",
     "spec_sha256": "7d4a9df1998d7fd2acf67b4115d7286c0a54a6b121bb9bb3b61c68cc069ecb77",
-    "implementation_sha256": "2714934546416bd4b81ce22518684c028655169727083736b564cac2dc640fcb",
+    "implementation_sha256": "c4fe93f8dcd41ce8e3afaf214280b68a6ac471df27fc354a3c43aab2bbe3b2b7",
     "runtime_store": "external SQLite ledger under the AB-002 runtime root",
     "client_auth": "ephemeral bearer token supplied by environment and never persisted",
     "upstream_auth": "laboratory API key read only by the broker process from an execution-time environment variable",

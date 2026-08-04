@@ -5,7 +5,7 @@
   "status": "LOCAL_COMPLETE",
   "frozen_before_canary": true,
   "implementation": "src/recclaw_phase1/paired_llm_broker.py",
-  "implementation_sha256": "2714934546416bd4b81ce22518684c028655169727083736b564cac2dc640fcb",
+  "implementation_sha256": "c4fe93f8dcd41ce8e3afaf214280b68a6ac471df27fc354a3c43aab2bbe3b2b7",
   "endpoint_shape": "/v1/pairs/AB002-SEED-{42|43|44|45|46|47|9001}/{control|treatment}/chat/completions",
   "upstream": {
     "provider": "laboratory_openai_compatible",

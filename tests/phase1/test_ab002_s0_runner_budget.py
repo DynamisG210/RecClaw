@@ -28,6 +28,7 @@ def _load_runner():
 
 
 class AB002CandidateExecutionBudgetTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "frozen AB-002 S0 runner uses POSIX flock")
     def test_single_fault_second_reservation_exceeds_fixed_budget(self) -> None:
         runner = _load_runner()
         with tempfile.TemporaryDirectory() as temporary:

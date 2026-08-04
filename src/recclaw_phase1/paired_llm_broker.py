@@ -17,6 +17,7 @@ import re
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -58,13 +59,22 @@ def _connect(path: Path) -> sqlite3.Connection:
     return connection
 
 
+@contextmanager
+def _connection(path: Path):
+    connection = _connect(path)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
 class BrokerStore:
     """Concurrency-safe request ledger stored outside the source checkout."""
 
     def __init__(self, path: Path) -> None:
         self.path = path.resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with _connect(self.path) as connection:
+        with _connection(self.path) as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS arm_counters (
@@ -113,7 +123,7 @@ class BrokerStore:
     ) -> dict[str, Any]:
         other_arm = "treatment" if arm == "control" else "control"
         now = int(time.time() * 1000)
-        with _connect(self.path) as connection:
+        with _connection(self.path) as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT next_index FROM arm_counters WHERE pair_id=? AND arm=?",
@@ -210,7 +220,7 @@ class BrokerStore:
         match_index: int,
         other_arm: str,
     ) -> dict[str, Any] | None:
-        with _connect(self.path) as connection:
+        with _connection(self.path) as connection:
             row = connection.execute(
                 "SELECT * FROM requests WHERE pair_id=? AND request_sha256=? "
                 "AND match_index=? AND arm=?",
@@ -242,7 +252,7 @@ class BrokerStore:
         usage_json: str | None = None,
         upstream_latency_ms: float | None = None,
     ) -> None:
-        with _connect(self.path) as connection:
+        with _connection(self.path) as connection:
             connection.execute(
                 """
                 UPDATE requests
@@ -298,7 +308,7 @@ class BrokerStore:
         error_class: str,
         error_detail: str = "",
     ) -> None:
-        with _connect(self.path) as connection:
+        with _connection(self.path) as connection:
             connection.execute(
                 """
                 UPDATE requests

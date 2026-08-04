@@ -191,11 +191,14 @@ class PairedLLMBrokerTests(unittest.TestCase):
             )
             import sqlite3
 
-            with sqlite3.connect(root / "broker.sqlite3") as connection:
+            connection = sqlite3.connect(root / "broker.sqlite3")
+            try:
                 row = connection.execute(
                     "SELECT provider_request_id, returned_model, usage_json, upstream_latency_ms "
                     "FROM requests"
                 ).fetchone()
+            finally:
+                connection.close()
             self.assertEqual(("req-123", "gpt-5.4", '{"total_tokens":12}', 7.5), row)
 
     def test_single_fault_request_budget_exhaustion_fails_closed(self) -> None:

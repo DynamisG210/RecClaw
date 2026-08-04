@@ -35,10 +35,10 @@ FROZEN_GUARD_FILES = {
     "src/recclaw_core/exploration/original_recclaw_guard_hook.py": "bac58b5f4379c6d63a9c8ebe1cd6467588c0a81b868b5ff3759ee37b2cedf75e",
 }
 FROZEN_TREATMENT_OVERLAY_SHA256 = (
-    "48a0a65e8e940679a3880a058b2978508bc050eb1b022a4053f8f54fdb49dfc0"
+    "c37dd878354db35d3dc814e43334396f76c49d14d188fb1da04b3be7cc8446a5"
 )
 FROZEN_TREATMENT_AGENT_SHA256 = (
-    "f5a26e7def57cdb325a1e48ae69295187b615d41e319be3205da70f6d6929c1f"
+    "753c3e7e783e54ab851522ceeeee6034a21e9247bbb580bf07217623bdf86fb2"
 )
 TREATMENT_PATCH_HEADER = (
     "diff --git a/scripts/agent.py b/scripts/agent.py\n",
