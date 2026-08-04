@@ -208,7 +208,7 @@ class ResearchTaskV1:
 
 
 class ResearchTaskQueueV1:
-    """Arm-private deterministic queue; every task consumes a normal round."""
+    """Arm-private deterministic queue whose scheduler selects a budget lane."""
 
     _TYPE_ORDER = {
         ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE: 0,
@@ -496,6 +496,7 @@ class FusedSearchFeedbackV2:
 class PromptFeedbackProjectionV2:
     common_search_utility_slot: SearchUtilityEventV2 | None
     research_task_slot: Mapping[str, Any] | None
+    diagnostic_slot: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.research_task_slot is not None:
@@ -512,6 +513,17 @@ class PromptFeedbackProjectionV2:
                 "research_task_slot",
                 _closed_mapping(self.research_task_slot),
             )
+        if self.diagnostic_slot is not None:
+            if set(self.diagnostic_slot) != {
+                "candidate_id",
+                "search_feedback_class",
+            }:
+                raise ValueError("Prompt diagnostic slot is not the closed V13 projection")
+            object.__setattr__(
+                self,
+                "diagnostic_slot",
+                _closed_mapping(self.diagnostic_slot),
+            )
 
     @classmethod
     def from_fused(
@@ -524,6 +536,16 @@ class PromptFeedbackProjectionV2:
                 if feedback.research_task is not None
                 else None
             ),
+            diagnostic_slot=(
+                {
+                    "candidate_id": feedback.candidate_id,
+                    "search_feedback_class": feedback.search_feedback_class.value,
+                }
+                if feedback.search_memory_update_allowed
+                and feedback.search_utility_event is None
+                and feedback.research_task is None
+                else None
+            ),
         )
 
     @property
@@ -531,20 +553,21 @@ class PromptFeedbackProjectionV2:
         return sha256_digest(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        return canonical_value(
-            {
-                "common_search_utility_slot": (
-                    self.common_search_utility_slot.to_dict()
-                    if self.common_search_utility_slot is not None
-                    else "ABSENT"
-                ),
-                "research_task_slot": (
-                    deep_thaw(self.research_task_slot)
-                    if self.research_task_slot is not None
-                    else "ABSENT"
-                ),
-            }
-        )
+        payload = {
+            "common_search_utility_slot": (
+                self.common_search_utility_slot.to_dict()
+                if self.common_search_utility_slot is not None
+                else "ABSENT"
+            ),
+            "research_task_slot": (
+                deep_thaw(self.research_task_slot)
+                if self.research_task_slot is not None
+                else "ABSENT"
+            ),
+        }
+        if self.diagnostic_slot is not None:
+            payload["diagnostic_slot"] = deep_thaw(self.diagnostic_slot)
+        return canonical_value(payload)
 
 
 class DeterministicHelixAdmissionV13:
@@ -680,9 +703,9 @@ class DeterministicHelixAdmissionV13:
                     search_utility_event=None,
                     frontier_eligibility=FrontierEligibilityV2.EXCLUDED,
                     research_task=None,
-                    controller_update_allowed=False,
+                    controller_update_allowed=True,
                     meta_update_allowed=False,
-                    search_memory_update_allowed=False,
+                    search_memory_update_allowed=True,
                 ),
                 compact,
             )

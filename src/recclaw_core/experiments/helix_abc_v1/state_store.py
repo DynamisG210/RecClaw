@@ -948,7 +948,12 @@ class SingleWriterExperimentStoreV1:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temp_path, target)
-            directory_fd = os.open(target.parent, os.O_RDONLY)
+            try:
+                directory_fd = os.open(target.parent, os.O_RDONLY)
+            except OSError:
+                directory_fd = None
+            if directory_fd is None:
+                return
             try:
                 os.fsync(directory_fd)
             finally:

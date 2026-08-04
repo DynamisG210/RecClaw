@@ -19,6 +19,7 @@ import ssl
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -346,6 +347,7 @@ class AgentConfig:
     recent_schedule_penalty: float = 0.15
     seed: int = 42
     dry_run: bool = False
+    subprocess_timeout: int = 7200
     memory_read_limit: int = 2000
     prompt_memory_tail: int = 120
     use_experiment_directive: bool = False
@@ -467,6 +469,23 @@ def load_yaml(path: Path) -> dict[str, Any]:
         return {}
     with path.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle) or {}
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    """Replace a runtime state file only after its complete content is durable."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        try:
+            Path(temp_name).unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def normalize_weights(weights_json: str) -> dict[str, float]:
@@ -1396,14 +1415,20 @@ class RecClawAgent:
         for key, value in params.items():
             cmd.extend(["--set", f"{key}={value}"])
 
-        completed = subprocess.run(
-            cmd,
-            cwd=PROJECT_ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                cmd,
+                cwd=PROJECT_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=self.config.subprocess_timeout or None,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"candidate {candidate_id} timed out after {self.config.subprocess_timeout} seconds"
+            ) from exc
         summary = self._extract_last_json(completed.stdout)
         return {
             "exit_code": completed.returncode,
@@ -1517,6 +1542,61 @@ class RecClawAgent:
             if isinstance(parsed, dict):
                 proposals.append(parsed)
         return proposals
+
+    def _write_candidate_proposals(self, proposals: list[dict[str, Any]]) -> None:
+        content = "".join(
+            json.dumps(proposal, ensure_ascii=True, sort_keys=True) + "\n"
+            for proposal in proposals
+        )
+        atomic_write_text(self.config.proposal_path, content)
+
+    def _unconsumed_proposals(self, proposals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        pending: list[dict[str, Any]] = []
+        for proposal in proposals:
+            candidate_id = str(proposal.get("candidate_id") or "").strip()
+            if not candidate_id:
+                continue
+            if candidate_id in self.scheduled_candidate_ids or self._has_candidate_run(candidate_id):
+                continue
+            pending.append(proposal)
+        return pending
+
+    @staticmethod
+    def _proposal_semantic_key(proposal: dict[str, Any]) -> str:
+        parent_id = str(proposal.get("parent_candidate_id") or "")
+        overrides = proposal.get("parameter_overrides")
+        mechanism = proposal.get("mechanism_composition") or proposal.get("mechanism") or ""
+        if parent_id or overrides or mechanism:
+            return json.dumps(
+                {
+                    "parent_candidate_id": parent_id,
+                    "proposal_type": str(proposal.get("proposal_type") or ""),
+                    "parameter_overrides": overrides if isinstance(overrides, dict) else {},
+                    "mechanism": mechanism,
+                },
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        return str(proposal.get("candidate_id") or "")
+
+    def _merge_proposal_backlog(
+        self,
+        backlog: list[dict[str, Any]],
+        fresh: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        seen_semantics: set[str] = set()
+        for proposal in [*fresh, *backlog]:
+            candidate_id = str(proposal.get("candidate_id") or "").strip()
+            semantic_key = self._proposal_semantic_key(proposal)
+            if not candidate_id or candidate_id in seen_ids or semantic_key in seen_semantics:
+                continue
+            seen_ids.add(candidate_id)
+            seen_semantics.add(semantic_key)
+            merged.append(proposal)
+        return merged
 
     def _notes_excerpt(self, names: tuple[str, ...], limit: int = 12000) -> dict[str, str]:
         excerpts: dict[str, str] = {}
@@ -2008,10 +2088,9 @@ class RecClawAgent:
 
     def _write_agent_state_summary(self, summary: dict[str, Any]) -> None:
         try:
-            self.config.state_summary_path.parent.mkdir(parents=True, exist_ok=True)
-            self.config.state_summary_path.write_text(
+            atomic_write_text(
+                self.config.state_summary_path,
                 json.dumps(summary, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
             )
         except OSError as exc:
             print(f"[StateSummary] write skipped: {exc}", file=sys.stderr)
@@ -2119,14 +2198,20 @@ class RecClawAgent:
 
         print(f"[Reflection] refresh round={round_id} reason={reason}")
         for cmd in (tree_cmd, summary_cmd):
-            completed = subprocess.run(
-                cmd,
-                cwd=PROJECT_ROOT,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
+            try:
+                completed = subprocess.run(
+                    cmd,
+                    cwd=PROJECT_ROOT,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                    timeout=self.config.subprocess_timeout or None,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(
+                    f"experience refresh timed out after {self.config.subprocess_timeout} seconds: {' '.join(cmd)}"
+                ) from exc
             if completed.stdout.strip():
                 print(completed.stdout.strip())
             if completed.returncode != 0:
@@ -2909,14 +2994,20 @@ class RecClawAgent:
         )
 
     def _run_json_command(self, cmd: list[str], *, allow_json_failure: bool = False) -> dict[str, Any]:
-        completed = subprocess.run(
-            cmd,
-            cwd=PROJECT_ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                cmd,
+                cwd=PROJECT_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=self.config.subprocess_timeout or None,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"command timed out after {self.config.subprocess_timeout} seconds: {' '.join(cmd)}"
+            ) from exc
         if allow_json_failure and completed.stdout.strip():
             try:
                 parsed = json.loads(completed.stdout)
@@ -2959,6 +3050,7 @@ class RecClawAgent:
             )
         )
         if should_generate:
+            proposal_backlog = self._unconsumed_proposals(self._load_candidate_proposals())
             try:
                 self.skip_proposal_generation = False
                 if self.config.proposal_source == "llm":
@@ -2979,9 +3071,15 @@ class RecClawAgent:
                 print(f"[Round {round_id}] proposal_generation_failed={type(exc).__name__}: {exc}")
                 generated = self.generate_heuristic_candidate_proposals()
                 generated["proposal_source"] = "heuristic_fallback"
+            fresh_proposals = self._load_candidate_proposals()
+            merged_proposals = self._merge_proposal_backlog(proposal_backlog, fresh_proposals)
+            self._write_candidate_proposals(merged_proposals)
+            generated["fresh_proposal_count"] = generated.get("proposal_count", len(fresh_proposals))
+            generated["proposal_count"] = len(merged_proposals)
             print(
                 f"[Round {round_id}] proposals_generated="
-                f"{generated.get('proposal_count')} mode={generated.get('mode')} "
+                f"{generated.get('fresh_proposal_count')} available={generated.get('proposal_count')} "
+                f"mode={generated.get('mode')} "
                 f"source={generated.get('proposal_source', self.config.proposal_source)}"
             )
             self.current_proposal_source = str(generated.get("proposal_source") or self.config.proposal_source)
@@ -3591,6 +3689,8 @@ class RecClawAgent:
             self._refresh_experience_artifacts(0, reason="initial")
         self.remember_experiment_directive()
         for round_id in range(start_round, end_round + 1):
+            candidate_id = "unknown"
+            params: dict[str, Any] = {}
             try:
                 self.reset_round_policy()
                 self.apply_auto_planner(round_id)
@@ -3692,13 +3792,12 @@ class RecClawAgent:
                     )
                 )
             except Exception as exc:  # noqa: BLE001
-                candidate_id = "unknown"
                 run_id = f"agent_internal_round_{round_id}_{int(datetime.now().timestamp())}"
                 reason = f"{type(exc).__name__}: {exc}"
                 fallback_record = TrialRecord(
                     round_id=round_id,
                     candidate_id=candidate_id,
-                    params={},
+                    params=params,
                     run_id=run_id,
                     status="crash",
                     result={},
@@ -3735,6 +3834,12 @@ def main() -> int:
     parser.add_argument("--metrics-weights-json", help="Weights JSON for multi-metrics")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--dry-run", action="store_true", help="Run Observe+Plan only")
+    parser.add_argument(
+        "--subprocess-timeout",
+        type=int,
+        default=7200,
+        help="Timeout in seconds for candidate and helper subprocesses; 0 disables the timeout",
+    )
     parser.add_argument(
         "--set",
         dest="global_overrides",
@@ -4014,6 +4119,7 @@ def main() -> int:
         metrics_weights=metrics_weights,
         seed=args.seed,
         dry_run=args.dry_run,
+        subprocess_timeout=max(0, args.subprocess_timeout),
         loop_mode=args.loop_mode,
         memory_path=Path(args.memory_path),
         state_summary_path=Path(args.state_summary_path),

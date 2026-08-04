@@ -124,6 +124,19 @@ class PreCanaryInvariantError(RuntimeError):
     pass
 
 
+# Same-candidate seed confirmation belongs to a dedicated validation budget.
+# Keeping it pending here prevents Evidence Guard from replacing ordinary
+# candidate-discovery rounds in Arm C.
+INLINE_RESEARCH_TASK_TYPES = frozenset(
+    {
+        ResearchTaskTypeV1.RUN_MATCHED_CONTROL,
+        ResearchTaskTypeV1.RUN_ABLATION,
+        ResearchTaskTypeV1.REPAIR_IMPLEMENTATION,
+        ResearchTaskTypeV1.PROTOCOL_BRANCH_DIAGNOSTIC,
+    }
+)
+
+
 class BrokerRoundFailureError(PreCanaryInvariantError):
     def __init__(self, closure: BrokerFailureClosureV1) -> None:
         super().__init__(
@@ -2257,7 +2270,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         active_task: ResearchTaskV1 | None = None
         if arm in self.research_task_queues:
             pending_task = self.research_task_queues[arm].select_next(
-                allowed_types=frozenset(ResearchTaskTypeV1)
+                allowed_types=INLINE_RESEARCH_TASK_TYPES
             )
             if pending_task is not None:
                 active_task = self.research_task_queues[arm].activate(

@@ -1605,6 +1605,47 @@ class AgentLoopTests(unittest.TestCase):
         chosen, _, _ = rec_agent.plan()
         self.assertEqual(chosen["candidate_id"], "cand_good")
 
+    def test_proposal_refresh_merge_preserves_unconsumed_backlog(self) -> None:
+        rec_agent = agent.RecClawAgent(agent.AgentConfig())
+        rec_agent.history_by_candidate["cand_consumed"] = [{"decision": "discard"}]
+        backlog = [
+            {"candidate_id": "cand_pending", "parent_candidate_id": "parent-a", "parameter_overrides": {"x": 1}},
+            {"candidate_id": "cand_consumed", "parent_candidate_id": "parent-b", "parameter_overrides": {"x": 2}},
+        ]
+        fresh = [
+            {"candidate_id": "cand_fresh", "parent_candidate_id": "parent-c", "parameter_overrides": {"x": 3}},
+        ]
+
+        pending = rec_agent._unconsumed_proposals(backlog)
+        merged = rec_agent._merge_proposal_backlog(pending, fresh)
+
+        self.assertEqual([row["candidate_id"] for row in merged], ["cand_fresh", "cand_pending"])
+
+    def test_round_crash_keeps_selected_candidate_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rec_agent = agent.RecClawAgent(
+                agent.AgentConfig(
+                    rounds=1,
+                    enable_candidate_proposals=False,
+                    research_line_enabled=False,
+                    memory_path=root / "memory.jsonl",
+                    state_summary_path=root / "state.json",
+                    results_csv=root / "results.csv",
+                    refresh_experience_every=0,
+                )
+            )
+            rec_agent.observe = lambda: None  # type: ignore[method-assign]
+            rec_agent.plan = lambda: ({"candidate_id": "cand_timeout"}, {"x": 1}, {})  # type: ignore[method-assign]
+            rec_agent.act = lambda _candidate, _params: (_ for _ in ()).throw(RuntimeError("timeout"))  # type: ignore[method-assign]
+
+            rec_agent.run()
+
+            trials = [row for row in rec_agent.memory if not row.get("event")]
+            self.assertEqual(1, len(trials))
+            self.assertEqual("cand_timeout", trials[0]["candidate_id"])
+            self.assertEqual({"x": 1}, trials[0]["params"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -218,6 +218,7 @@ def build_commands(
     extra_overrides: list[str],
     proposal_count: int | None,
     proposal_every: int,
+    subprocess_timeout: int,
 ) -> dict[str, list[str]]:
     effective_proposal_count = proposal_count
     if effective_proposal_count is None:
@@ -277,6 +278,8 @@ def build_commands(
         str(effective_proposal_count),
         "--proposal-every",
         str(proposal_every),
+        "--subprocess-timeout",
+        str(subprocess_timeout),
         "--search-intensity",
         search_intensity,
         "--algorithm-budget-per-window",
@@ -401,6 +404,7 @@ def plan_payload(
     proposal_every: int,
     llm_temperature: float,
     llm_max_tokens: int,
+    subprocess_timeout: int,
     seeded_artifacts: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
@@ -419,6 +423,7 @@ def plan_payload(
         "proposal_every": proposal_every,
         "llm_temperature": llm_temperature,
         "llm_max_tokens": llm_max_tokens,
+        "subprocess_timeout": subprocess_timeout,
         "seeded_artifacts": list(seeded_artifacts or []),
         "safe_overrides": list(SAFE_OVERRIDES),
         "extra_overrides": list(extra_overrides),
@@ -469,6 +474,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llm-retries", type=int, default=3, help="Transient LLM API retry count")
     parser.add_argument("--llm-temperature", type=float, default=0.2, help="LLM sampling temperature")
     parser.add_argument("--llm-max-tokens", type=int, default=4096, help="Maximum LLM output tokens")
+    parser.add_argument(
+        "--subprocess-timeout",
+        type=int,
+        default=7200,
+        help="Timeout in seconds for each candidate/helper subprocess; 0 disables it",
+    )
     parser.add_argument("--llm-api-key-env", default="", help="Environment variable containing the LLM API key")
     parser.add_argument(
         "--allow-llm-fallback",
@@ -557,6 +568,7 @@ def main(argv: list[str] | None = None) -> int:
         extra_overrides=list(args.extra_overrides or []),
         proposal_count=args.proposal_count,
         proposal_every=max(1, int(args.proposal_every)),
+        subprocess_timeout=max(0, int(args.subprocess_timeout)),
     )
 
     payload = plan_payload(
@@ -577,6 +589,7 @@ def main(argv: list[str] | None = None) -> int:
         max(1, int(args.proposal_every)),
         float(args.llm_temperature),
         max(1, int(args.llm_max_tokens)),
+        max(0, int(args.subprocess_timeout)),
     )
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=True, indent=2))

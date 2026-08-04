@@ -408,7 +408,10 @@ def _write_durable_json(path: Path, value: dict[str, object]) -> None:
     finally:
         os.close(descriptor)
     os.replace(temporary, path)
-    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        directory = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
     try:
         os.fsync(directory)
     finally:

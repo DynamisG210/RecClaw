@@ -30,10 +30,7 @@ def _recommended_validation(result: dict[str, Any]) -> str:
     disposition = result["evidence_admissibility"]["development_disposition"]
     if result["affected_claim_scope"]["protocol_branch_required"]:
         return "SEPARATE_PROTOCOL_VALIDATION"
-    if disposition in {
-        "COUNT_AS_LOCAL_PRELIMINARY_SIGNAL",
-        "RECORD_EXECUTABILITY_ONLY",
-    }:
+    if disposition == "COUNT_AS_LOCAL_PRELIMINARY_SIGNAL":
         return "REQUIRES_CONFIRMATION"
     if disposition.startswith("QUARANTINE"):
         return "DIAGNOSTIC_REVIEW"

@@ -85,6 +85,8 @@ class ReflectionPilotTests(unittest.TestCase):
             self.assertIn("--search-intensity algorithm_first", payload["commands"]["agent"])
             self.assertIn("--algorithm-budget-per-window 3", payload["commands"]["agent"])
             self.assertIn("--proposal-count 6", payload["commands"]["agent"])
+            self.assertIn("--subprocess-timeout 7200", payload["commands"]["agent"])
+            self.assertEqual(payload["subprocess_timeout"], 7200)
             self.assertNotIn("--allow-llm-fallback", payload["commands"]["agent"])
             self.assertEqual(payload["loop_mode"], "mixed")
             self.assertEqual(payload["search_intensity"], "algorithm_first")

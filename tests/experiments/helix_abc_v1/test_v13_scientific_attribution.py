@@ -24,6 +24,10 @@ from recclaw_core.experiments.helix_abc_v1.research_contracts import (
     DevelopmentalMechanismBeliefV1,
 )
 from recclaw_core.helix.contracts import PortAdjudication, PortStage, PortStatus
+from recclaw_core.helix.guard_adapter import _recommended_validation
+from recclaw_core.experiments.helix_abc_v1.precanary_orchestration import (
+    INLINE_RESEARCH_TASK_TYPES,
+)
 from recclaw_core.helix.scientific_attribution import (
     DeterministicHelixAdmissionV13,
     FrontierEligibilityV2,
@@ -36,6 +40,20 @@ from recclaw_core.helix.scientific_attribution import (
     SearchUtilityEventV2,
     schema_for,
 )
+
+
+def test_executability_only_result_does_not_trigger_seed_confirmation() -> None:
+    result = {
+        "affected_claim_scope": {"protocol_branch_required": False},
+        "evidence_admissibility": {
+            "development_disposition": "RECORD_EXECUTABILITY_ONLY"
+        },
+    }
+    assert _recommended_validation(result) == "NONE"
+
+
+def test_seed_confirmation_is_not_an_inline_search_task() -> None:
+    assert ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE not in INLINE_RESEARCH_TASK_TYPES
 
 
 DIGEST_A = "a" * 64
@@ -171,10 +189,9 @@ def test_preliminary_post_creates_public_validation_task_without_guard_fields() 
         "RECORD_RUNTIME_BLOCKER_ONLY",
         "QUARANTINE_METRIC_MISSING",
         "QUARANTINE_PROVENANCE_INCOMPLETE",
-        "EXCLUDE_FROM_CURRENT_CLAIM",
     ),
 )
-def test_non_search_dispositions_cannot_update_search_state(
+def test_diagnostic_dispositions_update_memory_but_not_frontier_or_meta(
     evidence_use: str,
 ) -> None:
     fused, _compact = DeterministicHelixAdmissionV13().admit_post(
@@ -183,6 +200,24 @@ def test_non_search_dispositions_cannot_update_search_state(
     )
     assert fused.frontier_eligibility is FrontierEligibilityV2.EXCLUDED
     assert fused.search_utility_event is None
+    assert not fused.meta_update_allowed
+    assert fused.controller_update_allowed
+    assert fused.search_memory_update_allowed
+    prompt = PromptFeedbackProjectionV2.from_fused(fused).to_dict()
+    assert prompt["diagnostic_slot"] == {
+        "candidate_id": fused.candidate_id,
+        "search_feedback_class": "DIAGNOSTIC_ONLY",
+    }
+
+
+def test_cross_protocol_result_cannot_update_current_search_state() -> None:
+    fused, _compact = DeterministicHelixAdmissionV13().admit_post(
+        adjudication=_post(evidence_use="EXCLUDE_FROM_CURRENT_CLAIM"),
+        search_utility_event=_event(),
+    )
+    assert fused.frontier_eligibility is FrontierEligibilityV2.EXCLUDED
+    assert fused.search_utility_event is None
+    assert not fused.controller_update_allowed
     assert not fused.meta_update_allowed
     assert not fused.search_memory_update_allowed
 
