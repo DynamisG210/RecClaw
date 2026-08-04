@@ -8,10 +8,12 @@ scientific episode.
 from __future__ import annotations
 
 import hashlib
-import importlib.util
+import importlib
 import math
 import os
 import sys
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
@@ -317,28 +319,49 @@ def _assert_candidate_tree_unchanged(
         )
 
 
+@contextmanager
+def _candidate_package_import_root(candidate_root: Path):
+    """Import one candidate as a real, isolated ``recclaw_ext`` package."""
+
+    previous_path = list(sys.path)
+    previous_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "recclaw_ext" or name.startswith("recclaw_ext.")
+    }
+    for name in tuple(previous_modules):
+        sys.modules.pop(name, None)
+    sys.path.insert(0, str(candidate_root.resolve()))
+    try:
+        yield
+    finally:
+        for name in tuple(sys.modules):
+            if name == "recclaw_ext" or name.startswith("recclaw_ext."):
+                sys.modules.pop(name, None)
+        sys.modules.update(previous_modules)
+        sys.path[:] = previous_path
+
+
 def _load_candidate_class(
     package: CandidatePackageV1,
     candidate_root: Path,
 ) -> type[Any]:
     source_path, class_name = _candidate_source_path(package, candidate_root)
-    module_name = "_recclaw_qualification_" + package.digest[:24]
-    spec = importlib.util.spec_from_file_location(module_name, source_path)
-    if spec is None or spec.loader is None:
-        raise _stage_failure(
-            QualificationStageV1.CONSTRUCTION,
-            QualificationFailureClassV1.INTERFACE,
-            "ENTRYPOINT_IMPORT_SPEC_FAILED",
-            "entrypoint could not be converted to an import specification",
-        )
-    module = importlib.util.module_from_spec(spec)
+    module_name, _ = package.executable_entrypoint.split(":", 1)
     previous_dont_write = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
-    sys.modules[module_name] = module
     try:
-        spec.loader.exec_module(module)
+        with _candidate_package_import_root(candidate_root):
+            try:
+                module = importlib.import_module(module_name)
+            except (ImportError, ModuleNotFoundError) as error:
+                raise _stage_failure(
+                    QualificationStageV1.CONSTRUCTION,
+                    QualificationFailureClassV1.INTERFACE,
+                    "ENTRYPOINT_IMPORT_FAILED",
+                    str(error) or "candidate package import failed",
+                ) from error
     finally:
-        sys.modules.pop(module_name, None)
         sys.dont_write_bytecode = previous_dont_write
     candidate_class = getattr(module, class_name, None)
     if not isinstance(candidate_class, type):
@@ -563,6 +586,7 @@ def _one_epoch_smoke(
     private_working_directory.mkdir(parents=True, exist_ok=True)
     previous_working_directory = Path.cwd()
     trainer = None
+    started_ns = time.monotonic_ns()
     try:
         os.chdir(private_working_directory)
         trainer = trainer_class(config, model)
@@ -596,6 +620,7 @@ def _one_epoch_smoke(
         "completed_epochs": 1,
         "metric_values_excluded_from_qualification": True,
         "trainer_class": trainer_class.__name__,
+        "wall_time_ms": max(1, (time.monotonic_ns() - started_ns) // 1_000_000),
     }
 
 

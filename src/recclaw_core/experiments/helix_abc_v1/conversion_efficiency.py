@@ -25,6 +25,8 @@ FULL_RESOURCE_BUDGET_SECONDS = 7200
 FULL_WATCHDOG_SECONDS = 10800
 RESOURCE_DEADLINE_MIN_SECONDS = 180
 RESOURCE_DEADLINE_MARGIN = 1.10
+SCREEN_DEADLINE_STARTUP_MARGIN_SECONDS = 60
+SCREEN_DEADLINE_VARIANCE_MARGIN = 1.25
 CANDIDATE_LOCAL_ALLOWED_FILES = (
     "recclaw_ext/__init__.py",
     "recclaw_ext/candidate.py",
@@ -38,6 +40,16 @@ RECBole_INTERFACE_CONTRACT = {
     "constructor": "(config, dataset)",
     "required_methods": ("calculate_loss", "predict", "full_sort_predict"),
     "gpu_budget_gb": 10,
+    "candidate_package": {
+        "import_root": "candidate_root",
+        "package": "recclaw_ext",
+        "required_files": (
+            "recclaw_ext/__init__.py",
+            "recclaw_ext/candidate.py",
+        ),
+        "entrypoint": "recclaw_ext.candidate:FreshCandidateModel",
+        "absolute_imports": "candidate-local recclaw_ext.* modules",
+    },
 }
 MECHANICAL_SHAPE_TEST_HINT = {
     "calculate_loss": {"user_id": [4], "item_id": [4], "neg_item_id": [4]},
@@ -162,6 +174,13 @@ def build_conversion_execution_plan(
                 "seed": int(screen_seed),
                 "one_pristine_parent_per_seed": True,
                 "failure_is_missing": True,
+                "deadline_rule": {
+                    "source": "ONE_EPOCH_SMOKE_QUALIFICATION_TELEMETRY",
+                    "startup_margin_seconds": SCREEN_DEADLINE_STARTUP_MARGIN_SECONDS,
+                    "variance_margin": SCREEN_DEADLINE_VARIANCE_MARGIN,
+                    "formula": "max(180, ceil(60 + 1.25 * one_epoch_smoke_seconds * 20))",
+                    "watchdog_seconds": FULL_WATCHDOG_SECONDS,
+                },
             },
             "promotion": {
                 "limit": int(promotion_limit),
@@ -205,6 +224,28 @@ def derive_resource_deadline_seconds(
     return int(deadline)
 
 
+def derive_screen_deadline_seconds(
+    one_epoch_smoke_wall_time_ms: int | float,
+    *,
+    smoke_epochs: int = 1,
+    screen_epochs: int = SCREEN_EPOCHS,
+) -> int:
+    """Freeze a screen deadline from pre-screen one-epoch smoke telemetry."""
+
+    wall_seconds = float(one_epoch_smoke_wall_time_ms) / 1000.0
+    if wall_seconds <= 0 or int(smoke_epochs) <= 0 or int(screen_epochs) <= 0:
+        raise ValueError("one-epoch smoke telemetry and epoch counts must be positive")
+    projected = ceil(
+        SCREEN_DEADLINE_STARTUP_MARGIN_SECONDS
+        + SCREEN_DEADLINE_VARIANCE_MARGIN
+        * (wall_seconds * int(screen_epochs) / int(smoke_epochs))
+    )
+    deadline = max(RESOURCE_DEADLINE_MIN_SECONDS, projected)
+    if deadline > FULL_WATCHDOG_SECONDS:
+        raise ValueError("screen deadline exceeds the frozen watchdog")
+    return int(deadline)
+
+
 def choose_stable_promotions(
     screen_results: Sequence[Mapping[str, Any]],
     *,
@@ -219,49 +260,48 @@ def choose_stable_promotions(
             and bool(row.get("stable"))
             and isinstance(row.get("candidate_id"), str)
         ):
-            eligible.append(
-                (
-                    -float(row.get("screen_signal", 0.0)),
-                    str(row["candidate_id"]),
-                )
-            )
-    eligible.sort()
-    by_id = {
-        str(row["candidate_id"]): row
-        for row in screen_results
-        if isinstance(row.get("candidate_id"), str)
-        and str(row["candidate_id"]) in {candidate_id for _signal, candidate_id in eligible}
-    }
-    selected: list[str] = []
-    policies = sorted(
-        {
-            str(policy)
-            for row in by_id.values()
-            for policy in row.get("policy_owners", ())
-        }
+            eligible.append(row)
+    ordered = sorted(
+        eligible,
+        key=lambda row: _screen_priority_key(
+            row,
+            predicted_cost_seconds=_predicted_full_cost_seconds(row),
+        ),
     )
-    for policy in policies:
-        policy_candidates = [
-            item
-            for item in eligible
-            if policy in tuple(str(value) for value in by_id[item[1]].get("policy_owners", ()))
-        ]
-        if policy_candidates:
-            candidate_id = policy_candidates[0][1]
-            if candidate_id not in selected:
-                selected.append(candidate_id)
-    exploration = [
-        item
-        for item in eligible
-        if bool(by_id[item[1]].get("shared_exploration"))
-    ]
-    fallback = exploration or eligible
-    for _signal, candidate_id in fallback:
-        if candidate_id not in selected:
-            selected.append(candidate_id)
-        if len(selected) >= int(promotion_limit):
-            break
-    return tuple(selected[: int(promotion_limit)])
+    return tuple(str(row["candidate_id"]) for row in ordered[: int(promotion_limit)])
+
+
+def _predicted_full_cost_seconds(
+    row: Mapping[str, Any],
+    *,
+    seed_count: int = len(FULL_DEVELOPMENT_SEEDS),
+) -> int:
+    wall_time_ms = row.get("screen_cost_ms")
+    if wall_time_ms is None:
+        return FULL_WATCHDOG_SECONDS
+    try:
+        return derive_resource_deadline_seconds(wall_time_ms) * int(seed_count)
+    except ValueError:
+        return FULL_WATCHDOG_SECONDS
+
+
+def _screen_priority_key(
+    row: Mapping[str, Any],
+    *,
+    predicted_cost_seconds: int,
+) -> tuple[int, float, float, int, str]:
+    """Prefer positive signal, then signal per predicted full-run cost."""
+
+    signal = float(row.get("screen_signal", 0.0) or 0.0)
+    positive_rank = 0 if signal > 0 else 1
+    efficiency = signal / max(1, int(predicted_cost_seconds))
+    return (
+        positive_rank,
+        -efficiency,
+        -signal,
+        int(predicted_cost_seconds),
+        str(row["candidate_id"]),
+    )
 
 
 def choose_resource_bounded_promotions(
@@ -273,10 +313,6 @@ def choose_resource_bounded_promotions(
 ) -> dict[str, Any]:
     """Apply the fixed screen/policy order to the full-run resource budget."""
 
-    ordered = choose_stable_promotions(
-        screen_results,
-        promotion_limit=int(promotion_limit),
-    )
     seeds = tuple(int(seed) for seed in full_seeds)
     if not seeds or len(set(seeds)) != len(seeds):
         raise ValueError("full seeds must be unique")
@@ -293,6 +329,26 @@ def choose_resource_bounded_promotions(
     parent_deadline = derive_resource_deadline_seconds(parent_wall_time_ms)
     parent_reserve = parent_deadline * len(seeds)
     used = parent_reserve
+    eligible_rows = [
+        row
+        for row in screen_results
+        if row.get("status") == "COMPLETED_MATCHED_SCREEN"
+        and bool(row.get("stable"))
+        and isinstance(row.get("candidate_id"), str)
+    ]
+    ordered_rows = sorted(
+        eligible_rows,
+        key=lambda row: _screen_priority_key(
+            row,
+            predicted_cost_seconds=_predicted_full_cost_seconds(
+                row, seed_count=len(seeds)
+            ),
+        ),
+    )
+    ordered = tuple(
+        str(row["candidate_id"])
+        for row in ordered_rows[: int(promotion_limit)]
+    )
     promoted: list[str] = []
     censored: list[dict[str, Any]] = []
     deadlines: dict[str, int] = {}
@@ -347,6 +403,12 @@ def choose_resource_bounded_promotions(
             "resource_budget_seconds": int(total_budget_seconds),
             "resource_budget_used_seconds": used,
             "screen_priority_order": list(ordered),
+            "selection_conditioning": (
+                "COMPLETED_STABLE_SCREEN_SIGNAL_THEN_PREDICTED_FULL_COST"
+            ),
+            "negative_or_exploration_fallback": (
+                "BEST_SCREEN_SIGNAL_WHEN_NO_POSITIVE_FEASIBLE_CANDIDATE"
+            ),
         }
     )
 
@@ -391,6 +453,10 @@ def finalize_conversion_execution_plan(
                 ],
                 "candidate_full_cost_seconds": resource[
                     "candidate_full_cost_seconds"
+                ],
+                "selection_conditioning": resource["selection_conditioning"],
+                "negative_or_exploration_fallback": resource[
+                    "negative_or_exploration_fallback"
                 ],
                 "resource_budget_seconds": resource["resource_budget_seconds"],
                 "resource_budget_used_seconds": resource[
@@ -557,6 +623,7 @@ __all__ = [
     "choose_resource_bounded_promotions",
     "choose_stable_promotions",
     "derive_resource_deadline_seconds",
+    "derive_screen_deadline_seconds",
     "finalize_conversion_execution_plan",
     "is_mechanical_repair_failure",
     "run_fail_soft_batch",

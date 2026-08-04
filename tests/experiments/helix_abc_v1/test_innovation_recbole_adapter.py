@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ from recclaw_core.experiments.helix_abc_v1.contracts import EVIDENCE_CLASS
 from recclaw_core.experiments.helix_abc_v1.innovation_recbole_adapter import (
     MechanicalRecBoleAdapterV1,
     RecBoleQualificationFixture,
+    _load_candidate_class,
     candidate_tree_identity,
 )
 from recclaw_core.experiments.helix_abc_v1.runtime_release import (
@@ -92,7 +95,7 @@ def _package(
         executable_entrypoint=(
             f"{candidate_module}:{class_name}"
         ),
-        allowed_files=(candidate_file,),
+        allowed_files=("recclaw_ext/__init__.py", candidate_file),
         dependency_identity_ref="dependencies:recbole-bpr-fixture",
         dependency_identity_digest=sha256_digest(
             {"base_model_config": "BPR", "dataset": "mini"}
@@ -134,6 +137,63 @@ def _shared_unit_check(model: object, config: object, dataset: object) -> None:
     assert all(isinstance(parameter, torch.Tensor) for parameter in parameters)
     assert config["MODEL_TYPE"] is ModelType.GENERAL
     assert dataset.item_num > 1
+
+
+def test_candidate_package_import_root_isolated_between_absolute_imports(
+    tmp_path: Path,
+) -> None:
+    baseline_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "recclaw_ext" or name.startswith("recclaw_ext.")
+    }
+    packages = []
+    for label in ("first", "second"):
+        root = tmp_path / label
+        package_root = root / "recclaw_ext"
+        package_root.mkdir(parents=True)
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+        (package_root / "modules.py").write_text(
+            f"MARKER = {label!r}\n", encoding="utf-8"
+        )
+        (package_root / "candidate.py").write_text(
+            "from recclaw_ext.modules import MARKER\n"
+            "class FreshCandidateModel:\n"
+            "    marker = MARKER\n",
+            encoding="utf-8",
+        )
+        packages.append(
+            (
+                SimpleNamespace(
+                    digest=(label.encode("utf-8").hex() + "0" * 64)[:64],
+                    executable_entrypoint=(
+                        "recclaw_ext.candidate:FreshCandidateModel"
+                    ),
+                    allowed_files=(
+                        "recclaw_ext/__init__.py",
+                        "recclaw_ext/candidate.py",
+                        "recclaw_ext/modules.py",
+                    ),
+                ),
+                root,
+            )
+        )
+
+    first_class = _load_candidate_class(*packages[0])
+    assert first_class.marker == "first"
+    assert {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "recclaw_ext" or name.startswith("recclaw_ext.")
+    } == baseline_modules
+    second_class = _load_candidate_class(*packages[1])
+    assert second_class.marker == "second"
+    assert first_class.marker != second_class.marker
+    assert {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "recclaw_ext" or name.startswith("recclaw_ext.")
+    } == baseline_modules
 
 
 def test_real_recbole_vertical_slice_emits_development_only_receipt(
@@ -235,12 +295,12 @@ def test_invalid_input_fixture_stops_before_unit_and_smoke(
     assert receipt.evidence_class == "DEVELOPMENT_ONLY"
     assert receipt.mechanism_belief_authority == "NONE"
     assert receipt.current_campaign_effect_evidence is False
-    assert result.failure_detail == {
-        "error_type": "_QualificationStageFailure",
-        "failure_class": "INTERFACE",
-        "reason_code": "INPUT_TYPE_MISMATCH",
-        "stage": "API_CONTRACT",
-    }
+    assert result.failure_detail["error_type"] == "_QualificationStageFailure"
+    assert result.failure_detail["failure_class"] == "INTERFACE"
+    assert result.failure_detail["reason_code"] == "INPUT_TYPE_MISMATCH"
+    assert result.failure_detail["stage"] == "API_CONTRACT"
+    assert "message" in result.failure_detail
+    assert "traceback" in result.failure_detail
     assert result.smoke_executions == 0
     assert "ONE_EPOCH_SMOKE" not in result.stage_observations
 
@@ -268,10 +328,10 @@ def test_candidate_local_missing_declared_time_field_stays_typed_failure(
 
     assert result.receipt.stage is QualificationStageV1.CONSTRUCTION
     assert result.receipt.failure_class is QualificationFailureClassV1.INTERFACE
-    assert result.failure_detail == {
-        "error_type": "_QualificationStageFailure",
-        "failure_class": "INTERFACE",
-        "reason_code": "KEYERROR",
-        "stage": "CONSTRUCTION",
-    }
+    assert result.failure_detail["error_type"] == "_QualificationStageFailure"
+    assert result.failure_detail["failure_class"] == "INTERFACE"
+    assert result.failure_detail["reason_code"] == "KEYERROR"
+    assert result.failure_detail["stage"] == "CONSTRUCTION"
+    assert "message" in result.failure_detail
+    assert "traceback" in result.failure_detail
     assert result.smoke_executions == 0

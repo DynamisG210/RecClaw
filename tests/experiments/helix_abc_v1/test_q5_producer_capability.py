@@ -173,6 +173,11 @@ def test_graded_preoutcome_features_are_structural_and_not_all_tied() -> None:
                 "UNIT_OR_MECHANISM_OFF": 5,
                 "CONSTRUCTION_IMPORT": 3,
             },
+            "stage_labels": {
+                "QUALIFY": {"success": 6, "denominator": 18},
+                "RESOURCE_ADMITTED": {"success": 4, "denominator": 18},
+                "FULL_EPISODE": {"success": 1, "denominator": 18},
+            },
         },
         "mode": "DIAGNOSIS_DRIVEN",
     }
@@ -191,4 +196,5 @@ def test_graded_preoutcome_features_are_structural_and_not_all_tied() -> None:
     assert "causal_operator_novelty" in rich_score["features"]
     assert "qualifier_risk" in rich_score["features"]
     assert "resource_margin" in rich_score["features"]
+    assert rich_score["features"]["stage_feasibility"] > 0
     assert rich_score["total"] != weak_score["total"]

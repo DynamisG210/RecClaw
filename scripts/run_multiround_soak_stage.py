@@ -742,6 +742,9 @@ def _conversion_parent(
 def _run_conversion_screen(args: argparse.Namespace, manifest: Mapping[str, Any]) -> Path:
     from recclaw_core.experiments.helix_abc_v1.canonical import bytes_sha256
     from recclaw_core.experiments.helix_abc_v1.fresh_r1 import run_development_training
+    from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (
+        derive_screen_deadline_seconds,
+    )
 
     contract = manifest["conversion_efficiency"]
     screen = contract["screen"]
@@ -768,16 +771,63 @@ def _run_conversion_screen(args: argparse.Namespace, manifest: Mapping[str, Any]
                 "scientific_effect_claim": False,
             },
         )
+    qualification = _read(args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
+    smoke_observation = (
+        qualification.get("qualification", {})
+        .get("stage_observations", {})
+        .get("ONE_EPOCH_SMOKE", {})
+    )
+    smoke_wall_time_ms = smoke_observation.get("wall_time_ms")
+    try:
+        screen_deadline = derive_screen_deadline_seconds(smoke_wall_time_ms)
+    except (TypeError, ValueError):
+        return _receipt(
+            args.round_root / "MATCHED_EXECUTION_RECEIPT.json",
+            {
+                "schema": "recclaw.research-line.q5-conversion-screen-stage.v1",
+                "status": "SCREEN_DEADLINE_NOT_FROZEN",
+                "baseline": None,
+                "candidate": None,
+                "matched_seed": seed,
+                "screen_epochs": epochs,
+                "screen_signal": None,
+                "stable": False,
+                "screen_deadline_seconds": None,
+                "deadline_source": "ONE_EPOCH_SMOKE_QUALIFICATION_TELEMETRY",
+                "physical_training_runs": 0,
+                "retries": 0,
+                "held_out_reads": 0,
+                "development_only": True,
+                "scientific_effect_claim": False,
+            },
+        )
+    _write_new(
+        args.round_root / "SCREEN_DEADLINE_PLAN.json",
+        {
+            "schema": "recclaw.research-line.q5-screen-deadline-plan.v1",
+            "one_epoch_smoke_wall_time_ms": int(smoke_wall_time_ms),
+            "screen_epochs": epochs,
+            "screen_deadline_seconds": screen_deadline,
+            "deadline_source": "ONE_EPOCH_SMOKE_QUALIFICATION_TELEMETRY",
+            "startup_margin_seconds": 60,
+            "variance_margin": 1.25,
+            "watchdog_seconds": int(
+                manifest["frozen_execution"]["engineering_watchdog_seconds"]
+            ),
+            "held_out_reads": 0,
+            "retries": 0,
+            "development_only": True,
+        },
+    )
     parent, parent_reused = _conversion_parent(
         args,
         manifest,
         kind="screen",
         seed=seed,
         epochs=epochs,
-        timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+        timeout_seconds=screen_deadline,
         execution_purpose="DEVELOPMENT_SCREEN_PARENT",
     )
-    qualification = _read(args.round_root / "MATERIALIZE_QUALIFIER_RECEIPT.json")
     candidate_root = Path(qualification["candidate_root"])
     source = candidate_root / "recclaw_ext/candidate.py"
     candidate = run_development_training(
@@ -790,7 +840,7 @@ def _run_conversion_screen(args: argparse.Namespace, manifest: Mapping[str, Any]
         source_sha256=bytes_sha256(source.read_bytes()),
         run_identity=_round_identity(manifest),
         authority="user-delegated-q5b-conversion-screen",
-        timeout_seconds=int(manifest["frozen_execution"]["training_deadline_seconds"]),
+        timeout_seconds=screen_deadline,
         epochs=epochs,
         execution_purpose="DEVELOPMENT_SCREEN_CANDIDATE",
         watchdog_seconds=int(manifest["frozen_execution"]["engineering_watchdog_seconds"]),
@@ -814,6 +864,8 @@ def _run_conversion_screen(args: argparse.Namespace, manifest: Mapping[str, Any]
             "screen_epochs": epochs,
             "screen_signal": signal,
             "stable": closed,
+            "screen_deadline_seconds": screen_deadline,
+            "deadline_source": "ONE_EPOCH_SMOKE_QUALIFICATION_TELEMETRY",
             "parent_reused": parent_reused,
             "physical_training_runs": 1 + (0 if parent_reused else 1),
             "retries": 0,

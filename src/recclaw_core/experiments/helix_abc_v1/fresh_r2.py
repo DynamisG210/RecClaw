@@ -408,17 +408,24 @@ def public_active_profile_catalog(
     for entry in active.entries:
         if entry.origin is SearchProfileEntryOriginV1.FIXED_66:
             mechanism = fixed_by_semantics[entry.semantic_identity_digest]
-            summary = (
+            mechanism_id = mechanism.mechanism_id
+            hypothesis = (
                 f"{mechanism.mechanism_id}; axis={mechanism.mechanism_axis}; "
                 f"operators={','.join(mechanism.operator_ids)}"
             )
         else:
             artifact = artifact_by_semantics[entry.semantic_identity_digest]
-            summary = str(artifact.spec_payload["hypothesis"])
+            mechanism_id = artifact.capability.capability_id
+            hypothesis = str(artifact.spec_payload["hypothesis"])
+        parent_id = str(entry.capability_ref)
         rows.append(
             {
-                "mechanism_summary": summary,
+                "mechanism_id": mechanism_id,
+                "mechanism_summary": parent_id,
+                "parent_id": parent_id,
+                "profile_ref": parent_id,
                 "semantics_digest": entry.semantic_identity_digest,
+                "hypothesis_summary": hypothesis,
             }
         )
     random.Random(seed).shuffle(rows)

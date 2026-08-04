@@ -270,27 +270,46 @@ SLOT_BLUEPRINT = (
 Q5A_AGGREGATE_CONTEXT = {
     "source": "Q5A_DEVELOPMENT_ONLY_AGGREGATE",
     "provider_denominator": 24,
-    "construct_count": 17,
-    "qualified_count": 10,
-    "resource_admitted_count": 8,
+    "construct_count": 18,
+    "qualified_count": 6,
+    "resource_admitted_count": 4,
     "full_episode_count": 2,
     "timeout_cluster": {
-        "count": 6,
-        "frozen_training_deadline_seconds": 900,
-        "observed_elapsed_seconds": (901, 902),
+        "count": 2,
+        "legacy_screen_deadline_seconds": 900,
+        "observed_elapsed_seconds": (900.9, 901.0),
+    },
+    "system_v1_stage_labels": {
+        "denominator": 18,
+        "MATERIALIZE": {"success": 17, "missing": 1},
+        "CONSTRUCT": {"success": 18, "missing": 0},
+        "QUALIFY": {"success": 6, "missing": 12},
+        "RESOURCE_ADMITTED": {"success": 4, "missing": 14},
+        "FULL_EPISODE": {"success": 1, "missing": 17},
+        "stable_screen": {"success": 2, "incomplete": 2},
     },
     "development_signals": {
         "complete_episode_count": 2,
-        "signal_summary": "two near-zero negative development signals; no scientific effect claim",
+        "signal_summary": "two inconclusive development episodes; no scientific effect claim",
     },
     "q5b_failure_summary": {
         "implementer_success_count": 17,
-        "qualified_count": 5,
-        "resource_admitted_count": 3,
+        "provider_timeout_count": 1,
+        "initial_qualification_pass_count": 0,
+        "revision_turns": 30,
+        "revision_rescued_count": 6,
+        "qualified_count": 6,
+        "resource_admitted_count": 4,
         "qualifier_failure_taxonomy": {
             "API_OR_TENSOR": 4,
             "UNIT_OR_MECHANISM_OFF": 5,
             "CONSTRUCTION_IMPORT": 3,
+            "PACKAGE_IMPORT_ROOT": 1,
+        },
+        "stage_labels": {
+            "QUALIFY": {"success": 6, "denominator": 18},
+            "RESOURCE_ADMITTED": {"success": 4, "denominator": 18},
+            "FULL_EPISODE": {"success": 1, "denominator": 18},
         },
         "revision_turns_bounded_at_two": True,
         "candidate_specific_results": False,
@@ -299,7 +318,8 @@ Q5A_AGGREGATE_CONTEXT = {
         "distinct_parent_families": 2,
         "family_counts": {"LIGHTGCN15": 15, "BPR_MF9": 9},
         "mechanism_signatures_unique": 24,
-        "oa_selection_shape": "UNIFORM_TIE",
+        "oa_selection_shape": "LEARNED_SCORE_EMPTY_TOP_TIES",
+        "malformed_parent_catalog_count": 8,
     },
     "candidate_specific_results": False,
     "held_out_reads": 0,
@@ -1269,6 +1289,12 @@ def _build_conversion_screen_results(
                 "screen_signal": receipt.get("screen_signal") if receipt else None,
                 "screen_cost_ms": candidate.get("wall_time_ms") if receipt else None,
                 "parent_screen_cost_ms": baseline.get("wall_time_ms") if receipt else None,
+                "screen_deadline_seconds": (
+                    receipt.get("screen_deadline_seconds") if receipt else None
+                ),
+                "deadline_source": (
+                    receipt.get("deadline_source") if receipt else None
+                ),
                 "policy_owners": sorted(policy_owners.get(candidate_id, set())),
                 "shared_exploration": candidate_id in exploration_ids,
             }

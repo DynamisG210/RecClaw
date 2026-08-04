@@ -461,6 +461,7 @@ def score_preoutcome_testability(
             for item in parent_catalog
             if isinstance(item, Mapping)
             for value in (
+                item.get("parent_id"),
                 item.get("profile_ref"),
                 item.get("ref"),
                 item.get("semantics_digest"),
@@ -553,6 +554,7 @@ def score_preoutcome_testability(
             "parent_family_novelty": parent_family_novelty,
             "causal_operator_novelty": causal_operator_novelty,
             "qualifier_risk": 0.0,
+            "stage_feasibility": 0.0,
             "scientific_falsifiability": text_score(
                 spec.falsifier,
                 ("reject", "compare", "control"),
@@ -609,6 +611,29 @@ def score_preoutcome_testability(
         if realization_mode == "PARENT_PRESERVING" and mechanism_off_score < 0.5:
             qualifier_risk_margin *= 0.75
         features["qualifier_risk"] = round(max(0.0, min(1.0, qualifier_risk_margin)), 6)
+        stage_labels = (
+            failure_summary.get("stage_labels", {})
+            if isinstance(failure_summary, Mapping)
+            else {}
+        )
+        stage_rates = []
+        for stage_name in ("QUALIFY", "RESOURCE_ADMITTED", "FULL_EPISODE"):
+            row = stage_labels.get(stage_name, {}) if isinstance(stage_labels, Mapping) else {}
+            if isinstance(row, Mapping) and float(row.get("denominator", 0) or 0) > 0:
+                stage_rates.append(
+                    max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(row.get("success", 0) or 0)
+                            / float(row["denominator"]),
+                        ),
+                    )
+                )
+        features["stage_feasibility"] = round(
+            sum(stage_rates) / len(stage_rates) if stage_rates else 0.0,
+            6,
+        )
     return canonical_value(
         {
             "features": features,

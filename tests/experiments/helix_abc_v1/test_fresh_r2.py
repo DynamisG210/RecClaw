@@ -101,6 +101,8 @@ def test_real_r1_registry_activates_all_qualified_capabilities_origin_blind() ->
         entry.origin is SearchProfileEntryOriginV1.QUALIFIED_REGISTRY
         for entry in active.entries
     ) == 11
+    assert all(row["parent_id"] == row["mechanism_summary"] for row in catalog)
+    assert all("; axis=" not in row["parent_id"] for row in catalog)
     assert "side_a" not in prompt
     assert "side_b" not in prompt
     assert "R1_FRESH" not in prompt

@@ -16,12 +16,14 @@ if str(SRC) not in sys.path:
 
 from recclaw_core.experiments.helix_abc_v1.conversion_efficiency import (  # noqa: E402
     CANDIDATE_LOCAL_ALLOWED_FILES,
+    RECBole_INTERFACE_CONTRACT,
     build_conversion_execution_plan,
     build_mechanical_repair_request,
     build_stage_feasibility_head,
     choose_resource_bounded_promotions,
     choose_stable_promotions,
     derive_resource_deadline_seconds,
+    derive_screen_deadline_seconds,
     finalize_conversion_execution_plan,
     is_mechanical_repair_failure,
     run_fail_soft_batch,
@@ -169,6 +171,29 @@ def test_candidate_local_multifile_package_materializes_with_actual_file_set(tmp
         "recclaw_ext/layers.py",
     )
     assert request["service_policy"]["execution_contract"]["gpu_budget_gb"] == 10
+
+
+def test_initial_conversion_request_binds_package_import_and_recbole_contract() -> None:
+    policy = SharedImplementerPolicy(
+        allowed_files=CANDIDATE_LOCAL_ALLOWED_FILES,
+        dependency_identity_ref="dependencies:fixture",
+        dependency_identity_digest=_digest("dependencies"),
+        runtime_identity_ref="runtime:fixture",
+        runtime_identity_digest=_digest("runtime"),
+        prompt_digest=_digest("prompt"),
+        tool_policy_digest=_digest("tools"),
+        implementation_token_ceiling=4096,
+        execution_contract=RECBole_INTERFACE_CONTRACT,
+    )
+    request = build_shared_implementer_request(_spec(), policy=policy)
+    contract = request["service_policy"]["execution_contract"]
+    assert contract["model_base"].endswith("GeneralRecommender")
+    assert contract["gpu_budget_gb"] == 10
+    assert contract["candidate_package"]["import_root"] == "candidate_root"
+    assert contract["candidate_package"]["required_files"] == [
+        "recclaw_ext/__init__.py",
+        "recclaw_ext/candidate.py",
+    ]
 
 
 def test_conversion_schema_uses_provider_strict_subset_and_consumer_rejects_bad_files(
@@ -364,6 +389,38 @@ def test_screen_resource_budget_censors_slow_arm_before_full() -> None:
         "medium",
         "slow",
     ]
+
+
+def test_screen_deadline_and_promotion_use_preoutcome_telemetry() -> None:
+    assert derive_screen_deadline_seconds(10_000) == 310
+    screens = (
+        {
+            "candidate_id": "negative-fast",
+            "status": "COMPLETED_MATCHED_SCREEN",
+            "stable": True,
+            "screen_signal": -0.0052,
+            "screen_cost_ms": 100_000,
+            "parent_screen_cost_ms": 10_000,
+        },
+        {
+            "candidate_id": "positive-slow",
+            "status": "COMPLETED_MATCHED_SCREEN",
+            "stable": True,
+            "screen_signal": 0.0039,
+            "screen_cost_ms": 400_000,
+            "parent_screen_cost_ms": 10_000,
+        },
+    )
+    resource = choose_resource_bounded_promotions(
+        screens,
+        promotion_limit=2,
+        total_budget_seconds=7200,
+    )
+    assert resource["screen_priority_order"] == ["positive-slow", "negative-fast"]
+    assert resource["selection_conditioning"] == (
+        "COMPLETED_STABLE_SCREEN_SIGNAL_THEN_PREDICTED_FULL_COST"
+    )
+    assert resource["promoted_candidate_ids"] == ["positive-slow", "negative-fast"]
 
 
 def test_stage_feasibility_head_preserves_17_arm_denominator_and_effect_shrinkage() -> None:
