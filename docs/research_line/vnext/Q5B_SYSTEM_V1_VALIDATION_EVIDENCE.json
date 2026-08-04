@@ -1,0 +1,86 @@
+{
+  "schema": "recclaw.research-line.q5b-system-v1-validation-evidence.v1",
+  "source_commit": "10b158dee2659dc5ee8cbbad4787ae5d5e5837d4",
+  "campaign_root": "/NAS2020/Workspaces/DMGroup/tingrangan/q5b_system_v1_validation_20260804_03/campaign",
+  "development_only": true,
+  "provider_pool": {
+    "provider_calls": 24,
+    "provider_success": 17,
+    "provider_timeout": 1,
+    "selected_union": 18,
+    "physical_implementer_calls": 18,
+    "retries": 0,
+    "held_out_reads": 0
+  },
+  "conversion": {
+    "initial_qualification_pass": 0,
+    "revision_turns": 30,
+    "revision_rescued": 6,
+    "qualified": 6,
+    "resource_admitted": 4,
+    "stable_screens": 2,
+    "screen_signals": {
+      "031eb6376c32146682f5e0fd97f3a78eca4abd6804622f4aae20d752927660a9": -0.0052,
+      "cb533f06e667a43ba020bae9ac7b71985dc11bb8c163a18f8153adfc3e2b53a8": 0.0039
+    },
+    "screen_deadline_incompletes": 2,
+    "screen_deadline_seconds_observed": [900.9, 901.0],
+    "promoted_full_candidates": ["031eb6376c32146682f5e0fd97f3a78eca4abd6804622f4aae20d752927660a9"],
+    "episode_missing": 17
+  },
+  "selection": {
+    "outcome_aware_selection": "LEARNED_SCORE",
+    "top_tie_sets": [],
+    "unique_mechanisms": 24,
+    "balanced_roles_and_modes": "4 roles x 2 modes",
+    "closest_parent_catalog_serialization_bug": {
+      "affected_specs": 8,
+      "malformed_value": "BPR_MF; axis=objective; operators="
+    }
+  },
+  "full_effects": {
+    "episodes": 2,
+    "ndcg10_deltas": {
+      "54304": 0.0005,
+      "54305": -0.0014
+    },
+    "mean_ndcg10_delta": -0.00045,
+    "screen_full_direction_consistent": true,
+    "evidence_class": "INCONCLUSIVE_EXPERIMENT",
+    "mechanism_interpretation": "NOT_ADJUDICATED",
+    "scientific_effect_claim": false,
+    "physical_training_runs": 4
+  },
+  "efficiency": {
+    "campaign_wall_hours_approx": 3.34,
+    "typed_episodes_per_hour_approx": 0.60
+  },
+  "receipts": {
+    "realization": {
+      "path": "campaign/REALIZATION_EXECUTION_RECEIPT.json",
+      "sha256": "e952fd600f3fde8dfa2cf10d0c33b3081c613010dd800493842fb45617ac4141"
+    },
+    "stage_denominator": {
+      "path": "campaign/Q5A_STAGE_DENOMINATOR.json",
+      "sha256": "263311d98cef53ed71db7a56052bd443422519e984f0c326fc90b9ef78f8a18e"
+    },
+    "screen": {
+      "path": "campaign/CONVERSION_SCREEN_RESULTS.json",
+      "sha256": "6c89778c7e5658ece940284723c67a511f1b7eee49b398f838df278ee8c71ae4"
+    },
+    "promotion": {
+      "path": "campaign/CONVERSION_PROMOTION_PLAN.json",
+      "sha256": "c6a8524d02570c397cfcffcd0f9b33862cccb72af4310b084bf01f3ef455ca2f"
+    },
+    "full": {
+      "path": "campaign/realizations/001_031eb6376c32/FULL_MATCHED_EXECUTION_RECEIPT.json",
+      "sha256": "5d5df99bb52d2ba32c9376b5b64cc772efdda4cf830b4eba101223462af1a4a1"
+    }
+  },
+  "integrity": {
+    "one_realization_per_openspec": true,
+    "candidate_replacement": false,
+    "success_filtering": false,
+    "sealed_source_unchanged": true
+  }
+}
