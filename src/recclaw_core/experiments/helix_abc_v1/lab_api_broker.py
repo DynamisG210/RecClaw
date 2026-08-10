@@ -63,7 +63,8 @@ def validate_provider_strict_schema(
     """Validate the strict object rule required by the laboratory Provider."""
 
     properties = schema.get("properties")
-    if isinstance(properties, Mapping):
+    if schema.get("type") == "object":
+        properties = properties if isinstance(properties, Mapping) else {}
         required = schema.get("required")
         property_names = set(str(item) for item in properties)
         required_names = (
@@ -244,10 +245,12 @@ class LabApiCallReceiptV1:
         }
 
 
-def load_lab_api_credentials(config_path: Path) -> tuple[str, str]:
-    """Read the external credential source without persisting its secret."""
+def load_lab_api_credential_pairs(
+    config_path: Path,
+) -> tuple[tuple[str, str], ...]:
+    """Read ordered endpoint/key pairs without persisting their secrets."""
 
-    values: dict[str, str] = {}
+    values: dict[str, list[str]] = {"base_url": [], "api_key": []}
     for raw_line in config_path.resolve().read_text(
         encoding="utf-8"
     ).splitlines():
@@ -258,16 +261,47 @@ def load_lab_api_credentials(config_path: Path) -> tuple[str, str]:
         if separator and name.strip() in {"api_key", "base_url"}:
             parsed = ast.literal_eval(raw_value.strip())
             if isinstance(parsed, str):
-                values[name.strip()] = parsed
-    api_key = str(values.get("api_key", "")).strip()
-    base_url = str(values.get("base_url", "")).strip().rstrip("/")
-    if not api_key or not base_url:
+                values[name.strip()].append(parsed)
+    if not values["api_key"] or not values["base_url"]:
         raise CanaryBrokerError(
             "laboratory API config requires api_key and base_url"
         )
-    if not base_url.startswith("https://"):
-        raise CanaryBrokerError("laboratory API base_url must use HTTPS")
-    return base_url, api_key
+    if len(values["api_key"]) != len(values["base_url"]):
+        raise CanaryBrokerError(
+            "laboratory API config contains incomplete credential pairs"
+        )
+    pairs: list[tuple[str, str]] = []
+    for base_url, api_key in zip(
+        values["base_url"], values["api_key"], strict=True
+    ):
+        normalized_base_url = base_url.strip().rstrip("/")
+        normalized_api_key = api_key.strip()
+        if not normalized_api_key or not normalized_base_url:
+            raise CanaryBrokerError(
+                "laboratory API config contains an empty credential pair"
+            )
+        if not normalized_base_url.startswith("https://"):
+            raise CanaryBrokerError(
+                "laboratory API base_url must use HTTPS"
+            )
+        pairs.append((normalized_base_url, normalized_api_key))
+    return tuple(pairs)
+
+
+def load_lab_api_credentials(
+    config_path: Path,
+    credential_index: int = 0,
+) -> tuple[str, str]:
+    """Return one ordered credential pair; index zero is the default."""
+
+    if not isinstance(credential_index, int) or credential_index < 0:
+        raise CanaryBrokerError("laboratory API credential index is invalid")
+    pairs = load_lab_api_credential_pairs(config_path)
+    if credential_index >= len(pairs):
+        raise CanaryBrokerError(
+            "laboratory API credential index is outside the configured pairs"
+        )
+    return pairs[credential_index]
 
 
 class LabApiCanaryBrokerV1:
@@ -281,6 +315,7 @@ class LabApiCanaryBrokerV1:
         config_path: Path,
         model: str,
         max_total_tokens_per_call: int,
+        credential_index: int = 0,
         timeout_ms: int = 900_000,
         release_manifest_path: Path | None = None,
     ) -> None:
@@ -296,7 +331,15 @@ class LabApiCanaryBrokerV1:
         self.schema_file_sha256 = hashlib.sha256(
             self.schema_bytes
         ).hexdigest()
-        self.base_url, self._api_key = load_lab_api_credentials(config_path)
+        self.config_path = config_path.resolve()
+        self.credential_index = credential_index
+        self.credential_config_digest = hashlib.sha256(
+            self.config_path.read_bytes()
+        ).hexdigest()
+        self.base_url, self._api_key = load_lab_api_credentials(
+            self.config_path,
+            credential_index=credential_index,
+        )
         self.model = model
         self.max_total_tokens_per_call = max_total_tokens_per_call
         self.timeout_ms = timeout_ms
@@ -324,6 +367,14 @@ class LabApiCanaryBrokerV1:
                 )
             self.release = frozen
         self.release.verify()
+        self.endpoint_digest = self.release.endpoint_digest
+        self.credential_identity_digest = sha256_digest(
+            {
+                "credential_config_digest": self.credential_config_digest,
+                "credential_index": self.credential_index,
+                "endpoint_digest": self.endpoint_digest,
+            }
+        )
         (self.private_root / "LAB_API_BROKER_RELEASE_V1.json").write_bytes(
             canonical_json_bytes(self.release.to_dict()) + b"\n"
         )
@@ -462,6 +513,7 @@ class LabApiCanaryBrokerV1:
         prompt: str,
         expected_proposal_count: int,
         max_total_tokens: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> CanaryBrokerCallV1:
         effective_ceiling = int(
             max_total_tokens
@@ -472,11 +524,16 @@ class LabApiCanaryBrokerV1:
             raise CanaryBrokerError(
                 "per-call token ceiling is outside the API release"
             )
+        output_ceiling = int(
+            max_output_tokens if max_output_tokens is not None else effective_ceiling
+        )
+        if not 1 <= output_ceiling <= effective_ceiling:
+            raise CanaryBrokerError("output token ceiling is outside the total token ceiling")
         request_payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
-            "max_tokens": effective_ceiling,
+            "max_tokens": output_ceiling,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -491,7 +548,6 @@ class LabApiCanaryBrokerV1:
             "proposal_generation_session_id": (
                 proposal_generation_session_id
             ),
-            "release_digest": self.release.release_digest,
             "request_payload": request_payload,
         }
         request_digest = sha256_digest(request_identity)
@@ -949,5 +1005,6 @@ __all__ = [
     "LabApiCanaryBrokerV1",
     "LabApiResponseContractError",
     "LabApiResponseFailureReasonV1",
+    "load_lab_api_credential_pairs",
     "load_lab_api_credentials",
 ]

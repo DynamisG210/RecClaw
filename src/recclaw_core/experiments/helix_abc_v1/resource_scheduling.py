@@ -5,22 +5,31 @@ from __future__ import annotations
 import ast
 import json
 import math
+import multiprocessing as mp
 import os
 import platform
 import socket
 import subprocess
+import traceback
 import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .canonical import bytes_sha256, canonical_value, sha256_digest
+from .canonical import bytes_sha256, canonical_value, sha256_digest, validate_sha256
+from .experiment_binding import validate_execution_recipe
 from .fresh_r1 import (
     EXPECTED_SEARCH_FILES,
+    FreshR1Error,
+    GPU_RESERVATION_STATUS_MEASURED,
+    GPU_WORKER_SECONDS_SEMANTICS,
+    DIRECT_GPU_SELECTION_MODE,
+    MAX_WORKER_CEILING_SECONDS,
     PYTHON_EXECUTABLE,
     RECBole_ROOT,
     SEARCH_DATA_ROOT,
     _write_new_json,
     run_development_training,
+    validate_gpu_reservation_evidence,
 )
 from .innovation_recbole_adapter import snapshot_candidate_tree
 
@@ -79,10 +88,38 @@ GPU_MEMORY_TOTAL_MIB = 10240
 TRAINING_SEED = 54102
 FIXED_TRAIN_BATCH_INDICES = tuple(range(32))
 FIXED_EVAL_BATCH_INDICES = tuple(range(64))
+PREDICTED_GPU_WORKER_SECONDS_SEMANTICS = (
+    "PREDICTED_EXCLUSIVE_GPU_WORKER_RESERVATION_SECONDS"
+)
+SHARED_CAMPAIGN_PROBE_BUDGET_MODE = "SHARED_CAMPAIGN_PROBE_DEBIT"
+OFFLINE_CALIBRATION_PROBE_BUDGET_MODE = (
+    "OFFLINE_CALIBRATION_PROBE_EXCLUDED_FROM_FUTURE_FULL_RUN_BUDGET"
+)
 
 
 class ResourceSchedulingError(RuntimeError):
     """Q0R identity, telemetry, or scheduling failure."""
+
+
+def _validated_gpu_id(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ResourceSchedulingError("gpu_id must be a non-negative integer")
+    return int(value)
+
+
+def _validate_gpu_selection_arguments(
+    *,
+    cuda_visible_devices: str | None,
+    gpu_id: int | None,
+) -> int | None:
+    validated_gpu_id = _validated_gpu_id(gpu_id)
+    if validated_gpu_id is not None and cuda_visible_devices is not None:
+        raise ResourceSchedulingError(
+            "gpu_id and cuda_visible_devices are mutually exclusive"
+        )
+    return validated_gpu_id
 
 
 def build_fixed_batch_prefix_contract(
@@ -590,23 +627,141 @@ def predict_resources(
     total_budget_seconds: int = CAMPAIGN_TOTAL_BUDGET_SECONDS,
     arm_order: Sequence[str] = ARM_ORDER,
     probe_seed: int = TRAINING_SEED,
+    offline_calibration_probe_accounting: (
+        Mapping[str, Mapping[str, Any]] | None
+    ) = None,
 ) -> dict[str, Any]:
-    """Fit the fixed-batch auditable model and allocate one campaign budget."""
+    """Fit the fixed-batch auditable model and allocate one campaign budget.
+
+    By default, probe wall time is debited from the shared campaign budget.
+    The fixed-66 offline calibration path may pass bounded accounting evidence
+    produced after sealed reservation validation; that path re-credits only the
+    measured probe wall interval to the caller's future full-run budget.
+    """
 
     order = tuple(arm_order)
     if not order or len(set(order)) != len(order):
         raise ResourceSchedulingError("arm order must be non-empty and unique")
     if set(arm_features) != set(order) or set(probe_runs) != set(order):
         raise ResourceSchedulingError("resource inputs do not match frozen arm order")
+    if (
+        offline_calibration_probe_accounting is not None
+        and not isinstance(offline_calibration_probe_accounting, Mapping)
+    ):
+        raise ResourceSchedulingError(
+            "offline calibration accounting must be capability keyed"
+        )
     predictions: dict[str, dict[str, Any]] = {}
     requested_deadlines: dict[str, int] = {}
     deferred: dict[str, dict[str, Any]] = {}
+    offline_accounting_evidence: dict[str, dict[str, Any]] = {}
+    if offline_calibration_probe_accounting is not None:
+        if set(offline_calibration_probe_accounting) != set(order):
+            raise ResourceSchedulingError(
+                "offline calibration accounting does not match frozen arm order"
+            )
+        for arm in order:
+            accounting = offline_calibration_probe_accounting[arm]
+            if not isinstance(accounting, Mapping):
+                raise ResourceSchedulingError(
+                    f"offline calibration accounting is unavailable: {arm}"
+                )
+            if accounting.get("mode") != OFFLINE_CALIBRATION_PROBE_BUDGET_MODE:
+                raise ResourceSchedulingError(
+                    f"offline calibration accounting mode is invalid: {arm}"
+                )
+            probe_wall_time_ms = _finite_resource_number(
+                probe_runs[arm].get("wall_time_ms"),
+                field_name=f"{arm}.probe_run.wall_time_ms",
+                positive=True,
+            )
+            accounted_wall_time_ms = _finite_resource_number(
+                accounting.get("probe_wall_time_ms"),
+                field_name=f"{arm}.offline_accounting.probe_wall_time_ms",
+                positive=True,
+            )
+            parent_interval_wall_time_ms = _finite_resource_number(
+                accounting.get("parent_process_interval_wall_time_ms"),
+                field_name=(
+                    f"{arm}.offline_accounting."
+                    "parent_process_interval_wall_time_ms"
+                ),
+                positive=True,
+            )
+            if not math.isclose(
+                accounted_wall_time_ms,
+                probe_wall_time_ms,
+                rel_tol=0.0,
+                abs_tol=1.0,
+            ) or not math.isclose(
+                parent_interval_wall_time_ms,
+                probe_wall_time_ms,
+                rel_tol=0.0,
+                abs_tol=1.0,
+            ):
+                raise ResourceSchedulingError(
+                    f"offline calibration probe wall evidence does not match: {arm}"
+                )
+            try:
+                reservation_digest = validate_sha256(
+                    accounting.get("reservation_digest"),
+                    field_name=f"{arm}.offline_accounting.reservation_digest",
+                )
+                reservation_identity_digest = validate_sha256(
+                    accounting.get("reservation_identity_digest"),
+                    field_name=(
+                        f"{arm}.offline_accounting.reservation_identity_digest"
+                    ),
+                )
+            except (TypeError, ValueError) as error:
+                raise ResourceSchedulingError(
+                    f"offline calibration reservation provenance is invalid: {arm}"
+                ) from error
+            offline_accounting_evidence[arm] = {
+                "parent_process_interval_wall_time_ms": (
+                    parent_interval_wall_time_ms
+                ),
+                "probe_wall_time_ms": probe_wall_time_ms,
+                "reservation_digest": reservation_digest,
+                "reservation_identity_digest": reservation_identity_digest,
+            }
     probe_cost_seconds = math.ceil(
         sum(int(probe_runs[arm]["wall_time_ms"]) for arm in order) / 1000
     )
-    full_run_budget_seconds = total_budget_seconds - probe_cost_seconds
+    probe_cost_recredited_seconds = (
+        probe_cost_seconds
+        if offline_calibration_probe_accounting is not None
+        else 0
+    )
+    effective_total_budget_seconds = (
+        total_budget_seconds + probe_cost_recredited_seconds
+    )
+    full_run_budget_seconds = effective_total_budget_seconds - probe_cost_seconds
     if full_run_budget_seconds <= 0:
         raise ResourceSchedulingError("prefix probes exhausted campaign budget")
+    budget_accounting = canonical_value(
+        {
+            "basis": (
+                "validated sealed parent-process interval wall time"
+                if offline_calibration_probe_accounting is not None
+                else "probe_run.wall_time_ms"
+            ),
+            "caller_total_budget_seconds": total_budget_seconds,
+            "effective_total_budget_seconds": effective_total_budget_seconds,
+            "full_run_budget_after_probes_seconds": full_run_budget_seconds,
+            "mode": (
+                OFFLINE_CALIBRATION_PROBE_BUDGET_MODE
+                if offline_calibration_probe_accounting is not None
+                else SHARED_CAMPAIGN_PROBE_BUDGET_MODE
+            ),
+            "probe_cost_recredited_seconds": probe_cost_recredited_seconds,
+            "probe_cost_seconds": probe_cost_seconds,
+            "probe_wall_time_ms": {
+                arm: probe_runs[arm]["wall_time_ms"] for arm in order
+            },
+            "sealed_probe_evidence": offline_accounting_evidence,
+        }
+    )
     contract_digests: set[str] = set()
     for arm in order:
         run = probe_runs[arm]
@@ -677,6 +832,11 @@ def predict_resources(
                 "reason": "PREDICTED_GPU_MEMORY_CAPACITY",
                 "resource_disposition": "RESOURCE_INFEASIBLE",
             }
+        elif training_lower_bound_ms / 1000 > MAX_WORKER_CEILING_SECONDS:
+            deferred[arm] = {
+                "reason": "TRAINING_LOWER_BOUND_EXCEEDS_WORKER_CEILING",
+                "resource_disposition": "RESOURCE_INFEASIBLE",
+            }
         elif training_lower_bound_ms / 1000 > full_run_budget_seconds:
             deferred[arm] = {
                 "reason": "TRAINING_LOWER_BOUND_EXCEEDS_CAMPAIGN_BUDGET",
@@ -729,8 +889,9 @@ def predict_resources(
             else "LOW"
         )
         if arm not in deferred:
-            requested_deadlines[arm] = max(
-                180, math.ceil(60 + 1.10 * upper_ms / 1000)
+            requested_deadlines[arm] = min(
+                MAX_WORKER_CEILING_SECONDS,
+                max(180, math.ceil(1.10 * point_ms / 1000)),
             )
         predictions[arm] = canonical_value(
             {
@@ -751,8 +912,12 @@ def predict_resources(
                 "peak_memory_prediction_mib": peak_prediction,
                 "peak_memory_observed_mib": peak_observed,
                 "prediction_interval_seconds": [lower_ms / 1000, upper_ms / 1000],
+                "prediction_interval_exceeds_worker_ceiling": (
+                    upper_ms / 1000 > MAX_WORKER_CEILING_SECONDS
+                ),
                 "probe_wall_time_ms": run["wall_time_ms"],
                 "setup_wall_time_ms": setup_ms,
+                "worker_ceiling_seconds": MAX_WORKER_CEILING_SECONDS,
                 "training_only_lower_bound_seconds": (
                     training_lower_bound_ms / 1000
                 ),
@@ -820,13 +985,16 @@ def predict_resources(
     return canonical_value(
         {
             "campaign_total_budget_seconds": total_budget_seconds,
+            "budget_accounting": budget_accounting,
             "deadline_allocation_scale": 1.0,
             "deadline_formula": (
                 "first defer any arm whose training-only lower bound exceeds the "
-                "remaining full-run campaign budget or whose predicted peak exceeds "
-                "95 percent of GPU memory; otherwise request max(180, ceil(60 + "
-                "1.10 * upper_fixed_batch_extrapolation)) and admit in ascending "
-                "predicted-time order while the unified campaign budget remains"
+                "3600-second worker ceiling, the remaining full-run campaign budget, "
+                "or whose predicted peak exceeds 95 percent of GPU memory; otherwise "
+                "request min(3600, max(180, ceil(1.10 * point_fixed_batch_extrapolation))) "
+                "and admit in ascending predicted-time order while the unified campaign "
+                "budget remains; the min/max interval is retained as uncertainty and "
+                "is not used as the admission deadline"
             ),
             "deferred_arms": list(deferred.values()),
             "full_epochs": FULL_EPOCHS,
@@ -855,6 +1023,1552 @@ def predict_resources(
     )
 
 
+_RESOURCE_PROFILE_FORBIDDEN_KEYS = frozenset(
+    {
+        "candidate_minus_bpr",
+        "candidate_ndcg_at_10",
+        "metrics",
+        "ndcg@10",
+        "test_feedback",
+        "test_metric",
+    }
+)
+
+
+def _assert_resource_profile_outcome_blind(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if str(key).lower() in _RESOURCE_PROFILE_FORBIDDEN_KEYS:
+                raise ResourceSchedulingError(
+                    f"resource profile contains forbidden outcome field: {key}"
+                )
+            _assert_resource_profile_outcome_blind(child)
+    elif isinstance(value, (tuple, list)):
+        for child in value:
+            _assert_resource_profile_outcome_blind(child)
+
+
+def _finite_resource_number(
+    value: Any,
+    *,
+    field_name: str,
+    positive: bool = False,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ResourceSchedulingError(f"{field_name} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ResourceSchedulingError(f"{field_name} must be finite")
+    if positive and result <= 0.0:
+        raise ResourceSchedulingError(f"{field_name} must be positive")
+    return result
+
+
+def _resource_identity_sources(
+    *,
+    source_features: Mapping[str, Any],
+    probe_run: Mapping[str, Any],
+    process_observation: Mapping[str, Any],
+    reservation_evidence: Mapping[str, Any] | None = None,
+) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    sources: list[tuple[str, Mapping[str, Any]]] = [
+        ("source_features", source_features),
+        ("probe_run", probe_run),
+        ("process_observation", process_observation),
+    ]
+    for name, value in (
+        ("probe_run.resource_probe_identity", probe_run.get("resource_probe_identity")),
+        ("probe_run.resource_prediction", probe_run.get("resource_prediction")),
+        (
+            "process_observation.resource_probe_identity",
+            process_observation.get("resource_probe_identity"),
+        ),
+    ):
+        if isinstance(value, Mapping):
+            identity = value.get("identity") if name.endswith("resource_prediction") else value
+            if isinstance(identity, Mapping):
+                sources.append((name, identity))
+    if isinstance(reservation_evidence, Mapping):
+        identity = reservation_evidence.get("identity")
+        if isinstance(identity, Mapping):
+            sources.append(("gpu_reservation_evidence.identity", identity))
+    return tuple(sources)
+
+
+def _assert_resource_identity_bound(
+    *,
+    sources: Sequence[tuple[str, Mapping[str, Any]]],
+    candidate_ref: str,
+    candidate_package_digest: str | None,
+    candidate_binding_digest: str | None,
+    candidate_source_sha256: str,
+    compute_pattern: str | None,
+) -> None:
+    aliases = {
+        "candidate_ref": ("candidate_ref", "resource_candidate_ref"),
+        "candidate_package_digest": (
+            "candidate_package_digest",
+            "package_digest",
+        ),
+        "candidate_binding_digest": (
+            "candidate_binding_digest",
+            "binding_digest",
+        ),
+        "candidate_source_sha256": ("candidate_source_sha256", "source_sha256"),
+        "compute_pattern": ("compute_pattern",),
+    }
+    expected = {
+        "candidate_ref": candidate_ref,
+        "candidate_package_digest": candidate_package_digest,
+        "candidate_binding_digest": candidate_binding_digest,
+        "candidate_source_sha256": candidate_source_sha256,
+        "compute_pattern": compute_pattern,
+    }
+    for source_name, source in sources:
+        for identity_name, source_keys in aliases.items():
+            if identity_name == "candidate_binding_digest":
+                explicit_candidate_binding = source.get(
+                    "candidate_binding_digest"
+                )
+                if explicit_candidate_binding is not None:
+                    source_keys = ("candidate_binding_digest",)
+                else:
+                    source_keys = ("binding_digest",)
+            for source_key in source_keys:
+                if source_key not in source or source[source_key] is None:
+                    continue
+                if (
+                    identity_name == "candidate_binding_digest"
+                    and expected[identity_name] is None
+                ):
+                    # Legacy callers may expose a runtime binding_digest while
+                    # not supplying a candidate-specific expected digest.
+                    continue
+                if source[source_key] != expected[identity_name]:
+                    raise ResourceSchedulingError(
+                        f"{source_name}.{source_key} does not match "
+                        f"{identity_name}"
+                    )
+
+
+def _resolve_resource_compute_pattern(
+    *,
+    explicit: str | None,
+    source_features: Mapping[str, Any],
+    probe_run: Mapping[str, Any],
+    process_observation: Mapping[str, Any],
+) -> str | None:
+    values: list[tuple[str, Any]] = []
+    if explicit is not None:
+        values.append(("compute_pattern", explicit))
+    for source_name, source in (
+        ("source_features", source_features),
+        ("probe_run", probe_run),
+        ("process_observation", process_observation),
+    ):
+        if "compute_pattern" in source and source["compute_pattern"] is not None:
+            values.append((f"{source_name}.compute_pattern", source["compute_pattern"]))
+    if not values:
+        return None
+    normalized: list[tuple[str, str]] = []
+    for source_name, value in values:
+        if not isinstance(value, str) or not value or value != value.strip():
+            raise ResourceSchedulingError(
+                f"{source_name} must be a normalized non-empty compute_pattern"
+            )
+        normalized.append((source_name, value))
+    first = normalized[0][1]
+    if any(value != first for _source_name, value in normalized[1:]):
+        raise ResourceSchedulingError("compute_pattern identity mismatch")
+    return first
+
+
+def _consistent_resource_field(
+    sources: Sequence[tuple[str, Mapping[str, Any]]],
+    *,
+    field_name: str,
+) -> Any:
+    values = [
+        (source_name, source[field_name])
+        for source_name, source in sources
+        if field_name in source and source[field_name] is not None
+    ]
+    if not values:
+        return None
+    first = values[0][1]
+    if any(value != first for _source_name, value in values[1:]):
+        details = ", ".join(f"{name}={value!r}" for name, value in values)
+        raise ResourceSchedulingError(
+            f"{field_name} is inconsistent across probe evidence: {details}"
+        )
+    return first
+
+
+def _probe_run_identity(
+    *,
+    probe_run: Mapping[str, Any],
+    process_observation: Mapping[str, Any],
+) -> str | None:
+    values: list[tuple[str, Any]] = []
+    for source_name, source in (
+        ("probe_run", probe_run),
+        ("process_observation", process_observation),
+    ):
+        if source.get("run_id") is not None:
+            values.append((f"{source_name}.run_id", source["run_id"]))
+        binding = source.get("experiment_binding")
+        if isinstance(binding, Mapping) and binding.get("run_id") is not None:
+            values.append(
+                (f"{source_name}.experiment_binding.run_id", binding["run_id"])
+            )
+    if not values:
+        return None
+    normalized: list[tuple[str, str]] = []
+    for source_name, value in values:
+        if not isinstance(value, str) or not value or value != value.strip():
+            raise ResourceSchedulingError(
+                f"{source_name} must be a normalized non-empty run id"
+            )
+        normalized.append((source_name, value))
+    first = normalized[0][1]
+    if any(value != first for _source_name, value in normalized[1:]):
+        raise ResourceSchedulingError("GPU reservation run identity is inconsistent")
+    return first
+
+
+def _resolve_probe_gpu_selection(
+    *,
+    requested_gpu_id: int | None,
+    probe_run: Mapping[str, Any],
+    process_observation: Mapping[str, Any],
+    device_evidence: Mapping[str, Any] | None,
+) -> tuple[int | None, str | None]:
+    """Resolve explicit direct-gpu metadata without treating it as CVD."""
+
+    requested = _validated_gpu_id(requested_gpu_id)
+    sources = (
+        ("probe_run", probe_run),
+        ("process_observation", process_observation),
+        ("training_device_evidence", device_evidence or {}),
+    )
+    gpu_ids: list[tuple[str, int]] = []
+    selection_modes: list[tuple[str, Any]] = []
+    physical_ids: list[tuple[str, str]] = []
+    for source_name, source in sources:
+        if source.get("gpu_id") is not None:
+            gpu_id = _validated_gpu_id(source.get("gpu_id"))
+            if gpu_id is not None:
+                gpu_ids.append((f"{source_name}.gpu_id", gpu_id))
+        if source.get("selection_mode") is not None:
+            selection_modes.append(
+                (f"{source_name}.selection_mode", source["selection_mode"])
+            )
+        if source.get("physical_gpu_id") is not None:
+            value = source["physical_gpu_id"]
+            if isinstance(value, bool) or not isinstance(value, (str, int)):
+                raise ResourceSchedulingError(
+                    f"{source_name}.physical_gpu_id is invalid"
+                )
+            normalized = str(value)
+            if not normalized or normalized != normalized.strip():
+                raise ResourceSchedulingError(
+                    f"{source_name}.physical_gpu_id is invalid"
+                )
+            physical_ids.append(
+                (f"{source_name}.physical_gpu_id", normalized)
+            )
+    if gpu_ids:
+        first_gpu_id = gpu_ids[0][1]
+        if any(value != first_gpu_id for _name, value in gpu_ids[1:]):
+            raise ResourceSchedulingError(
+                "direct gpu_id is inconsistent across probe evidence"
+            )
+        if requested is not None and requested != first_gpu_id:
+            raise ResourceSchedulingError(
+                "probe gpu_id does not match the direct launch selector"
+            )
+        requested = first_gpu_id
+    if requested is None:
+        if any(mode == DIRECT_GPU_SELECTION_MODE for _name, mode in selection_modes):
+            raise ResourceSchedulingError(
+                "direct GPU probe evidence lacks an explicit gpu_id"
+            )
+        return None, None
+    if selection_modes and any(
+        mode != DIRECT_GPU_SELECTION_MODE for _name, mode in selection_modes
+    ):
+        raise ResourceSchedulingError(
+            "direct gpu_id probe evidence has an incompatible selection_mode"
+        )
+    expected_physical_id = str(requested)
+    if physical_ids and any(
+        value != expected_physical_id for _name, value in physical_ids
+    ):
+        raise ResourceSchedulingError(
+            "direct gpu_id does not match the probe physical_gpu_id"
+        )
+    return requested, expected_physical_id
+
+
+def _visible_device_from_probe(
+    *,
+    probe_run: Mapping[str, Any],
+    process_observation: Mapping[str, Any],
+    device_evidence: Mapping[str, Any] | None,
+    reservation_evidence: Mapping[str, Any],
+    gpu_id: int | None = None,
+) -> str:
+    if gpu_id is not None:
+        selector = str(_validated_gpu_id(gpu_id))
+        values: list[tuple[str, Any]] = []
+        for source_name, source in (
+            ("probe_run", probe_run),
+            ("process_observation", process_observation),
+            ("training_device_evidence", device_evidence or {}),
+        ):
+            for field_name in ("cuda_visible_devices", "visible_device"):
+                if source.get(field_name) is not None:
+                    raise ResourceSchedulingError(
+                        "direct gpu_id probe must not report CUDA_VISIBLE_DEVICES"
+                    )
+            if source.get("physical_gpu_id") is not None:
+                values.append(
+                    (f"{source_name}.physical_gpu_id", source["physical_gpu_id"])
+                )
+        identity = reservation_evidence.get("identity")
+        if isinstance(identity, Mapping):
+            if identity.get("cuda_visible_devices") is not None:
+                values.append(
+                    (
+                        "gpu_reservation_evidence.identity.cuda_visible_devices",
+                        identity["cuda_visible_devices"],
+                    )
+                )
+            if identity.get("physical_gpu_id") is not None:
+                values.append(
+                    (
+                        "gpu_reservation_evidence.identity.physical_gpu_id",
+                        identity["physical_gpu_id"],
+                    )
+                )
+        if not values:
+            raise ResourceSchedulingError(
+                "direct gpu_id reservation requires physical GPU identity evidence"
+            )
+        if any(str(value) != selector for _name, value in values):
+            details = ", ".join(f"{name}={value!r}" for name, value in values)
+            raise ResourceSchedulingError(
+                f"direct GPU binding is inconsistent across probe evidence: {details}"
+            )
+        return selector
+    values: list[tuple[str, Any]] = []
+    for source_name, source in (
+        ("probe_run", probe_run),
+        ("process_observation", process_observation),
+        ("training_device_evidence", device_evidence or {}),
+    ):
+        for field_name in ("cuda_visible_devices", "visible_device"):
+            if source.get(field_name) is not None:
+                values.append((f"{source_name}.{field_name}", source[field_name]))
+    identity = reservation_evidence.get("identity")
+    if isinstance(identity, Mapping) and identity.get("cuda_visible_devices") is not None:
+        values.append(("gpu_reservation_evidence.identity.cuda_visible_devices", identity["cuda_visible_devices"]))
+    if not values:
+        raise ResourceSchedulingError(
+            "sealed GPU reservation requires explicit cuda_visible_devices"
+        )
+    first = values[0][1]
+    if not isinstance(first, str) or not first or first != first.strip():
+        raise ResourceSchedulingError("cuda_visible_devices must be normalized")
+    if any(value != first for _source_name, value in values[1:]):
+        details = ", ".join(f"{name}={value!r}" for name, value in values)
+        raise ResourceSchedulingError(
+            f"single-GPU binding is inconsistent across probe evidence: {details}"
+        )
+    if "," in first or first in {"-1", "NoDevFiles"}:
+        raise ResourceSchedulingError(
+            "sealed GPU reservation must bind exactly one concrete device"
+        )
+    return first
+
+
+def _training_device_from_probe(
+    probe_run: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    values = [
+        (field_name, probe_run[field_name])
+        for field_name in ("training_device_evidence", "device_evidence")
+        if isinstance(probe_run.get(field_name), Mapping)
+    ]
+    if not values:
+        raise ResourceSchedulingError(
+            "sealed GPU reservation requires training device evidence"
+        )
+    first = values[0][1]
+    if any(dict(value) != dict(first) for _field_name, value in values[1:]):
+        raise ResourceSchedulingError(
+            "training device evidence is internally inconsistent"
+        )
+    return first
+
+
+def _validate_training_device_binding(
+    device_evidence: Mapping[str, Any],
+    *,
+    visible_device: str,
+    reservation_identity: Mapping[str, Any],
+    probe_run: Mapping[str, Any],
+    gpu_id: int | None = None,
+) -> None:
+    if device_evidence.get("cuda_available") is not True:
+        raise ResourceSchedulingError(
+            "training device evidence does not prove CUDA availability"
+        )
+    device_count = device_evidence.get("cuda_device_count")
+    if isinstance(device_count, bool) or not isinstance(device_count, int) or device_count != 1:
+        raise ResourceSchedulingError(
+            "training device evidence does not prove exactly one CUDA device"
+        )
+    for field_name in ("logical_device", "cuda_device_index", "current_device"):
+        if field_name in device_evidence and device_evidence[field_name] != 0:
+            raise ResourceSchedulingError(
+                f"training device evidence contradicts logical device 0: {field_name}"
+            )
+    if gpu_id is not None:
+        if device_evidence.get("selection_mode") != DIRECT_GPU_SELECTION_MODE:
+            raise ResourceSchedulingError(
+                "training device evidence lacks direct gpu_id selection mode"
+            )
+        if device_evidence.get("gpu_id") != gpu_id:
+            raise ResourceSchedulingError(
+                "training device evidence contradicts gpu_id"
+            )
+        if str(device_evidence.get("physical_gpu_id")) != str(gpu_id):
+            raise ResourceSchedulingError(
+                "training device evidence contradicts physical_gpu_id"
+            )
+        if any(
+            device_evidence.get(field_name) is not None
+            for field_name in ("cuda_visible_devices", "visible_device")
+        ):
+            raise ResourceSchedulingError(
+                "direct gpu_id training evidence must not report CUDA_VISIBLE_DEVICES"
+            )
+    else:
+        if device_evidence.get("selection_mode") == DIRECT_GPU_SELECTION_MODE:
+            raise ResourceSchedulingError(
+                "direct gpu_id training evidence lacks a direct selector"
+            )
+        for field_name in ("cuda_visible_devices", "visible_device"):
+            if (
+                field_name in device_evidence
+                and device_evidence[field_name] != visible_device
+            ):
+                raise ResourceSchedulingError(
+                    f"training device evidence contradicts {field_name}"
+                )
+    for field_name in ("physical_gpu_id", "device_uuid", "device_ref"):
+        worker_value = device_evidence.get(field_name)
+        reserved_value = reservation_identity.get(field_name)
+        if worker_value is not None and reserved_value is not None:
+            if str(worker_value) != str(reserved_value):
+                raise ResourceSchedulingError(
+                    f"training device evidence contradicts reservation {field_name}"
+                )
+    for worker_field in ("cuda_device_name", "gpu_name"):
+        worker_value = device_evidence.get(worker_field)
+        reserved_value = reservation_identity.get("device_name")
+        if worker_value is not None and reserved_value is not None:
+            if str(worker_value) != str(reserved_value):
+                raise ResourceSchedulingError(
+                    f"training device evidence contradicts reservation {worker_field}"
+                )
+    validation = probe_run.get("device_evidence_validation")
+    if validation is not None and validation != "AVAILABLE_AND_CONSISTENT":
+        raise ResourceSchedulingError(
+            "physical probe reports contradictory training device evidence"
+        )
+    if not any(
+        field_name in device_evidence
+        for field_name in (
+            "cuda_device_name",
+            "gpu_name",
+            "physical_gpu_id",
+            "device_uuid",
+            "device_ref",
+        )
+    ):
+        raise ResourceSchedulingError(
+            "training device evidence lacks a physical device identity"
+        )
+
+
+def _validated_gpu_worker_probe(
+    *,
+    probe_run: Mapping[str, Any],
+    process_observation: Mapping[str, Any],
+    source_features: Mapping[str, Any],
+    candidate_ref: str,
+    candidate_package_digest: str | None,
+    candidate_source_sha256: str,
+    compute_pattern: str | None,
+    candidate_binding_digest: str | None = None,
+    gpu_id: int | None = None,
+) -> dict[str, Any] | None:
+    evidence_sources = (
+        ("probe_run", probe_run),
+        ("process_observation", process_observation),
+    )
+    evidence_values = [
+        (source_name, source.get("gpu_reservation_evidence"))
+        for source_name, source in evidence_sources
+        if source.get("gpu_reservation_evidence") is not None
+    ]
+    if not evidence_values:
+        return None
+    evidence = evidence_values[0][1]
+    if not isinstance(evidence, Mapping):
+        raise ResourceSchedulingError("gpu_reservation_evidence must be a mapping")
+    if any(dict(value) != dict(evidence) for _source_name, value in evidence_values[1:]):
+        raise ResourceSchedulingError(
+            "GPU reservation evidence is inconsistent across probe result and process observation"
+        )
+    device_evidence = _training_device_from_probe(probe_run)
+    resolved_gpu_id, physical_selector = _resolve_probe_gpu_selection(
+        requested_gpu_id=gpu_id,
+        probe_run=probe_run,
+        process_observation=process_observation,
+        device_evidence=device_evidence,
+    )
+    visible_device = _visible_device_from_probe(
+        probe_run=probe_run,
+        process_observation=process_observation,
+        device_evidence=device_evidence,
+        reservation_evidence=evidence,
+        gpu_id=resolved_gpu_id,
+    )
+    run_id = _probe_run_identity(
+        probe_run=probe_run,
+        process_observation=process_observation,
+    )
+    if run_id is None:
+        raise ResourceSchedulingError(
+            "sealed GPU reservation requires an identity-bound training run id"
+        )
+    try:
+        validated_evidence = validate_gpu_reservation_evidence(
+            evidence,
+            cuda_visible_devices=(
+                None if resolved_gpu_id is not None else visible_device
+            ),
+            physical_gpu_selector=physical_selector,
+            run_id=run_id,
+        )
+    except (FreshR1Error, TypeError, ValueError) as error:
+        raise ResourceSchedulingError(
+            f"GPU reservation evidence validation failed: {error}"
+        ) from error
+    if not isinstance(validated_evidence, Mapping):
+        raise ResourceSchedulingError("sealed GPU reservation evidence is unavailable")
+    reservation_identity = validated_evidence.get("identity")
+    if not isinstance(reservation_identity, Mapping):
+        raise ResourceSchedulingError("sealed GPU reservation identity is unavailable")
+    _assert_resource_identity_bound(
+        sources=_resource_identity_sources(
+            source_features=source_features,
+            probe_run=probe_run,
+            process_observation=process_observation,
+            reservation_evidence=validated_evidence,
+        ),
+        candidate_ref=candidate_ref,
+        candidate_package_digest=candidate_package_digest,
+        candidate_binding_digest=candidate_binding_digest,
+        candidate_source_sha256=candidate_source_sha256,
+        compute_pattern=compute_pattern,
+    )
+    if probe_run.get("gpu_reservation_status") != GPU_RESERVATION_STATUS_MEASURED:
+        raise ResourceSchedulingError(
+            "GPU reservation status is not a measured exclusive process interval"
+        )
+    if (
+        probe_run.get("reserved_gpu_worker_seconds_semantics")
+        != GPU_WORKER_SECONDS_SEMANTICS
+    ):
+        raise ResourceSchedulingError(
+            "reserved GPU worker seconds semantics are not reservation-scoped"
+        )
+    if process_observation.get("start_method") != "spawn":
+        raise ResourceSchedulingError(
+            "sealed GPU resource evidence requires the spawn disposable process path"
+        )
+    measured_seconds = _finite_resource_number(
+        probe_run.get("reserved_gpu_worker_seconds"),
+        field_name="reserved_gpu_worker_seconds",
+        positive=True,
+    )
+    parent_interval = probe_run.get("parent_process_interval")
+    if not isinstance(parent_interval, Mapping):
+        raise ResourceSchedulingError(
+            "sealed GPU reservation requires parent_process_interval evidence"
+        )
+    interval_seconds = _finite_resource_number(
+        parent_interval.get("parent_process_interval_seconds"),
+        field_name="parent_process_interval.parent_process_interval_seconds",
+        positive=True,
+    )
+    interval_wall_time_ms = _finite_resource_number(
+        parent_interval.get("parent_process_interval_wall_time_ms"),
+        field_name="parent_process_interval.parent_process_interval_wall_time_ms",
+        positive=True,
+    )
+    if not math.isclose(measured_seconds, interval_seconds, rel_tol=1e-9, abs_tol=1e-9):
+        raise ResourceSchedulingError(
+            "reserved GPU worker seconds do not match the parent process interval"
+        )
+    probe_wall_time_ms = _finite_resource_number(
+        probe_run.get("wall_time_ms"),
+        field_name="probe_run.wall_time_ms",
+        positive=True,
+    )
+    if not math.isclose(probe_wall_time_ms, interval_wall_time_ms, rel_tol=0.0, abs_tol=1.0):
+        raise ResourceSchedulingError(
+            "probe wall time does not match the parent-observed process interval"
+        )
+    _validate_training_device_binding(
+        device_evidence,
+        visible_device=visible_device,
+        reservation_identity=reservation_identity,
+        probe_run=probe_run,
+        gpu_id=resolved_gpu_id,
+    )
+    return {
+        "device_evidence": canonical_value(dict(device_evidence)),
+        "measured_reserved_probe_seconds": measured_seconds,
+        "parent_process_interval_seconds": interval_seconds,
+        "parent_process_interval_wall_time_ms": interval_wall_time_ms,
+        "probe_wall_time_ms": probe_wall_time_ms,
+        "reservation_evidence": canonical_value(dict(validated_evidence)),
+        "reservation_identity": canonical_value(dict(reservation_identity)),
+        "run_id": run_id,
+        "gpu_id": resolved_gpu_id,
+        "physical_gpu_id": physical_selector,
+        "selection_mode": (
+            DIRECT_GPU_SELECTION_MODE if resolved_gpu_id is not None else None
+        ),
+        "visible_device": (
+            None if resolved_gpu_id is not None else visible_device
+        ),
+    }
+
+
+def _attach_gpu_worker_prediction(
+    prediction: Mapping[str, Any],
+    *,
+    gpu_probe: Mapping[str, Any] | None,
+    probe_run: Mapping[str, Any],
+    prediction_identity: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = dict(prediction)
+    result["identity"] = canonical_value(dict(prediction_identity))
+    if prediction_identity.get("compute_pattern") is not None:
+        result["compute_pattern"] = prediction_identity["compute_pattern"]
+    if gpu_probe is None:
+        return result
+    if (
+        prediction_identity.get("candidate_package_digest") is None
+        and prediction_identity.get("candidate_binding_digest") is None
+    ):
+        raise ResourceSchedulingError(
+            "GPU worker prediction requires candidate_package_digest or "
+            "candidate_binding_digest identity"
+        )
+    if not prediction_identity.get("compute_pattern"):
+        raise ResourceSchedulingError(
+            "GPU worker prediction requires compute_pattern identity"
+        )
+    model_probe_seconds = _finite_resource_number(
+        result.get("probe_wall_time_ms"),
+        field_name="prediction.probe_wall_time_ms",
+        positive=True,
+    ) / 1000.0
+    full_scale_seconds = _finite_resource_number(
+        result.get("estimated_total_wall_time_seconds"),
+        field_name="prediction.estimated_total_wall_time_seconds",
+        positive=True,
+    )
+    interval = result.get("prediction_interval_seconds")
+    if not isinstance(interval, (tuple, list)) or len(interval) != 2:
+        raise ResourceSchedulingError(
+            "prediction interval is unavailable for GPU worker scaling"
+        )
+    lower_seconds = _finite_resource_number(
+        interval[0],
+        field_name="prediction.prediction_interval_seconds[0]",
+    )
+    upper_seconds = _finite_resource_number(
+        interval[1],
+        field_name="prediction.prediction_interval_seconds[1]",
+    )
+    if lower_seconds <= 0.0 or upper_seconds < lower_seconds:
+        raise ResourceSchedulingError(
+            "prediction interval is invalid for GPU worker scaling"
+        )
+    measured_seconds = float(gpu_probe["measured_reserved_probe_seconds"])
+    scale_factor = full_scale_seconds / model_probe_seconds
+    _finite_resource_number(
+        scale_factor,
+        field_name="gpu_worker_prediction.scale_factor",
+        positive=True,
+    )
+    predicted_seconds = measured_seconds * scale_factor
+    predicted_interval = [
+        measured_seconds * lower_seconds / model_probe_seconds,
+        measured_seconds * upper_seconds / model_probe_seconds,
+    ]
+    _finite_resource_number(
+        predicted_seconds,
+        field_name="predicted_gpu_worker_seconds",
+        positive=True,
+    )
+    if any(
+        not math.isfinite(value) or value <= 0.0 for value in predicted_interval
+    ):
+        raise ResourceSchedulingError(
+            "predicted GPU worker interval is not finite and positive"
+        )
+    reservation_evidence = gpu_probe["reservation_evidence"]
+    reservation_identity = gpu_probe["reservation_identity"]
+    source_digests = {
+        "reservation_digest": reservation_evidence["reservation_digest"],
+        "reservation_identity_digest": reservation_evidence["identity_digest"],
+        "device_inventory_sha256": reservation_identity["device_inventory_sha256"],
+        "process_snapshot_sha256": reservation_identity["process_snapshot_sha256"],
+    }
+    for field_name in ("result_sha256", "resource_telemetry_sha256"):
+        value = probe_run.get(field_name)
+        if value is not None:
+            try:
+                source_digests[field_name] = validate_sha256(
+                    value,
+                    field_name=f"probe_run.{field_name}",
+                )
+            except (TypeError, ValueError) as error:
+                raise ResourceSchedulingError(str(error)) from error
+    gpu_worker_prediction = {
+        "formula": (
+            "measured_reserved_probe_interval_seconds * "
+            "(estimated_total_wall_time_seconds / "
+            "model_probe_wall_time_seconds)"
+        ),
+        "formula_inputs": {
+            "estimated_full_scale_wall_time_seconds": full_scale_seconds,
+            "full_scale_prediction_interval_seconds": [
+                lower_seconds,
+                upper_seconds,
+            ],
+            "measured_reserved_probe_interval_seconds": measured_seconds,
+            "model_probe_wall_time_seconds": model_probe_seconds,
+            "model": result.get("model"),
+            "probe_epochs": PROBE_EPOCHS,
+            "full_epochs": FULL_EPOCHS,
+        },
+        "predicted_gpu_worker_seconds_interval": predicted_interval,
+        "prediction_uncertainty_basis": result.get("uncertainty_basis"),
+        "reservation_ref": reservation_evidence["reservation_ref"],
+        "reservation_owner_ref": reservation_identity[
+            "reservation_owner_ref"
+        ],
+        "reservation_scope": reservation_identity["scope"],
+        "scale_factor": scale_factor,
+        "source_digests": source_digests,
+        "source_process_interval_seconds": gpu_probe[
+            "parent_process_interval_seconds"
+        ],
+    }
+    if gpu_probe.get("selection_mode") == DIRECT_GPU_SELECTION_MODE:
+        gpu_worker_prediction.update(
+            {
+                "source_physical_gpu_id": gpu_probe["physical_gpu_id"],
+                "source_selection_mode": DIRECT_GPU_SELECTION_MODE,
+            }
+        )
+    else:
+        gpu_worker_prediction["source_visible_device"] = gpu_probe[
+            "visible_device"
+        ]
+    result.update(
+        {
+            "gpu_worker_prediction": gpu_worker_prediction,
+            "predicted_gpu_worker_seconds": predicted_seconds,
+            "predicted_gpu_worker_seconds_interval": predicted_interval,
+            "predicted_gpu_worker_seconds_semantics": (
+                PREDICTED_GPU_WORKER_SECONDS_SEMANTICS
+            ),
+        }
+    )
+    return canonical_value(result)
+
+
+def _resource_probe_evidence_projection(run: Mapping[str, Any]) -> dict[str, Any]:
+    """Carry sealed GPU facts without copying raw training telemetry."""
+
+    projection: dict[str, Any] = {}
+    for field_name in (
+        "candidate_ref",
+        "candidate_package_digest",
+        "candidate_binding_digest",
+        "candidate_source_sha256",
+        "compute_pattern",
+        "cuda_visible_devices",
+        "gpu_id",
+        "physical_gpu_id",
+        "selection_mode",
+        "device_evidence_validation",
+        "gpu_reservation_status",
+        "reserved_gpu_worker_seconds",
+        "reserved_gpu_worker_seconds_semantics",
+        "resource_telemetry_sha256",
+        "result_sha256",
+        "run_id",
+    ):
+        if field_name in run:
+            projection[field_name] = run[field_name]
+    for field_name in (
+        "device_evidence",
+        "training_device_evidence",
+        "gpu_reservation_evidence",
+        "parent_process_interval",
+    ):
+        value = run.get(field_name)
+        if isinstance(value, Mapping):
+            projection[field_name] = dict(value)
+    binding = run.get("experiment_binding")
+    if isinstance(binding, Mapping) and binding.get("run_id") is not None:
+        projection["experiment_binding"] = {"run_id": binding["run_id"]}
+    return projection
+
+
+def _gpu_probe_telemetry_metadata(run: Mapping[str, Any]) -> dict[str, Any]:
+    evidence = run.get("gpu_reservation_evidence")
+    if not isinstance(evidence, Mapping):
+        return {}
+    identity = evidence.get("identity")
+    if not isinstance(identity, Mapping):
+        return {}
+    metadata = {
+        "gpu_reservation_status": run.get("gpu_reservation_status"),
+        "gpu_id": run.get("gpu_id"),
+        "physical_gpu_id": run.get("physical_gpu_id"),
+        "selection_mode": run.get("selection_mode"),
+        "reserved_gpu_worker_seconds": run.get("reserved_gpu_worker_seconds"),
+        "reserved_gpu_worker_seconds_semantics": run.get(
+            "reserved_gpu_worker_seconds_semantics"
+        ),
+        "gpu_reservation_ref": evidence.get("reservation_ref"),
+        "gpu_reservation_identity_digest": evidence.get("identity_digest"),
+        "gpu_reservation_digest": evidence.get("reservation_digest"),
+        "gpu_device_inventory_sha256": identity.get("device_inventory_sha256"),
+        "gpu_process_snapshot_sha256": identity.get("process_snapshot_sha256"),
+        "device_evidence_validation": run.get("device_evidence_validation"),
+    }
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
+def _resource_probe_input(run: Mapping[str, Any]) -> dict[str, Any]:
+    """Project a training result to fields consumed by the resource model."""
+
+    telemetry = run.get("resource_telemetry")
+    if not isinstance(telemetry, Mapping):
+        return canonical_value(
+            {
+                "exit_status": run.get("exit_status"),
+                "resource_telemetry": None,
+                "wall_time_ms": int(run.get("wall_time_ms", 0) or 0),
+                **_resource_probe_evidence_projection(run),
+            }
+        )
+    rows = []
+    for row in telemetry.get("batch_records") or ():
+        if not isinstance(row, Mapping):
+            continue
+        rows.append(
+            {
+                key: row.get(key)
+                for key in (
+                    "epoch",
+                    "loss",
+                    "phase",
+                    "status",
+                    "wall_time_ms",
+                    "peak_allocated_mib",
+                    "peak_reserved_mib",
+                )
+                if key in row
+            }
+        )
+    prefix_contract = telemetry.get("prefix_contract")
+    safe_contract = (
+        {"contract_file_sha256": prefix_contract.get("contract_file_sha256")}
+        if isinstance(prefix_contract, Mapping)
+        else None
+    )
+    safe_telemetry = {
+        "batch_records": rows,
+        "full_train_batches_per_epoch": telemetry.get("full_train_batches_per_epoch"),
+        "full_validation_batches_per_eval": telemetry.get(
+            "full_validation_batches_per_eval"
+        ),
+        "initialization_wall_time_ms": telemetry.get("initialization_wall_time_ms"),
+        "parameter_count": telemetry.get("parameter_count"),
+        "prefix_contract": safe_contract,
+        "trainable_parameter_count": telemetry.get("trainable_parameter_count"),
+    }
+    return canonical_value(
+        {
+            "exit_status": run.get("exit_status"),
+            "resource_telemetry": safe_telemetry,
+            "wall_time_ms": int(run.get("wall_time_ms", 0) or 0),
+            **_resource_probe_evidence_projection(run),
+        }
+    )
+
+
+def _probe_telemetry_projection(run: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep only resource facts from a physical probe result.
+
+    ``run_development_training`` also returns development metrics.  They are
+    intentionally not copied into the Research Innovation admission profile;
+    only fixed-batch throughput, memory, and process status are admissible
+    inputs here.
+    """
+
+    telemetry = run.get("resource_telemetry")
+    if not isinstance(telemetry, Mapping):
+        return {
+            "completed_eval_batches": 0,
+            "completed_train_batches": 0,
+            "peak_gpu_memory_mib": None,
+            "telemetry_present": False,
+            "wall_time_ms": int(run.get("wall_time_ms", 0) or 0),
+        }
+    batches = telemetry.get("batch_records") or ()
+    completed = [
+        row
+        for row in batches
+        if isinstance(row, Mapping) and row.get("status") == "BATCH_COMPLETED"
+    ]
+    observed_peaks = [
+        float(row[key])
+        for row in completed
+        for key in ("peak_allocated_mib", "peak_reserved_mib")
+        if isinstance(row.get(key), (int, float))
+    ]
+    peak = telemetry.get("peak_gpu_memory_mib")
+    if not isinstance(peak, (int, float)) and observed_peaks:
+        peak = max(observed_peaks)
+    return canonical_value(
+        {
+            "completed_eval_batches": sum(
+                row.get("phase") == "EVAL" for row in completed
+            ),
+            "completed_train_batches": sum(
+                row.get("phase") == "TRAIN" for row in completed
+            ),
+            "peak_gpu_memory_mib": peak,
+            "telemetry_present": True,
+            "wall_time_ms": int(run.get("wall_time_ms", 0) or 0),
+            **_gpu_probe_telemetry_metadata(run),
+        }
+    )
+
+
+def build_innovation_resource_profile(
+    *,
+    candidate_ref: str,
+    candidate_package_digest: str | None,
+    candidate_source_sha256: str,
+    candidate_binding_digest: str | None = None,
+    source_features: Mapping[str, Any],
+    probe_run: Mapping[str, Any],
+    process_observation: Mapping[str, Any],
+    total_budget_seconds: int = CAMPAIGN_TOTAL_BUDGET_SECONDS,
+    probe_seed: int = TRAINING_SEED,
+    compute_pattern: str | None = None,
+    gpu_id: int | None = None,
+    offline_calibration_probe_excluded_from_future_budget: bool = False,
+) -> dict[str, Any]:
+    """Build an outcome-blind Research Innovation resource admission profile.
+
+    This is the pure consumer seam for the existing fixed-batch model.  It
+    retains the prediction interval, memory prediction, and budget schedule,
+    while refusing to expose the probe's scientific metrics to callers.  An
+    explicit ``compute_pattern`` plus a fresh-R1 sealed reservation/device
+    result can additionally produce an identity-bound
+    ``predicted_gpu_worker_seconds`` field.  Missing or incomplete reservation
+    evidence leaves the legacy wall-time profile unchanged; wall time is never
+    treated as GPU-worker time by itself.
+    """
+
+    if not isinstance(candidate_ref, str) or not candidate_ref:
+        raise ResourceSchedulingError("candidate_ref must be non-empty")
+    if not isinstance(source_features, Mapping):
+        raise ResourceSchedulingError("source_features must be a mapping")
+    if not isinstance(probe_run, Mapping):
+        raise ResourceSchedulingError("probe_run must be a mapping")
+    if not isinstance(process_observation, Mapping):
+        raise ResourceSchedulingError("process_observation must be a mapping")
+    if not isinstance(
+        offline_calibration_probe_excluded_from_future_budget,
+        bool,
+    ):
+        raise ResourceSchedulingError(
+            "offline calibration budget exclusion must be a boolean"
+        )
+    validated_gpu_id = _validate_gpu_selection_arguments(
+        cuda_visible_devices=(
+            probe_run.get("cuda_visible_devices")
+            if probe_run.get("cuda_visible_devices") is not None
+            else None
+        ),
+        gpu_id=gpu_id,
+    )
+    try:
+        validate_sha256(candidate_source_sha256, field_name="candidate_source_sha256")
+        if candidate_package_digest is not None:
+            validate_sha256(
+                candidate_package_digest,
+                field_name="candidate_package_digest",
+            )
+        if candidate_binding_digest is not None:
+            validate_sha256(
+                candidate_binding_digest,
+                field_name="candidate_binding_digest",
+            )
+    except ValueError as error:
+        raise ResourceSchedulingError(str(error)) from error
+    if source_features.get("source_sha256") != candidate_source_sha256:
+        raise ResourceSchedulingError(
+            "source feature digest does not match candidate_source_sha256"
+        )
+    _assert_resource_profile_outcome_blind(source_features)
+    resolved_compute_pattern = _resolve_resource_compute_pattern(
+        explicit=compute_pattern,
+        source_features=source_features,
+        probe_run=probe_run,
+        process_observation=process_observation,
+    )
+    identity_sources = _resource_identity_sources(
+        source_features=source_features,
+        probe_run=probe_run,
+        process_observation=process_observation,
+    )
+    _assert_resource_identity_bound(
+        sources=identity_sources,
+        candidate_ref=candidate_ref,
+        candidate_package_digest=candidate_package_digest,
+        candidate_binding_digest=candidate_binding_digest,
+        candidate_source_sha256=candidate_source_sha256,
+        compute_pattern=resolved_compute_pattern,
+    )
+    if not (
+        process_observation.get("process_isolated") is True
+        and process_observation.get("status") == "RESULT"
+        and process_observation.get("exit_code") == 0
+    ):
+        raise ResourceSchedulingError(
+            "Research Innovation resource profiles require a successful disposable probe process"
+        )
+    gpu_probe: dict[str, Any] | None = None
+    offline_accounting: dict[str, Mapping[str, Any]] | None = None
+    if offline_calibration_probe_excluded_from_future_budget:
+        gpu_probe = _validated_gpu_worker_probe(
+            probe_run=probe_run,
+            process_observation=process_observation,
+            source_features=source_features,
+            candidate_ref=candidate_ref,
+            candidate_package_digest=candidate_package_digest,
+            candidate_binding_digest=candidate_binding_digest,
+            candidate_source_sha256=candidate_source_sha256,
+            compute_pattern=resolved_compute_pattern,
+            gpu_id=validated_gpu_id,
+        )
+        if gpu_probe is None:
+            raise ResourceSchedulingError(
+                "offline calibration budget exclusion requires validated sealed GPU reservation evidence"
+            )
+        reservation_evidence = gpu_probe["reservation_evidence"]
+        reservation_identity = gpu_probe["reservation_identity"]
+        offline_accounting = {
+            candidate_ref: {
+                "mode": OFFLINE_CALIBRATION_PROBE_BUDGET_MODE,
+                "parent_process_interval_wall_time_ms": gpu_probe[
+                    "parent_process_interval_wall_time_ms"
+                ],
+                "probe_wall_time_ms": gpu_probe["probe_wall_time_ms"],
+                "reservation_digest": reservation_evidence["reservation_digest"],
+                "reservation_identity_digest": reservation_evidence[
+                    "identity_digest"
+                ],
+            }
+        }
+    resource_probe = _resource_probe_input(probe_run)
+    decision = predict_resources(
+        arm_features={candidate_ref: source_features},
+        probe_runs={candidate_ref: resource_probe},
+        total_budget_seconds=total_budget_seconds,
+        arm_order=(candidate_ref,),
+        probe_seed=probe_seed,
+        offline_calibration_probe_accounting=offline_accounting,
+    )
+    prediction_identity = {
+        "candidate_binding_digest": candidate_binding_digest,
+        "candidate_package_digest": candidate_package_digest,
+        "candidate_ref": candidate_ref,
+        "candidate_source_sha256": candidate_source_sha256,
+        "compute_pattern": resolved_compute_pattern,
+    }
+    if not offline_calibration_probe_excluded_from_future_budget:
+        gpu_probe = _validated_gpu_worker_probe(
+            probe_run=probe_run,
+            process_observation=process_observation,
+            source_features=source_features,
+            candidate_ref=candidate_ref,
+            candidate_package_digest=candidate_package_digest,
+            candidate_binding_digest=candidate_binding_digest,
+            candidate_source_sha256=candidate_source_sha256,
+            compute_pattern=resolved_compute_pattern,
+            gpu_id=validated_gpu_id,
+        )
+    prediction = _attach_gpu_worker_prediction(
+        decision["predictions"][candidate_ref],
+        gpu_probe=gpu_probe,
+        probe_run=probe_run,
+        prediction_identity=prediction_identity,
+    )
+    schedule = [
+        row for row in decision["schedule"] if row.get("arm") == candidate_ref
+    ]
+    deferred = [
+        row for row in decision["deferred_arms"] if row.get("arm") == candidate_ref
+    ]
+    admitted = bool(schedule)
+    profile_identity = {
+        "candidate_binding_digest": candidate_binding_digest,
+        "candidate_package_digest": candidate_package_digest,
+        "candidate_ref": candidate_ref,
+        "candidate_source_sha256": candidate_source_sha256,
+        "compute_pattern": resolved_compute_pattern,
+        "budget_accounting": decision["budget_accounting"],
+        "probe_contract": decision["probe_contract"],
+        "prediction": prediction,
+    }
+    profile = {
+        "candidate_binding_digest": candidate_binding_digest,
+        "candidate_package_digest": candidate_package_digest,
+        "candidate_ref": candidate_ref,
+        "candidate_source_sha256": candidate_source_sha256,
+        "completion_probability": float(prediction["completion_probability"]),
+        "budget_accounting": decision["budget_accounting"],
+        "deferred": deferred,
+        "effect_fields_consumed": [],
+        "full_run_budget_after_probes_seconds": decision[
+            "full_run_budget_after_probes_seconds"
+        ],
+        "held_out_reads": 0,
+        "mechanism_effect_update_allowed": False,
+        "prediction": prediction,
+        "prediction_interval_seconds": prediction["prediction_interval_seconds"],
+        "probe": _probe_telemetry_projection(resource_probe),
+        "probe_contract": decision["probe_contract"],
+        "probe_process": canonical_value(dict(process_observation)),
+        "profile_digest": sha256_digest(profile_identity),
+        "schedule": schedule,
+        "status": "RESOURCE_ADMITTED" if admitted else "RESOURCE_DEFERRED",
+        "outcome_fields_consumed": [],
+        "schema": "recclaw.research-line.innovation-resource-profile.v1",
+    }
+    if "predicted_gpu_worker_seconds" in prediction:
+        profile.update(
+            {
+                "compute_pattern": resolved_compute_pattern,
+                "predicted_gpu_worker_seconds": prediction[
+                    "predicted_gpu_worker_seconds"
+                ],
+                "predicted_gpu_worker_seconds_semantics": prediction[
+                    "predicted_gpu_worker_seconds_semantics"
+                ],
+            }
+        )
+    return canonical_value(profile)
+
+
+def _failed_innovation_resource_profile(
+    *,
+    candidate_ref: str,
+    candidate_package_digest: str | None,
+    candidate_source_sha256: str,
+    candidate_binding_digest: str | None = None,
+    compute_pattern: str | None = None,
+    process_observation: Mapping[str, Any],
+    reason_code: str,
+    failure_phase: str = "DISPOSABLE_PROCESS",
+    error_type: str | None = None,
+    error_message: str | None = None,
+) -> dict[str, Any]:
+    diagnostic_type = error_type or reason_code
+    diagnostic_message = str(error_message or reason_code)[:2000]
+    return canonical_value(
+        {
+            "candidate_binding_digest": candidate_binding_digest,
+            "candidate_package_digest": candidate_package_digest,
+            "candidate_ref": candidate_ref,
+            "candidate_source_sha256": candidate_source_sha256,
+            "compute_pattern": compute_pattern,
+            "completion_probability": 0.0,
+            "deferred": [
+                {
+                    "arm": candidate_ref,
+                    "mechanism_effect_update_allowed": False,
+                    "reason": reason_code,
+                    "resource_disposition": "RESOURCE_INFEASIBLE",
+                }
+            ],
+            "effect_fields_consumed": [],
+            "held_out_reads": 0,
+            "mechanism_effect_update_allowed": False,
+            "prediction": {
+                "completion_probability": 0.0,
+                "identity": {
+                    "candidate_binding_digest": candidate_binding_digest,
+                    "candidate_package_digest": candidate_package_digest,
+                    "candidate_ref": candidate_ref,
+                    "candidate_source_sha256": candidate_source_sha256,
+                    "compute_pattern": compute_pattern,
+                },
+                "model": "FIXED_BATCH_THROUGHPUT_LINEAR_EXTRAPOLATION_V3",
+            },
+            "probe": {
+                "completed_eval_batches": 0,
+                "completed_train_batches": 0,
+                "peak_gpu_memory_mib": None,
+                "telemetry_present": False,
+                "wall_time_ms": 0,
+            },
+            "probe_process": canonical_value(dict(process_observation)),
+            "resource_probe_diagnostic": {
+                "error_type": diagnostic_type,
+                "message": diagnostic_message,
+                "outcome_fields_consumed": [],
+                "phase": failure_phase,
+            },
+            "schedule": [],
+            "status": "RESOURCE_PROBE_FAILED",
+            "outcome_fields_consumed": [],
+            "schema": "recclaw.research-line.innovation-resource-profile.v1",
+        }
+    )
+
+
+def _resource_probe_process_worker(
+    connection: Any,
+    request: Mapping[str, Any],
+) -> None:
+    try:
+        result = _run_one(**dict(request))
+    except BaseException as error:  # pragma: no cover - defensive crash boundary.
+        payload = {
+            "kind": "WORKER_EXCEPTION",
+            "error_type": type(error).__name__,
+            "message": str(error)[:2000],
+            "traceback": traceback.format_exc()[-4000:],
+        }
+        try:
+            connection.send(payload)
+        except Exception:
+            pass
+    else:
+        try:
+            connection.send({"kind": "RESULT", "result": result})
+        except Exception:
+            pass
+    finally:
+        connection.close()
+
+
+def _run_disposable_resource_probe(
+    request: Mapping[str, Any],
+    *,
+    timeout_seconds: int,
+) -> tuple[dict[str, Any] | None, dict[str, Any], str | None]:
+    start_method = "spawn"
+    try:
+        context = mp.get_context(start_method)
+    except ValueError as error:
+        return None, {
+            "error_message": str(error)[:2000],
+            "error_type": type(error).__name__,
+            "process_isolated": False,
+            "start_method": start_method,
+            "status": "SPAWN_UNAVAILABLE",
+        }, "PROBE_SPAWN_UNAVAILABLE"
+    parent_connection, child_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_resource_probe_process_worker,
+        args=(child_connection, request),
+    )
+    started_ns = time.monotonic_ns()
+    try:
+        process.start()
+    except Exception as error:
+        child_connection.close()
+        parent_connection.close()
+        return None, {
+            "error_message": str(error)[:2000],
+            "error_type": type(error).__name__,
+            "process_isolated": False,
+            "start_method": start_method,
+            "status": "START_FAILED",
+        }, type(error).__name__
+    child_connection.close()
+    payload: Mapping[str, Any] | None = None
+    deadline = time.monotonic() + float(timeout_seconds)
+    try:
+        while time.monotonic() < deadline:
+            remaining = max(0.01, min(0.25, deadline - time.monotonic()))
+            if parent_connection.poll(remaining):
+                received = parent_connection.recv()
+                if isinstance(received, Mapping):
+                    payload = received
+                break
+            if not process.is_alive():
+                break
+    except (EOFError, OSError):
+        payload = None
+    finally:
+        parent_connection.close()
+    timed_out = payload is None and process.is_alive()
+    if timed_out:
+        process.terminate()
+    process.join(timeout=5)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=5)
+    observation = {
+        "elapsed_wall_time_ms": max(
+            1, (time.monotonic_ns() - started_ns) // 1_000_000
+        ),
+        "exit_code": process.exitcode,
+        "pid": process.pid,
+        "process_isolated": True,
+        "start_method": start_method,
+        "status": (
+            "TIMEOUT"
+            if timed_out
+            else "RESULT"
+            if payload is not None and payload.get("kind") == "RESULT"
+            else "WORKER_FAILURE"
+        ),
+    }
+    # The reservation is caller-supplied sealed evidence, not child telemetry.
+    # Keep that exact request-bound value on the parent observation so a child
+    # result that omits it cannot silently turn an explicitly reserved probe
+    # into an unreserved one. _validated_gpu_worker_probe still validates it
+    # and compares it with any child-returned copy; invalid or inconsistent
+    # evidence remains fail-closed.
+    arm_input = request.get("arm_input")
+    if isinstance(arm_input, Mapping):
+        supplied_evidence = arm_input.get("gpu_reservation_evidence")
+        if supplied_evidence is not None:
+            observation["gpu_reservation_evidence"] = (
+                canonical_value(dict(supplied_evidence))
+                if isinstance(supplied_evidence, Mapping)
+                else supplied_evidence
+            )
+        supplied_gpu_id = arm_input.get("gpu_id")
+        if supplied_gpu_id is not None:
+            direct_gpu_id = _validated_gpu_id(supplied_gpu_id)
+            observation.update(
+                {
+                    "gpu_id": direct_gpu_id,
+                    "physical_gpu_id": str(direct_gpu_id),
+                    "selection_mode": DIRECT_GPU_SELECTION_MODE,
+                }
+            )
+    if payload is not None and payload.get("kind") == "WORKER_EXCEPTION":
+        observation.update(
+            {
+                "worker_error_message": str(payload.get("message", ""))[:2000],
+                "worker_error_type": str(payload.get("error_type", "WorkerError")),
+            }
+        )
+    if (
+        payload is not None
+        and payload.get("kind") == "RESULT"
+        and isinstance(payload.get("result"), Mapping)
+    ):
+        return dict(payload["result"]), observation, None
+    return None, observation, (
+        "PROBE_TIMEOUT" if timed_out else "PROBE_PROCESS_FAILED"
+    )
+
+
+def run_disposable_fixed_batch_resource_probe(
+    repo_root: Path,
+    *,
+    candidate_root: Path | None,
+    source_path: Path,
+    entrypoint: str,
+    source_sha256: str,
+    execution_recipe: Mapping[str, Any],
+    probe_root: Path,
+    candidate_ref: str = "candidate",
+    candidate_package_digest: str | None = None,
+    candidate_binding_digest: str | None = None,
+    total_budget_seconds: int = CAMPAIGN_TOTAL_BUDGET_SECONDS,
+    probe_seed: int = TRAINING_SEED,
+    probe_timeout_seconds: int = PROBE_TIMEOUT_SECONDS,
+    compute_pattern: str | None = None,
+    cuda_visible_devices: str | None = None,
+    gpu_id: int | None = None,
+    gpu_reservation_evidence: Mapping[str, Any] | None = None,
+    offline_calibration_probe_excluded_from_future_budget: bool = False,
+) -> dict[str, Any]:
+    """Run the existing fixed-batch probe in a disposable process.
+
+    The caller supplies the explicit execution recipe already bound by the
+    Research Innovation package.  No generic BPR fallback is synthesized.  The
+    optional ``cuda_visible_devices`` and sealed
+    ``gpu_reservation_evidence`` values are passed through to the disposable
+    physical worker; they do not allocate a lease.  The returned profile
+    contains only resource prediction/admission facts.
+    """
+
+    validated_gpu_id = _validate_gpu_selection_arguments(
+        cuda_visible_devices=cuda_visible_devices,
+        gpu_id=gpu_id,
+    )
+    repo_root = repo_root.resolve()
+    if candidate_root is not None:
+        candidate_root = candidate_root.resolve()
+    source_path = source_path.resolve()
+    probe_root = probe_root.resolve()
+    if (candidate_root is not None and not candidate_root.is_dir()) or not source_path.is_file():
+        raise ResourceSchedulingError("candidate package source is unavailable")
+    if candidate_root is not None:
+        try:
+            source_path.relative_to(candidate_root)
+        except ValueError as error:
+            raise ResourceSchedulingError(
+                "candidate source must remain inside candidate_root"
+            ) from error
+    if not isinstance(execution_recipe, Mapping):
+        raise ResourceSchedulingError("an explicit execution_recipe is required")
+    try:
+        validate_sha256(source_sha256, field_name="source_sha256")
+    except ValueError as error:
+        raise ResourceSchedulingError(str(error)) from error
+    try:
+        validate_execution_recipe(execution_recipe)
+    except Exception as error:
+        raise ResourceSchedulingError(
+            f"execution_recipe is invalid: {error}"
+        ) from error
+    if probe_root.exists():
+        raise ResourceSchedulingError(f"resource probe root already exists: {probe_root}")
+    probe_root.mkdir(parents=True)
+    prefix_contract_path = probe_root / "FIXED_BATCH_PREFIX_CONTRACT.json"
+    _write_new_json(
+        prefix_contract_path,
+        build_fixed_batch_prefix_contract(seed=probe_seed),
+    )
+    arm_id = "candidate_" + sha256_digest({"candidate_ref": candidate_ref})[:16]
+    arm_input = {
+        "candidate_root": candidate_root,
+        "candidate_binding_digest": candidate_binding_digest,
+        "entrypoint": entrypoint,
+        "execution_recipe": canonical_value(dict(execution_recipe)),
+        "compute_pattern": compute_pattern,
+        "cuda_visible_devices": cuda_visible_devices,
+        "gpu_id": validated_gpu_id,
+        "gpu_reservation_evidence": (
+            canonical_value(dict(gpu_reservation_evidence))
+            if isinstance(gpu_reservation_evidence, Mapping)
+            else gpu_reservation_evidence
+        ),
+        "seed": probe_seed,
+        "source_sha256": source_sha256,
+    }
+    request = {
+        "arm": arm_id,
+        "arm_input": arm_input,
+        "authority": "user-delegated-research-innovation-resource-probe",
+        "epochs": PROBE_EPOCHS,
+        "prefix_contract_path": prefix_contract_path,
+        "purpose": "RESOURCE_PROBE_ONLY",
+        "repo_root": repo_root,
+        "run_identity": "research-innovation-resource-probe-v1",
+        "side_root": probe_root / "runs",
+        "timeout_seconds": probe_timeout_seconds,
+    }
+    probe_run, process_observation, failure = _run_disposable_resource_probe(
+        request,
+        timeout_seconds=max(1, int(probe_timeout_seconds) + 60),
+    )
+    if probe_run is None:
+        return _failed_innovation_resource_profile(
+            candidate_ref=candidate_ref,
+            candidate_package_digest=candidate_package_digest,
+            candidate_binding_digest=candidate_binding_digest,
+            candidate_source_sha256=source_sha256,
+            compute_pattern=compute_pattern,
+            process_observation=process_observation,
+            reason_code=failure or "PROBE_PROCESS_FAILED",
+            error_type=(
+                str(process_observation.get("worker_error_type"))
+                if process_observation.get("worker_error_type") is not None
+                else failure
+            ),
+            error_message=(
+                str(process_observation.get("worker_error_message"))
+                if process_observation.get("worker_error_message") is not None
+                else process_observation.get("error_message")
+            ),
+        )
+    try:
+        probe_run = dict(probe_run)
+        if candidate_binding_digest is not None:
+            probe_run["candidate_binding_digest"] = candidate_binding_digest
+        return build_innovation_resource_profile(
+            candidate_ref=candidate_ref,
+            candidate_package_digest=candidate_package_digest,
+            candidate_source_sha256=source_sha256,
+            candidate_binding_digest=candidate_binding_digest,
+            gpu_id=validated_gpu_id,
+            source_features=structural_features(source_path),
+            probe_run=probe_run,
+            process_observation=process_observation,
+            total_budget_seconds=total_budget_seconds,
+            probe_seed=probe_seed,
+            compute_pattern=compute_pattern,
+            offline_calibration_probe_excluded_from_future_budget=(
+                offline_calibration_probe_excluded_from_future_budget
+            ),
+        )
+    except ResourceSchedulingError as error:
+        return _failed_innovation_resource_profile(
+            candidate_ref=candidate_ref,
+            candidate_package_digest=candidate_package_digest,
+            candidate_source_sha256=source_sha256,
+            candidate_binding_digest=candidate_binding_digest,
+            compute_pattern=compute_pattern,
+            process_observation=process_observation,
+            reason_code=type(error).__name__.upper(),
+            failure_phase="POST_PROBE_RESOURCE_VALIDATION",
+            error_type=type(error).__name__,
+            error_message=str(error),
+        )
+
+
 def _run_one(
     *,
     repo_root: Path,
@@ -873,7 +2587,7 @@ def _run_one(
             repo_root=repo_root,
             side_root=side_root,
             run_id=arm.replace("_", "-"),
-            seed=TRAINING_SEED,
+            seed=int(arm_input.get("seed", TRAINING_SEED)),
             candidate_root=arm_input["candidate_root"],
             entrypoint=str(arm_input["entrypoint"]),
             source_sha256=str(arm_input["source_sha256"]),
@@ -886,6 +2600,10 @@ def _run_one(
             resource_telemetry=True,
             watchdog_seconds=ENGINEERING_WATCHDOG_SECONDS,
             prefix_contract_path=prefix_contract_path,
+            execution_recipe=arm_input.get("execution_recipe"),
+            cuda_visible_devices=arm_input.get("cuda_visible_devices"),
+            gpu_id=arm_input.get("gpu_id"),
+            gpu_reservation_evidence=arm_input.get("gpu_reservation_evidence"),
         )
     except Exception as error:  # one physical arm must not abort the campaign
         return canonical_value(
@@ -1901,12 +3619,15 @@ def run_resource_scheduling(
 
 
 __all__ = [
+    "PREDICTED_GPU_WORKER_SECONDS_SEMANTICS",
     "ResourceSchedulingError",
+    "build_innovation_resource_profile",
     "build_fixed_batch_prefix_contract",
     "finalize_fixed_batch_hard_block_receipt",
     "finalize_hard_block_receipt",
     "finalize_type_preserving_hard_block_receipt",
     "predict_resources",
+    "run_disposable_fixed_batch_resource_probe",
     "run_resource_scheduling",
     "structural_features",
 ]

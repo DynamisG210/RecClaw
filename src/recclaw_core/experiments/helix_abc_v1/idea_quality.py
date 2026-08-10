@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 import time
 from pathlib import Path
@@ -47,11 +48,13 @@ from .innovation_spine import build_shared_implementer_request
 from .open_spec import project_open_producer_draft, resolve_capability
 from .quality_calibration import _structural_calibration_unit_check
 from .resource_scheduling import (
+    GPU_MEMORY_TOTAL_MIB,
     PROBE_EPOCHS,
     PROBE_TIMEOUT_SECONDS,
     Q0R_V2_PREFIX_CONTRACT_SHA256,
     structural_features,
 )
+from .research_contracts import RouterFeatureEvidenceV1, SearchUtilityFeaturesV1
 from .v4_response_contract import validate_v4_response_contract
 from .vnext_contracts import (
     CapabilityResolutionResultV1,
@@ -588,6 +591,70 @@ def score_preoutcome_testability(
             0.5 * text_margin + 0.5 * numeric_margin,
             6,
         ) * (1.0 if q0r2_resource_feasible else 0.25)
+        resource_profile = structural_context.get("resource_profile")
+        resource_prediction = (
+            resource_profile.get("prediction")
+            if isinstance(resource_profile, Mapping)
+            else None
+        )
+        if isinstance(resource_prediction, Mapping):
+            probability_value = resource_prediction.get("completion_probability", 0.0)
+            probability = (
+                float(probability_value)
+                if isinstance(probability_value, (int, float))
+                and not isinstance(probability_value, bool)
+                and math.isfinite(float(probability_value))
+                else 0.0
+            )
+            interval = resource_prediction.get("prediction_interval_seconds")
+            budget_value = (
+                resource_profile.get("full_run_budget_after_probes_seconds", 0.0)
+                if isinstance(resource_profile, Mapping)
+                else 0.0
+            )
+            budget_seconds = (
+                float(budget_value)
+                if isinstance(budget_value, (int, float))
+                and not isinstance(budget_value, bool)
+                and math.isfinite(float(budget_value))
+                else 0.0
+            )
+            upper_seconds = (
+                float(interval[1])
+                if isinstance(interval, (list, tuple))
+                and len(interval) == 2
+                and isinstance(interval[1], (int, float))
+                else float("inf")
+            )
+            peak_memory = resource_prediction.get("peak_memory_prediction_mib")
+            time_margin = (
+                max(0.0, min(1.0, 1.0 - upper_seconds / budget_seconds))
+                if budget_seconds > 0 and math.isfinite(upper_seconds)
+                else 0.0
+            )
+            memory_margin = (
+                max(
+                    0.0,
+                    min(
+                        1.0,
+                        1.0 - float(peak_memory) / float(GPU_MEMORY_TOTAL_MIB),
+                    ),
+                )
+                if isinstance(peak_memory, (int, float))
+                and not isinstance(peak_memory, bool)
+                and math.isfinite(float(peak_memory))
+                else 0.0
+            )
+            profile_margin = min(
+                max(0.0, min(1.0, probability)),
+                time_margin,
+                memory_margin,
+            )
+            features["resource_margin"] = round(
+                0.5 * float(features["resource_margin"])
+                + 0.5 * profile_margin,
+                6,
+            )
 
         failure_summary = structural_context.get("failure_summary", {})
         taxonomy = (
@@ -641,6 +708,315 @@ def score_preoutcome_testability(
             "outcome_fields_consumed": [],
             "spec_digest": spec.digest,
             "score_digest": sha256_digest(features),
+        }
+    )
+
+
+_RESOURCE_PROFILE_FORBIDDEN_KEYS = frozenset(
+    {
+        "candidate_minus_bpr",
+        "candidate_ndcg_at_10",
+        "metrics",
+        "ndcg@10",
+        "test_feedback",
+        "test_metric",
+    }
+)
+
+
+def _assert_resource_profile_outcome_blind(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            normalized = str(key).lower()
+            if normalized in _RESOURCE_PROFILE_FORBIDDEN_KEYS:
+                raise IdeaQualityError(
+                    f"resource profile contains forbidden outcome field: {key}"
+                )
+            _assert_resource_profile_outcome_blind(child)
+    elif isinstance(value, (tuple, list)):
+        for child in value:
+            _assert_resource_profile_outcome_blind(child)
+
+
+def _qualification_admission_view(
+    qualification: Any,
+) -> tuple[str, str | None, bool]:
+    receipt = getattr(qualification, "receipt", None)
+    observations = getattr(qualification, "stage_observations", {})
+    if isinstance(qualification, Mapping):
+        receipt = qualification.get("receipt", receipt)
+        observations = qualification.get("stage_observations", observations)
+    if isinstance(receipt, Mapping):
+        status = receipt.get("status", "FAIL")
+        digest = receipt.get("digest")
+    else:
+        status = getattr(receipt, "status", "FAIL")
+        digest = getattr(receipt, "digest", None)
+    status_value = getattr(status, "value", status)
+    process = (
+        observations.get("DISPOSABLE_PROCESS", {})
+        if isinstance(observations, Mapping)
+        else {}
+    )
+    return str(status_value), digest if isinstance(digest, str) else None, bool(
+        isinstance(process, Mapping)
+        and process.get("process_isolated") is True
+        and process.get("status") == "RESULT"
+        and process.get("exit_code") == 0
+    )
+
+
+def _resolution_admission_view(resolution: Any) -> tuple[bool, str | None]:
+    def value(name: str, default: Any = False) -> Any:
+        if isinstance(resolution, Mapping):
+            return resolution.get(name, default)
+        return getattr(resolution, name, default)
+
+    ready = all(
+        bool(value(field))
+        for field in ("protocol_compatible", "dependency_compatible", "budget_compatible")
+    )
+    digest = value("digest")
+    return ready, digest if isinstance(digest, str) else None
+
+
+def _bounded_unit(value: Any) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return 0.0
+    converted = float(value)
+    if not math.isfinite(converted):
+        return 0.0
+    return max(0.0, min(1.0, converted))
+
+
+def _finite_nonnegative(
+    value: Any,
+    *,
+    upper: float | None = None,
+) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    converted = float(value)
+    if not math.isfinite(converted) or converted < 0.0:
+        return None
+    if upper is not None and converted > upper:
+        return None
+    return converted
+
+
+def _finite_interval(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    lower = _finite_nonnegative(value[0])
+    upper = _finite_nonnegative(value[1])
+    if lower is None or upper is None or lower > upper:
+        return None
+    return lower, upper
+
+
+def admit_research_innovation_candidate(
+    *,
+    spec: OpenResearchSpecV1,
+    resolution: Any,
+    qualification: Any,
+    resource_profile: Mapping[str, Any],
+    structural_context: Mapping[str, Any] | None = None,
+    semantic_duplicate: bool = False,
+) -> dict[str, Any]:
+    """Return the pre-outcome Innovation admission and Router feature seam.
+
+    The function consumes only the OpenSpec, resolver facts, disposable
+    qualification receipt, and the resource-only profile.  A one-epoch smoke
+    or any profile without the fixed-batch prediction interval/memory fields
+    is never converted into a non-zero runnable probability.
+    """
+
+    if not isinstance(spec, OpenResearchSpecV1):
+        raise IdeaQualityError("spec must be OpenResearchSpecV1")
+    if not isinstance(resource_profile, Mapping):
+        raise IdeaQualityError("resource_profile must be a mapping")
+    _assert_resource_profile_outcome_blind(resource_profile)
+    if resource_profile.get("outcome_fields_consumed") != []:
+        raise IdeaQualityError("resource profile must consume no outcome fields")
+    if resource_profile.get("effect_fields_consumed") != []:
+        raise IdeaQualityError("resource profile must consume no effect fields")
+    if resource_profile.get("held_out_reads") != 0:
+        raise IdeaQualityError("resource profile crossed the held-out boundary")
+
+    qualification_status, qualification_digest, qualification_isolated = (
+        _qualification_admission_view(qualification)
+    )
+    resolution_ready, resolution_digest = _resolution_admission_view(resolution)
+    prediction = resource_profile.get("prediction")
+    probability = None
+    point_seconds = None
+    budget_seconds = _finite_nonnegative(
+        resource_profile.get("full_run_budget_after_probes_seconds")
+    )
+    interval_values: tuple[float, float] | None = None
+    profile_interval_values = _finite_interval(
+        resource_profile.get("prediction_interval_seconds")
+    )
+    peak_memory = None
+    top_level_probability = None
+    if isinstance(prediction, Mapping):
+        probability = _finite_nonnegative(
+            prediction.get("completion_probability"),
+            upper=1.0,
+        )
+        top_level_probability = _finite_nonnegative(
+            resource_profile.get("completion_probability"),
+            upper=1.0,
+        )
+        interval_values = _finite_interval(
+            prediction.get("prediction_interval_seconds")
+        )
+        peak_memory = _finite_nonnegative(
+            prediction.get("peak_memory_prediction_mib")
+        )
+        point_seconds = _finite_nonnegative(
+            prediction.get("estimated_total_wall_time_seconds")
+        )
+    process = resource_profile.get("probe_process")
+    prediction_contract = bool(
+        isinstance(prediction, Mapping)
+        and prediction.get("model")
+        == "FIXED_BATCH_THROUGHPUT_LINEAR_EXTRAPOLATION_V3"
+        and probability is not None
+        and top_level_probability is not None
+        and math.isclose(probability, top_level_probability, abs_tol=1e-9)
+        and interval_values is not None
+        and profile_interval_values == interval_values
+        and point_seconds is not None
+        and budget_seconds is not None
+        and budget_seconds > 0.0
+        and interval_values[0] <= point_seconds <= interval_values[1]
+        and interval_values[1] <= budget_seconds
+        and peak_memory is not None
+        and peak_memory < GPU_MEMORY_TOTAL_MIB * 0.95
+        and isinstance(process, Mapping)
+        and process.get("process_isolated") is True
+        and process.get("status") == "RESULT"
+        and process.get("exit_code") == 0
+    )
+    resource_admitted = (
+        resource_profile.get("status") == "RESOURCE_ADMITTED"
+        and prediction_contract
+    )
+    if not qualification_isolated:
+        resource_admitted = False
+    if qualification_status != QualificationStatusV1.PASS.value:
+        resource_admitted = False
+    if not resolution_ready or semantic_duplicate:
+        resource_admitted = False
+
+    scoring_context = dict(structural_context or {})
+    scoring_context["resource_profile"] = resource_profile
+    preoutcome_score = score_preoutcome_testability(
+        spec,
+        q0r2_resource_feasible=resource_admitted,
+        structural_context=scoring_context,
+    )
+    score_features = preoutcome_score["features"]
+    if prediction_contract and resource_admitted:
+        assert probability is not None
+        assert point_seconds is not None
+        assert budget_seconds is not None
+        runnable_probability = probability
+    else:
+        runnable_probability = 0.0
+        point_seconds = 0.0
+        budget_seconds = 0.0
+    estimated_cost = (
+        _bounded_unit(point_seconds / budget_seconds)
+        if budget_seconds > 0
+        else 1.0
+        if point_seconds > 0
+        else 0.0
+    )
+    useful_signal = sum(
+        _bounded_unit(score_features.get(name))
+        for name in ("scientific_falsifiability", "mechanism_off_executability", "wedge_specificity")
+    ) / 3.0
+    frontier_potential = sum(
+        _bounded_unit(score_features.get(name))
+        for name in ("executable_parent", "parent_preserving", "role_mode_fit")
+    ) / 3.0
+    information_gain = sum(
+        _bounded_unit(score_features.get(name))
+        for name in (
+            "scientific_falsifiability",
+            "mechanism_off_executability",
+            "causal_component_count",
+            "pool_mechanism_novelty",
+        )
+    ) / 4.0
+    if semantic_duplicate:
+        blocker_risk = 1.0
+    else:
+        blocker_risk = 1.0 - runnable_probability
+    utility = SearchUtilityFeaturesV1(
+        runnable_probability=round(runnable_probability, 6),
+        useful_signal=round(useful_signal, 6),
+        frontier_potential=round(frontier_potential, 6),
+        information_gain=round(information_gain, 6),
+        cost=round(estimated_cost, 6),
+        blocker_risk=round(_bounded_unit(blocker_risk), 6),
+    )
+    feature_evidence = RouterFeatureEvidenceV1(
+        compile_valid=qualification_status == QualificationStatusV1.PASS.value,
+        handler_available=resolution_ready,
+        materializer_available=resolution_ready,
+        blocker_rate=round(_bounded_unit(blocker_risk), 6),
+        semantic_duplicate=bool(semantic_duplicate),
+        parent_available=bool(spec.closest_parent),
+        mechanism_depth=len(spec.causal_chain),
+        estimated_cost=round(estimated_cost, 6),
+        llm_diagnostic=utility,
+    )
+    if qualification_status != QualificationStatusV1.PASS.value:
+        status = "QUALIFICATION_BLOCKED"
+    elif not qualification_isolated:
+        status = "QUALIFICATION_PROCESS_NOT_ISOLATED"
+    elif not resolution_ready:
+        status = "RESOLUTION_BLOCKED"
+    elif not prediction_contract:
+        status = "RESOURCE_PROFILE_INVALID"
+    elif semantic_duplicate:
+        status = "SEMANTIC_DUPLICATE"
+    elif resource_profile.get("status") != "RESOURCE_ADMITTED":
+        status = str(resource_profile.get("status") or "RESOURCE_DEFERRED")
+    else:
+        status = "RESOURCE_ADMITTED"
+    admitted = status == "RESOURCE_ADMITTED" and utility.runnable_probability > 0.0
+    return canonical_value(
+        {
+            "admitted": admitted,
+            "candidate_ref": resource_profile.get("candidate_ref"),
+            "candidate_package_digest": resource_profile.get(
+                "candidate_package_digest"
+            ),
+            "effect_fields_consumed": [],
+            "feature_evidence": feature_evidence.to_dict(),
+            "held_out_reads": 0,
+            "mechanism_effect_updates": 0,
+            "outcome_fields_consumed": [],
+            "preoutcome_score": preoutcome_score,
+            "qualification": {
+                "disposable_process": qualification_isolated,
+                "receipt_digest": qualification_digest,
+                "status": qualification_status,
+            },
+            "resolution": {
+                "digest": resolution_digest,
+                "ready": resolution_ready,
+            },
+            "resource_profile_digest": resource_profile.get("profile_digest"),
+            "schema": "recclaw.research-line.innovation-quality-admission.v1",
+            "status": status,
+            "spec_digest": spec.digest,
+            "utility_features": utility.to_dict(),
+            "runnable_probability": utility.runnable_probability,
         }
     )
 

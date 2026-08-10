@@ -199,14 +199,15 @@ def test_prompts_preserve_slot_role_and_blind_implementation_boundary() -> None:
     assert "producer_role" not in implementation
 
 
-def test_retry_policy_is_exactly_transient_only() -> None:
+def test_retry_policy_includes_configured_credential_fallback() -> None:
+    assert retry_eligible({"http_status": 401})
+    assert retry_eligible({"http_status": 403})
     assert retry_eligible({"http_status": 408})
     assert retry_eligible({"http_status": 429})
     assert retry_eligible({"http_status": 503})
     assert retry_eligible({"failure_class": "TIMEOUT"})
     assert retry_eligible({"exception_type": "ConnectionResetError"})
     assert not retry_eligible({"http_status": 400})
-    assert not retry_eligible({"http_status": 401})
     assert not retry_eligible({"failure_class": "SCHEMA_VALIDATION_FAILURE"})
     assert not retry_eligible({"exception_type": "URLError"})
 

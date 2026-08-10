@@ -47,7 +47,12 @@ def _schema(path: Path) -> Path:
                 "properties": {
                     "proposals": {
                         "type": "array",
-                        "items": {"type": "object"},
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["mechanism_id"],
+                            "properties": {"mechanism_id": {"type": "string"}},
+                        },
                     }
                 },
             }
@@ -116,6 +121,7 @@ def test_single_schema_request_and_create_once_replay(
             prompt="Return one proposal.",
             expected_proposal_count=1,
             max_total_tokens=50,
+            max_output_tokens=8,
         )
         replay = broker.call_with_session(
             logical_call_id="call-1",
@@ -123,6 +129,7 @@ def test_single_schema_request_and_create_once_replay(
             prompt="Return one proposal.",
             expected_proposal_count=1,
             max_total_tokens=50,
+            max_output_tokens=8,
         )
         assert first == replay
         assert broker.call_count() == 1
@@ -130,7 +137,7 @@ def test_single_schema_request_and_create_once_replay(
         payload = captured[0]
         assert payload["model"] == "gpt-5.4"
         assert payload["temperature"] == 0.0
-        assert payload["max_tokens"] == 50
+        assert payload["max_tokens"] == 8
         assert payload["response_format"]["type"] == "json_schema"
         assert "tools" not in payload
         assert "functions" not in payload

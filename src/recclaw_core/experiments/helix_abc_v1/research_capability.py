@@ -509,7 +509,15 @@ class VersionedMetaPolicyUpdaterV1:
             raise ResearchCapabilityError("Meta requires aggregate rates for every Producer")
         raw = {role: max(0.15, float(useful[role])) for role in DISCOVERY_PRODUCERS}
         total = sum(raw.values())
-        allocation = tuple((role, round(raw[role] / total, 12)) for role in DISCOVERY_PRODUCERS)
+        rounded = {
+            role: round(raw[role] / total, 12)
+            for role in DISCOVERY_PRODUCERS[:-1]
+        }
+        rounded[DISCOVERY_PRODUCERS[-1]] = round(
+            1.0 - sum(rounded.values()),
+            12,
+        )
+        allocation = tuple((role, rounded[role]) for role in DISCOVERY_PRODUCERS)
         axis_gaps = aggregate.get("mechanism_axis_gaps", ())
         targeting = tuple(dict.fromkeys(str(item) for item in axis_gaps)) or policy.mechanism_axis_targeting
         calibration_error = float(aggregate.get("calibration_error", 0.0))

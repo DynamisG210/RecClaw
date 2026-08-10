@@ -9,7 +9,7 @@ outcome-bearing scientific closure.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Sequence
 
 from .capability_admission import (
     VersionedCapabilityRegistry,
@@ -34,7 +34,17 @@ from .open_spec import (
     project_open_producer_draft,
     resolve_capability,
 )
+from .research_capability import StrongStaticRouterV1
 from .research_contracts import CandidateProposalV4
+from .search_adapter import (
+    ExperimentAcquisitionResultV1,
+    SearchExecutableProfileV1,
+    SearchProfileEntryOriginV1,
+    activate_next_fresh_search_profile,
+    bind_search_candidate,
+    freeze_experiment_slate,
+    route_frozen_experiment_slate,
+)
 from .scientific_episode import (
     FrozenComparisonIdentityV1,
     ScientificEpisodeClosureV1,
@@ -42,6 +52,7 @@ from .scientific_episode import (
 )
 from .vnext_contracts import (
     CapabilityResolutionV1,
+    CapabilityResolutionResultV1,
     CapabilityKindV1,
     ExecutableProfileVNext,
     OpenResearchSpecV1,
@@ -51,6 +62,147 @@ from .vnext_contracts import (
     ResearchFailureClassV1,
     VNextContractError,
 )
+if TYPE_CHECKING:
+    from recclaw_core.research_line.interfaces import ProducerOutcome
+
+
+def resolve_producer_outcomes(
+    outcomes: Iterable[ProducerOutcome],
+    *,
+    environment: Mapping[str, Any],
+) -> tuple[tuple[ProducerOutcome, CapabilityResolutionV1 | None], ...]:
+    """Resolve successful Producer outcomes without changing typed failures."""
+
+    resolved = []
+    for outcome in outcomes:
+        if outcome.spec is None:
+            resolved.append((outcome, None))
+            continue
+        resolved.append(
+            (
+                outcome,
+                resolve_capability(
+                    outcome.spec,
+                    resolution_facts=outcome.resolution_facts,
+                    environment=environment,
+                ),
+            )
+        )
+    return tuple(resolved)
+
+
+def route_current_search_outcomes(
+    outcomes: Sequence[tuple[ProducerOutcome, CapabilityResolutionV1]],
+    *,
+    active_profile: SearchExecutableProfileV1,
+    budget_snapshot: Mapping[str, Any],
+    router: StrongStaticRouterV1,
+    policy_projection: Mapping[str, Any] | None = None,
+) -> ExperimentAcquisitionResultV1:
+    """Bind one non-empty current-profile Search Candidate Pool and route it."""
+
+    if not outcomes:
+        raise VNextContractError(
+            "current Search routing requires a non-empty Candidate Pool"
+        )
+
+    bindings = []
+    for outcome, resolution in outcomes:
+        if outcome.spec is None or outcome.source_proposal is None:
+            raise VNextContractError(
+                "current Search routing requires successful Producer proposals"
+            )
+        if resolution.resolution is not CapabilityResolutionResultV1.SEARCH_READY:
+            raise VNextContractError(
+                "current Search Candidate Pool accepts SEARCH_READY outcomes only"
+            )
+        if (
+            resolution.research_spec_ref != outcome.spec.spec_id
+            or resolution.research_spec_digest != outcome.spec.digest
+            or resolution.current_profile_ref != active_profile.profile_ref
+            or resolution.current_profile_digest != active_profile.profile_digest
+            or resolution.resolved_current_capability_ref is None
+        ):
+            raise VNextContractError(
+                "SEARCH_READY outcome is not bound to the active capability"
+            )
+        bindings.append(
+            bind_search_candidate(
+                profile=active_profile,
+                proposal=outcome.source_proposal,
+                capability_ref=resolution.resolved_current_capability_ref,
+            )
+        )
+
+    slate = freeze_experiment_slate(
+        profile=active_profile,
+        bindings=tuple(bindings),
+        budget_snapshot=budget_snapshot,
+    )
+    return route_frozen_experiment_slate(
+        profile=active_profile,
+        slate=slate,
+        router=router,
+        policy_projection=policy_projection,
+    )
+
+
+def route_next_fresh_search(
+    *,
+    predecessor: SearchExecutableProfileV1,
+    next_profile: ExecutableProfileVNext,
+    registry: VersionedCapabilityRegistry,
+    fresh_campaign_id: str,
+    proposals: Sequence[CandidateProposalV4],
+    capability_refs: Sequence[str],
+    budget_snapshot: Mapping[str, Any],
+    router: StrongStaticRouterV1,
+    policy_projection: Mapping[str, Any] | None = None,
+) -> tuple[SearchExecutableProfileV1, ExperimentAcquisitionResultV1]:
+    """Activate, bind, and route a qualified successor in a fresh campaign."""
+
+    if not proposals or len(proposals) != len(capability_refs):
+        raise VNextContractError(
+            "next-fresh Search routing requires aligned non-empty proposals and capability refs"
+        )
+
+    active_profile = activate_next_fresh_search_profile(
+        predecessor=predecessor,
+        next_profile=next_profile,
+        registry=registry,
+        fresh_campaign_id=fresh_campaign_id,
+    )
+    bindings = tuple(
+        bind_search_candidate(
+            profile=active_profile,
+            proposal=proposal,
+            capability_ref=capability_ref,
+        )
+        for proposal, capability_ref in zip(
+            proposals,
+            capability_refs,
+            strict=True,
+        )
+    )
+    if not any(
+        binding.entry_origin is SearchProfileEntryOriginV1.QUALIFIED_REGISTRY
+        for binding in bindings
+    ):
+        raise VNextContractError(
+            "next-fresh Search slate must bind a qualified registry capability"
+        )
+    slate = freeze_experiment_slate(
+        profile=active_profile,
+        bindings=bindings,
+        budget_snapshot=budget_snapshot,
+    )
+    result = route_frozen_experiment_slate(
+        profile=active_profile,
+        slate=slate,
+        router=router,
+        policy_projection=policy_projection,
+    )
+    return active_profile, result
 
 
 def resolve_candidate_proposal_v4(
@@ -122,6 +274,7 @@ def qualify_local_innovation_candidate(
         candidate_root=candidate_root,
         fixture=fixture,
         unit_check=unit_check,
+        allow_optional_unit_check=True,
     )
     return materialized, qualification
 
@@ -236,6 +389,9 @@ __all__ = [
     "build_local_next_fresh_profile",
     "close_local_qualification_diagnostic",
     "qualify_local_innovation_candidate",
+    "resolve_producer_outcomes",
     "resolve_candidate_proposal_v4",
     "resolve_open_producer_draft",
+    "route_current_search_outcomes",
+    "route_next_fresh_search",
 ]

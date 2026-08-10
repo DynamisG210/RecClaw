@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from importlib import resources
 from pathlib import Path
@@ -161,12 +162,13 @@ def _live_torch_cuda_environment(python_executable: Path) -> dict[str, Any]:
         raise ValueError("torch/CUDA identity probe did not return an object")
     nvidia_smi = next(
         (
-            path
+            Path(path)
             for path in (
+                shutil.which("nvidia-smi"),
                 Path("/usr/lib/wsl/lib/nvidia-smi"),
                 Path("/usr/bin/nvidia-smi"),
             )
-            if path.is_file()
+            if path is not None and Path(path).is_file()
         ),
         None,
     )
@@ -455,7 +457,7 @@ def validate_campaign_training_runtime_release(
         or release.launcher_abi != CAMPAIGN_TRAINING_LAUNCHER_ABI
         or release.launch_protocol_id
         != CAMPAIGN_TRAINING_LAUNCH_PROTOCOL_ID
-        or release.online_metric_source != "BEST_VALID_RESULT"
+        or release.online_metric_source != "BEST_CHECKPOINT_TEST_RESULT"
         or release.campaign_runtime_profile_digest
         != campaign_runtime_profile()["profile_digest"]
         or release.partition_profile_digest

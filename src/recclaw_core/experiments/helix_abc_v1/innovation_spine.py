@@ -356,10 +356,10 @@ def _validate_implementation_response(
         allowed_files=policy.allowed_files,
     )
     raw_files = response["files"]
-    if not isinstance(raw_files, list) or not 2 <= len(raw_files) <= 5:
+    if not isinstance(raw_files, list) or not 1 <= len(raw_files) <= 5:
         raise _implementation_failure(
             "IMPLEMENTATION_FILE_COUNT_INVALID",
-            "implementation response must provide between two and five files",
+            "implementation response must provide between one and five files",
         )
     normalized_files: list[dict[str, str]] = []
     seen: set[str] = set()

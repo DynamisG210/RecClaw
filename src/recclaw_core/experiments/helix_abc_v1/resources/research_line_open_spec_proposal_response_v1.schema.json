@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RecClaw Fresh OpenSpec Proposal Response V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "proposals"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": ["recclaw.research-line.fresh-open-spec-proposal-response.v1"]
+    },
+    "proposals": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "producer_role", "idea_mode", "research_question",
+          "observed_failure_mode", "hypothesis", "closest_parent",
+          "minimal_testable_wedge", "causal_chain", "mechanism_change",
+          "competing_explanation", "discriminative_predictions",
+          "mechanism_off_definition", "matched_control_requirement",
+          "implementation_requirements", "execution_contract",
+          "expected_evidence", "falsifier", "compatibility_requirements",
+          "resource_hypothesis", "realization_mode",
+          "high_change_justification",
+          "current_profile_expressibility_claim", "resolution_facts"
+        ],
+        "properties": {
+          "producer_role": {
+            "type": "string",
+            "enum": [
+              "mechanism_composer", "lineage_refiner",
+              "falsification_designer", "frontier_architect"
+            ]
+          },
+          "idea_mode": {
+            "type": "string",
+            "enum": ["DIAGNOSIS_DRIVEN", "FRONTIER_HYPOTHESIS"]
+          },
+          "research_question": {"type": "string", "minLength": 1},
+          "observed_failure_mode": {
+            "anyOf": [{"type": "null"}, {"type": "string", "minLength": 1}]
+          },
+          "hypothesis": {"type": "string", "minLength": 1},
+          "closest_parent": {"type": "string", "minLength": 1},
+          "minimal_testable_wedge": {"type": "string", "minLength": 1},
+          "causal_chain": {
+            "type": "array", "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "mechanism_change": {"type": "string", "minLength": 1},
+          "competing_explanation": {"type": "string", "minLength": 1},
+          "discriminative_predictions": {
+            "type": "array", "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "mechanism_off_definition": {"type": "string", "minLength": 1},
+          "matched_control_requirement": {"type": "string", "minLength": 1},
+          "implementation_requirements": {
+            "type": "array", "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "execution_contract": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["capability_family", "model", "base_model_config", "config_json"],
+            "properties": {
+              "capability_family": {"type": "string", "minLength": 1},
+              "model": {"type": "string", "enum": ["FreshCandidateModel"]},
+              "base_model_config": {
+                "description": "Bare RecBole model-config identifier such as LightGCN; do not include a path or YAML suffix.",
+                "type": "string",
+                "minLength": 1
+              },
+              "config_json": {
+                "description": "A JSON-encoded object containing only mechanism-required RecBole settings.",
+                "type": "string",
+                "minLength": 2
+              }
+            }
+          },
+          "expected_evidence": {
+            "description": "Prospective evidence and claim-ceiling checks only; never report an observed outcome.",
+            "type": "array", "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "falsifier": {"type": "string", "minLength": 1},
+          "compatibility_requirements": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "string", "minLength": 1,
+              "enum": [
+                "frozen dataset and split", "full-sort NDCG@10",
+                "general collaborative filtering", "offline top-n evaluation",
+                "pairwise input", "train-only fitting"
+              ]
+            }
+          },
+          "resource_hypothesis": {"type": "string", "minLength": 1},
+          "realization_mode": {
+            "type": "string", "enum": ["PARENT_PRESERVING", "NON_NESTED"]
+          },
+          "high_change_justification": {
+            "description": "Explain the high-change boundary and the claim ceiling for this proposal.",
+            "type": "string", "minLength": 1
+          },
+          "current_profile_expressibility_claim": {
+            "type": "string", "enum": ["NOT_EXPRESSIBLE"]
+          },
+          "resolution_facts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requested_current_semantics_digest", "capability_diff",
+              "high_change_dimensions", "required_dependencies", "required_budget"
+            ],
+            "properties": {
+              "requested_current_semantics_digest": {"type": "null"},
+              "capability_diff": {
+                "type": "array", "minItems": 1,
+                "items": {"type": "string", "minLength": 1}
+              },
+              "high_change_dimensions": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "COMPOSITE_MECHANISM", "CORE_OBJECTIVE", "CORE_RELATION",
+                    "CORE_REPRESENTATION", "CUSTOM_EXECUTABLE_CAPABILITY",
+                    "INTERACTION_STRUCTURE", "MODEL_STRUCTURE",
+                    "PROPAGATION_MECHANISM", "TRAINING_PROCEDURE"
+                  ]
+                }
+              },
+              "required_dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string", "minLength": 1,
+                  "enum": [
+                    "numpy", "python-stdlib", "pytorch", "recbole-runtime",
+                    "scipy", "torch"
+                  ]
+                }
+              },
+              "required_budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "implementation_token_ceiling", "qualification_gpu_minutes",
+                  "qualification_wall_minutes"
+                ],
+                "properties": {
+                  "implementation_token_ceiling": {"type": "integer", "minimum": 1},
+                  "qualification_gpu_minutes": {"type": "integer", "minimum": 1},
+                  "qualification_wall_minutes": {"type": "integer", "minimum": 1}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

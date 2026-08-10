@@ -10,11 +10,13 @@ from __future__ import annotations
 import hashlib
 import importlib
 import math
+import multiprocessing as mp
 import os
 import sys
 import time
+import traceback
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 
@@ -32,6 +34,9 @@ from .vnext_contracts import (
 
 class MechanicalRecBoleAdapterError(RuntimeError):
     """Raised when the qualifier itself receives an invalid invocation."""
+
+
+DISPOSABLE_QUALIFICATION_TIMEOUT_SECONDS = 900
 
 
 class _QualificationStageFailure(RuntimeError):
@@ -240,6 +245,16 @@ def _validate_package_bindings(
             "candidate package runtime differs from the qualifier runtime",
         )
     source_path, class_name = _candidate_source_path(package, candidate_root)
+    execution_contract = research_spec.execution_contract
+    if execution_contract is not None and class_name != str(
+        execution_contract["model"]
+    ):
+        raise _stage_failure(
+            QualificationStageV1.STATIC_VALIDATION,
+            QualificationFailureClassV1.INTERFACE,
+            "ENTRYPOINT_MODEL_MISMATCH",
+            "entrypoint class is not the model selected by execution_contract",
+        )
     return {
         "candidate_package_digest": package.digest,
         "entrypoint_class": class_name,
@@ -331,7 +346,21 @@ def _candidate_package_import_root(candidate_root: Path):
     }
     for name in tuple(previous_modules):
         sys.modules.pop(name, None)
-    sys.path.insert(0, str(candidate_root.resolve()))
+    resolved_root = candidate_root.resolve()
+    filtered_path = []
+    for entry in previous_path:
+        search_root = Path.cwd() if not entry else Path(entry)
+        try:
+            shadows_candidate = (
+                search_root.resolve() != resolved_root
+                and (search_root.resolve() / "recclaw_ext").is_dir()
+            )
+        except OSError:
+            shadows_candidate = False
+        if not shadows_candidate:
+            filtered_path.append(entry)
+    sys.path[:] = [str(resolved_root), *filtered_path]
+    importlib.invalidate_caches()
     try:
         yield
     finally:
@@ -340,6 +369,7 @@ def _candidate_package_import_root(candidate_root: Path):
                 sys.modules.pop(name, None)
         sys.modules.update(previous_modules)
         sys.path[:] = previous_path
+        importlib.invalidate_caches()
 
 
 def _load_candidate_class(
@@ -391,6 +421,7 @@ def _numpy_compatibility_aliases() -> None:
 
 def _construct_runtime(
     package: CandidatePackageV1,
+    research_spec: OpenResearchSpecV1,
     candidate_root: Path,
     fixture: RecBoleQualificationFixture,
 ) -> dict[str, Any]:
@@ -402,12 +433,34 @@ def _construct_runtime(
     from recbole.model.abstract_recommender import GeneralRecommender
     from recbole.utils import ModelType, init_seed
 
+    execution_contract = research_spec.execution_contract
+    base_model_config = fixture.base_model_config
+    contract_config: Mapping[str, Any] = {}
+    if execution_contract is not None:
+        required_contract_fields = {
+            "capability_family",
+            "model",
+            "base_model_config",
+            "config",
+        }
+        if set(execution_contract) != required_contract_fields:
+            raise _stage_failure(
+                QualificationStageV1.CONSTRUCTION,
+                QualificationFailureClassV1.INTERFACE,
+                "EXECUTION_CONTRACT_INVALID",
+                "execution_contract does not contain the required execution fields",
+            )
+        base_model_config = str(execution_contract["base_model_config"])
+        contract_config = dict(execution_contract["config"])
+        if fixture.base_model_config != base_model_config:
+            fixture = replace(fixture, base_model_config=base_model_config)
+
     config_files = (
         fixture.recbole_root
         / "recbole"
         / "properties"
         / "model"
-        / f"{fixture.base_model_config}.yaml",
+        / f"{base_model_config}.yaml",
         fixture.project_root / "configs" / "task_ml1m.yaml",
         fixture.project_root / "configs" / "lightgcn_metrics.yaml",
     )
@@ -419,10 +472,11 @@ def _construct_runtime(
             "a frozen RecBole configuration source is missing",
         )
     config = Config(
-        model=fixture.base_model_config,
+        model=base_model_config,
         dataset=fixture.dataset,
         config_file_list=[str(path) for path in config_files],
         config_dict={
+            **contract_config,
             "benchmark_filename": ["train", "valid", "test"],
             "checkpoint_dir": str(fixture.checkpoint_dir),
             "data_path": str(fixture.data_path),
@@ -469,7 +523,12 @@ def _construct_runtime(
     }
 
 
-def _validate_api_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
+def _validate_api_contract(
+    runtime: Mapping[str, Any],
+    *,
+    stage: QualificationStageV1 = QualificationStageV1.API_CONTRACT,
+    require_backward: bool = False,
+) -> dict[str, Any]:
     import torch
 
     from recbole.data.interaction import Interaction
@@ -480,14 +539,14 @@ def _validate_api_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
     train_data = runtime["train_data"]
     if model.type is not ModelType.GENERAL:
         raise _stage_failure(
-            QualificationStageV1.API_CONTRACT,
+            stage,
             QualificationFailureClassV1.INTERFACE,
             "MODEL_TYPE_MISMATCH",
             "candidate model type is not ModelType.GENERAL",
         )
     if model.input_type is not InputType.PAIRWISE:
         raise _stage_failure(
-            QualificationStageV1.API_CONTRACT,
+            stage,
             QualificationFailureClassV1.INTERFACE,
             "INPUT_TYPE_MISMATCH",
             "candidate input_type is not InputType.PAIRWISE",
@@ -498,7 +557,7 @@ def _validate_api_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
     missing = tuple(field for field in required_fields if field not in available_fields)
     if missing:
         raise _stage_failure(
-            QualificationStageV1.API_CONTRACT,
+            stage,
             QualificationFailureClassV1.INTERFACE,
             "INTERACTION_FIELDS_MISSING",
             "pairwise interaction is missing required model input fields",
@@ -506,7 +565,7 @@ def _validate_api_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
     for method_name in ("calculate_loss", "predict", "full_sort_predict"):
         if not callable(getattr(model, method_name, None)):
             raise _stage_failure(
-                QualificationStageV1.API_CONTRACT,
+                stage,
                 QualificationFailureClassV1.INTERFACE,
                 "REQUIRED_METHOD_MISSING",
                 f"candidate lacks required method {method_name}",
@@ -522,11 +581,47 @@ def _validate_api_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
         for item in losses
     ):
         raise _stage_failure(
-            QualificationStageV1.API_CONTRACT,
+            stage,
             QualificationFailureClassV1.INTERFACE,
             "LOSS_CONTRACT_FAILED",
             "calculate_loss must return finite scalar tensor values",
         )
+
+    backward_parameter_count = 0
+    if require_backward:
+        model.zero_grad(set_to_none=True)
+        total_loss = torch.stack([item.reshape(()) for item in losses]).sum()
+        if not total_loss.requires_grad:
+            raise _stage_failure(
+                stage,
+                QualificationFailureClassV1.IMPLEMENTATION,
+                "LOSS_BACKPROP_FAILED",
+                "calculate_loss did not produce a differentiable scalar",
+            )
+        try:
+            total_loss.backward()
+        except Exception as error:  # noqa: BLE001 - typed below.
+            raise _stage_failure(
+                stage,
+                QualificationFailureClassV1.IMPLEMENTATION,
+                "LOSS_BACKPROP_FAILED",
+                "calculate_loss could not backpropagate",
+            ) from error
+        gradients = tuple(
+            parameter.grad
+            for parameter in model.parameters()
+            if parameter.requires_grad and parameter.grad is not None
+        )
+        if not gradients or any(
+            not torch.isfinite(gradient).all().item() for gradient in gradients
+        ):
+            raise _stage_failure(
+                stage,
+                QualificationFailureClassV1.IMPLEMENTATION,
+                "LOSS_BACKPROP_FAILED",
+                "calculate_loss produced no finite parameter gradients",
+            )
+        backward_parameter_count = len(gradients)
 
     model.eval()
     batch_size = int(interaction[model.USER_ID].shape[0])
@@ -542,7 +637,7 @@ def _validate_api_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
         or not torch.isfinite(prediction).all().item()
     ):
         raise _stage_failure(
-            QualificationStageV1.API_CONTRACT,
+            stage,
             QualificationFailureClassV1.INTERFACE,
             "PREDICT_CONTRACT_FAILED",
             "predict output does not match the interaction batch",
@@ -554,19 +649,30 @@ def _validate_api_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
         or not torch.isfinite(full_sort).all().item()
     ):
         raise _stage_failure(
-            QualificationStageV1.API_CONTRACT,
+            stage,
             QualificationFailureClassV1.INTERFACE,
             "FULL_SORT_CONTRACT_FAILED",
             "full_sort_predict output does not cover every item",
         )
     return {
         "calculate_loss_scalars": len(losses),
+        "backward_parameter_count": backward_parameter_count,
         "input_fields": tuple(sorted(required_fields)),
         "input_type": model.input_type.name.lower(),
         "model_type": model.type.name.lower(),
         "predict_values": prediction.numel(),
         "full_sort_values": full_sort.numel(),
     }
+
+
+def _validate_general_recommender_unit(runtime: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the family-neutral GeneralRecommender behavioral contract."""
+
+    return _validate_api_contract(
+        runtime,
+        stage=QualificationStageV1.UNIT,
+        require_backward=True,
+    )
 
 
 def _one_epoch_smoke(
@@ -730,6 +836,78 @@ def _receipt(
     )
 
 
+def _disposable_process_failure(
+    package: CandidatePackageV1,
+    *,
+    stage: QualificationStageV1,
+    reason_code: str,
+    message: str,
+    process_observation: Mapping[str, Any],
+) -> MechanicalQualificationRun:
+    failure = _stage_failure(
+        stage,
+        QualificationFailureClassV1.RESOURCE,
+        reason_code,
+        message,
+    )
+    receipt, detail = _receipt(
+        package,
+        terminal_stage=stage,
+        failure=failure,
+    )
+    return MechanicalQualificationRun(
+        receipt=receipt,
+        failure_detail=detail,
+        smoke_executions=0,
+        stage_observations=canonical_value(
+            {"DISPOSABLE_PROCESS": dict(process_observation)}
+        ),
+    )
+
+
+def _qualification_process_worker(
+    connection: Any,
+    package: CandidatePackageV1,
+    research_spec: OpenResearchSpecV1,
+    candidate_root: Path,
+    fixture: RecBoleQualificationFixture,
+    unit_check: Callable[[Any, Any, Any], None] | None,
+) -> None:
+    """Run the existing qualifier behind a process boundary.
+
+    The worker deliberately calls the legacy ``qualify`` implementation.  That
+    keeps Q0R/Q1 callers byte- and behavior-compatible while ensuring any
+    native/CUDA failure is contained to this short-lived process.
+    """
+
+    try:
+        result = MechanicalRecBoleAdapterV1().qualify(
+            package,
+            research_spec=research_spec,
+            candidate_root=candidate_root,
+            fixture=fixture,
+            unit_check=unit_check,
+        )
+    except BaseException as error:  # pragma: no cover - crash path is defensive.
+        payload = {
+            "kind": "WORKER_EXCEPTION",
+            "error_type": type(error).__name__,
+            "message": str(error)[:2000],
+            "traceback": traceback.format_exc()[-4000:],
+        }
+        try:
+            connection.send(payload)
+        except Exception:
+            pass
+    else:
+        try:
+            connection.send({"kind": "RESULT", "result": result})
+        except Exception:
+            pass
+    finally:
+        connection.close()
+
+
 class MechanicalRecBoleAdapterV1:
     """Run the five RC0 qualification stages on one candidate package."""
 
@@ -740,7 +918,8 @@ class MechanicalRecBoleAdapterV1:
         research_spec: OpenResearchSpecV1,
         candidate_root: Path,
         fixture: RecBoleQualificationFixture,
-        unit_check: Callable[[Any, Any, Any], None],
+        unit_check: Callable[[Any, Any, Any], None] | None = None,
+        allow_optional_unit_check: bool = False,
     ) -> MechanicalQualificationRun:
         if not isinstance(package, CandidatePackageV1):
             raise MechanicalRecBoleAdapterError(
@@ -750,8 +929,12 @@ class MechanicalRecBoleAdapterV1:
             raise MechanicalRecBoleAdapterError(
                 "research_spec must be OpenResearchSpecV1"
             )
-        if not callable(unit_check):
+        if unit_check is not None and not callable(unit_check):
             raise MechanicalRecBoleAdapterError("unit_check must be callable")
+        if not isinstance(allow_optional_unit_check, bool):
+            raise MechanicalRecBoleAdapterError(
+                "allow_optional_unit_check must be a boolean"
+            )
         root = candidate_root.resolve()
         observations: dict[str, Any] = {}
         failure: _QualificationStageFailure | None = None
@@ -777,7 +960,7 @@ class MechanicalRecBoleAdapterV1:
             )
 
             stage = QualificationStageV1.CONSTRUCTION
-            runtime = _construct_runtime(package, root, fixture)
+            runtime = _construct_runtime(package, research_spec, root, fixture)
             observations[stage.value] = {
                 "config_model": str(runtime["config"]["model"]),
                 "dataset_class": type(runtime["dataset"]).__name__,
@@ -799,8 +982,41 @@ class MechanicalRecBoleAdapterV1:
             )
 
             stage = QualificationStageV1.UNIT
-            unit_check(runtime["model"], runtime["config"], runtime["dataset"])
-            observations[stage.value] = {"shared_unit_check": "PASS"}
+            unit_observation = _validate_general_recommender_unit(runtime)
+            optional_unit_check: dict[str, Any] = {"status": "NOT_PROVIDED"}
+            if unit_check is not None:
+                if allow_optional_unit_check:
+                    try:
+                        unit_check(
+                            runtime["model"],
+                            runtime["config"],
+                            runtime["dataset"],
+                        )
+                    except Exception as error:  # noqa: BLE001 - optional evidence only.
+                        optional_unit_check = {
+                            "error_type": type(error).__name__,
+                            "message": str(error)[:2000],
+                            "status": "FAIL_OPTIONAL",
+                        }
+                    else:
+                        optional_unit_check = {"status": "PASS"}
+                else:
+                    unit_check(
+                        runtime["model"],
+                        runtime["config"],
+                        runtime["dataset"],
+                    )
+            observations[stage.value] = {
+                **unit_observation,
+                "optional_unit_check": optional_unit_check,
+                "shared_unit_check": (
+                    "PASS"
+                    if optional_unit_check["status"] == "PASS"
+                    else "NOT_PROVIDED"
+                    if optional_unit_check["status"] == "NOT_PROVIDED"
+                    else "FAIL_OPTIONAL"
+                ),
+            }
             _assert_candidate_tree_unchanged(
                 root,
                 expected_manifest=initial_manifest,
@@ -842,8 +1058,164 @@ class MechanicalRecBoleAdapterV1:
             smoke_executions=smoke_executions,
         )
 
+    def qualify_disposable(
+        self,
+        package: CandidatePackageV1,
+        *,
+        research_spec: OpenResearchSpecV1,
+        candidate_root: Path,
+        fixture: RecBoleQualificationFixture,
+        unit_check: Callable[[Any, Any, Any], None] | None = None,
+        timeout_seconds: int = DISPOSABLE_QUALIFICATION_TIMEOUT_SECONDS,
+    ) -> MechanicalQualificationRun:
+        """Qualify one package in a disposable child process.
+
+        ``qualify`` remains the compatibility path used by the existing Q0R/Q1
+        consumers.  Research Innovation should call this method so a native
+        failure cannot poison the parent campaign process.  The returned
+        receipt has the same RC0 contract and is enriched only with a local
+        process-isolation observation.
+        """
+
+        if not isinstance(package, CandidatePackageV1):
+            raise MechanicalRecBoleAdapterError("package must be CandidatePackageV1")
+        if not isinstance(research_spec, OpenResearchSpecV1):
+            raise MechanicalRecBoleAdapterError(
+                "research_spec must be OpenResearchSpecV1"
+            )
+        if unit_check is not None and not callable(unit_check):
+            raise MechanicalRecBoleAdapterError("unit_check must be callable")
+        if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool):
+            raise MechanicalRecBoleAdapterError("timeout_seconds must be an integer")
+        if timeout_seconds <= 0:
+            raise MechanicalRecBoleAdapterError("timeout_seconds must be positive")
+
+        root = candidate_root.resolve()
+        start_method = "spawn"
+        try:
+            context = mp.get_context(start_method)
+        except ValueError as error:
+            return _disposable_process_failure(
+                package,
+                stage=QualificationStageV1.CONSTRUCTION,
+                reason_code="DISPOSABLE_SPAWN_UNAVAILABLE",
+                message=str(error)[:2000],
+                process_observation={
+                    "process_isolated": False,
+                    "start_method": start_method,
+                    "status": "SPAWN_UNAVAILABLE",
+                },
+            )
+        parent_connection, child_connection = context.Pipe(duplex=False)
+        process = context.Process(
+            target=_qualification_process_worker,
+            args=(
+                child_connection,
+                package,
+                research_spec,
+                root,
+                fixture,
+                unit_check,
+            ),
+        )
+        started_ns = time.monotonic_ns()
+        try:
+            process.start()
+        except Exception as error:
+            child_connection.close()
+            parent_connection.close()
+            return _disposable_process_failure(
+                package,
+                stage=QualificationStageV1.CONSTRUCTION,
+                reason_code="DISPOSABLE_PROCESS_START_FAILED",
+                message=str(error)[:2000],
+                process_observation={
+                    "process_isolated": False,
+                    "start_method": start_method,
+                    "status": "START_FAILED",
+                },
+            )
+        child_connection.close()
+
+        payload: Mapping[str, Any] | None = None
+        deadline = time.monotonic() + float(timeout_seconds)
+        try:
+            while time.monotonic() < deadline:
+                remaining = max(0.01, min(0.25, deadline - time.monotonic()))
+                if parent_connection.poll(remaining):
+                    received = parent_connection.recv()
+                    if isinstance(received, Mapping):
+                        payload = received
+                    break
+                if not process.is_alive():
+                    break
+        except (EOFError, OSError):
+            payload = None
+        finally:
+            parent_connection.close()
+
+        timed_out = payload is None and process.is_alive()
+        if timed_out:
+            process.terminate()
+        process.join(timeout=5)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=5)
+        elapsed_ms = max(1, (time.monotonic_ns() - started_ns) // 1_000_000)
+        process_observation = {
+            "elapsed_wall_time_ms": elapsed_ms,
+            "exit_code": process.exitcode,
+            "pid": process.pid,
+            "process_isolated": True,
+            "start_method": start_method,
+            "status": (
+                "TIMEOUT"
+                if timed_out
+                else "RESULT"
+                if payload is not None and payload.get("kind") == "RESULT"
+                else "WORKER_FAILURE"
+            ),
+        }
+        if payload is not None and payload.get("kind") == "WORKER_EXCEPTION":
+            process_observation.update(
+                {
+                    "worker_error_message": str(payload.get("message", ""))[:2000],
+                    "worker_error_type": str(payload.get("error_type", "WorkerError")),
+                }
+            )
+        if (
+            payload is not None
+            and payload.get("kind") == "RESULT"
+            and isinstance(payload.get("result"), MechanicalQualificationRun)
+        ):
+            result = payload["result"]
+            observations = dict(result.stage_observations)
+            observations["DISPOSABLE_PROCESS"] = process_observation
+            return replace(
+                result,
+                stage_observations=canonical_value(observations),
+            )
+
+        worker_error = (
+            payload.get("message", "")
+            if payload is not None
+            else "disposable qualification process exited without a receipt"
+        )
+        return _disposable_process_failure(
+            package,
+            stage=QualificationStageV1.CONSTRUCTION,
+            reason_code=(
+                "DISPOSABLE_PROCESS_TIMEOUT"
+                if timed_out
+                else "DISPOSABLE_PROCESS_FAILED"
+            ),
+            message=str(worker_error)[:2000],
+            process_observation=process_observation,
+        )
+
 
 __all__ = [
+    "DISPOSABLE_QUALIFICATION_TIMEOUT_SECONDS",
     "MechanicalQualificationRun",
     "MechanicalRecBoleAdapterError",
     "MechanicalRecBoleAdapterV1",

@@ -15,6 +15,7 @@ from recclaw_core.experiments.helix_abc_v1.resource_scheduling import (
     ENGINEERING_WATCHDOG_SECONDS,
     FIXED_EVAL_BATCH_INDICES,
     FIXED_TRAIN_BATCH_INDICES,
+    MAX_WORKER_CEILING_SECONDS,
     PROBE_EPOCHS,
     admit_resource_only_evidence,
     build_fixed_batch_prefix_contract,
@@ -247,16 +248,48 @@ def test_q0r_training_lower_bound_defers_arm_without_eval_signal() -> None:
 
     deferred = {row["arm"]: row for row in decision["deferred_arms"]}
     assert deferred["frontier_candidate"]["reason"] == (
-        "TRAINING_LOWER_BOUND_EXCEEDS_CAMPAIGN_BUDGET"
+        "TRAINING_LOWER_BOUND_EXCEEDS_WORKER_CEILING"
     )
     assert deferred["frontier_candidate"]["resource_disposition"] == (
-        "RESOURCE_DEFERRED"
+        "RESOURCE_INFEASIBLE"
     )
     assert deferred["frontier_candidate"]["mechanism_effect_update_allowed"] is False
     assert "frontier_candidate" not in {row["arm"] for row in decision["schedule"]}
     assert decision["predictions"]["frontier_candidate"]["estimate_scope"] == (
         "TRAINING_ONLY_RESOURCE_LOWER_BOUND"
     )
+
+
+def test_q0r_training_lower_bound_defers_only_against_remaining_campaign_budget() -> None:
+    arm = "campaign-budget-only"
+    features = {
+        arm: {
+            "bottleneck_feature_count": 0,
+            "dense_compute": False,
+            "full_sort_path": True,
+            "graph_propagation": False,
+            "routing_path": False,
+            "sparse_compute": False,
+        }
+    }
+    probe = _probe(batch_ms=2, peak_mib=100)
+
+    decision = predict_resources(
+        arm_features=features,
+        probe_runs={arm: probe},
+        total_budget_seconds=20,
+        arm_order=(arm,),
+    )
+
+    prediction = decision["predictions"][arm]
+    deferred = {row["arm"]: row for row in decision["deferred_arms"]}
+    assert prediction["training_only_lower_bound_seconds"] == pytest.approx(20.5)
+    assert prediction["training_only_lower_bound_seconds"] <= MAX_WORKER_CEILING_SECONDS
+    assert decision["full_run_budget_after_probes_seconds"] == 19
+    assert deferred[arm]["reason"] == "TRAINING_LOWER_BOUND_EXCEEDS_CAMPAIGN_BUDGET"
+    assert deferred[arm]["resource_disposition"] == "RESOURCE_DEFERRED"
+    assert deferred[arm]["mechanism_effect_update_allowed"] is False
+    assert decision["schedule"] == []
 
 
 def test_q0r_fixed_batch_contract_is_frozen_origin_blind() -> None:

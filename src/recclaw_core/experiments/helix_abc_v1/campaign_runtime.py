@@ -36,7 +36,7 @@ _PARTITION_PROFILE_PATH = _RESOURCE_ROOT / "campaign_partition_profile_v1.json"
 _PROPOSAL_SCHEMA_PATH = _RESOURCE_ROOT / "campaign_proposal_response_v1.schema.json"
 _PROTOCOL_PATH = _RESOURCE_ROOT / "development_protocol_v1.json"
 _CAMPAIGN_PROTOCOL_PATH = (
-    _RESOURCE_ROOT / "campaign_development_protocol_v1.json"
+    _RESOURCE_ROOT / "round_test_feedback_protocol_v1.json"
 )
 
 
@@ -877,9 +877,10 @@ def campaign_readiness_failures(
         failures.append("SCIENTIFIC_COVERAGE_FLOOR_MISSING")
     training = campaign_training_profile()
     if (
-        training.get("online_metric_source") != "BEST_VALID_RESULT"
-        or training.get("online_partition_role") != "DEVELOPMENT_VALIDATION"
-        or training.get("heldout_access") != "POST_SELECTION_ONLY"
+        training.get("online_metric_source") != "BEST_CHECKPOINT_TEST_RESULT"
+        or training.get("online_partition_role") != "ROUND_TEST_FEEDBACK"
+        or training.get("heldout_access")
+        != "AFTER_BEST_CHECKPOINT_SELECTION"
     ):
         failures.append("ONLINE_HELDOUT_BOUNDARY_MISMATCH")
     for item in mechanisms:

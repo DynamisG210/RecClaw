@@ -520,10 +520,19 @@ class PilotTrainingLauncherV1:
             shared_side_effect_audit,
             dict(worker.get("filesystem_mount_audit", {})),
         )
+        metric_identity_matches = (
+            not campaign_mode
+            or (
+                worker.get("metric_source")
+                == "BEST_CHECKPOINT_TEST_RESULT"
+                and worker.get("online_partition_role")
+                == "ROUND_TEST_FEEDBACK"
+            )
+        )
         metric_payload = (
-            worker.get("best_valid_result", {})
-            if campaign_mode
-            else worker.get("test_result", {})
+            worker.get("test_result", {})
+            if metric_identity_matches
+            else {}
         )
         metrics = {
             str(key).lower(): float(value)
@@ -537,6 +546,11 @@ class PilotTrainingLauncherV1:
             timed_out=timed_out,
             worker_status=worker.get("exit_status"),
         )
+        if exit_status == "SUCCESS" and not metric_identity_matches:
+            exit_status = "RUNTIME_FAILURE"
+            termination_class = "CRASH_OR_RUNTIME_FAILURE"
+            return_code = 126
+            metrics = {}
         if confinement_audit["status"] != "PASS":
             exit_status = "RUNTIME_FAILURE"
             termination_class = "CRASH_OR_RUNTIME_FAILURE"

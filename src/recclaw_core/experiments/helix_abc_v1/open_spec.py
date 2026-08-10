@@ -13,9 +13,11 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from recclaw_core.mechanism_space import compile_program
 from recclaw_core.mechanism_space.canonical import deep_thaw
 
 from .campaign_runtime import (
+    CampaignRuntimeError,
     bl_icf_executable_profile_v2,
     executable_mechanisms,
     execution_recipe_for_program,
@@ -56,7 +58,7 @@ _HIGH_CHANGE_DIMENSION_SET = frozenset(HIGH_CHANGE_DIMENSIONS)
 _PROTOCOL_PATH = (
     Path(__file__).resolve().parent
     / "resources"
-    / "campaign_development_protocol_v1.json"
+    / "round_test_feedback_protocol_v1.json"
 )
 _FROZEN_PROTOCOL_REQUIREMENTS = (
     "frozen dataset and split",
@@ -216,9 +218,10 @@ def _normalize_bindings(bindings: Mapping[str, Any]) -> dict[str, Any]:
         "implementation_requirements",
         "compatibility_requirements",
     }
-    if set(bindings) != expected:
+    optional = {"current_capability_semantics"}
+    if not expected.issubset(bindings) or set(bindings) - expected - optional:
         raise OpenSpecProjectionError(
-            "bindings must contain exactly the frozen OpenSpec binding fields"
+            "bindings must contain the OpenSpec identity fields and only supported profile facts"
         )
     normalized = {
         "protocol_ref": _nonempty(
@@ -251,6 +254,13 @@ def _normalize_bindings(bindings: Mapping[str, Any]) -> dict[str, Any]:
             allow_empty=False,
         ),
     }
+    if "current_capability_semantics" in bindings:
+        normalized["current_capability_semantics"] = tuple(
+            sorted(
+                validate_sha256(value, field_name="current_capability_semantics")
+                for value in bindings["current_capability_semantics"]
+            )
+        )
     return canonical_value(normalized)
 
 
@@ -374,11 +384,24 @@ def project_candidate_proposal_v4(
             "existing Producer projection requires CandidateProposalV4"
         )
     normalized_bindings = _normalize_bindings(bindings)
-    recipe = execution_recipe_for_program(deep_thaw(proposal.mechanism_program))
-    if recipe["mechanism_id"] != proposal.mechanism_id:
+    program = deep_thaw(proposal.mechanism_program)
+    report = compile_program(program)
+    if not report.is_valid or report.mechanism_semantics_digest is None:
+        raise OpenSpecProjectionError("proposal mechanism program is not valid BL-ICF")
+    try:
+        recipe = execution_recipe_for_program(program)
+    except CampaignRuntimeError:
+        recipe = None
+    if recipe is not None and recipe["mechanism_id"] != proposal.mechanism_id:
         raise OpenSpecProjectionError(
             "proposal mechanism identity does not match the frozen profile"
         )
+    active_semantics = normalized_bindings.get("current_capability_semantics")
+    exact_profile_match = (
+        report.mechanism_semantics_digest in active_semantics
+        if active_semantics is not None
+        else recipe is not None
+    )
     falsifier = (
         proposal.discriminative_plan.falsifier
         if proposal.discriminative_plan is not None
@@ -412,18 +435,29 @@ def project_candidate_proposal_v4(
         high_change_justification=(
             "Not claimed: this Producer output is an exact frozen-profile "
             f"mechanism ({proposal.mechanism_id})."
+            if exact_profile_match
+            else (
+                "The valid BL-ICF program is outside the active executable "
+                "profile and requires a candidate-local implementation."
+            )
         ),
         current_profile_expressibility_claim=(
             CurrentProfileExpressibilityV1.EXPRESSIBLE
+            if exact_profile_match
+            else CurrentProfileExpressibilityV1.NOT_EXPRESSIBLE
         ),
     )
     facts = _normalize_resolution_facts(
         {
-            "requested_current_semantics_digest": recipe[
-                "mechanism_semantics_digest"
-            ],
-            "capability_diff": (),
-            "high_change_dimensions": (),
+            "requested_current_semantics_digest": report.mechanism_semantics_digest,
+            "capability_diff": (
+                ()
+                if exact_profile_match
+                else ("candidate-local custom executable capability",)
+            ),
+            "high_change_dimensions": (
+                () if exact_profile_match else ("CUSTOM_EXECUTABLE_CAPABILITY",)
+            ),
             "required_dependencies": tuple(required_dependencies),
             "required_budget": dict(required_budget or {}),
         }
@@ -466,8 +500,14 @@ def project_open_producer_draft(
         "mechanism_off_definition",
         "resource_hypothesis",
         "realization_mode",
+        "execution_contract",
     }
-    if set(draft) not in (baseline_fields, baseline_fields | enriched_fields):
+    legacy_enriched_fields = enriched_fields - {"execution_contract"}
+    if set(draft) not in (
+        baseline_fields,
+        baseline_fields | legacy_enriched_fields,
+        baseline_fields | enriched_fields,
+    ):
         raise OpenSpecProjectionError(
             "open Producer draft must contain the baseline fields and either all or "
             "none of the enriched OpenSpec fields"
@@ -503,7 +543,7 @@ def project_open_producer_draft(
             normalized_bindings["compatibility_requirements"]
         )
     enriched: dict[str, Any] = {}
-    if enriched_fields <= set(draft):
+    if legacy_enriched_fields <= set(draft):
         try:
             idea_mode = IdeaModeV1(draft["idea_mode"])
             realization_mode = RealizationModeV1(draft["realization_mode"])
@@ -544,6 +584,7 @@ def project_open_producer_draft(
             "mechanism_off_definition": draft["mechanism_off_definition"],
             "resource_hypothesis": draft["resource_hypothesis"],
             "realization_mode": realization_mode,
+            "execution_contract": draft.get("execution_contract"),
         }
     spec = OpenResearchSpecV1(
         hypothesis=draft["hypothesis"],
