@@ -7,6 +7,34 @@ has been established. It is not merged into `main`.
 
 ## Source and scope
 
+### Follow-up: lossless completed-source presentation
+
+After `63d13b68`, this branch also applies the shared projection-only patch
+`3cc9592b4fe8d400f0613e424af873d6947b0d12a0475a699d18532ee084fe44`
+to `interfaces.py`. Only that diff is imported, not the P6-specific source tree.
+The snapshot maps below describe their historical stages, not this new Git tree.
+
+P6 R10 exposed duplicate parent/completed implementation text that made actual
+input plus output exceed the existing 64000 total-token limit. The projection
+now references exact parent files already present in the same prompt and uses
+standard unified diffs for completed changes when the representation is shorter.
+New files, larger diffs and changed files lacking trailing newlines retain full
+text. This describes already completed code, not instructions to edit it.
+Metrics, costs, source information, configuration and the 6000 output allowance
+remain intact. This is a declared context-presentation change, not evidence of
+identical LLM behavior or a retroactive waiver for earlier paid failures.
+
+The core owner verified byte-exact reconstruction for all four real R9/R10
+role contexts, unchanged other projected fields, and native R10 resume reaching
+four requests without API or training calls. The published Linux source passed
+six public projection and identity checks. Subsequent live owner verification
+found all four Research responses successful at totals 59349, 59103, 59343 and
+60538 tokens, followed by a successful new-candidate implementation response.
+Thus the observed token blockage and usable-decision recovery are closed;
+candidate quality and future search improvement are separate outcomes.
+The 11 earlier failed responses and 728318 actual tokens remain in experiment
+records. Healthy P5 and native B runs were not hot-modified by publication.
+
 ### Follow-up: prepared proposal identity
 
 The first correction at `dee56e9b` was **not end-to-end complete**: actual

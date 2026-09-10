@@ -7,6 +7,7 @@ OpenSpec, capability, Search, Episode, memory, or policy contracts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from difflib import unified_diff
 from enum import Enum
 import math
 import re
@@ -1390,6 +1391,44 @@ def project_provider_context_view(
                 "source_tree_digest": implementation["source_tree_digest"],
                 "source_context_ref": "state.parent_implementation",
             }
+        elif isinstance(implementation, Mapping) and parent_implementation.get("files"):
+            # Show the completed source once: preserve exact changes relative
+            # to the complete parent files already present in this same prompt.
+            projected = canonical_value(implementation)
+            parent_files = {
+                row["path"]: (index, row["content"])
+                for index, row in enumerate(parent_implementation["files"])
+            }
+            for index, row in enumerate(projected.get("files", ())):
+                parent_file = parent_files.get(row["path"])
+                if parent_file is None:
+                    continue
+                parent_index, parent_content = parent_file
+                content = row["content"]
+                if content != parent_content and not (
+                    content.endswith("\n") and parent_content.endswith("\n")
+                ):
+                    continue
+                difference = "".join(unified_diff(
+                    parent_content.splitlines(keepends=True),
+                    content.splitlines(keepends=True),
+                    fromfile="parent/" + row["path"],
+                    tofile="completed/" + row["path"],
+                ))
+                reference = {key: value for key, value in row.items() if key != "content"}
+                reference["source_context_ref"] = f"state.parent_implementation.files[{parent_index}]"
+                if difference:
+                    reference["content_diff"] = difference
+                if len(canonical_json_bytes(reference)) < len(canonical_json_bytes(row)):
+                    projected["files"][index] = reference
+            projected["source_context_semantics"] = (
+                "These are already completed implementation files, not edit instructions. "
+                "Each source_context_ref points to an exact parent file in this same prompt. "
+                "content_diff is its unified diff to the completed file; no diff means identical "
+                "content. Files with content are complete."
+            )
+            if len(canonical_json_bytes(projected)) < len(canonical_json_bytes(implementation)):
+                completed["implementation"] = projected
         completed["semantics"] = (
             "This is the latest completed execution, not necessarily the construction parent. "
             "Compare its actual computation, configuration and native progress with the proposed "
