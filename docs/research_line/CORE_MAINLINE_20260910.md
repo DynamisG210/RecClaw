@@ -7,6 +7,39 @@ has been established. It is not merged into `main`.
 
 ## Source and scope
 
+### Follow-up: prepared proposal identity
+
+The initial publication at `28331b10` matches the snapshot described below.
+A subsequent two-file correction in `runtime.py` and `campaign.py` separates
+the frozen research proposal identity from the adapter-bound implementation
+identity. It restores candidate rerouting, attempt accounting and same-round
+checkpoint progression after parent-label binding; it does not change the
+initial Implementer request, models, prompts or training configuration.
+
+Corrected 491-file experimental source-map SHA256:
+`480574291027a6e4cf8648d4db728575010031589f7a485785ce1ff396713128`.
+Core-owner patch SHA256:
+`9b51336cdb993d42a9cb602ec583eb221a6d024adb0f5567414c42445fc2eef6`.
+The owner's offline replay of the saved replica2 R2 and native inputs changed
+from 3 failed / 5 passed to 8 passed, including remaining-candidate selection,
+preserved prior attempts, idempotent checkpoint persistence and rejection of
+real drift. The first Implementer request was identical; the corrected replay
+visited four distinct proposals instead of repeating one. Private checkpoint
+fixtures are not published. Lightweight artifact-free accounting tests are
+included separately: all three passed with the project's Python 3.10 Linux
+runtime (`python -m pytest -q tests/test_prepared_proposal_identity.py`).
+Windows import still lacks `fcntl`; the server's system Python 3.8 is too old
+for the project's `TypeAlias` import and lacks pytest. Neither was used to
+claim runtime validation.
+
+These are regression checks, not improved recommendation metrics. The original
+fixed-source stability failure and real implementation failures remain evidence.
+Actual replica2 recovery belongs to its experiment owner and must retain the
+source transition and all prior costs; healthy runs are not hot-modified by this
+Git publication. Whole-project integration and final quality remain unverified.
+
+### Initial snapshot
+
 The publication starts from Git commit `abc91650` (the existing
 `feat/research_line_helix_stability` branch). That commit is the publication base,
 not a claim about the exact Git ancestry of the experiment snapshot.

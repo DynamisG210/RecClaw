@@ -96,6 +96,7 @@ from .runtime import (
     _is_implementation_admission_failure,
     _prepared_has_untried_candidate_local_innovation,
     _innovation_resource_failure_scope,
+    _innovation_attempt_proposal_digest,
     _resolve_confirmation,
     _search_ranking_inputs,
     _verification_feedback_task,
@@ -2708,17 +2709,17 @@ class ResearchCampaign:
         ):
             return False
         appended_spec_digests = {
-            str(item["spec_digest"])
+            _innovation_attempt_proposal_digest(item)
             for item in current_attempts[len(prior_attempts) :]
             if isinstance(item, Mapping)
-            and isinstance(item.get("spec_digest"), str)
+            and isinstance(_innovation_attempt_proposal_digest(item), str)
         }
         # The immutable producer slate owns candidate identity. The deferred
         # queue is only a derived execution projection: an older selected-only
         # resource retry could have persisted it empty without consuming the
         # remaining frozen candidates.
         prior_spec_digests = {
-            item.get("spec_digest") for item in prior_attempts
+            _innovation_attempt_proposal_digest(item) for item in prior_attempts
         }
         prior_deferred = tuple(
             pair for pair in existing.resolutions
@@ -2744,8 +2745,8 @@ class ResearchCampaign:
             for pair in prior_deferred
             if pair[0].spec.digest not in appended_spec_digests
         )
-        consumed_outcome_digests = {
-            pair[0].digest
+        consumed_proposal_digests = {
+            pair[0].spec.digest
             for pair in prior_deferred
             if pair[0].spec.digest in appended_spec_digests
         }
@@ -2755,13 +2756,15 @@ class ResearchCampaign:
             # candidates, but it is not a second candidate-universe authority.
             not {sha256_digest(pair) for pair in prepared.deferred_innovation_outcomes}
             .issubset({sha256_digest(pair) for pair in expected_deferred})
-            or current.selected_outcome.digest not in consumed_outcome_digests
+            or current.idea_acquisition.selected_spec_digest not in consumed_proposal_digests
         ):
             return False
-        producer_digests = {item.digest for item in existing.producer_outcomes}
+        producer_digests = {
+            item.spec.digest for item in existing.producer_outcomes if item.spec is not None
+        }
         return (
-            prior.selected_outcome.digest in producer_digests
-            and current.selected_outcome.digest in producer_digests
+            prior.idea_acquisition.selected_spec_digest in producer_digests
+            and current.idea_acquisition.selected_spec_digest in producer_digests
         )
 
     @staticmethod
@@ -2778,7 +2781,7 @@ class ResearchCampaign:
             and len(current) > len(prior)
             and canonical_value(current[:len(prior)]) == canonical_value(prior)
             and all(
-                item.get("spec_digest")
+                _innovation_attempt_proposal_digest(item)
                 == existing.innovation.idea_acquisition.selected_spec_digest
                 for item in current[len(prior):]
             )
@@ -2801,10 +2804,10 @@ class ResearchCampaign:
 
         return len(
             {
-                str(item["spec_digest"])
+                _innovation_attempt_proposal_digest(item)
                 for item in attempts
                 if isinstance(item, Mapping)
-                and item.get("spec_digest") is not None
+                and _innovation_attempt_proposal_digest(item) is not None
                 and isinstance(item.get("candidate_root"), str)
                 and bool(str(item["candidate_root"]).strip())
                 and consumes_candidate_attempt(item)

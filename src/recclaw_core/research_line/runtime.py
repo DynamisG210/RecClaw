@@ -1180,6 +1180,18 @@ class MetaResearchResult:
         return _trace_dataclass(self)
 
 
+def _innovation_attempt_proposal_digest(attempt: Mapping[str, Any]) -> str | None:
+    """Read the frozen selection identity, including already saved attempts.
+
+    An adapter may bind parent labels or executable metadata after acquisition;
+    that effective implementation spec is not a new research opportunity.
+    """
+    acquisition = attempt.get("idea_acquisition")
+    if isinstance(acquisition, Mapping):
+        return acquisition["selected_spec_digest"]
+    return attempt.get("spec_digest")
+
+
 @dataclass(frozen=True, slots=True)
 class InnovationLaneResult:
     selected_outcome: ProducerOutcome
@@ -1257,9 +1269,9 @@ class InnovationLaneResult:
 
         return len(
             {
-                str(item["spec_digest"])
+                _innovation_attempt_proposal_digest(item)
                 for item in self.attempts
-                if item.get("spec_digest") is not None
+                if _innovation_attempt_proposal_digest(item) is not None
                 and isinstance(item.get("candidate_root"), str)
                 and bool(str(item["candidate_root"]).strip())
                 and consumes_candidate_attempt(item)
@@ -1792,10 +1804,10 @@ def _prepared_has_untried_candidate_local_innovation(
     ):
         return False
     consumed_spec_digests = {
-        str(item["spec_digest"])
+        _innovation_attempt_proposal_digest(item)
         for item in innovation.attempts
         if isinstance(item, Mapping)
-        and isinstance(item.get("spec_digest"), str)
+        and isinstance(_innovation_attempt_proposal_digest(item), str)
     }
     return any(
         resolution is not None
@@ -3750,8 +3762,10 @@ def _run_innovation_lane(
     ):
         raise ValueError("SearchSpaceAdapter could not prepare Innovation")
     prepared_innovation = prepared_resolution.binding
-    selected_outcome = prepared_innovation["producer_outcome"]
-    source_proposal = selected_outcome.source_proposal
+    # Keep acquisition/rerouting on the frozen Producer identity. The adapter's
+    # bound parent and executable metadata belong to implementation only.
+    prepared_outcome = prepared_innovation["producer_outcome"]
+    source_proposal = prepared_outcome.source_proposal
     compiler_binding = prepared_innovation.get("compiler_binding")
     semantic_identity_ref = str(prepared_innovation["semantic_identity_ref"])
     semantic_identity_digest = str(
@@ -3940,7 +3954,7 @@ def _run_innovation_lane(
         )
     implementer_policy = _implementation_policy(
         inputs,
-        selected_outcome,
+        prepared_outcome,
         compiled_mechanism=(
             compiled_implementation
             if isinstance(compiled_implementation, Mapping)
@@ -3949,7 +3963,7 @@ def _run_innovation_lane(
         exact_parent_bundle=selected_parent_bundle,
     )
     implementation_outcome = _implementation_outcome(
-        selected_outcome, implementer_policy.execution_contract,
+        prepared_outcome, implementer_policy.execution_contract,
     )
     implementation_spec = implementation_outcome.spec
     prepared_innovation = {
@@ -4944,8 +4958,8 @@ def stage_initial_search_pool(
                 break
             failed_attempts.extend(innovation.attempts)
             for item in innovation.attempts:
-                if item.get("spec_digest") is not None:
-                    attempted_spec_digests.add(str(item["spec_digest"]))
+                if _innovation_attempt_proposal_digest(item) is not None:
+                    attempted_spec_digests.add(_innovation_attempt_proposal_digest(item))
                 if item.get("mechanism_semantics_digest") is not None:
                     attempted_semantic_identities.add(
                         str(item["mechanism_semantics_digest"])
@@ -11091,7 +11105,7 @@ def run_research_round(
                 prepared_round.innovation,
                 attempts=tuple(
                     item for item in resume_innovation_attempts
-                    if item.get("spec_digest")
+                    if _innovation_attempt_proposal_digest(item)
                     != prepared_round.innovation.idea_acquisition.selected_spec_digest
                 ),
             ).candidate_attempt_count
@@ -11125,8 +11139,8 @@ def run_research_round(
                 prepared_round.innovation,
                 attempts=tuple(
                     item for item in resume_innovation_attempts
-                    if item.get("spec_digest")
-                    != resume_innovation_attempts[-1].get("spec_digest")
+                    if _innovation_attempt_proposal_digest(item)
+                    != _innovation_attempt_proposal_digest(resume_innovation_attempts[-1])
                 ),
             ).candidate_attempt_count
             resume_resource_outcome_digest = next(
@@ -12296,10 +12310,10 @@ def run_research_round(
     ), key=lambda pair: discovery_outcome_rank.get(pair[0].digest, 0)))
     if resume_candidate_local_innovation is not None:
         consumed_spec_digests = {
-            str(item["spec_digest"])
+            _innovation_attempt_proposal_digest(item)
             for item in resume_candidate_local_innovation.attempts
             if isinstance(item, Mapping)
-            and isinstance(item.get("spec_digest"), str)
+            and isinstance(_innovation_attempt_proposal_digest(item), str)
         }
         innovation_pairs = tuple(
             pair
@@ -12329,7 +12343,7 @@ def run_research_round(
     consumed_innovation_attempts = tuple(
         item for item in resume_innovation_attempts
         if resume_resource_outcome_digest is None
-        or item.get("spec_digest") not in {
+        or _innovation_attempt_proposal_digest(item) not in {
             pair[0].spec.digest for pair in innovation_pairs
             if pair[0].spec is not None
         }
@@ -12426,9 +12440,9 @@ def run_research_round(
         innovation = resume_candidate_local_innovation
     if innovation is not None:
         attempted_innovation_digests = {
-            str(item["spec_digest"])
+            _innovation_attempt_proposal_digest(item)
             for item in innovation.attempts
-            if item.get("spec_digest") is not None
+            if _innovation_attempt_proposal_digest(item) is not None
         }
         deferred_innovation = tuple(
             pair
