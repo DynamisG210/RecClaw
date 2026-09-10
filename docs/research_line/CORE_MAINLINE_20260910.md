@@ -9,6 +9,32 @@ has been established. It is not merged into `main`.
 
 ### Follow-up: prepared proposal identity
 
+The first correction at `dee56e9b` was **not end-to-end complete**: actual
+replica2 R2 training succeeded, but execution-to-lineage feedback still failed.
+The follow-up uses the paired qualified candidate's bound parent and execution
+contract at both new handoff and saved-prepared selection, while preserving all
+other research intent. The checkpoint reader reuses the writer's existing
+same-slate monotonic progression check. `execution.py` lineage checks remain
+unchanged and still reject actual hypothesis drift.
+
+Latest complete 491-file source-map SHA256:
+`b36f37053f259932b276191d59abd302253c1217de15941a99b5a3be2db29d60`.
+Delta from `dee56e9b` SHA256:
+`83756321a95b2d68fd5652e79b2247cf12adf498bcc280a1afa6220a22b2e60d`.
+Full correction from the initial snapshot SHA256:
+`fcb234e148b002606014a10cfa981caab7033def660e1f37b84cb7ed31bcd343`.
+
+The core owner's offline native-entry replay of the actual stopped R2 reused
+the saved full metric `0.0613`, train seed `54201` and `71518 ms`, preserved
+physical/prepared bytes, persisted feedback and R2 trace, advanced state to R3,
+and reached the next native research boundary with the metric in context.
+Network, Provider and training calls were disabled. Real hypothesis drift was
+rejected and already-bound outcomes were unchanged; the original eight
+regression checks also passed. This closes the reproduced offline path, not
+yet an assertion of successful live continuation or improved search quality.
+The full result remains negative relative to the root; neither failure nor its
+cost is erased. The earlier stage and its narrower tests are retained below.
+
 The initial publication at `28331b10` matches the snapshot described below.
 A subsequent two-file correction in `runtime.py` and `campaign.py` separates
 the frozen research proposal identity from the adapter-bound implementation

@@ -7898,6 +7898,24 @@ def _implementation_fidelity_diagnostic_closure(
     )
 
 
+def _open_candidate_execution_outcome(
+    outcome: ProducerOutcome, candidate: QualifiedSearchCandidateProtocolV1,
+) -> ProducerOutcome:
+    """Project the paired qualified candidate's executable bindings.
+
+    Acquisition retains the frozen research spec. Execution uses the parent's
+    bound reference and resolved contract from the qualified candidate; all
+    other research intent remains unchanged for the lineage comparison.
+    """
+    assert outcome.spec is not None
+    return _implementation_outcome(
+        replace(outcome, spec=replace(
+            outcome.spec, closest_parent=candidate.spec.closest_parent,
+        )),
+        candidate.execution_contract,
+    )
+
+
 def _selected_outcome_for_binding(
     binding: SearchCandidateBindingV1,
     *,
@@ -7915,7 +7933,7 @@ def _selected_outcome_for_binding(
             return outcome
     for outcome, _resolution, candidate in open_search_pairs:
         if candidate.candidate_id == candidate_id:
-            return outcome
+            return _open_candidate_execution_outcome(outcome, candidate)
     raise ValueError("routed binding has no matching Producer outcome")
 
 
@@ -12519,9 +12537,9 @@ def run_research_round(
             search_pairs = ((execution_outcome, innovation.resolution),)
             open_search_pairs = ()
         else:
-            execution_outcome = _implementation_outcome(
+            execution_outcome = _open_candidate_execution_outcome(
                 innovation.selected_outcome,
-                innovation.search_candidate.execution_contract,
+                innovation.search_candidate,
             )
             search_pairs = ()
             open_search_pairs = (

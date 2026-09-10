@@ -6596,6 +6596,10 @@ class ResearchCampaign:
                             checkpoint_prepared
                         )
                         and not _prepared_has_external_implementation_failure(checkpoint_prepared)
+                        and not self._prepared_round_is_monotonic_candidate_progression(
+                            checkpoint_prepared, prepared_round,
+                            attempt_budget=int(manifest["attempt_budget"]),
+                        )
                     ):
                         raise CampaignError(
                             "incomplete round prepared checkpoint digest drift"
