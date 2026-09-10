@@ -70,6 +70,15 @@ requires a privilege absent on the host; native CLI import also requires Linux
 Four delivered source files retain extra blank lines at EOF; these are known
 whitespace-only findings preserved for source identity, not behavioral fixes.
 
+Publication checks subsequently passed the native CLI `--help` import and all
+four existing package tests on Linux. The Linux archive environment lacks Git
+and its default NFS pytest temporary directory has an ownership mismatch; a new
+isolated `--basetemp` resolved the package-test setup error. The original-source
+Git test is instead run in the complete local Git worktree. The repository's
+old M0 contract fixture was aligned with the delivered experiment-contract JSON
+and its current BL-ICF resource identity; no runtime or experimental source was
+changed to satisfy the test.
+
 Final acceptance must use actual multi-round useful candidates, faithful
 execution, feedback-driven subsequent choices, stability and complete costs.
 C's unproven incremental benefit is not a prerequisite for accepting a strong B.

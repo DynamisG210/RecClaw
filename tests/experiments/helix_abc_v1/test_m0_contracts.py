@@ -59,7 +59,8 @@ class M0ContractTests(unittest.TestCase):
         self.assertEqual(loaded.to_dict(), expected.to_dict())
         self.assertEqual(
             loaded.identity_digest,
-            "9b8f5a08941939991dd78a4fc9b671c861a4ab6445b9501b31f1af7908d795a7",
+            # Current delivered BL-ICF resource identity, shared by all arms.
+            "3116ee1944402a49ae4c347341210ec212f91bd1deba79f3087c94ca514765d2",
         )
 
     def test_exact_arm_tuple_and_non_guard_equality(self) -> None:

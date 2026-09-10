@@ -8,7 +8,8 @@ epochs: 100
 eval_step: 1
 stopping_step: 10
 train_batch_size: 2048
-eval_batch_size: 4096
+eval_batch_size: 65536
+worker: 0
 train_neg_sample_args:
   distribution: uniform
   sample_num: 1
