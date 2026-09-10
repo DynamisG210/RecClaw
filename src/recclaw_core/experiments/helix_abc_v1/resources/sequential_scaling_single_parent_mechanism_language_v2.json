@@ -1,0 +1,70 @@
+{
+  "schema": "recclaw.single-parent-mechanism-language.v2",
+  "language_id": "recclaw.sequential-scaling.ssd4rec-parent-language.v2",
+  "research_profile_id": "SEQUENTIAL_SCALING_SSD4REC_PARENT_V2",
+  "compiler_search_space_id": "SEQUENTIAL_SCALING_MECHANISM_SPACE_V1",
+  "parent_contract": {
+    "name": "SSD4Rec",
+    "base_model_config": "BERT4Rec",
+    "role": "ONLY_FROZEN_PARENT_AND_PAIRED_COMPARATOR",
+    "parent_is_construction_anchor": true,
+    "successful_frontier_may_become_active_construction_parent": true,
+    "frozen_root_remains_paired_comparator": true,
+    "unchanged_parent_slots_are_inherited": true,
+    "required_parent_foundation_primitives": [
+      "representation.shared_item_embedding",
+      "backbone.bidirectional_prefix_reversal_state_space_duality",
+      "packing.padded_prefix_batch",
+      "objective.next_item_softmax",
+      "prediction.tied_dot_product",
+      "view.observed_history_masking"
+    ]
+  },
+  "language_semantics": {
+    "known_affordances_are_implementation_material_not_candidate_menu": true,
+    "parameter_only_tuning_is_not_a_mechanism": true,
+    "ordinary_delta": "One primary temporal, state-gating, or interest-routing mechanism and at most one support change around the exact active BiSSD parent.",
+    "frontier_delta": "One causal augmentation thesis may coordinate temporal input and a post-BiSSD residual state or routing delta while the exact parent BiSSD output remains active and prefix safety and a falsifier remain explicit.",
+    "integrated_context_efficiency": "Ordinary parent-preserving candidates cannot replace or bypass the BiSSD backbone. A scientifically necessary backbone, compression, or execution rewrite must use CUSTOM_MODEL with explicit synthesis and an honest whole-architecture comparison.",
+    "single_root_search_tree": "SSD4Rec is the frozen root comparator; after a faithful measured improvement, that descendant may become the active construction parent while the root comparison stays fixed.",
+    "success": "A faithful prefix-only candidate improves SSD4Rec on the same native TO_LS data/dev NDCG@10 protocol."
+  },
+  "causal_zones": [
+    {
+      "zone_id": "TEMPORAL_PARENT_INPUT",
+      "parent_slots": ["TEMPORAL_POSITION_ENCODING"],
+      "research_question": "Can real interval information improve the representations consumed by the unchanged active BiSSD parent?",
+      "known_affordance_ids": [
+        "temporal.interval_bucket",
+        "temporal.continuous_decay"
+      ]
+    },
+    {
+      "zone_id": "TIME_GATING_AND_INTEREST_ROUTING",
+      "parent_slots": ["STATE_UPDATE_GATING", "INTEREST_ROUTING"],
+      "research_question": "Can a residual state gate or short/long routing delta improve the active BiSSD output without replacing it or using future-suffix access?",
+      "known_affordance_ids": [
+        "state.time_aware_forgetting",
+        "state.surprise_reset",
+        "interest.short_long_dual_path",
+        "interest.convolutional_gru_short_path"
+      ]
+    }
+  ],
+  "innovation_extension": {
+    "primary_role": "frontier_architect",
+    "available_to_other_roles_when_scientifically_required": true,
+    "construction_modes": ["CUSTOM_MODEL"],
+    "may_cross_multiple_support_zones": true,
+    "may_define_new_typed_custom_components": true,
+    "may_use_unlisted_registry_primitives": true,
+    "known_affordances_limit_innovation": false,
+    "source_ownership_compilation": {
+      "scientific_input": "Declare every changed slot and custom component; source ownership is compiler-derived.",
+      "COMPOSITION": "The compiler keeps the exact BiSSD parent active and permits only the supported pre-BiSSD temporal and post-BiSSD state or routing hooks.",
+      "CUSTOM_MODEL": "Use the existing full-source path with explicit synthesis for any scientifically necessary whole-backbone replacement, and inherit every undeclared SSD4Rec behavior from the exact source bundle."
+    },
+    "required_scientific_content": ["parent_relative_causal_intervention", "prefix_safety_argument", "mechanism_activation_witness", "matched_parent_control", "falsifier", "faithful_candidate_local_implementation_plan", "honest_training_and_memory_cost"],
+    "forbidden_shortcuts": ["parameter_only_tuning", "future_suffix_access", "unrelated_baseline_substitution", "chronology_or_split_change", "text_only_mechanism", "silent_fallback_to_parent"]
+  }
+}

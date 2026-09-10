@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Any, Mapping
 
 from recclaw_evidence_guard.core_v1 import evaluate_evidence_guard
@@ -20,17 +21,27 @@ from .contracts import (
 from .ledger import EvidenceGuardLedgerWriterV1
 
 
+PRE_CALL_ID_BINDING = "FULL_REQUEST_DIGEST_V2"
+POST_CALL_ID_BINDING = "FULL_REQUEST_DIGEST_V1"
+
+
 def _protocol_status(result: dict[str, Any]) -> str:
     if result["affected_claim_scope"]["protocol_branch_required"]:
         return "PROTOCOL_BRANCH"
     return "CURRENT_PROTOCOL"
 
 
-def _recommended_validation(result: dict[str, Any]) -> str:
+def _recommended_validation(
+    result: dict[str, Any], comparator_delta: float | None
+) -> str:
     disposition = result["evidence_admissibility"]["development_disposition"]
     if result["affected_claim_scope"]["protocol_branch_required"]:
         return "SEPARATE_PROTOCOL_VALIDATION"
-    if disposition == "COUNT_AS_LOCAL_PRELIMINARY_SIGNAL":
+    if (
+        disposition == "COUNT_AS_LOCAL_PRELIMINARY_SIGNAL"
+        and comparator_delta is not None
+        and comparator_delta > 0.0
+    ):
         return "REQUIRES_CONFIRMATION"
     if disposition.startswith("QUARANTINE"):
         return "DIAGNOSTIC_REVIEW"
@@ -41,6 +52,8 @@ def _adjudication(
     candidate_id: str,
     stage: PortStage,
     result: dict[str, Any],
+    *,
+    comparator_delta: float | None = None,
 ) -> PortAdjudication:
     action = result["action_legality"]
     admission = result["evidence_admissibility"]
@@ -52,7 +65,6 @@ def _adjudication(
     else:
         status = PortStatus.ADJUDICATED
         outcome_class = admission["development_disposition"]
-        comparator_delta = None
     return PortAdjudication(
         candidate_id=candidate_id,
         stage=stage,
@@ -63,7 +75,40 @@ def _adjudication(
         reason_codes=reasons,
         comparator_delta=comparator_delta,
         evidence_use=admission["development_disposition"],
-        recommended_validation=_recommended_validation(result),
+        recommended_validation=_recommended_validation(result, comparator_delta),
+    )
+
+
+def _finite_metric(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    return numeric if math.isfinite(numeric) else None
+
+
+def eligible_raw_result(
+    payload: Mapping[str, Any],
+    *,
+    candidate: CandidateEnvelope,
+    expected_protocol: Mapping[str, Any],
+    metric_name: str,
+    require_candidate_id: bool = True,
+) -> bool:
+    """Shared scientific eligibility predicate for adapter and summary paths."""
+
+    metrics = payload.get("normalized_metrics")
+    return bool(
+        (not require_candidate_id or payload.get("candidate_id") == candidate.candidate_id)
+        and payload.get("opaque_arm_instance_id")
+        == candidate.opaque_arm_instance_id
+        and payload.get("run_status") == "SUCCESS"
+        and payload.get("observation_kind") == "METRIC_EVALUATION"
+        and payload.get("artifact_identity_status") == "EXACT"
+        and payload.get("target_model") == candidate.target_model
+        and payload.get("comparator") == candidate.comparator
+        and payload.get("observed_protocol") == expected_protocol
+        and isinstance(metrics, Mapping)
+        and _finite_metric(metrics.get(metric_name)) is not None
     )
 
 
@@ -86,6 +131,7 @@ class EvidenceGuardPortV1:
         context["claim"] = claim
         snapshot = self.ledger.evidence_snapshot(
             candidate_semantic_digest=candidate.candidate_semantic_digest,
+            mechanism_program_digest=candidate.mechanism_program_digest,
             protocol_digest=sha256_digest(
                 deep_thaw(candidate.planned_protocol)
             ),
@@ -133,34 +179,79 @@ class EvidenceGuardPortV1:
             candidate_semantic_digest=(
                 candidate.candidate_semantic_digest
             ),
+            mechanism_program_digest=candidate.mechanism_program_digest,
             protocol_digest=protocol_digest,
             comparator_identity=candidate.comparator,
         )
-        raw_payloads = tuple(prior) + (raw_result.to_dict(),)
+        current_payload = raw_result.to_dict()
+        claim = deep_thaw(self.context.claim)
+        metric_name = str(claim["metric"])
+        expected_protocol = deep_thaw(candidate.planned_protocol)
+
+        # Failed, cross-protocol, or provenance-incomplete rows remain durable
+        # diagnostics, but may never satisfy a scientific seed threshold.
+        raw_payloads = (
+            tuple(
+                payload
+                for payload in prior
+                if eligible_raw_result(
+                    payload,
+                    candidate=candidate,
+                    expected_protocol=expected_protocol,
+                    metric_name=metric_name,
+                    require_candidate_id=False,
+                )
+            )
+            + (current_payload,)
+            if eligible_raw_result(
+                current_payload,
+                candidate=candidate,
+                expected_protocol=expected_protocol,
+                metric_name=metric_name,
+            )
+            else (current_payload,)
+        )
         seed_runs: dict[str, dict[str, Any]] = {}
-        metric_values: dict[str, list[float]] = {}
+        seed_metrics: dict[str, dict[str, Any]] = {}
+        metric_values: dict[str, list[tuple[float, int]]] = {}
         statuses: list[str] = []
+        artifact_statuses: list[str] = []
         for payload in raw_payloads:
             statuses.append(str(payload["run_status"]))
+            artifact_statuses.append(str(payload["artifact_identity_status"]))
+            payload_metrics = dict(payload["normalized_metrics"])
+            new_seed_count = 0
             for seed_run in payload["seed_runs"]:
                 seed_id = str(seed_run["seed_id"])
                 prior_seed = seed_runs.get(seed_id)
-                if prior_seed is not None and prior_seed != seed_run:
-                    raise ValueError(
-                        "validation seed identity substitution"
-                    )
+                if prior_seed is not None:
+                    # Fixed-slot campaigns may execute the same semantic
+                    # candidate on the same frozen seed more than once. A
+                    # fresh run artifact is not a new scientific seed and
+                    # must not increase evidence weight. Accept only an exact
+                    # normalized-metric repeat; a changed result for the same
+                    # seed remains fail-closed.
+                    if seed_metrics[seed_id] != payload_metrics:
+                        raise ValueError(
+                            "validation seed identity substitution"
+                        )
+                    continue
                 seed_runs[seed_id] = dict(seed_run)
-            for key, value in dict(
-                payload["normalized_metrics"]
-            ).items():
-                metric_values.setdefault(str(key), []).append(
-                    float(value)
-                )
+                seed_metrics[seed_id] = payload_metrics
+                new_seed_count += 1
+            if new_seed_count:
+                for key, value in payload_metrics.items():
+                    metric_values.setdefault(str(key), []).append(
+                        (float(value), new_seed_count)
+                    )
         ordered_seed_runs = [
             seed_runs[key] for key in sorted(seed_runs)
         ]
         metrics = {
-            key: sum(values) / len(values)
+            key: (
+                sum(value * weight for value, weight in values)
+                / sum(weight for _value, weight in values)
+            )
             for key, values in sorted(metric_values.items())
         }
         observation_id = sha256_digest(
@@ -168,6 +259,7 @@ class EvidenceGuardPortV1:
                 "candidate_semantic_digest": (
                     candidate.candidate_semantic_digest
                 ),
+                "mechanism_program_digest": candidate.mechanism_program_digest,
                 "comparator": candidate.comparator,
                 "protocol_digest": protocol_digest,
                 "seed_runs": ordered_seed_runs,
@@ -192,7 +284,9 @@ class EvidenceGuardPortV1:
                 else str(raw_result.run_status)
             ),
             "artifact_identity_status": (
-                raw_result.artifact_identity_status
+                "EXACT"
+                if all(status == "EXACT" for status in artifact_statuses)
+                else str(raw_result.artifact_identity_status)
             ),
             "evidence_class": "DEVELOPMENT_ONLY",
             "metrics": metrics,
@@ -217,13 +311,7 @@ class EvidenceGuardPortV1:
             observation=None,
         )
         call_id = (
-            f"pre:{candidate.candidate_id}:"
-            + sha256_digest(
-                {
-                    "seed_ids": candidate.seed_ids,
-                    "purpose": candidate.purpose,
-                }
-            )
+            f"pre:{candidate.candidate_id}:" + sha256_digest(request)
         )
         stored, _created = self.ledger.commit_create_once(
             guard_call_id=call_id,
@@ -294,6 +382,10 @@ class EvidenceGuardPortV1:
         )
         request = {
             "candidate_digest": candidate.digest,
+            "candidate_semantic_digest": candidate.candidate_semantic_digest,
+            "mechanism_program_digest": candidate.mechanism_program_digest,
+            "protocol_digest": protocol_digest,
+            "comparator_identity": candidate.comparator,
             "context": context,
             "phase": "POST",
             "raw_result": raw_result.to_dict(),
@@ -311,7 +403,27 @@ class EvidenceGuardPortV1:
             ),
             observation=observation,
         )
-        call_id = f"post:{candidate.candidate_id}:{raw_result.raw_result_digest}"
+        comparator_delta = None
+        scope = deep_thaw(self.context.claim).get("scope")
+        comparator_metric = (
+            _finite_metric(scope.get("frozen_comparator_ndcg_at_10"))
+            if isinstance(scope, Mapping)
+            else None
+        )
+        candidate_metric = _finite_metric(
+            observation["metrics"].get(
+                str(deep_thaw(self.context.claim)["metric"])
+            )
+        )
+        if (
+            result["evidence_admissibility"]["development_disposition"].startswith(
+                "COUNT_AS_"
+            )
+            and comparator_metric is not None
+            and candidate_metric is not None
+        ):
+            comparator_delta = candidate_metric - comparator_metric
+        call_id = f"post:{candidate.candidate_id}:{sha256_digest(request)}"
         stored, _created = self.ledger.commit_create_once(
             guard_call_id=call_id,
             phase="POST",
@@ -324,13 +436,19 @@ class EvidenceGuardPortV1:
                 candidate_semantic_digest=(
                     candidate.candidate_semantic_digest
                 ),
+                mechanism_program_digest=candidate.mechanism_program_digest,
                 protocol_digest=protocol_digest,
                 comparator_identity=candidate.comparator,
                 observation_seed=str(seed_run["seed_id"]),
                 observation_id=str(observation["observation_id"]),
                 raw_result=raw_result.to_dict(),
             )
-        return _adjudication(candidate.candidate_id, PortStage.POST, stored)
+        return _adjudication(
+            candidate.candidate_id,
+            PortStage.POST,
+            stored,
+            comparator_delta=comparator_delta,
+        )
 
     @property
     def identity_digest(self) -> str:
@@ -340,5 +458,7 @@ class EvidenceGuardPortV1:
                 "context_digest": self.context.digest,
                 "core_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
                 "ledger_namespace": self.ledger.namespace,
+                "pre_call_id_binding": PRE_CALL_ID_BINDING,
+                "post_call_id_binding": POST_CALL_ID_BINDING,
             }
         )

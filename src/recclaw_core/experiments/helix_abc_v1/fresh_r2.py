@@ -189,11 +189,11 @@ def _r1_receipt(repo_root: Path) -> tuple[Path, dict[str, Any]]:
     ):
         raise FreshR2Error("accepted R1 receipt no longer satisfies its result boundary")
     external = Path(str(receipt.get("external_receipt_ref")))
-    expected_external = Path(
-        "/root/projects/RecClaw_r1_r2_runs/"
-        "fresh_r1_training_filesystem_fix_v3/R1_CANONICAL_RECEIPT.json"
-    )
-    if external != expected_external:
+    expected_external = R1_EXTERNAL_ROOT / "R1_CANONICAL_RECEIPT.json"
+    # The sealed repository receipt preserves its original absolute locator;
+    # RuntimeBinding owns the relocated root.  Compare the accepted relative
+    # identity, then read bytes only from the bound R1_EXTERNAL_ROOT.
+    if tuple(external.parts[-3:]) != tuple(expected_external.parts[-3:]):
         raise FreshR2Error("accepted R1 external receipt reference drift")
     relocated_external = R1_EXTERNAL_ROOT / "R1_CANONICAL_RECEIPT.json"
     if bytes_sha256(relocated_external.read_bytes()) != R1_EXTERNAL_RECEIPT_SHA256:
@@ -408,17 +408,24 @@ def public_active_profile_catalog(
     for entry in active.entries:
         if entry.origin is SearchProfileEntryOriginV1.FIXED_66:
             mechanism = fixed_by_semantics[entry.semantic_identity_digest]
-            summary = (
+            mechanism_id = mechanism.mechanism_id
+            hypothesis = (
                 f"{mechanism.mechanism_id}; axis={mechanism.mechanism_axis}; "
                 f"operators={','.join(mechanism.operator_ids)}"
             )
         else:
             artifact = artifact_by_semantics[entry.semantic_identity_digest]
-            summary = str(artifact.spec_payload["hypothesis"])
+            mechanism_id = artifact.capability.capability_id
+            hypothesis = str(artifact.spec_payload["hypothesis"])
+        parent_id = str(entry.capability_ref)
         rows.append(
             {
-                "mechanism_summary": summary,
+                "mechanism_id": mechanism_id,
+                "mechanism_summary": parent_id,
+                "parent_id": parent_id,
+                "profile_ref": parent_id,
                 "semantics_digest": entry.semantic_identity_digest,
+                "hypothesis_summary": hypothesis,
             }
         )
     random.Random(seed).shuffle(rows)

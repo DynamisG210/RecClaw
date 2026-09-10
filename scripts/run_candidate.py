@@ -154,8 +154,13 @@ def write_override_file(run_id: str, overrides: list[str], override_dir: Path = 
 
 def import_object(spec: str) -> Any:
     module_name, attr = spec.split(":", 1)
-    module = __import__(module_name, fromlist=[attr])
-    return getattr(module, attr)
+    previous_dont_write = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        module = __import__(module_name, fromlist=[attr])
+        return getattr(module, attr)
+    finally:
+        sys.dont_write_bytecode = previous_dont_write
 
 
 def patch_recbole_model_lookup(local_models: dict[str, Any]) -> None:

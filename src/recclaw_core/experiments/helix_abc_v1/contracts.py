@@ -449,7 +449,7 @@ def default_experiment_contract() -> ExperimentContractV1:
     fusion_ref = "recclaw.deterministic-fusion.m0.v1"
     fusion_digest = _policy_digest(fusion_ref)
     search_ref = "recclaw.bl-icf.mechanism-space.v1"
-    search_digest = "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4"
+    search_digest = "fbe63260de6430537dd66b0724fe1beb0cf165ea47407ae18addd61a17dd1720"
     original_digest = _policy_digest(
         "OriginalControllerV1@2d8c881354e1b536a6c66d7dfbb977e0c5090e50"
     )

@@ -1,0 +1,22 @@
+{
+  "profile_id": "RECCLAW_CAMPAIGN_TRAINING_DEVELOPMENT_VALIDATION_V31",
+  "dataset": "ml-1m",
+  "partition_profile_id": "RECCLAW_ML1M_DEVELOPMENT_VALIDATION_PARTITION_V31",
+  "benchmark_filename": ["train", "dev", "dev"],
+  "ordinary_execution_seed": 55103,
+  "max_epochs": 100,
+  "fixed_canary_max_epochs": 1,
+  "eval_step": 1,
+  "stopping_step": 5,
+  "optimizer": "adam",
+  "online_metric_source": "BEST_VALID_RESULT",
+  "online_partition_role": "DEVELOPMENT_VALIDATION",
+  "heldout_partition_role": "OUTER_HELDOUT_TEST",
+  "heldout_access": "POST_SELECTION_ONLY",
+  "metric": "NDCG@10",
+  "evaluation_candidate_mode": "FULL",
+  "wall_time_ceiling_ms_per_execution": 3600000,
+  "gpu_meter": {
+    "normalized_rate_microunits_per_device_hour": 1000000
+  }
+}

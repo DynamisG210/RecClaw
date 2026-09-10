@@ -6,7 +6,7 @@ The implementation must:
 - override calculate_loss, predict, and full_sort_predict while retaining pairwise GeneralRecommender behavior;
 - use only Python, PyTorch, NumPy, SciPy, and RecBole already present;
 - provide complete source for exactly recclaw_ext/__init__.py and recclaw_ext/candidate.py;
-- keep tensors device-safe and losses/scores finite for pairwise and full-sort inputs;
+- keep tensors device-safe for pairwise and full-sort inputs; do not mask NaN or infinity with nan_to_num, replacement constants, or equivalent fallback behavior. Nonfinite losses or scores must fail qualification or training;
 - implement the minimal_testable_wedge literally instead of expanding the architecture.
 
 For PARENT_PRESERVING realization, implement a public set_mechanism_enabled(enabled: bool) switch. Default must be enabled. Disabled behavior must recover the closest parent's scoring and loss near numerical tolerance; the candidate may not silently fall back during enabled execution. For NON_NESTED realization, do not pretend the architecture nests the parent: implement the declared mechanism directly and leave mechanism-off to the separately declared matched parent/control package.

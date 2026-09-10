@@ -9,6 +9,7 @@ real LLM or training backends.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 import subprocess
@@ -122,19 +123,6 @@ from .training_runtime_contracts import ExecutionSeedBindingV1
 
 class PreCanaryInvariantError(RuntimeError):
     pass
-
-
-# Same-candidate seed confirmation belongs to a dedicated validation budget.
-# Keeping it pending here prevents Evidence Guard from replacing ordinary
-# candidate-discovery rounds in Arm C.
-INLINE_RESEARCH_TASK_TYPES = frozenset(
-    {
-        ResearchTaskTypeV1.RUN_MATCHED_CONTROL,
-        ResearchTaskTypeV1.RUN_ABLATION,
-        ResearchTaskTypeV1.REPAIR_IMPLEMENTATION,
-        ResearchTaskTypeV1.PROTOCOL_BRANCH_DIAGNOSTIC,
-    }
-)
 
 
 class BrokerRoundFailureError(PreCanaryInvariantError):
@@ -1142,6 +1130,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         gpu_cost_microunits: int,
         execution_wall_time_ms: int,
         comparator_delta: float | str = NOT_AVAILABLE,
+        candidate_value: float | None = None,
     ) -> SearchUtilityEventV2:
         metrics = helix_raw.to_dict()["normalized_metrics"]
         return SearchUtilityEventV2(
@@ -1190,6 +1179,7 @@ class ThreeArmPreCanaryOrchestratorV1:
                 else str(helix_raw.run_status)
             ),
             observation_seed=str(helix_raw.seed_runs[0]["seed_id"]),
+            candidate_value=candidate_value,
         )
 
     def _research_task(
@@ -2270,7 +2260,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         active_task: ResearchTaskV1 | None = None
         if arm in self.research_task_queues:
             pending_task = self.research_task_queues[arm].select_next(
-                allowed_types=INLINE_RESEARCH_TASK_TYPES
+                allowed_types=frozenset(ResearchTaskTypeV1)
             )
             if pending_task is not None:
                 active_task = self.research_task_queues[arm].activate(
@@ -2892,6 +2882,7 @@ class ThreeArmPreCanaryOrchestratorV1:
         )
         actual_proposal = selected_research_proposal
         comparator_delta: float | str = NOT_AVAILABLE
+        candidate_value: float | None = None
         if isinstance(actual_proposal, CandidateProposalV4):
             protocol_digest = str(
                 campaign_runtime_profile()["development_protocol_digest"]
@@ -2912,16 +2903,18 @@ class ThreeArmPreCanaryOrchestratorV1:
                 else None
             )
             metrics = helix_raw.to_dict()["normalized_metrics"]
-            metric = next(
+            candidate_value = next(
                 (
                     float(metrics[name])
                     for name in ("ndcg@10", "ndcg")
                     if isinstance(metrics.get(name), (int, float))
+                    and not isinstance(metrics.get(name), bool)
+                    and math.isfinite(float(metrics[name]))
                 ),
                 None,
             )
-            if matched is not None and metric is not None:
-                comparator_delta = metric - float(
+            if matched is not None and candidate_value is not None:
+                comparator_delta = candidate_value - float(
                     matched.comparator_metric
                 )
         matched_control_task = (
@@ -2944,6 +2937,7 @@ class ThreeArmPreCanaryOrchestratorV1:
             gpu_cost_microunits=gpu_cost_microunits,
             execution_wall_time_ms=execution_wall_time_ms,
             comparator_delta=comparator_delta,
+            candidate_value=candidate_value,
         )
         validation_task = self._research_task(
             task_type=ResearchTaskTypeV1.VALIDATE_SAME_CANDIDATE,

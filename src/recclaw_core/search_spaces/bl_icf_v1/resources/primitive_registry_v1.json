@@ -491,6 +491,56 @@
           "slot_id": "RELATION_VIEW",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [
+            "ITEM_ID",
+            "TRAIN_DERIVED_PROTOTYPES",
+            "TRAIN_DERIVED_SPECTRAL_VIEW",
+            "TRAIN_DERIVED_STATISTICS",
+            "TRAIN_INTERACTIONS",
+            "TRAIN_ITEM_ITEM_GRAPH",
+            "TRAIN_USER_ITEM_GRAPH",
+            "TRAIN_USER_USER_GRAPH",
+            "USER_ID"
+          ],
+          "capabilities": [
+            "RELATION_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/train_interactions",
+                "bl_icf/relation",
+                "bl_icf/train_statistics"
+              ],
+              "minimum": 1,
+              "port": "source"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "relation",
+              "type": "bl_icf/relation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "intent_count": {
+                "maximum": 128,
+                "minimum": 2,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "relation.intent_aware_bipartite",
+          "slot_id": "RELATION_VIEW",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "RELATION_VIEW"
@@ -937,6 +987,136 @@
           "slot_id": "EMBEDDING",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "CONFIG_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "core/user_id",
+                "core/item_id",
+                "bl_icf/train_statistics"
+              ],
+              "minimum": 0,
+              "port": "identity"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "embedding",
+              "type": "bl_icf/embedding"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "dimension": {
+                "maximum": 4096,
+                "minimum": 4,
+                "type": "integer"
+              },
+              "intent_count": {
+                "maximum": 128,
+                "minimum": 2,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "embedding.intent_chunks",
+          "slot_id": "EMBEDDING",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "CONFIG_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "core/user_id",
+                "core/item_id",
+                "bl_icf/train_statistics"
+              ],
+              "minimum": 1,
+              "port": "identity"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "representation",
+              "type": "bl_icf/representation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "signal_mode": {
+                "const": "ONE_HOT_IDENTITY"
+              }
+            },
+            "required": [
+              "signal_mode"
+            ],
+            "type": "object"
+          },
+          "primitive_id": "embedding.embeddingless_id_signal",
+          "slot_id": "EMBEDDING",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "CONFIG_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "core/user_id",
+                "core/item_id",
+                "bl_icf/train_statistics"
+              ],
+              "minimum": 0,
+              "port": "identity"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "embedding",
+              "type": "bl_icf/embedding"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "curvature": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              "dimension": {
+                "maximum": 4096,
+                "minimum": 4,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "embedding.hyperbolic_manifold",
+          "slot_id": "EMBEDDING",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "EMBEDDING"
@@ -1233,6 +1413,148 @@
             "type": "object"
           },
           "primitive_id": "encoder.hybrid_multi_branch",
+          "slot_id": "ENCODER",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "GRAPH_OPERATOR_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            },
+            {
+              "accepted_types": [
+                "bl_icf/relation"
+              ],
+              "minimum": 1,
+              "port": "relation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "representation",
+              "type": "bl_icf/representation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "depth": {
+                "maximum": 64,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "encoder.embeddingless_propagation",
+          "slot_id": "ENCODER",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "GRAPH_OPERATOR_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            },
+            {
+              "accepted_types": [
+                "bl_icf/relation"
+              ],
+              "minimum": 0,
+              "port": "relation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "representation",
+              "type": "bl_icf/representation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "integration_steps": {
+                "maximum": 64,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "step_size": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 10.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "encoder.post_training_graph_ode",
+          "slot_id": "ENCODER",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "GRAPH_OPERATOR_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            },
+            {
+              "accepted_types": [
+                "bl_icf/relation"
+              ],
+              "minimum": 0,
+              "port": "relation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "representation",
+              "type": "bl_icf/representation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "curvature": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "encoder.hyperbolic_local_global",
           "slot_id": "ENCODER",
           "tags": [],
           "version": "1"
@@ -1690,6 +2012,103 @@
           "slot_id": "MESSAGE",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "GRAPH_OPERATOR_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            },
+            {
+              "accepted_types": [
+                "bl_icf/relation"
+              ],
+              "minimum": 1,
+              "port": "relation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "message",
+              "type": "bl_icf/message"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "intent_count": {
+                "maximum": 128,
+                "minimum": 2,
+                "type": "integer"
+              },
+              "routing_iterations": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "message.intent_routed",
+          "slot_id": "MESSAGE",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "GRAPH_OPERATOR_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            },
+            {
+              "accepted_types": [
+                "bl_icf/relation"
+              ],
+              "minimum": 1,
+              "port": "relation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "message",
+              "type": "bl_icf/message"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "curvature": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "message.hyperbolic_centroid",
+          "slot_id": "MESSAGE",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "MESSAGE"
@@ -1922,6 +2341,19 @@
                 "maximum": 64,
                 "minimum": 0,
                 "type": "integer"
+              },
+              "learnable": {
+                "type": "boolean"
+              },
+              "left_degree_exponent": {
+                "maximum": 2.0,
+                "minimum": -2.0,
+                "type": "number"
+              },
+              "right_degree_exponent": {
+                "maximum": 2.0,
+                "minimum": -2.0,
+                "type": "number"
               }
             },
             "required": [],
@@ -1969,6 +2401,11 @@
                 "maximum": 64,
                 "minimum": 0,
                 "type": "integer"
+              },
+              "ego_residual_weight": {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
               }
             },
             "required": [],
@@ -2016,6 +2453,9 @@
                 "maximum": 64,
                 "minimum": 0,
                 "type": "integer"
+              },
+              "learnable_weights": {
+                "type": "boolean"
               }
             },
             "required": [],
@@ -2999,6 +3439,87 @@
           "slot_id": "RELATION_DECOMPOSITION",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "RELATION_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/relation"
+              ],
+              "minimum": 1,
+              "port": "relation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "relation",
+              "type": "bl_icf/relation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "intent_count": {
+                "maximum": 128,
+                "minimum": 2,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "relation_decomposition.latent_intent_graphs",
+          "slot_id": "RELATION_DECOMPOSITION",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "RELATION_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/relation"
+              ],
+              "minimum": 1,
+              "port": "relation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "relation",
+              "type": "bl_icf/relation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "intent_count": {
+                "maximum": 128,
+                "minimum": 2,
+                "type": "integer"
+              },
+              "routing_iterations": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "relation_decomposition.iterative_intent_refinement",
+          "slot_id": "RELATION_DECOMPOSITION",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "RELATION_DECOMPOSITION"
@@ -3030,7 +3551,11 @@
           ],
           "parameter_schema": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "learnable_weights": {
+                "type": "boolean"
+              }
+            },
             "required": [],
             "type": "object"
           },
@@ -3434,6 +3959,45 @@
           "slot_id": "FUSION_ROUTING",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "GRAPH_OPERATOR_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "branch"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "representation",
+              "type": "bl_icf/representation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "curvature": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "fusion.hyperbolic_cross_attention",
+          "slot_id": "FUSION_ROUTING",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "FUSION_ROUTING"
@@ -3767,6 +4331,44 @@
             "type": "object"
           },
           "primitive_id": "score.ensemble",
+          "slot_id": "SCORE_HEAD",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "CONFIG_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "score",
+              "type": "core/user_item_relevance_score"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "margin": {
+                "minimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "score.margin_constrained_cosine",
           "slot_id": "SCORE_HEAD",
           "tags": [],
           "version": "1"
@@ -4248,6 +4850,79 @@
             "type": "object"
           },
           "primitive_id": "objective.cosine_contrastive",
+          "slot_id": "PRIMARY_OBJECTIVE",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "LOSS_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            },
+            {
+              "accepted_types": [
+                "bl_icf/train_interactions"
+              ],
+              "minimum": 1,
+              "port": "supervision"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "objective",
+              "type": "bl_icf/objective"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "denominator_scope": {
+                "enum": [
+                  "IN_BATCH_SAME_TYPE_USER_PLUS_ITEM",
+                  "FULL_SAME_TYPE_USER_PLUS_ITEM"
+                ]
+              },
+              "graph_augmentation": {
+                "const": false
+              },
+              "positive_pair_source": {
+                "const": "TRAIN_INTERACTIONS"
+              },
+              "representation_normalization": {
+                "const": "L2"
+              },
+              "separate_recommendation_loss": {
+                "const": false
+              },
+              "temperature": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "positive_pair_source",
+              "representation_normalization",
+              "denominator_scope",
+              "separate_recommendation_loss",
+              "graph_augmentation"
+            ],
+            "type": "object"
+          },
+          "primitive_id": "objective.unified_supervised_graph_contrastive",
           "slot_id": "PRIMARY_OBJECTIVE",
           "tags": [],
           "version": "1"
@@ -6499,6 +7174,11 @@
           "parameter_schema": {
             "additionalProperties": false,
             "properties": {
+              "epsilon": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 10.0,
+                "type": "number"
+              },
               "weight": {
                 "exclusiveMinimum": 0.0,
                 "type": "number"
@@ -6540,6 +7220,11 @@
           "parameter_schema": {
             "additionalProperties": false,
             "properties": {
+              "epsilon": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 10.0,
+                "type": "number"
+              },
               "weight": {
                 "exclusiveMinimum": 0.0,
                 "type": "number"
@@ -6974,6 +7659,163 @@
           "input_ports": [
             {
               "accepted_types": [
+                "bl_icf/relation",
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "signal"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "view",
+              "type": "bl_icf/ssl_view"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "independent_directions": {
+                "const": true
+              },
+              "item_to_user_rate": {
+                "maximum": 0.95,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "user_to_item_rate": {
+                "maximum": 0.95,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "user_to_item_rate",
+              "item_to_user_rate",
+              "independent_directions"
+            ],
+            "type": "object"
+          },
+          "primitive_id": "ssl.view.directional_edge_dropout",
+          "slot_id": "SELF_SUPERVISION",
+          "tags": [
+            "VIEW_GENERATOR"
+          ],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "AUXILIARY_OBJECTIVE_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/relation",
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "signal"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "view",
+              "type": "bl_icf/ssl_view"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "epsilon": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 10.0,
+                "type": "number"
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "ssl.view.signed_uniform_perturbation",
+          "slot_id": "SELF_SUPERVISION",
+          "tags": [
+            "VIEW_GENERATOR"
+          ],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "AUXILIARY_OBJECTIVE_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/relation",
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "signal"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "view",
+              "type": "bl_icf/ssl_view"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "filter_order": {
+                "maximum": 64,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "normalization": {
+                "enum": [
+                  "SYMMETRIC",
+                  "RANDOM_WALK",
+                  "GENERALIZED_GRAM"
+                ]
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "ssl.view.parallel_graph_filter",
+          "slot_id": "SELF_SUPERVISION",
+          "tags": [
+            "VIEW_GENERATOR"
+          ],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "AUXILIARY_OBJECTIVE_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
                 "bl_icf/embedding",
                 "bl_icf/representation",
                 "bl_icf/ssl_view"
@@ -7380,6 +8222,16 @@
           "parameter_schema": {
             "additionalProperties": false,
             "properties": {
+              "source_layer": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target_layer": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
               "temperature": {
                 "exclusiveMinimum": 0.0,
                 "type": "number"
@@ -7392,7 +8244,97 @@
             "required": [],
             "type": "object"
           },
-          "primitive_id": "ssl.objective.unified_supervised_contrastive",
+          "primitive_id": "ssl.objective.cross_layer_info_nce",
+          "slot_id": "SELF_SUPERVISION",
+          "tags": [
+            "SSL_OBJECTIVE"
+          ],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "AUXILIARY_OBJECTIVE_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
+              ],
+              "minimum": 2,
+              "port": "views"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "auxiliary_objective",
+              "type": "bl_icf/auxiliary_objective"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "temperature": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "ssl.objective.neighborhood_aggregate",
+          "slot_id": "SELF_SUPERVISION",
+          "tags": [
+            "SSL_OBJECTIVE"
+          ],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "AUXILIARY_OBJECTIVE_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation",
+                "bl_icf/ssl_view"
+              ],
+              "minimum": 2,
+              "port": "views"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "auxiliary_objective",
+              "type": "bl_icf/auxiliary_objective"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "temperature": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "ssl.objective.augmentation_free_layer_contrastive",
           "slot_id": "SELF_SUPERVISION",
           "tags": [
             "SSL_OBJECTIVE"
@@ -8092,6 +9034,87 @@
           "slot_id": "GEOMETRY_REGULARIZATION",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "AUXILIARY_OBJECTIVE_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "regularization",
+              "type": "bl_icf/regularization_term"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "regularizer.distance_correlation_intent_independence",
+          "slot_id": "GEOMETRY_REGULARIZATION",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "AUXILIARY_OBJECTIVE_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/embedding",
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "representation"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "regularization",
+              "type": "bl_icf/regularization_term"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "curvature": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "regularizer.hyperbolic_distortion",
+          "slot_id": "GEOMETRY_REGULARIZATION",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "GEOMETRY_REGULARIZATION"
@@ -8251,6 +9274,80 @@
             "type": "object"
           },
           "primitive_id": "robustness.popularity_aware_loss",
+          "slot_id": "DENOISING_LONG_TAIL",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "LOSS_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/relation",
+                "core/user_item_relevance_score",
+                "bl_icf/objective"
+              ],
+              "minimum": 1,
+              "port": "signal"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "robustness_term",
+              "type": "bl_icf/robustness_term"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "freeze_base_representation": {
+                "const": true
+              },
+              "history_fraction": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              "negative_correction": {
+                "enum": [
+                  "POPULARITY_OPPOSING",
+                  "UNCHANGED"
+                ]
+              },
+              "popularity_direction_source": {
+                "const": "PRETRAINED_ITEM_EMBEDDING"
+              },
+              "positive_correction": {
+                "enum": [
+                  "PREFERENCE_ALIGNED",
+                  "UNCHANGED"
+                ]
+              },
+              "preference_direction_source": {
+                "enum": [
+                  "USER_HISTORY",
+                  "ORTHOGONAL_RESIDUAL"
+                ]
+              },
+              "weight": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "popularity_direction_source",
+              "preference_direction_source",
+              "positive_correction",
+              "negative_correction",
+              "freeze_base_representation"
+            ],
+            "type": "object"
+          },
+          "primitive_id": "robustness.asymmetric_directional_correction",
           "slot_id": "DENOISING_LONG_TAIL",
           "tags": [],
           "version": "1"
@@ -9610,6 +10707,91 @@
           "slot_id": "TRAINING_PROCEDURE",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "TRAINING_ALGORITHM_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/objective",
+                "bl_icf/auxiliary_objective",
+                "bl_icf/regularization_term",
+                "bl_icf/robustness_term"
+              ],
+              "minimum": 1,
+              "port": "objective"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "training_plan",
+              "type": "bl_icf/training_plan"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "learning_rate": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "training.pretrain_then_post_graph_inference",
+          "slot_id": "TRAINING_PROCEDURE",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "TRAINING_ALGORITHM_MUTATION"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/objective",
+                "bl_icf/auxiliary_objective",
+                "bl_icf/regularization_term",
+                "bl_icf/robustness_term"
+              ],
+              "minimum": 1,
+              "port": "objective"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "training_plan",
+              "type": "bl_icf/training_plan"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "learning_rate": {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              "update_mode": {
+                "const": "PARALLEL_JOINT"
+              }
+            },
+            "required": [
+              "update_mode"
+            ],
+            "type": "object"
+          },
+          "primitive_id": "training.parallel_joint_update",
+          "slot_id": "TRAINING_PROCEDURE",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "TRAINING_PROCEDURE"
@@ -10325,6 +11507,93 @@
           "slot_id": "EFFICIENCY_APPROXIMATION",
           "tags": [],
           "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "EFFICIENCY_REWRITE"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "target"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "representation",
+              "type": "bl_icf/representation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "integration_steps": {
+                "maximum": 64,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "step_size": {
+                "exclusiveMinimum": 0.0,
+                "maximum": 10.0,
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "efficiency.one_step_euler_ode",
+          "slot_id": "EFFICIENCY_APPROXIMATION",
+          "tags": [],
+          "version": "1"
+        },
+        {
+          "allowed_read_roles": [],
+          "capabilities": [
+            "EFFICIENCY_REWRITE"
+          ],
+          "implementation_status": "LOCAL_RENDERER_REQUIRED",
+          "input_ports": [
+            {
+              "accepted_types": [
+                "bl_icf/representation"
+              ],
+              "minimum": 1,
+              "port": "target"
+            }
+          ],
+          "output_ports": [
+            {
+              "port": "representation",
+              "type": "bl_icf/representation"
+            }
+          ],
+          "parameter_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "feature_map": {
+                "enum": [
+                  "ELU_PLUS_ONE",
+                  "EXPONENTIAL"
+                ]
+              },
+              "projection_dimension": {
+                "maximum": 4096,
+                "minimum": 4,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "primitive_id": "efficiency.linear_cross_attention",
+          "slot_id": "EFFICIENCY_APPROXIMATION",
+          "tags": [],
+          "version": "1"
         }
       ],
       "slot_id": "EFFICIENCY_APPROXIMATION"
@@ -10625,7 +11894,7 @@
     }
   ],
   "axis_count": 16,
-  "primitive_count": 238,
+  "primitive_count": 264,
   "record_type": "KNOWN_MECHANISM_PRIMITIVE_REGISTRY",
   "registry_id": "recclaw.bl-icf.known-primitives.v1",
   "registry_version": "1.0.0"

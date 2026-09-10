@@ -12,3 +12,6 @@
 notes/method_change_space.md -text
 recclaw_ext/models/lightgcn_lw.py -text
 scripts/agent.py -text
+
+# Preserve the delivered mixed-line-ending research prompt exactly.
+src/recclaw_core/experiments/helix_abc_v1/resources/research_line_bl_icf_program_proposal_prompt_v1.txt -text

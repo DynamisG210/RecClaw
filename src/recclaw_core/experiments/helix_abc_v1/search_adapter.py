@@ -7,9 +7,9 @@ not materialize, implement, qualify, run, or evaluate a candidate.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Any, ClassVar, Mapping, Sequence
+from typing import Any, ClassVar, Mapping, Protocol, Sequence, runtime_checkable
 
 from recclaw_core.mechanism_space.canonical import deep_thaw
 
@@ -35,7 +35,20 @@ from .open_spec import (
     resolve_capability,
 )
 from .research_capability import StrongStaticRouterV1
-from .research_contracts import CandidateProposalV4, RouteTraceV1
+from .realization_identity import (
+    bl_icf_scientific_mechanism_program,
+    mechanism_semantic_identity_ref,
+    open_spec_realization_identity,
+    search_space_conformance,
+)
+from .research_contracts import (
+    CandidateProposalV4,
+    RouteTraceV1,
+    RouterHardGateDecisionV1,
+    RouterHardGateReasonV1,
+    RouterFeatureEvidenceV1,
+    SearchUtilityFeaturesV1,
+)
 from .vnext_contracts import (
     NEXT_FRESH_CAMPAIGN,
     AcquisitionDecisionV1,
@@ -48,8 +61,73 @@ from .vnext_contracts import (
 )
 
 
+_PORTFOLIO_PUBLIC_NAMES = frozenset(
+    {
+        "AttemptFailureScopeV2",
+        "ParentValidationStateV2",
+        "PortfolioAttemptFailureV2",
+        "PortfolioCandidateV2",
+        "PortfolioControlStateV2",
+        "PortfolioEligibilityV2",
+        "ResourceAdmissionStateV2",
+        "rank_candidate_portfolio_v2",
+    }
+)
+
+
+def _load_portfolio_symbols() -> None:
+    """Load the opt-in portfolio path after this compatibility module is ready.
+
+    ``recclaw_core.research_line`` exports ``runtime``, and ``runtime`` imports
+    this adapter.  Eagerly importing the new module here would therefore make
+    the package initialization path circular.  The portfolio path is opt-in,
+    so loading it on first use preserves the legacy import graph and keeps the
+    new controls isolated from the unchanged Research Line runtime.
+    """
+
+    if "PortfolioCandidateV2" in globals():
+        return
+    from recclaw_core.research_line import portfolio as portfolio_module
+
+    for name in _PORTFOLIO_PUBLIC_NAMES:
+        globals()[name] = getattr(portfolio_module, name)
+
+
+def __getattr__(name: str) -> Any:
+    if name in _PORTFOLIO_PUBLIC_NAMES:
+        _load_portfolio_symbols()
+        return globals()[name]
+    raise AttributeError(name)
+
+
 class SearchAdapterError(ValueError):
     """Raised when a Search candidate crosses an E0 boundary incorrectly."""
+
+
+@runtime_checkable
+class _FrozenExperimentRouter(Protocol):
+    """Structural contract consumed by the frozen-slate routing helpers."""
+
+    runnable_floor: float
+    utility_floor: float
+    blocker_ceiling: float
+    cost_ceiling: float
+    slate_ceiling: int
+
+    @property
+    def policy_digest(self) -> str: ...
+
+    def score(
+        self,
+        features: SearchUtilityFeaturesV1,
+        policy_projection: Mapping[str, Any] | None = None,
+    ) -> float: ...
+
+    def route(
+        self,
+        proposals: Sequence[CandidateProposalV4],
+        policy_projection: Mapping[str, Any] | None = None,
+    ) -> RouteTraceV1: ...
 
 
 class SearchProfileEntryOriginV1(str, Enum):
@@ -77,6 +155,25 @@ _IDEA_POLICY = {
     "defer": ("DEFERRED_PROTOCOL_CHANGE",),
     "reject": ("UNSUPPORTED", "INVALID_SPEC"),
 }
+_NEXT_DEVELOPMENT_SEED = "NEXT_DEVELOPMENT_SEED"
+_STRICT_BL_ICF_PROFILE_REF = "BL_ICF_MECHANISM_SPACE_V1"
+_STRICT_BL_ICF_PROFILE_DIGEST = (
+    "fbe63260de6430537dd66b0724fe1beb0cf165ea47407ae18addd61a17dd1720"
+)
+def _pending_new_seed_matches(
+    pending_task: Mapping[str, Any], observation_seed: str
+) -> bool:
+    required = pending_task.get("required_seed_or_control")
+    if required == observation_seed:
+        return True
+    evidence_present = pending_task.get("evidence_present", ())
+    if isinstance(evidence_present, str):
+        evidence_present = (evidence_present,)
+    return (
+        required == _NEXT_DEVELOPMENT_SEED
+        and isinstance(evidence_present, (tuple, list))
+        and observation_seed not in evidence_present
+    )
 _IDEA_FEATURE_SCHEMA = {
     "schema": "recclaw.research-line.vnext.idea-features.e0.v1",
     "fields": (
@@ -326,11 +423,26 @@ class SearchExecutableProfileV1:
                     field_name="predecessor_profile_digest",
                 ),
             )
-        if not isinstance(self.entries, (tuple, list)) or not self.entries:
+        if not isinstance(self.entries, (tuple, list)):
             raise SearchAdapterError(
-                "active Search profile requires executable entries"
+                "active Search profile entries must be a sequence"
             )
+        if not self.entries:
+            empty_current_profile = (
+                self.activation
+                is SearchProfileActivationV1.CURRENT_FROZEN_CAMPAIGN
+            )
+            empty_fresh_successor = (
+                self.activation is SearchProfileActivationV1.NEXT_FRESH_CAMPAIGN
+                and self.predecessor_profile_ref is not None
+            )
+            if not empty_current_profile and not empty_fresh_successor:
+                raise SearchAdapterError(
+                    "an empty executable registry requires a current frozen "
+                    "profile or a fresh successor"
+                )
         by_ref: dict[str, SearchExecutableEntryV1] = {}
+        by_semantics: dict[str, SearchExecutableEntryV1] = {}
         for entry in self.entries:
             if not isinstance(entry, SearchExecutableEntryV1):
                 raise SearchAdapterError(
@@ -341,7 +453,15 @@ class SearchExecutableProfileV1:
                 raise SearchAdapterError(
                     "active capability references must be unique"
                 )
+            existing_semantics = by_semantics.get(
+                entry.semantic_identity_digest
+            )
+            if existing_semantics is not None:
+                raise SearchAdapterError(
+                    "active capability semantics must be unique"
+                )
             by_ref[entry.capability_ref] = entry
+            by_semantics[entry.semantic_identity_digest] = entry
         object.__setattr__(
             self,
             "entries",
@@ -749,10 +869,315 @@ def acquire_open_idea(
 
 
 @dataclass(frozen=True, slots=True)
+class OpenSpecSearchCandidateV1:
+    """A qualified OpenSpec realization exposed to the next-fresh Search lane."""
+
+    spec: OpenResearchSpecV1
+    capability_ref: str
+    capability_digest: str
+    candidate_package_ref: str
+    candidate_package_digest: str
+    candidate_root_ref: str
+    candidate_root_digest: str
+    source_tree_digest: str
+    executable_entrypoint: str
+    execution_contract: Mapping[str, Any]
+    mechanism_program: Mapping[str, Any]
+    compiler_candidate_id: str
+    compile_report_digest: str
+    mechanism_program_digest: str
+    semantic_identity_ref: str
+    semantic_identity_digest: str
+    realization_identity_ref: str
+    realization_semantics_digest: str
+    implementation_receipt_ref: str
+    implementation_receipt_digest: str
+    realization_binding_ref: str
+    realization_binding_digest: str
+    qualification_receipt_ref: str
+    qualification_receipt_digest: str
+    mechanism_axis: str
+    utility_features: SearchUtilityFeaturesV1
+    feature_evidence: RouterFeatureEvidenceV1
+
+    schema: ClassVar[str] = (
+        "recclaw.research-line.vnext.open-spec-search-candidate.e0.v1"
+    )
+    identity_namespace: ClassVar[str] = (
+        "recclaw-open-spec-search-candidate-e0-v1"
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.spec, OpenResearchSpecV1):
+            raise SearchAdapterError("OpenSpec candidate requires OpenResearchSpecV1")
+        for field_name in (
+            "capability_ref",
+            "candidate_package_ref",
+            "candidate_root_ref",
+            "compiler_candidate_id",
+            "semantic_identity_ref",
+            "realization_identity_ref",
+            "implementation_receipt_ref",
+            "realization_binding_ref",
+            "qualification_receipt_ref",
+            "mechanism_axis",
+        ):
+            _normalized_string(
+                getattr(self, field_name),
+                field_name=field_name,
+            )
+        for field_name in (
+            "capability_digest",
+            "candidate_package_digest",
+            "candidate_root_digest",
+            "source_tree_digest",
+            "compile_report_digest",
+            "mechanism_program_digest",
+            "semantic_identity_digest",
+            "realization_semantics_digest",
+            "implementation_receipt_digest",
+            "realization_binding_digest",
+            "qualification_receipt_digest",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                validate_sha256(
+                    getattr(self, field_name),
+                    field_name=field_name,
+                ),
+            )
+        object.__setattr__(
+            self,
+            "executable_entrypoint",
+            _normalized_entrypoint(self.executable_entrypoint),
+        )
+        if not isinstance(self.utility_features, SearchUtilityFeaturesV1):
+            raise SearchAdapterError(
+                "OpenSpec candidate utility_features have the wrong type"
+            )
+        if not isinstance(self.feature_evidence, RouterFeatureEvidenceV1):
+            raise SearchAdapterError(
+                "OpenSpec candidate feature_evidence have the wrong type"
+            )
+        if self.spec.execution_contract is None:
+            raise SearchAdapterError(
+                "OpenSpec candidate requires a resolver execution_contract"
+            )
+        if not isinstance(self.execution_contract, Mapping):
+            raise SearchAdapterError("execution_contract must be a mapping")
+        execution_contract = canonical_value(dict(self.execution_contract))
+        if execution_contract != canonical_value(
+            dict(self.spec.execution_contract)
+        ):
+            raise SearchAdapterError(
+                "OpenSpec candidate execution_contract is not bound to its spec"
+            )
+        object.__setattr__(self, "execution_contract", execution_contract)
+        if not isinstance(self.mechanism_program, Mapping):
+            raise SearchAdapterError("mechanism_program must be a mapping")
+        mechanism_program = canonical_value(dict(self.mechanism_program))
+        report = compile_program(deep_thaw(mechanism_program))
+        if (
+            report.status.value != "VALID_NEEDS_IMPLEMENTATION"
+            or report.candidate_id is None
+            or report.mechanism_program_digest is None
+            or report.mechanism_semantics_digest is None
+        ):
+            raise SearchAdapterError(
+                "OpenSpec candidate must carry a strict compiler-valid mechanism program"
+            )
+        if self.compiler_candidate_id != report.candidate_id:
+            raise SearchAdapterError("OpenSpec compiler candidate identity drift")
+        if self.compile_report_digest != sha256_digest(report.to_dict()):
+            raise SearchAdapterError("OpenSpec compiler report digest drift")
+        if self.mechanism_program_digest != report.mechanism_program_digest:
+            raise SearchAdapterError("OpenSpec mechanism program digest drift")
+        scientific_program = bl_icf_scientific_mechanism_program(
+            mechanism_program
+        )
+        scientific_report = (
+            report
+            if scientific_program == mechanism_program
+            else compile_program(deep_thaw(scientific_program))
+        )
+        if (
+            scientific_report.status.value != "VALID_NEEDS_IMPLEMENTATION"
+            or scientific_report.mechanism_semantics_digest is None
+        ):
+            raise SearchAdapterError(
+                "OpenSpec candidate scientific mechanism projection is invalid"
+            )
+        expected_semantic_ref = mechanism_semantic_identity_ref(
+            search_space_id=report.space_identity.search_space_id,
+            candidate_id=report.candidate_id,
+        )
+        if (
+            self.semantic_identity_ref != expected_semantic_ref
+            or self.semantic_identity_digest
+            != scientific_report.mechanism_semantics_digest
+        ):
+            raise SearchAdapterError(
+                "OpenSpec mechanism identity is not compiler-derived"
+            )
+        if self.feature_evidence.compile_valid is not True:
+            raise SearchAdapterError(
+                "compiler-bound OpenSpec candidate requires compile_valid evidence"
+            )
+        object.__setattr__(self, "mechanism_program", mechanism_program)
+        expected_ref, expected_semantics = open_spec_realization_identity(
+            self.spec,
+            candidate_package_ref=self.candidate_package_ref,
+            candidate_package_digest=self.candidate_package_digest,
+            candidate_root_ref=self.candidate_root_ref,
+            candidate_root_digest=self.candidate_root_digest,
+            source_tree_digest=self.source_tree_digest,
+            executable_entrypoint=self.executable_entrypoint,
+            execution_contract=self.execution_contract,
+        )
+        if (
+            self.realization_identity_ref != expected_ref
+            or self.realization_semantics_digest != expected_semantics
+        ):
+            raise SearchAdapterError("OpenSpec realization identity drift")
+        parent_refs = mechanism_program["program_payload"]["parent_refs"]
+        parent_binding = (
+            None
+            if not parent_refs
+            else parent_refs[0]
+            if len(parent_refs) == 1
+            else parent_refs
+        )
+        conformance = search_space_conformance(
+            space_identity=report.space_identity.to_dict(),
+            profile_ref=mechanism_program["profile_ref"],
+            fixed_fallback=False,
+        )
+        binding = canonical_value(
+            {
+                "schema": "recclaw.compiler-bound-realization-binding.v1",
+                "compiler_candidate_id": self.compiler_candidate_id,
+                "compile_report_digest": self.compile_report_digest,
+                "mechanism_program_digest": self.mechanism_program_digest,
+                "mechanism_semantics_digest": self.semantic_identity_digest,
+                "semantic_identity_ref": self.semantic_identity_ref,
+                "space_identity": report.space_identity.to_dict(),
+                **conformance,
+                "parent_binding": parent_binding,
+                "open_spec_ref": self.spec.spec_id,
+                "open_spec_digest": self.spec.digest,
+                "candidate_package_ref": self.candidate_package_ref,
+                "candidate_package_digest": self.candidate_package_digest,
+                "candidate_root_ref": self.candidate_root_ref,
+                "candidate_root_digest": self.candidate_root_digest,
+                "source_tree_digest": self.source_tree_digest,
+                "implementation_receipt_ref": self.implementation_receipt_ref,
+                "implementation_receipt_digest": self.implementation_receipt_digest,
+                "executable_entrypoint": self.executable_entrypoint,
+                "model": execution_contract["model"],
+                "base_model_config": execution_contract["base_model_config"],
+                "config": execution_contract["config"],
+                "realization_identity_ref": self.realization_identity_ref,
+                "realization_semantics_digest": self.realization_semantics_digest,
+            }
+        )
+        expected_binding_digest = sha256_digest(binding)
+        expected_binding_ref = content_id(
+            "recclaw-compiler-bound-realization-v1", binding
+        )
+        if (
+            self.realization_binding_ref != expected_binding_ref
+            or self.realization_binding_digest != expected_binding_digest
+        ):
+            raise SearchAdapterError("OpenSpec compiler realization binding drift")
+
+    def _identity_dict(self) -> dict[str, Any]:
+        return canonical_value(
+            {
+                "schema": self.schema,
+                "spec": self.spec.to_dict(),
+                "capability_ref": self.capability_ref,
+                "capability_digest": self.capability_digest,
+                "candidate_package_ref": self.candidate_package_ref,
+                "candidate_package_digest": self.candidate_package_digest,
+                "candidate_root_ref": self.candidate_root_ref,
+                "candidate_root_digest": self.candidate_root_digest,
+                "source_tree_digest": self.source_tree_digest,
+                "executable_entrypoint": self.executable_entrypoint,
+                "execution_contract": self.execution_contract,
+                "mechanism_program": self.mechanism_program,
+                "compiler_candidate_id": self.compiler_candidate_id,
+                "compile_report_digest": self.compile_report_digest,
+                "mechanism_program_digest": self.mechanism_program_digest,
+                "semantic_identity_ref": self.semantic_identity_ref,
+                "semantic_identity_digest": self.semantic_identity_digest,
+                "realization_identity_ref": self.realization_identity_ref,
+                "implementation_receipt_ref": self.implementation_receipt_ref,
+                "implementation_receipt_digest": self.implementation_receipt_digest,
+                "realization_binding_ref": self.realization_binding_ref,
+                "realization_binding_digest": self.realization_binding_digest,
+                "qualification_receipt_ref": self.qualification_receipt_ref,
+                "qualification_receipt_digest": self.qualification_receipt_digest,
+                "mechanism_axis": self.mechanism_axis,
+                "utility_features": self.utility_features,
+                "feature_evidence": self.feature_evidence,
+                "realization_semantics_digest": self.realization_semantics_digest,
+            }
+        )
+
+    @property
+    def candidate_id(self) -> str:
+        return f"cand-open-{sha256_digest(self._identity_dict())}"
+
+    @property
+    def mechanism_id(self) -> str:
+        return self.compiler_candidate_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return canonical_value(
+            {
+                **self._identity_dict(),
+                "candidate_id": self.candidate_id,
+            }
+        )
+
+
+@runtime_checkable
+class QualifiedSearchCandidateProtocolV1(Protocol):
+    """Search-space-neutral identity surface for a qualified candidate."""
+
+    spec: OpenResearchSpecV1
+    candidate_id: str
+    mechanism_id: str
+    mechanism_axis: str
+    mechanism_program: Mapping[str, Any]
+    mechanism_program_digest: str
+    candidate_package_ref: str
+    candidate_package_digest: str
+    source_tree_digest: str
+    execution_contract: Mapping[str, Any]
+    capability_ref: str
+    capability_digest: str
+    executable_entrypoint: str
+    semantic_identity_ref: str
+    semantic_identity_digest: str
+    qualification_receipt_ref: str
+    qualification_receipt_digest: str
+    utility_features: SearchUtilityFeaturesV1
+    feature_evidence: RouterFeatureEvidenceV1
+
+    def to_dict(self) -> dict[str, Any]: ...
+
+
+@dataclass(frozen=True, slots=True)
 class SearchCandidateBindingV1:
     """Search-owned proposal bound to one active executable entry."""
 
-    proposal: CandidateProposalV4
+    proposal: (
+        CandidateProposalV4
+        | OpenSpecSearchCandidateV1
+        | QualifiedSearchCandidateProtocolV1
+    )
     capability_ref: str
     capability_digest: str
     executable_entrypoint: str
@@ -783,27 +1208,84 @@ class SearchCandidateBindingV1:
         return sha256_digest(self.canonical_dict())
 
 
+def is_qualified_open_spec_candidate(value: Any) -> bool:
+    """Recognize adapter candidates; binding still validates their admission."""
+    return isinstance(value, OpenSpecSearchCandidateV1) or (
+        isinstance(getattr(value, "spec", None), OpenResearchSpecV1)
+        and all(hasattr(value, name) for name in (
+            "candidate_id", "capability_ref", "capability_digest",
+            "executable_entrypoint", "semantic_identity_ref", "semantic_identity_digest",
+            "qualification_receipt_ref", "qualification_receipt_digest",
+            "execution_contract", "mechanism_program", "to_dict", "digest",
+        ))
+    )
+
+
 def bind_search_candidate(
     *,
     profile: SearchExecutableProfileV1,
-    proposal: CandidateProposalV4,
+    proposal: (
+        CandidateProposalV4
+        | OpenSpecSearchCandidateV1
+        | QualifiedSearchCandidateProtocolV1
+    ),
     capability_ref: str,
 ) -> SearchCandidateBindingV1:
-    """Bind only an active profile capability to the unchanged Router input."""
+    """Bind a legacy proposal or qualified OpenSpec to an active entry."""
 
     if not isinstance(profile, SearchExecutableProfileV1):
         raise SearchAdapterError(
             "profile must be SearchExecutableProfileV1"
         )
-    if not isinstance(proposal, CandidateProposalV4):
+    qualified_open_spec = is_qualified_open_spec_candidate(proposal)
+    if not isinstance(proposal, CandidateProposalV4) and not qualified_open_spec:
         raise SearchAdapterError(
-            "Search consumer requires CandidateProposalV4"
+            "Search consumer requires a legacy proposal or qualified OpenSpec candidate"
         )
     entry = profile.entry(capability_ref)
+    if qualified_open_spec:
+        if entry.origin is not SearchProfileEntryOriginV1.QUALIFIED_REGISTRY:
+            raise SearchAdapterError(
+                "OpenSpec candidate requires a qualified registry entry"
+            )
+        if profile.activation is not SearchProfileActivationV1.NEXT_FRESH_CAMPAIGN:
+            raise SearchAdapterError(
+                "qualified capability is unavailable before fresh activation"
+            )
+        if (
+            proposal.capability_ref != entry.capability_ref
+            or proposal.capability_digest != entry.capability_digest
+            or proposal.executable_entrypoint != entry.executable_entrypoint
+            or proposal.semantic_identity_ref != entry.semantic_identity_ref
+            or proposal.semantic_identity_digest != entry.semantic_identity_digest
+            or proposal.qualification_receipt_ref
+            != entry.qualification_receipt_ref
+            or proposal.qualification_receipt_digest
+            != entry.qualification_receipt_digest
+        ):
+            raise SearchAdapterError(
+                "OpenSpec candidate qualified admission identity drift"
+            )
+        if (
+            proposal.spec.protocol_ref != profile.protocol_ref
+            or proposal.spec.protocol_digest != profile.protocol_digest
+        ):
+            raise SearchAdapterError(
+                "OpenSpec candidate protocol identity drift"
+            )
+        return SearchCandidateBindingV1(
+            proposal=proposal,
+            capability_ref=entry.capability_ref,
+            capability_digest=entry.capability_digest,
+            executable_entrypoint=entry.executable_entrypoint,
+            entry_origin=entry.origin,
+            mechanism_semantics_digest=proposal.semantic_identity_digest,
+        )
     report = compile_program(deep_thaw(proposal.mechanism_program))
     if not report.is_valid or report.mechanism_semantics_digest is None:
         raise SearchAdapterError(
-            "Search proposal mechanism program is not BL-ICF valid"
+            "Search proposal mechanism program is not BL-ICF valid: "
+            + report.to_json()
         )
     if entry.origin is SearchProfileEntryOriginV1.FIXED_66:
         try:
@@ -951,12 +1433,13 @@ def freeze_experiment_slate(
             raise SearchAdapterError(
                 "slate entries must be SearchCandidateBindingV1"
             )
-        rebuilt = bind_search_candidate(
-            profile=profile,
-            proposal=binding.proposal,
-            capability_ref=binding.capability_ref,
-        )
-        if rebuilt != binding:
+        entry = profile.entry(binding.capability_ref)
+        if (
+            binding.capability_digest != entry.capability_digest
+            or binding.executable_entrypoint != entry.executable_entrypoint
+            or binding.entry_origin != entry.origin
+            or binding.mechanism_semantics_digest != entry.semantic_identity_digest
+        ):
             raise SearchAdapterError(
                 "candidate binding identity drift"
             )
@@ -983,14 +1466,507 @@ class ExperimentAcquisitionResultV1:
     selected_binding: SearchCandidateBindingV1 | None
 
 
+def _effective_router_policy_digest(
+    router: StrongStaticRouterV1,
+    policy_projection: Mapping[str, Any] | None,
+) -> str:
+    return sha256_digest(
+        {
+            "hard_gate_policy_digest": router.policy_digest,
+            "versioned_policy": policy_projection,
+        }
+    )
+
+
+def _normalize_repeat_ranking_inputs(
+    *,
+    executed_semantic_seed_pairs: Sequence[tuple[str, str]],
+    current_observation_seed: str | None,
+    pending_task: Mapping[str, Any] | None,
+) -> tuple[tuple[tuple[str, str], ...], str | None, Mapping[str, Any] | None]:
+    pairs: list[tuple[str, str]] = []
+    for pair in executed_semantic_seed_pairs:
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+            raise SearchAdapterError(
+                "executed semantic history must contain semantic/seed pairs"
+            )
+        semantic_digest = validate_sha256(
+            pair[0],
+            field_name="executed_candidate_semantic_digest",
+        )
+        seed = _normalized_string(pair[1], field_name="executed_observation_seed")
+        normalized_pair = (semantic_digest, seed)
+        if normalized_pair not in pairs:
+            pairs.append(normalized_pair)
+    normalized_seed = (
+        _normalized_string(
+            current_observation_seed,
+            field_name="current_observation_seed",
+        )
+        if current_observation_seed is not None
+        else None
+    )
+    normalized_task = (
+        canonical_value(dict(pending_task))
+        if pending_task is not None
+        else None
+    )
+    if normalized_task is not None and not isinstance(normalized_task, Mapping):
+        raise SearchAdapterError("pending_task must be a mapping")
+    return tuple(pairs), normalized_seed, normalized_task
+
+
+def _effective_repeat_policy_projection(
+    policy_projection: Mapping[str, Any] | None,
+    *,
+    executed_semantic_seed_pairs: tuple[tuple[str, str], ...],
+    current_observation_seed: str | None,
+    pending_task: Mapping[str, Any] | None,
+    mechanism_axis_effects: Mapping[str, float],
+) -> Mapping[str, Any] | None:
+    if (
+        not executed_semantic_seed_pairs
+        and current_observation_seed is None
+        and pending_task is None
+        and not mechanism_axis_effects
+    ):
+        return policy_projection
+    effective = dict(policy_projection or {})
+    effective["research_line_repeat_ranking"] = {
+        "executed_semantic_seed_pairs": executed_semantic_seed_pairs,
+        "current_observation_seed": current_observation_seed,
+        "pending_task": pending_task,
+    }
+    if mechanism_axis_effects:
+        effective["research_line_axis_effects"] = dict(
+            sorted(mechanism_axis_effects.items())
+        )
+    return canonical_value(effective)
+
+
+def _axis_effect_adjustment(
+    mechanism_axis: str,
+    mechanism_axis_effects: Mapping[str, float],
+) -> float:
+    """Use observed axis effects as a soft ranking prior, never a gate."""
+
+    effect = float(mechanism_axis_effects.get(mechanism_axis, 0.0))
+    return round(max(-0.15, min(0.10, effect)), 12)
+
+
+def _task_matches_program_identity(
+    pending_task: Mapping[str, Any],
+    *,
+    semantics_digest: str,
+    mechanism_program: Mapping[str, Any],
+) -> bool:
+    """Match raw discovery programs or compiler-bound control programs exactly."""
+
+    if pending_task.get("candidate_semantic_digest") != semantics_digest:
+        return False
+    task_program_digest = pending_task.get("mechanism_program_digest")
+    execution_binding = pending_task.get("execution_binding")
+    if isinstance(execution_binding, Mapping):
+        bound_program = execution_binding.get("mechanism_program")
+        return (
+            isinstance(task_program_digest, str)
+            and execution_binding.get("candidate_semantic_digest")
+            == semantics_digest
+            and execution_binding.get("mechanism_program_digest")
+            == task_program_digest
+            and execution_binding.get("bound_program_digest")
+            == task_program_digest
+            and isinstance(bound_program, Mapping)
+            and canonical_value(bound_program)
+            == canonical_value(mechanism_program)
+        )
+    return (
+        isinstance(task_program_digest, str)
+        and sha256_digest(mechanism_program) == task_program_digest
+    )
+
+
+def _is_repeat_semantics(
+    *,
+    semantics_digest: str,
+    mechanism_program: Mapping[str, Any],
+    executed_semantic_seed_pairs: tuple[tuple[str, str], ...],
+    current_observation_seed: str | None,
+    pending_task: Mapping[str, Any] | None,
+) -> bool:
+    if not any(semantic == semantics_digest for semantic, _seed in executed_semantic_seed_pairs):
+        return False
+    if current_observation_seed is None:
+        return True
+    executed_pair = (semantics_digest, current_observation_seed)
+    task_type = (
+        pending_task.get("task_type") if pending_task is not None else None
+    )
+    task_status = (
+        pending_task.get("task_status") if pending_task is not None else None
+    )
+    normalized_task_type = getattr(task_type, "value", task_type)
+    exact_task_binding = (
+        task_status == "PENDING"
+        and pending_task is not None
+        and _task_matches_program_identity(
+            pending_task,
+            semantics_digest=semantics_digest,
+            mechanism_program=mechanism_program,
+        )
+    )
+    if normalized_task_type == "VALIDATE_SAME_CANDIDATE":
+        if (
+            exact_task_binding
+            and _pending_new_seed_matches(pending_task, current_observation_seed)
+            and executed_pair not in executed_semantic_seed_pairs
+        ):
+            return False
+    if normalized_task_type in {"RUN_MATCHED_CONTROL", "RUN_ABLATION"}:
+        if (
+            exact_task_binding
+            and pending_task.get("verification_seed") == current_observation_seed
+            and executed_pair not in executed_semantic_seed_pairs
+        ):
+            return False
+    return True
+
+
+def _decision_with_reason(
+    decision: RouterHardGateDecisionV1,
+    *,
+    allowed: bool,
+    reason: RouterHardGateReasonV1,
+    policy_digest: str | None = None,
+) -> RouterHardGateDecisionV1:
+    return RouterHardGateDecisionV1(
+        candidate_id=decision.candidate_id,
+        allowed=allowed,
+        reason=reason,
+        compile_report_digest=decision.compile_report_digest,
+        mechanism_semantics_digest=decision.mechanism_semantics_digest,
+        feature_digest=decision.feature_digest,
+        policy_digest=(
+            decision.policy_digest
+            if policy_digest is None
+            else policy_digest
+        ),
+    )
+
+
+def _explicit_task_candidate_ids(
+    bindings: Sequence[SearchCandidateBindingV1],
+    *,
+    pending_task: Mapping[str, Any] | None,
+    current_observation_seed: str | None,
+) -> frozenset[str]:
+    if (
+        pending_task is None
+        or current_observation_seed is None
+        or pending_task.get("task_status") != "PENDING"
+        or pending_task.get("task_type")
+        not in {
+            "VALIDATE_SAME_CANDIDATE",
+            "RUN_MATCHED_CONTROL",
+            "RUN_ABLATION",
+        }
+    ):
+        return frozenset()
+    task_type = pending_task.get("task_type")
+    if task_type == "VALIDATE_SAME_CANDIDATE":
+        if not _pending_new_seed_matches(
+            pending_task,
+            current_observation_seed,
+        ):
+            return frozenset()
+    elif pending_task.get("verification_seed") != current_observation_seed:
+        return frozenset()
+    return frozenset(
+        binding.proposal.candidate_id
+        for binding in bindings
+        if _task_matches_program_identity(
+            pending_task,
+            semantics_digest=binding.mechanism_semantics_digest,
+            mechanism_program=binding.proposal.mechanism_program,
+        )
+    )
+
+
+def _strict_source_priority_key(
+    binding: SearchCandidateBindingV1,
+    *,
+    explicit_task_candidate_ids: frozenset[str],
+) -> tuple[int, int]:
+    candidate_id = binding.proposal.candidate_id
+    is_task = candidate_id in explicit_task_candidate_ids
+    if is_task:
+        return 0, 0
+    return 1, 0
+
+
+def _route_mixed_slate(
+    *,
+    slate: FrozenExperimentSlateV1,
+    router: StrongStaticRouterV1,
+    policy_projection: Mapping[str, Any] | None,
+    executed_semantic_seed_pairs: Sequence[tuple[str, str]] = (),
+    current_observation_seed: str | None = None,
+    pending_task: Mapping[str, Any] | None = None,
+    mechanism_axis_effects: Mapping[str, float] | None = None,
+    preferred_candidate_ids: Sequence[str] = (),
+) -> RouteTraceV1:
+    """Route a legacy or mixed slate with history-aware soft utility ranking."""
+
+    (
+        executed_semantic_seed_pairs,
+        current_observation_seed,
+        pending_task,
+    ) = _normalize_repeat_ranking_inputs(
+        executed_semantic_seed_pairs=executed_semantic_seed_pairs,
+        current_observation_seed=current_observation_seed,
+        pending_task=pending_task,
+    )
+    normalized_axis_effects = {
+        str(axis): float(effect)
+        for axis, effect in (mechanism_axis_effects or {}).items()
+    }
+    policy_projection = _effective_repeat_policy_projection(
+        policy_projection,
+        executed_semantic_seed_pairs=executed_semantic_seed_pairs,
+        current_observation_seed=current_observation_seed,
+        pending_task=pending_task,
+        mechanism_axis_effects=normalized_axis_effects,
+    )
+    explicit_task_candidate_ids = _explicit_task_candidate_ids(
+        slate.bindings,
+        pending_task=pending_task,
+        current_observation_seed=current_observation_seed,
+    )
+    policy_digest = _effective_router_policy_digest(
+        router,
+        policy_projection,
+    )
+    records: list[dict[str, Any]] = []
+    for index, binding in enumerate(slate.bindings):
+        proposal = binding.proposal
+        if isinstance(proposal, CandidateProposalV4):
+            # Calling the real router for a singleton preserves its compiler,
+            # hard gates, feature digest, and policy scoring.  The mixed
+            # slate applies semantic de-duplication and the slate ceiling
+            # after both candidate kinds are in the same pool.
+            single_trace = router.route(
+                (proposal,),
+                policy_projection=policy_projection,
+            )
+            original = single_trace.decisions[0]
+            base_allowed = original.reason in {
+                RouterHardGateReasonV1.ALLOW,
+                RouterHardGateReasonV1.SLATE_CEILING,
+            }
+            base_reason = (
+                RouterHardGateReasonV1.ALLOW
+                if base_allowed
+                else original.reason
+            )
+            decision = _decision_with_reason(
+                original,
+                allowed=base_allowed,
+                reason=base_reason,
+            )
+            semantics_digest = original.mechanism_semantics_digest
+            score = router.score(
+                proposal.utility_features,
+                policy_projection,
+            )
+        else:
+            features = proposal.utility_features
+            reason = RouterHardGateReasonV1.ALLOW
+            if features.runnable_probability < router.runnable_floor:
+                reason = RouterHardGateReasonV1.RUNNABLE_BELOW_FLOOR
+            elif features.blocker_risk > router.blocker_ceiling:
+                reason = RouterHardGateReasonV1.BLOCKER_RISK_ABOVE_CEILING
+            elif features.cost > router.cost_ceiling:
+                reason = RouterHardGateReasonV1.COST_ABOVE_CEILING
+            score = router.score(features, policy_projection)
+            if reason is RouterHardGateReasonV1.ALLOW and score < router.utility_floor:
+                reason = RouterHardGateReasonV1.UTILITY_BELOW_FLOOR
+            base_allowed = reason is RouterHardGateReasonV1.ALLOW
+            decision = RouterHardGateDecisionV1(
+                candidate_id=proposal.candidate_id,
+                allowed=base_allowed,
+                reason=reason,
+                # Native qualified candidates need not traverse the
+                # BL-specific compiler.  Their mechanical qualification
+                # receipt is the corresponding executable-feasibility
+                # evidence at this legacy-named router coordinate.
+                compile_report_digest=(
+                    proposal.compile_report_digest
+                    if hasattr(proposal, "compile_report_digest")
+                    else proposal.qualification_receipt_digest
+                ),
+                mechanism_semantics_digest=(
+                    proposal.semantic_identity_digest
+                ),
+                feature_digest=sha256_digest(features),
+                policy_digest=policy_digest,
+            )
+            semantics_digest = proposal.semantic_identity_digest
+
+        score += _axis_effect_adjustment(
+            proposal.mechanism_axis,
+            normalized_axis_effects,
+        )
+
+        if semantics_digest is None:
+            base_allowed = False
+            decision = _decision_with_reason(
+                decision,
+                allowed=False,
+                reason=RouterHardGateReasonV1.BL_COMPILE_FAILED,
+            )
+        repeat = (
+            semantics_digest is not None
+            and _is_repeat_semantics(
+                semantics_digest=str(semantics_digest),
+                mechanism_program=binding.proposal.mechanism_program,
+                executed_semantic_seed_pairs=executed_semantic_seed_pairs,
+                current_observation_seed=current_observation_seed,
+                pending_task=pending_task,
+            )
+        )
+        if repeat:
+            base_allowed = False
+            decision = _decision_with_reason(
+                decision,
+                allowed=False,
+                reason=RouterHardGateReasonV1.SEMANTIC_DUPLICATE,
+            )
+        records.append(
+            {
+                "index": index,
+                "binding": binding,
+                "candidate_id": proposal.candidate_id,
+                "decision": decision,
+                "base_allowed": base_allowed,
+                "semantics_digest": semantics_digest,
+                "score": score,
+                "repeat": repeat,
+                "source_priority": _strict_source_priority_key(
+                    binding,
+                    explicit_task_candidate_ids=explicit_task_candidate_ids,
+                ),
+            }
+        )
+
+    eligible = [
+        record
+        for record in records
+        if record["base_allowed"] and record["semantics_digest"] is not None
+    ]
+    preferred_rank = {
+        candidate_id: index
+        for index, candidate_id in enumerate(preferred_candidate_ids)
+    }
+    eligible.sort(
+        key=lambda record: (
+            *record["source_priority"],
+            (
+                preferred_rank.get(
+                    record["candidate_id"],
+                    len(preferred_rank),
+                )
+                if preferred_rank
+                else 0
+            ),
+            -record["score"],
+            record["index"],
+        )
+    )
+    unique: list[dict[str, Any]] = []
+    duplicate_ids: set[str] = set()
+    seen_semantics: set[str] = set()
+    for record in eligible:
+        semantics_digest = str(record["semantics_digest"])
+        if semantics_digest in seen_semantics:
+            duplicate_ids.add(record["candidate_id"])
+            continue
+        seen_semantics.add(semantics_digest)
+        unique.append(record)
+
+    keep = unique[: max(0, router.slate_ceiling)]
+    keep_ids = {record["candidate_id"] for record in keep}
+    decisions: list[RouterHardGateDecisionV1] = []
+    for record in records:
+        decision = record["decision"]
+        candidate_id = record["candidate_id"]
+        if candidate_id in duplicate_ids:
+            decision = _decision_with_reason(
+                decision,
+                allowed=False,
+                reason=RouterHardGateReasonV1.SEMANTIC_DUPLICATE,
+            )
+        elif record["base_allowed"] and candidate_id not in keep_ids:
+            decision = _decision_with_reason(
+                decision,
+                allowed=False,
+                reason=RouterHardGateReasonV1.SLATE_CEILING,
+            )
+        decisions.append(decision)
+
+    proposal_pool = [
+        binding.proposal.to_dict() for binding in slate.bindings
+    ]
+    return RouteTraceV1(
+        pool_digest=sha256_digest(proposal_pool),
+        ordered_candidate_ids=tuple(
+            record["candidate_id"] for record in records
+        ),
+        ranked_candidate_ids=tuple(
+            record["candidate_id"] for record in keep
+        ),
+        decisions=tuple(decisions),
+        selected_candidate_id=(
+            keep[0]["candidate_id"] if keep else None
+        ),
+        selection_score=(keep[0]["score"] if keep else None),
+        policy_digest=policy_digest,
+    )
+
+
 def route_frozen_experiment_slate(
     *,
     profile: SearchExecutableProfileV1,
     slate: FrozenExperimentSlateV1,
     router: StrongStaticRouterV1,
     policy_projection: Mapping[str, Any] | None = None,
+    executed_semantic_seed_pairs: Sequence[tuple[str, str]] = (),
+    current_observation_seed: str | None = None,
+    pending_task: Mapping[str, Any] | None = None,
+    mechanism_axis_effects: Mapping[str, float] | None = None,
+    portfolio_candidates: (
+        Sequence[PortfolioCandidateV2]
+        | Mapping[str, PortfolioCandidateV2 | Mapping[str, Any]]
+        | None
+    ) = None,
+    portfolio_control: PortfolioControlStateV2 | Mapping[str, Any] | None = None,
+    attempt_failures: Sequence[
+        PortfolioAttemptFailureV2 | Mapping[str, Any] | str
+    ] = (),
+    failed_attempts: Sequence[
+        PortfolioAttemptFailureV2 | Mapping[str, Any] | str
+    ] | None = None,
+    failed_candidate_ids: Sequence[str] = (),
+    first_window_size: int | None = None,
+    preferred_candidate_ids: Sequence[str] = (),
 ) -> ExperimentAcquisitionResultV1:
-    """Invoke the unchanged current Router with only the frozen slate."""
+    """Route a frozen slate through the legacy or explicit portfolio path.
+
+    All new arguments are optional.  Omitting them preserves the historical
+    StrongStaticRouterV1 behavior.  Supplying portfolio state enables a full
+    eligible-pool ranking with a bounded first window (four by default), so a
+    sealed candidate-local failure can be removed and the remaining pool
+    re-ranked without another Provider call.
+    """
 
     if not isinstance(profile, SearchExecutableProfileV1):
         raise SearchAdapterError(
@@ -1000,9 +1976,9 @@ def route_frozen_experiment_slate(
         raise SearchAdapterError(
             "slate must be FrozenExperimentSlateV1"
         )
-    if not isinstance(router, StrongStaticRouterV1):
+    if not isinstance(router, _FrozenExperimentRouter):
         raise SearchAdapterError(
-            "router must be the existing StrongStaticRouterV1"
+            "router must implement the frozen experiment router contract"
         )
     if (
         slate.campaign_id != profile.campaign_id
@@ -1013,22 +1989,55 @@ def route_frozen_experiment_slate(
             "experiment slate is not bound to the active campaign profile"
         )
     for binding in slate.bindings:
+        entry = profile.entry(binding.capability_ref)
         if (
-            bind_search_candidate(
-                profile=profile,
-                proposal=binding.proposal,
-                capability_ref=binding.capability_ref,
-            )
-            != binding
+            binding.capability_digest != entry.capability_digest
+            or binding.executable_entrypoint != entry.executable_entrypoint
+            or binding.entry_origin != entry.origin
+            or binding.mechanism_semantics_digest != entry.semantic_identity_digest
         ):
             raise SearchAdapterError(
                 "experiment slate binding drift"
             )
 
-    trace = router.route(
-        tuple(binding.proposal for binding in slate.bindings),
-        policy_projection=policy_projection,
+    effective_failed_attempts = tuple(
+        attempt_failures
+    ) + tuple(failed_attempts or ())
+    portfolio_mode = any(
+        (
+            portfolio_candidates is not None,
+            portfolio_control is not None,
+            bool(effective_failed_attempts),
+            bool(failed_candidate_ids),
+            first_window_size is not None,
+        )
     )
+    if portfolio_mode:
+        trace = _route_portfolio_slate(
+            slate=slate,
+            router=router,
+            policy_projection=policy_projection,
+            portfolio_candidates=portfolio_candidates,
+            portfolio_control=portfolio_control,
+            attempt_failures=effective_failed_attempts,
+            failed_candidate_ids=failed_candidate_ids,
+            first_window_size=first_window_size,
+            executed_semantic_seed_pairs=executed_semantic_seed_pairs,
+            current_observation_seed=current_observation_seed,
+            pending_task=pending_task,
+            preferred_candidate_ids=preferred_candidate_ids,
+        )
+    else:
+        trace = _route_mixed_slate(
+            slate=slate,
+            router=router,
+            policy_projection=policy_projection,
+            executed_semantic_seed_pairs=executed_semantic_seed_pairs,
+            current_observation_seed=current_observation_seed,
+            pending_task=pending_task,
+            mechanism_axis_effects=mechanism_axis_effects,
+            preferred_candidate_ids=preferred_candidate_ids,
+        )
     hard_gate_by_candidate = {
         decision.candidate_id: decision
         for decision in trace.decisions
@@ -1126,10 +2135,19 @@ def route_frozen_experiment_slate(
 
 
 __all__ = [
+    "AttemptFailureScopeV2",
     "ExperimentAcquisitionResultV1",
     "FrozenExperimentSlateV1",
     "IdeaAcquisitionResultV1",
     "IdeaRouteV1",
+    "OpenSpecSearchCandidateV1",
+    "QualifiedSearchCandidateProtocolV1",
+    "ParentValidationStateV2",
+    "PortfolioAttemptFailureV2",
+    "PortfolioCandidateV2",
+    "PortfolioControlStateV2",
+    "PortfolioEligibilityV2",
+    "ResourceAdmissionStateV2",
     "SearchAdapterError",
     "SearchCandidateBindingV1",
     "SearchExecutableEntryV1",
@@ -1142,6 +2160,424 @@ __all__ = [
     "adapt_current_search_profile",
     "bind_search_candidate",
     "freeze_experiment_slate",
+    "open_spec_realization_identity",
     "predecessor_executable_entries",
     "route_frozen_experiment_slate",
 ]
+
+def _portfolio_candidate_for_binding(
+    binding: SearchCandidateBindingV1,
+    override: PortfolioCandidateV2 | None = None,
+) -> PortfolioCandidateV2:
+    """Validate the explicit outcome-blind profile for one binding."""
+
+    proposal = binding.proposal
+    if override is None:
+        raise SearchAdapterError(
+            "portfolio/failover routing requires an explicit PortfolioCandidateV2 "
+            "profile for every frozen Search candidate"
+        )
+    if (
+        override.candidate_id != proposal.candidate_id
+        or override.semantic_digest != binding.mechanism_semantics_digest
+    ):
+        raise SearchAdapterError(
+            "portfolio candidate identity is not bound to the Search binding"
+        )
+    return override
+
+
+def _portfolio_override_map(
+    value: (
+        Sequence[PortfolioCandidateV2]
+        | Mapping[str, PortfolioCandidateV2 | Mapping[str, Any]]
+        | None
+    ),
+) -> dict[str, PortfolioCandidateV2]:
+    if value is None:
+        return {}
+    items: Sequence[Any]
+    if isinstance(value, Mapping):
+        if "candidates" in value:
+            raw = value["candidates"]
+            if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+                raise SearchAdapterError(
+                    "portfolio candidates must be a sequence"
+                )
+            items = raw
+        else:
+            items = tuple(value.values())
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        items = value
+    else:
+        raise SearchAdapterError(
+            "portfolio candidates must be PortfolioCandidateV2 records"
+        )
+    result: dict[str, PortfolioCandidateV2] = {}
+    for item in items:
+        candidate = (
+            item
+            if isinstance(item, PortfolioCandidateV2)
+            else PortfolioCandidateV2.from_mapping(item)
+        )
+        if candidate.candidate_id in result:
+            raise SearchAdapterError(
+                "portfolio candidate IDs must be unique"
+            )
+        result[candidate.candidate_id] = candidate
+    return result
+
+
+def _portfolio_failure(
+    value: PortfolioAttemptFailureV2 | Mapping[str, Any] | str,
+) -> PortfolioAttemptFailureV2:
+    if isinstance(value, PortfolioAttemptFailureV2):
+        return value
+    if isinstance(value, Mapping):
+        return PortfolioAttemptFailureV2(**dict(value))
+    return PortfolioAttemptFailureV2(candidate_id=value)
+
+
+def _portfolio_control(
+    value: PortfolioControlStateV2 | Mapping[str, Any] | None,
+    *,
+    attempt_failures: Sequence[
+        PortfolioAttemptFailureV2 | Mapping[str, Any] | str
+    ],
+    failed_candidate_ids: Sequence[str],
+    first_window_size: int | None,
+) -> PortfolioControlStateV2:
+    if value is None:
+        state = PortfolioControlStateV2()
+    elif isinstance(value, PortfolioControlStateV2):
+        state = value
+    elif isinstance(value, Mapping):
+        payload = dict(value)
+        payload["attempt_failures"] = tuple(
+            _portfolio_failure(item)
+            for item in payload.get("attempt_failures", ())
+        )
+        state = PortfolioControlStateV2(**payload)
+    else:
+        raise SearchAdapterError(
+            "portfolio control must be PortfolioControlStateV2"
+        )
+    for failure in attempt_failures:
+        state = state.with_attempt_failure(_portfolio_failure(failure))
+    if failed_candidate_ids:
+        state = replace(
+            state,
+            failed_candidate_ids=(
+                *state.failed_candidate_ids,
+                *(str(item) for item in failed_candidate_ids),
+            ),
+        )
+    if first_window_size is not None:
+        state = replace(state, first_window_size=first_window_size)
+    return state
+
+
+def _portfolio_hard_gate(
+    binding: SearchCandidateBindingV1,
+    *,
+    router: StrongStaticRouterV1,
+    policy_projection: Mapping[str, Any] | None,
+) -> RouterHardGateDecisionV1:
+    proposal = binding.proposal
+    if isinstance(proposal, CandidateProposalV4):
+        trace = router.route((proposal,), policy_projection=policy_projection)
+        return trace.decisions[0]
+    features = proposal.utility_features
+    reason = RouterHardGateReasonV1.ALLOW
+    if features.runnable_probability < router.runnable_floor:
+        reason = RouterHardGateReasonV1.RUNNABLE_BELOW_FLOOR
+    elif features.blocker_risk > router.blocker_ceiling:
+        reason = RouterHardGateReasonV1.BLOCKER_RISK_ABOVE_CEILING
+    elif features.cost > router.cost_ceiling:
+        reason = RouterHardGateReasonV1.COST_ABOVE_CEILING
+    score = router.score(features, policy_projection)
+    if reason is RouterHardGateReasonV1.ALLOW and score < router.utility_floor:
+        reason = RouterHardGateReasonV1.UTILITY_BELOW_FLOOR
+    return RouterHardGateDecisionV1(
+        candidate_id=proposal.candidate_id,
+        allowed=reason is RouterHardGateReasonV1.ALLOW,
+        reason=reason,
+        compile_report_digest=None,
+        mechanism_semantics_digest=binding.mechanism_semantics_digest,
+        feature_digest=sha256_digest(features),
+        policy_digest=_effective_router_policy_digest(
+            router,
+            policy_projection,
+        ),
+    )
+
+
+def _portfolio_router_reason(
+    eligibility: PortfolioEligibilityV2,
+) -> RouterHardGateReasonV1:
+    if eligibility is PortfolioEligibilityV2.NOT_RESOURCE_ADMITTED:
+        return RouterHardGateReasonV1.RUNNABLE_BELOW_FLOOR
+    if eligibility in {
+        PortfolioEligibilityV2.UNVERIFIED_PARENT,
+        PortfolioEligibilityV2.FAILED_PARENT,
+        PortfolioEligibilityV2.CORRELATED_COMPUTE_PATTERN,
+        PortfolioEligibilityV2.LINEAGE_RISK,
+    }:
+        return RouterHardGateReasonV1.BLOCKER_RISK_ABOVE_CEILING
+    return RouterHardGateReasonV1.UTILITY_BELOW_FLOOR
+
+
+def _route_portfolio_slate(
+    *,
+    slate: FrozenExperimentSlateV1,
+    router: StrongStaticRouterV1,
+    policy_projection: Mapping[str, Any] | None,
+    portfolio_candidates: (
+        Sequence[PortfolioCandidateV2]
+        | Mapping[str, PortfolioCandidateV2 | Mapping[str, Any]]
+        | None
+    ),
+    portfolio_control: PortfolioControlStateV2 | Mapping[str, Any] | None,
+    attempt_failures: Sequence[
+        PortfolioAttemptFailureV2 | Mapping[str, Any] | str
+    ],
+    failed_candidate_ids: Sequence[str],
+    first_window_size: int | None,
+    executed_semantic_seed_pairs: Sequence[tuple[str, str]],
+    current_observation_seed: str | None,
+    pending_task: Mapping[str, Any] | None,
+    preferred_candidate_ids: Sequence[str],
+) -> RouteTraceV1:
+    _load_portfolio_symbols()
+    if portfolio_candidates is None:
+        raise SearchAdapterError(
+            "portfolio/failover routing requires explicit PortfolioCandidateV2 "
+            "profiles for every frozen Search candidate"
+        )
+    overrides = _portfolio_override_map(portfolio_candidates)
+    expected_ids = {binding.proposal.candidate_id for binding in slate.bindings}
+    missing_overrides = expected_ids - set(overrides)
+    unknown_overrides = set(overrides) - expected_ids
+    if missing_overrides:
+        raise SearchAdapterError(
+            "portfolio candidate profiles are missing for frozen Search candidates: "
+            + ", ".join(sorted(missing_overrides))
+        )
+    if unknown_overrides:
+        raise SearchAdapterError(
+            "portfolio candidate is outside the frozen Search slate: "
+            + ", ".join(sorted(unknown_overrides))
+        )
+    control = _portfolio_control(
+        portfolio_control,
+        attempt_failures=attempt_failures,
+        failed_candidate_ids=failed_candidate_ids,
+        first_window_size=first_window_size,
+    )
+    raw_pairs = tuple(executed_semantic_seed_pairs)
+    normalized_pairs, normalized_seed, normalized_task = (
+        _normalize_repeat_ranking_inputs(
+            executed_semantic_seed_pairs=raw_pairs,
+            current_observation_seed=current_observation_seed,
+            pending_task=pending_task,
+        )
+    )
+    if raw_pairs:
+        counts = dict(control.repeat_counts)
+        for semantic, _seed in raw_pairs:
+            counts[semantic] = counts.get(semantic, 0) + 1
+        # An explicit, unexecuted new-seed task is information-seeking work,
+        # not a blind repeat.  Keep the candidate routable without using its
+        # unseen result.
+        if (
+            normalized_seed is not None
+            and normalized_task is not None
+            and normalized_task.get("task_status") == "PENDING"
+            and normalized_task.get("task_type") == "VALIDATE_SAME_CANDIDATE"
+            and normalized_task.get("candidate_semantic_digest")
+            and _pending_new_seed_matches(normalized_task, normalized_seed)
+            and (normalized_task["candidate_semantic_digest"], normalized_seed)
+            not in normalized_pairs
+        ):
+            counts[normalized_task["candidate_semantic_digest"]] = 0
+        control = replace(control, repeat_counts=tuple(counts.items()))
+
+    custom_route = (
+        None
+        if isinstance(router, StrongStaticRouterV1)
+        else router.route(
+            tuple(binding.proposal for binding in slate.bindings),
+            policy_projection=policy_projection,
+        )
+    )
+    custom_decisions = (
+        None
+        if custom_route is None
+        else {
+            decision.candidate_id: decision
+            for decision in custom_route.decisions
+        }
+    )
+    hard_decisions: dict[str, RouterHardGateDecisionV1] = {}
+    candidates: list[PortfolioCandidateV2] = []
+    for binding in slate.bindings:
+        decision = (
+            _portfolio_hard_gate(
+                binding,
+                router=router,
+                policy_projection=policy_projection,
+            )
+            if custom_decisions is None
+            else custom_decisions[binding.proposal.candidate_id]
+        )
+        if _is_repeat_semantics(
+            semantics_digest=binding.mechanism_semantics_digest,
+            mechanism_program=binding.proposal.mechanism_program,
+            executed_semantic_seed_pairs=normalized_pairs,
+            current_observation_seed=normalized_seed,
+            pending_task=normalized_task,
+        ):
+            decision = _decision_with_reason(
+                decision,
+                allowed=False,
+                reason=RouterHardGateReasonV1.SEMANTIC_DUPLICATE,
+            )
+        hard_decisions[binding.proposal.candidate_id] = decision
+        candidates.append(
+            _portfolio_candidate_for_binding(
+                binding,
+                overrides.get(binding.proposal.candidate_id),
+            )
+        )
+    ranking = rank_candidate_portfolio_v2(
+        candidates,
+        control=control,
+        first_window_size=first_window_size,
+    )
+    record_by_id = {
+        item.candidate.candidate_id: item
+        for item in ranking.records
+    }
+    hard_allowed = {
+        candidate_id
+        for candidate_id, decision in hard_decisions.items()
+        if decision.allowed or decision.reason is RouterHardGateReasonV1.SLATE_CEILING
+    }
+    if custom_route is None:
+        full_order = tuple(
+            candidate_id
+            for candidate_id in ranking.ranked_candidate_ids
+            if candidate_id in hard_allowed
+        )
+    else:
+        portfolio_eligible = {
+            item.candidate.candidate_id
+            for item in ranking.records
+            if item.eligible
+        }
+        full_order = tuple(
+            candidate_id
+            for candidate_id in custom_route.ranked_candidate_ids
+            if candidate_id in hard_allowed
+            and candidate_id in portfolio_eligible
+        )
+    if preferred_candidate_ids:
+        preferred = tuple(
+            candidate_id
+            for candidate_id in preferred_candidate_ids
+            if candidate_id in full_order
+        )
+        preferred_set = set(preferred)
+        full_order = (
+            *preferred,
+            *(item for item in full_order if item not in preferred_set),
+        )
+    explicit_task_candidate_ids = _explicit_task_candidate_ids(
+        slate.bindings,
+        pending_task=normalized_task,
+        current_observation_seed=normalized_seed,
+    )
+    # A durable fresh-seed confirmation task is executable by the same
+    # semantic candidate under the requested current seed.  When that exact
+    # candidate remains portfolio-eligible, place it ahead of unrelated
+    # exploration; resource/lineage/hard-gate exclusions still win.  Other
+    # operations (for example matched controls) require an explicit control
+    # binding and are not guessed from the intervention identity.
+    if explicit_task_candidate_ids:
+        task_candidates = tuple(
+            candidate_id
+            for candidate_id in full_order
+            if candidate_id in explicit_task_candidate_ids
+        )
+        full_order = (
+            *task_candidates,
+            *(item for item in full_order if item not in explicit_task_candidate_ids),
+        )
+    window = control.first_window_size
+    first_window = full_order[:window]
+    selected = first_window[0] if first_window else None
+    policy_digest = sha256_digest(
+        {
+            "legacy_router_policy": _effective_router_policy_digest(
+                router,
+                policy_projection,
+            ),
+            "portfolio_policy": ranking.policy_digest,
+            "executed_semantic_seed_pairs": normalized_pairs,
+            "current_observation_seed": normalized_seed,
+            "pending_task": normalized_task,
+        }
+    )
+    decisions: list[RouterHardGateDecisionV1] = []
+    for binding in slate.bindings:
+        candidate_id = binding.proposal.candidate_id
+        base = hard_decisions[candidate_id]
+        if candidate_id not in hard_allowed:
+            decisions.append(
+                _decision_with_reason(
+                    base,
+                    allowed=False,
+                    reason=base.reason,
+                    policy_digest=policy_digest,
+                )
+            )
+            continue
+        record = record_by_id[candidate_id]
+        if not record.eligible:
+            decisions.append(
+                _decision_with_reason(
+                    base,
+                    allowed=False,
+                    reason=_portfolio_router_reason(record.eligibility),
+                    policy_digest=policy_digest,
+                )
+            )
+            continue
+        decisions.append(
+            _decision_with_reason(
+                base,
+                allowed=True,
+                reason=RouterHardGateReasonV1.ALLOW,
+                policy_digest=policy_digest,
+            )
+        )
+    selection_score = None
+    if selected is not None:
+        selection_score = next(
+            item.score
+            for item in ranking.records
+            if item.candidate.candidate_id == selected
+        )
+    return RouteTraceV1(
+        pool_digest=sha256_digest(
+            [item.proposal.to_dict() for item in slate.bindings]
+        ),
+        ordered_candidate_ids=tuple(
+            item.proposal.candidate_id for item in slate.bindings
+        ),
+        ranked_candidate_ids=first_window,
+        decisions=tuple(decisions),
+        selected_candidate_id=selected,
+        selection_score=selection_score,
+        policy_digest=policy_digest,
+    )

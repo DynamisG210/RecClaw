@@ -269,6 +269,7 @@ def build_training_filesystem_capability(
     project_root: Path,
     recbole_root: Path,
     dataset_root: Path,
+    cache_root: Path | None = None,
 ) -> TrainingFilesystemCapabilityV2:
     private = _checked_directory(
         instance_private_root, field_name="instance_private_root"
@@ -289,7 +290,11 @@ def build_training_filesystem_capability(
     working = result / "work"
     log_root = working / "log"
     temp_root = result / "tmp"
-    cache_root = result / "cache"
+    cache_root = (
+        result / "cache"
+        if cache_root is None
+        else _checked_directory(cache_root, field_name="cache_root")
+    )
     home_root = result / "home"
     environment = {
         "HOME": home_root.as_posix(),

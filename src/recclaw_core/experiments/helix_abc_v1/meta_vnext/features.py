@@ -67,6 +67,33 @@ def _components_by_id(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return result
 
 
+def _component_semantics(component: Mapping[str, Any]) -> Any:
+    """Return the complete component spec without its stable lookup identity."""
+
+    return canonical_value(
+        {key: value for key, value in component.items() if key != "component_id"}
+    )
+
+
+def _custom_components_by_id(
+    payload: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    custom_components = payload.get("custom_components", ())
+    if not isinstance(custom_components, (list, tuple)):
+        raise MetaVNextFeatureError("custom components must be a sequence")
+    result: dict[str, dict[str, Any]] = {}
+    for component in custom_components:
+        if not isinstance(component, Mapping):
+            raise MetaVNextFeatureError("custom component must be a mapping")
+        component_id = component.get("custom_component_id")
+        if not isinstance(component_id, str) or not component_id:
+            raise MetaVNextFeatureError("custom component lacks identity")
+        if component_id in result:
+            raise MetaVNextFeatureError("custom component IDs must be unique")
+        result[component_id] = dict(component)
+    return result
+
+
 def _parameter_change_count(left: Any, right: Any) -> int:
     if isinstance(left, Mapping) and isinstance(right, Mapping):
         keys = set(left) | set(right)
@@ -242,6 +269,8 @@ def materialize_candidate_pool(
         parent_payload = _program_payload(parent_program)
         candidate_components = _components_by_id(candidate_payload)
         parent_components = _components_by_id(parent_payload)
+        candidate_custom_components = _custom_components_by_id(candidate_payload)
+        parent_custom_components = _custom_components_by_id(parent_payload)
         candidate_program_digest = sha256_digest(candidate_program)
         parent_program_digest = sha256_digest(parent_program)
 
@@ -291,8 +320,87 @@ def materialize_candidate_pool(
             and candidate_components[component_id].get("parameters", {})
             != parent_components[component_id].get("parameters", {})
         }
+        semantic_slots: set[str] = set()
+        for component_id in common_components:
+            candidate_component = candidate_components[component_id]
+            parent_component = parent_components[component_id]
+            if _component_semantics(candidate_component) == _component_semantics(
+                parent_component
+            ):
+                continue
+            semantic_slots.add(str(candidate_component["slot_id"]))
+            semantic_slots.add(str(parent_component["slot_id"]))
+
+        common_custom_components = set(candidate_custom_components) & set(
+            parent_custom_components
+        )
+        changed_custom_ids = {
+            component_id
+            for component_id in common_custom_components
+            if canonical_value(candidate_custom_components[component_id])
+            != canonical_value(parent_custom_components[component_id])
+        }
+        changed_custom_ids.update(
+            set(candidate_custom_components) ^ set(parent_custom_components)
+        )
+        custom_semantic_slots = {
+            str(component["slot_id"])
+            for component_id in changed_custom_ids
+            for component in (
+                candidate_custom_components.get(component_id),
+                parent_custom_components.get(component_id),
+            )
+            if isinstance(component, Mapping)
+            and isinstance(component.get("slot_id"), str)
+        }
         actual_changed_slots = (
-            added_slots | removed_slots | set(replaced_slots) | parameter_slots
+            added_slots
+            | removed_slots
+            | set(replaced_slots)
+            | parameter_slots
+            | semantic_slots
+            | custom_semantic_slots
+        )
+        parent_refs = candidate_payload.get("parent_refs", ())
+        exact_parent_refs = (
+            tuple(
+                item
+                for item in parent_refs
+                if isinstance(item, Mapping)
+                and item.get("program_digest") == parent_program_digest
+            )
+            if isinstance(parent_refs, (tuple, list))
+            else ()
+        )
+        self_parent = any(
+            item.get("candidate_id") == proposal.candidate_id
+            for item in exact_parent_refs
+        )
+        exact_parent_binding = bool(exact_parent_refs) and not self_parent
+        declared_changed_slots = {
+            str(item.get("slot_id"))
+            for item in candidate_payload.get("changed_slots", ())
+            if isinstance(item, Mapping) and isinstance(item.get("slot_id"), str)
+        }
+        declared_removed_slots = {
+            str(item)
+            for item in candidate_payload.get("removed_slots", ())
+            if isinstance(item, str)
+        }
+        architecture_semantics_changed = canonical_value(
+            candidate_payload.get("architecture_operators", ())
+        ) != canonical_value(parent_payload.get("architecture_operators", ()))
+        construction_mode_changed = candidate_payload.get(
+            "construction_mode"
+        ) != parent_payload.get("construction_mode")
+        unmapped_custom_delta = bool(changed_custom_ids) and not custom_semantic_slots
+        causal_delta_verified = (
+            exact_parent_binding
+            and not architecture_semantics_changed
+            and not construction_mode_changed
+            and not unmapped_custom_delta
+            and actual_changed_slots
+            == (declared_changed_slots | declared_removed_slots)
         )
         declared_roles = {
             str(item.get("slot_id")): str(item.get("change_role", "SUPPORT"))
@@ -484,6 +592,7 @@ def materialize_candidate_pool(
                 ),
                 matched_control=matched_control,
                 ablation_or_falsification=ablation_or_falsification,
+                causal_delta_verified=causal_delta_verified,
                 estimated_compute_class=compute_class,
                 estimated_memory_class=memory_class,
                 static_utility_features=static,

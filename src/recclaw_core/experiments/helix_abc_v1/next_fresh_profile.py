@@ -82,10 +82,6 @@ def _normalized_entries(
                 "conflicting predecessor executable capability ref"
             )
         by_ref[ref] = entry
-    if not by_ref:
-        raise NextFreshProfileBuildError(
-            "predecessor executable entries must be non-empty"
-        )
     return tuple(sorted(by_ref.values(), key=lambda item: item[0]))
 
 

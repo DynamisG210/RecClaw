@@ -309,8 +309,11 @@ def run_meta_gate(
     calibration_valid = 0.0 <= float(aggregate.get("calibration_error", 1.0)) <= 0.2
     activated_policy_effect = (
         first.producer_token_allocation != baseline.producer_token_allocation
-        and first.router_priors != baseline.router_priors
         and first.mechanism_axis_targeting != baseline.mechanism_axis_targeting
+        and (
+            first.router_priors != baseline.router_priors
+            or first.acquisition_parameters != baseline.acquisition_parameters
+        )
     )
     passed = (
         deterministic

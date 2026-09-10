@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 from enum import Enum
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Mapping
 
 from .canonical import (
     canonical_json_bytes,
@@ -54,6 +54,17 @@ class IdeaModeV1(str, Enum):
 class RealizationModeV1(str, Enum):
     PARENT_PRESERVING = "PARENT_PRESERVING"
     NON_NESTED = "NON_NESTED"
+
+
+class RealizationClassV1(str, Enum):
+    ORIGINAL_BYTES = "ORIGINAL_BYTES"
+    SEMANTICS_EQUIVALENT_REALIZATION = "SEMANTICS_EQUIVALENT_REALIZATION"
+    NEW_CANDIDATE = "NEW_CANDIDATE"
+
+
+class RealizationTypingV1(str, Enum):
+    NESTED_MECHANISM = "NESTED_MECHANISM"
+    EFFECT_ONLY_NON_NESTED = "EFFECT_ONLY_NON_NESTED"
 
 
 class QualificationStageV1(str, Enum):
@@ -287,6 +298,7 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
     mechanism_off_definition: str | None = None
     resource_hypothesis: str | None = None
     realization_mode: RealizationModeV1 | None = None
+    execution_contract: Mapping[str, Any] | None = None
 
     schema = "recclaw.research-line.vnext.open-research-spec.v1"
     identity_namespace = "recclaw-open-research-spec-v1"
@@ -302,6 +314,7 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
         "mechanism_off_definition",
         "resource_hypothesis",
         "realization_mode",
+        "execution_contract",
     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -309,6 +322,8 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
         if self.idea_mode is None:
             for field_name in self._enriched_field_names:
                 payload.pop(field_name)
+        elif self.execution_contract is None:
+            payload.pop("execution_contract")
         return payload
 
     def __post_init__(self) -> None:
@@ -352,6 +367,7 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
             self.mechanism_off_definition,
             self.resource_hypothesis,
             self.realization_mode,
+            self.execution_contract,
         )
         if any(value not in (None, ()) for value in enriched_values):
             if not isinstance(self.idea_mode, IdeaModeV1):
@@ -362,7 +378,6 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
                 )
             for field_name in (
                 "research_question",
-                "closest_parent",
                 "minimal_testable_wedge",
                 "mechanism_off_definition",
                 "resource_hypothesis",
@@ -379,6 +394,36 @@ class OpenResearchSpecV1(_CanonicalVNextContract):
                 _nonempty(
                     self.observed_failure_mode,
                     field_name="observed_failure_mode",
+                )
+            if self.execution_contract is not None:
+                if not isinstance(self.execution_contract, Mapping):
+                    raise VNextContractError("execution_contract must be a mapping")
+                required = {
+                    "capability_family",
+                    "model",
+                    "base_model_config",
+                    "config",
+                }
+                if set(self.execution_contract) != required:
+                    raise VNextContractError(
+                        "execution_contract must contain exactly capability_family, "
+                        "model, base_model_config, and config"
+                    )
+                for field_name in (
+                    "capability_family",
+                    "model",
+                    "base_model_config",
+                ):
+                    _nonempty(
+                        str(self.execution_contract[field_name]),
+                        field_name=f"execution_contract.{field_name}",
+                    )
+                if not isinstance(self.execution_contract["config"], Mapping):
+                    raise VNextContractError("execution_contract.config must be a mapping")
+                object.__setattr__(
+                    self,
+                    "execution_contract",
+                    canonical_value(dict(self.execution_contract)),
                 )
         object.__setattr__(
             self,

@@ -1,0 +1,53 @@
+{
+  "schema": "recclaw.research-baseline-context.v1",
+  "search_space": "BL_ICF_MECHANISM_SPACE_V1",
+  "metric": "NDCG@10",
+  "split": "data/dev",
+  "basic_baseline": {
+    "name": "LightGCN",
+    "role": "BASIC_FLOOR",
+    "value": 0.213,
+    "reference_kind": "FORMAL_SINGLE_SEED_DEVELOPMENT",
+    "seed": 54201
+  },
+  "strong_baseline": {
+    "name": "LightGCN++",
+    "role": "STRONG_TARGET",
+    "value": 0.238191,
+    "reference_kind": "MULTI_SEED_DEVELOPMENT_MEAN",
+    "seeds": [2026, 2027, 2028],
+    "aggregation": "arithmetic_mean"
+  },
+  "baseline_pack": [
+    {
+      "rank": 1,
+      "name": "LightGCN++",
+      "role": "STRONG_TARGET",
+      "mechanism": "LightGCN propagation with residual and normalization coefficients"
+    },
+    {
+      "rank": 2,
+      "name": "XSimGCL",
+      "role": "MILESTONE",
+      "mechanism": "representation perturbation with graph contrastive regularization"
+    },
+    {
+      "rank": 3,
+      "name": "SGL",
+      "role": "MILESTONE",
+      "mechanism": "stochastic graph augmentation with contrastive learning"
+    },
+    {
+      "rank": 4,
+      "name": "LightGCN",
+      "role": "BASIC_FLOOR",
+      "mechanism": "linear neighborhood propagation without feature transforms or nonlinear activation"
+    }
+  ],
+  "decision_semantics": {
+    "basic_floor": "Below is negative evidence; at or above is viable.",
+    "dynamic_frontier": "KEEP and update only when the measured candidate exceeds the current incumbent.",
+    "strong_target": "Reaching is ideal and prioritizes confirmation or ablation, but does not stop the fixed search budget or prove causality.",
+    "milestones": "Informative search context only; not hard gates."
+  }
+}

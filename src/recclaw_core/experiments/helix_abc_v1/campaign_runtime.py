@@ -30,13 +30,25 @@ class CampaignRuntimeError(ValueError):
 
 _RESOURCE_ROOT = Path(__file__).resolve().parent / "resources"
 _CATALOG_PATH = _RESOURCE_ROOT / "executable_operator_catalog_v2.json"
-_ANCHOR_PATH = _RESOURCE_ROOT / "campaign_anchor_programs_v1.json"
+_ANCHOR_PATH = _RESOURCE_ROOT / "campaign_anchor_programs_bl_icf_v2r4.json"
 _TRAINING_PROFILE_PATH = _RESOURCE_ROOT / "campaign_training_profile_v1.json"
+_DEVELOPMENT_TRAINING_PROFILE_PATH = (
+    _RESOURCE_ROOT / "campaign_training_profile_v31.json"
+)
+_DEVELOPMENT_PARTITION_PROFILE_PATH = (
+    _RESOURCE_ROOT / "campaign_partition_profile_v31.json"
+)
+_DEVELOPMENT_SCIENTIFIC_PROFILE_PATH = (
+    _RESOURCE_ROOT / "campaign_scientific_profile_ml1m_validation_v31.json"
+)
 _PARTITION_PROFILE_PATH = _RESOURCE_ROOT / "campaign_partition_profile_v1.json"
+_SCIENTIFIC_PROFILE_PATH = (
+    _RESOURCE_ROOT / "campaign_scientific_profile_ml1m_fullsort_v1.json"
+)
 _PROPOSAL_SCHEMA_PATH = _RESOURCE_ROOT / "campaign_proposal_response_v1.schema.json"
 _PROTOCOL_PATH = _RESOURCE_ROOT / "development_protocol_v1.json"
 _CAMPAIGN_PROTOCOL_PATH = (
-    _RESOURCE_ROOT / "campaign_development_protocol_v1.json"
+    _RESOURCE_ROOT / "round_test_feedback_protocol_v1.json"
 )
 
 
@@ -137,6 +149,171 @@ def _operators_compatible(
 
 def campaign_training_profile() -> dict[str, Any]:
     return _json_object(_TRAINING_PROFILE_PATH)
+
+
+def campaign_development_training_profile() -> dict[str, Any]:
+    return _json_object(_DEVELOPMENT_TRAINING_PROFILE_PATH)
+
+
+@lru_cache(maxsize=1)
+def campaign_development_validation_profile_manifest() -> dict[str, Any]:
+    manifest = _json_object(_DEVELOPMENT_SCIENTIFIC_PROFILE_PATH)
+    partition = _json_object(_DEVELOPMENT_PARTITION_PROFILE_PATH)
+    training = campaign_development_training_profile()
+    protocol = _json_object(
+        _RESOURCE_ROOT / "campaign_development_protocol_v1.json"
+    )
+    if (
+        manifest.get("schema")
+        != "recclaw.campaign.development-validation-profile-manifest.v31"
+        or manifest.get("profile_id")
+        != "recclaw.campaign.ml1m-development-validation-v31"
+        or manifest.get("profile_kind") != "OFFLINE_TOPN"
+        or manifest.get("profile_digest_derivation")
+        != "SHA256_EXACT_MANIFEST_UTF8_BYTES"
+    ):
+        raise CampaignRuntimeError("V31 development profile identity mismatch")
+    dataset = manifest.get("dataset")
+    metric_protocol = manifest.get("protocol")
+    campaign = manifest.get("campaign")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (dataset, metric_protocol, campaign)
+    ):
+        raise CampaignRuntimeError("V31 development profile is incomplete")
+    if (
+        dataset.get("partition_profile_id") != partition.get("profile_id")
+        or metric_protocol.get("protocol_digest") != sha256_digest(protocol)
+        or metric_protocol.get("round_metric_source") != "BEST_VALID_RESULT"
+        or metric_protocol.get("round_partition_role")
+        != "DEVELOPMENT_VALIDATION"
+        or metric_protocol.get("heldout_access") != "POST_SELECTION_ONLY"
+        or training.get("partition_profile_id") != partition.get("profile_id")
+        or training.get("benchmark_filename") != ["train", "dev", "dev"]
+        or training.get("online_metric_source") != "BEST_VALID_RESULT"
+        or partition.get("search_runtime_files")
+        != ["ml-1m.train.inter", "ml-1m.dev.inter"]
+        or partition.get("heldout_access") != "POST_SELECTION_ONLY"
+        or campaign.get("metric_round_count") != 100
+        or campaign.get("ordered_seed_first") != 55103
+        or campaign.get("ordered_seed_last") != 55202
+        or campaign.get("max_attempts_per_round") != 16
+    ):
+        raise CampaignRuntimeError("V31 development profile contract mismatch")
+    return canonical_value(manifest)
+
+
+@lru_cache(maxsize=1)
+def campaign_development_validation_profile_ref() -> dict[str, str]:
+    manifest = campaign_development_validation_profile_manifest()
+    return canonical_value(
+        {
+            "profile_digest": bytes_sha256(
+                _DEVELOPMENT_SCIENTIFIC_PROFILE_PATH.read_bytes()
+            ),
+            "profile_id": str(manifest["profile_id"]),
+            "profile_kind": str(manifest["profile_kind"]),
+        }
+    )
+
+
+@lru_cache(maxsize=1)
+def campaign_scientific_profile_manifest() -> dict[str, Any]:
+    manifest = _json_object(_SCIENTIFIC_PROFILE_PATH)
+    if manifest.get("schema") != (
+        "recclaw.campaign.scientific-profile-manifest.v1"
+    ):
+        raise CampaignRuntimeError("scientific profile schema mismatch")
+    if manifest.get("profile_id") != "recclaw.campaign.ml1m-full-sort.v1":
+        raise CampaignRuntimeError("scientific profile id mismatch")
+    if manifest.get("profile_kind") != "OFFLINE_TOPN":
+        raise CampaignRuntimeError("scientific profile kind mismatch")
+    if manifest.get("profile_digest_derivation") != (
+        "SHA256_EXACT_MANIFEST_UTF8_BYTES"
+    ):
+        raise CampaignRuntimeError(
+            "scientific profile digest derivation mismatch"
+        )
+
+    dataset = manifest.get("dataset")
+    protocol = manifest.get("protocol")
+    training = manifest.get("training")
+    campaign = manifest.get("campaign")
+    if not all(
+        isinstance(item, Mapping)
+        for item in (dataset, protocol, training, campaign)
+    ):
+        raise CampaignRuntimeError(
+            "scientific profile contract sections are invalid"
+        )
+    if dataset.get("dataset_snapshot_digest") != (
+        "bd98568d367e8ddca8d9b496595b07e484a45ec1615e1037355fe73e48803a7a"
+    ):
+        raise CampaignRuntimeError(
+            "scientific profile dataset snapshot mismatch"
+        )
+    if protocol.get("development_protocol_digest") != (
+        "7f623fd953001f999e8b5d2657749f6a3ca86c7be5410a48bb8281241a258bbe"
+    ) or protocol.get("round_feedback_protocol_digest") != (
+        "30a3059ccab16c88d097c41b2e6c1969c1f6852f42a323ffe75ff7b2caea04e3"
+    ):
+        raise CampaignRuntimeError("scientific profile protocol mismatch")
+    if (
+        training.get("epochs_requested") != 100
+        or training.get("eval_step") != 1
+        or training.get("stopping_step") != 5
+    ):
+        raise CampaignRuntimeError("scientific profile training mismatch")
+    if (
+        campaign.get("round_count") != 50
+        or campaign.get("ordered_seed_first") != 54103
+        or campaign.get("ordered_seed_last") != 54152
+        or campaign.get("max_attempts_per_round") != 16
+        or campaign.get("worker_ceiling_seconds") != 3600
+        or campaign.get("no_metric_no_round_advance") is not True
+    ):
+        raise CampaignRuntimeError("scientific profile campaign mismatch")
+
+    project_root = Path(__file__).resolve().parents[4]
+    artifacts = manifest.get("frozen_source_artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        raise CampaignRuntimeError(
+            "scientific profile frozen source manifest is missing"
+        )
+    for artifact in artifacts:
+        if not isinstance(artifact, Mapping):
+            raise CampaignRuntimeError(
+                "scientific profile source record is invalid"
+            )
+        relative = Path(str(artifact.get("path", "")))
+        expected = str(artifact.get("sha256", ""))
+        if (
+            not relative.parts
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or len(expected) != 64
+        ):
+            raise CampaignRuntimeError(
+                "scientific profile source identity is invalid"
+            )
+        path = project_root / relative
+        if not path.is_file() or bytes_sha256(path.read_bytes()) != expected:
+            raise CampaignRuntimeError(
+                f"scientific profile source mismatch: {relative.as_posix()}"
+            )
+    return canonical_value(manifest)
+
+
+@lru_cache(maxsize=1)
+def campaign_scientific_profile_ref() -> dict[str, str]:
+    manifest = campaign_scientific_profile_manifest()
+    return canonical_value(
+        {
+            "profile_digest": bytes_sha256(_SCIENTIFIC_PROFILE_PATH.read_bytes()),
+            "profile_id": str(manifest["profile_id"]),
+            "profile_kind": str(manifest["profile_kind"]),
+        }
+    )
 
 
 def campaign_proposal_schema_path() -> Path:
@@ -266,12 +443,7 @@ def _catalog_program(entry: Mapping[str, Any]) -> dict[str, Any]:
     if anchor_name not in anchors:
         raise CampaignRuntimeError(f"unknown package anchor: {anchor_name}")
     program = anchors[anchor_name]
-    catalog_digest = sha256_digest(executable_catalog_spec())
-    program["profile_ref"] = {
-        "profile_digest": catalog_digest,
-        "profile_id": "BL_ICF_EXECUTABLE_PROFILE_V2",
-        "profile_kind": "OFFLINE_TOPN",
-    }
+    program["profile_ref"] = campaign_scientific_profile_ref()
     payload = program["program_payload"]
     for transform in entry["transforms"]:
         _apply_transform(payload, transform)
@@ -595,6 +767,12 @@ def lineage_catalog_projection(
 def execution_recipe_for_program(
     program: Mapping[str, Any],
 ) -> dict[str, Any]:
+    if canonical_value(program.get("profile_ref")) != (
+        campaign_scientific_profile_ref()
+    ):
+        raise CampaignRuntimeError(
+            "mechanism program scientific profile_ref mismatch"
+        )
     report = compile_program(dict(program))
     if not report.is_valid:
         raise CampaignRuntimeError("mechanism program is not BL-ICF valid")
@@ -674,6 +852,7 @@ def campaign_projection() -> dict[str, Any]:
         "mechanisms": [item.prompt_projection() for item in mechanisms],
         "operators": copy.deepcopy(catalog["operators"]),
         "projection_contract": "EXPOSURE_EQUALS_EXACT_EXECUTION_V1",
+        "scientific_profile_ref": campaign_scientific_profile_ref(),
         "search_space_id": "BL_ICF_EXECUTABLE_PROFILE_V2",
     }
     return {**canonical_value(payload), "projection_digest": sha256_digest(payload)}
@@ -717,6 +896,7 @@ def bl_icf_executable_profile_v2() -> dict[str, Any]:
         "proposal_schema_sha256": bytes_sha256(
             _PROPOSAL_SCHEMA_PATH.read_bytes()
         ),
+        "scientific_profile_ref": campaign_scientific_profile_ref(),
         "training_profile_digest": sha256_digest(
             campaign_training_profile()
         ),
@@ -736,6 +916,7 @@ def campaign_runtime_profile() -> dict[str, Any]:
         _PROTOCOL_PATH,
         _CAMPAIGN_PROTOCOL_PATH,
         _PARTITION_PROFILE_PATH,
+        _SCIENTIFIC_PROFILE_PATH,
         _TRAINING_PROFILE_PATH,
     )
     project_root = Path(__file__).resolve().parents[4]
@@ -790,6 +971,7 @@ def campaign_runtime_profile() -> dict[str, Any]:
         ),
         "projection_digest": campaign_projection()["projection_digest"],
         "proposal_schema_sha256": bytes_sha256(_PROPOSAL_SCHEMA_PATH.read_bytes()),
+        "scientific_profile_ref": campaign_scientific_profile_ref(),
         "source_manifest": [
             {
                 "path": path.name,
@@ -877,12 +1059,28 @@ def campaign_readiness_failures(
         failures.append("SCIENTIFIC_COVERAGE_FLOOR_MISSING")
     training = campaign_training_profile()
     if (
-        training.get("online_metric_source") != "BEST_VALID_RESULT"
-        or training.get("online_partition_role") != "DEVELOPMENT_VALIDATION"
-        or training.get("heldout_access") != "POST_SELECTION_ONLY"
+        training.get("online_metric_source") != "BEST_CHECKPOINT_TEST_RESULT"
+        or training.get("online_partition_role") != "ROUND_TEST_FEEDBACK"
+        or training.get("heldout_access")
+        != "AFTER_BEST_CHECKPOINT_SELECTION"
     ):
         failures.append("ONLINE_HELDOUT_BOUNDARY_MISMATCH")
     for item in mechanisms:
+        if canonical_value(item.mechanism_program.get("profile_ref")) != (
+            campaign_scientific_profile_ref()
+        ):
+            failures.append(
+                f"SCIENTIFIC_PROFILE_REF_MISMATCH:{item.mechanism_id}"
+            )
+            continue
+        if (
+            item.mechanism_program.get("search_space_digest")
+            == campaign_scientific_profile_ref()["profile_digest"]
+        ):
+            failures.append(
+                f"SCIENTIFIC_PROFILE_SEARCH_SPACE_COLLISION:{item.mechanism_id}"
+            )
+            continue
         try:
             resolved = execution_recipe_for_program(item.mechanism_program)
         except (CampaignRuntimeError, ValueError):
@@ -924,7 +1122,12 @@ __all__ = [
     "campaign_proposal_schema",
     "campaign_proposal_schema_path",
     "campaign_readiness_failures",
+    "campaign_development_training_profile",
+    "campaign_development_validation_profile_manifest",
+    "campaign_development_validation_profile_ref",
     "campaign_runtime_profile",
+    "campaign_scientific_profile_manifest",
+    "campaign_scientific_profile_ref",
     "campaign_training_profile",
     "executable_catalog_spec",
     "executable_mechanism",

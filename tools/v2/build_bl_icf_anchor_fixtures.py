@@ -57,13 +57,17 @@ def relation(component_id: str, primitive_id: str, *, role: str = "TRAIN_INTERAC
     return component(component_id, "RELATION_VIEW", primitive_id, [("source", data(role))], params)
 
 
-def embedding(component_id: str = "embedding") -> dict[str, Any]:
+def embedding(
+    component_id: str = "embedding",
+    primitive_id: str = "embedding.independent_user_item",
+    **params: Any,
+) -> dict[str, Any]:
     return component(
         component_id,
         "EMBEDDING",
-        "embedding.independent_user_item",
+        primitive_id,
         [("identity", data("USER_ID")), ("identity", data("ITEM_ID"))],
-        {"dimension": 64},
+        {"dimension": 64, **params},
     )
 
 
@@ -116,21 +120,34 @@ def propagation(
     return component(component_id, "PROPAGATION_AGGREGATION", primitive_id, inputs, params)
 
 
-def fusion(component_id: str, primitive_id: str, branches: list[tuple[str, str]]) -> dict[str, Any]:
+def fusion(
+    component_id: str,
+    primitive_id: str,
+    branches: list[tuple[str, str]],
+    **params: Any,
+) -> dict[str, Any]:
     return component(
         component_id,
         "FUSION_ROUTING",
         primitive_id,
         [("branch", source(item, port)) for item, port in branches],
+        params,
     )
 
 
-def score(component_id: str, primitive_id: str, representation: str, port: str = "representation") -> dict[str, Any]:
+def score(
+    component_id: str,
+    primitive_id: str,
+    representation: str,
+    port: str = "representation",
+    **params: Any,
+) -> dict[str, Any]:
     return component(
         component_id,
         "SCORE_HEAD",
         primitive_id,
         [("representation", source(representation, port))],
+        params,
     )
 
 
@@ -174,13 +191,18 @@ def objective(
 
 
 def ssl_view(
-    component_id: str, primitive_id: str, signal_id: str, signal_port: str
+    component_id: str,
+    primitive_id: str,
+    signal_id: str,
+    signal_port: str,
+    **params: Any,
 ) -> dict[str, Any]:
     return component(
         component_id,
         "SELF_SUPERVISION",
         primitive_id,
         [("signal", source(signal_id, signal_port))],
+        params,
     )
 
 
@@ -188,23 +210,30 @@ def ssl_objective(
     component_id: str,
     primitive_id: str,
     views: list[tuple[str, str]],
+    **params: Any,
 ) -> dict[str, Any]:
     return component(
         component_id,
         "SELF_SUPERVISION",
         primitive_id,
         [("views", source(item, port)) for item, port in views],
-        {"weight": 0.1, "temperature": 0.2},
+        {"weight": 0.1, "temperature": 0.2, **params},
     )
 
 
-def regularizer(component_id: str, primitive_id: str, representation: str, port: str) -> dict[str, Any]:
+def regularizer(
+    component_id: str,
+    primitive_id: str,
+    representation: str,
+    port: str,
+    **params: Any,
+) -> dict[str, Any]:
     return component(
         component_id,
         "GEOMETRY_REGULARIZATION",
         primitive_id,
         [("representation", source(representation, port))],
-        {"weight": 0.1},
+        {"weight": 0.1, **params},
     )
 
 
@@ -363,8 +392,46 @@ def fixtures() -> list[dict[str, Any]]:
     )
     sgl[-1] = training([("objective", "objective"), ("ssl_objective", "auxiliary_objective")])
 
+    # RecSys-2025 SGCL (DavidZWZ/SGCL), not the acronym-colliding
+    # TOIS-2025 Symmetric Graph Contrastive Learning model.  SGCL replaces
+    # the decoupled BPR + SSL objectives with one augmentation-free supervised
+    # graph-contrastive primary loss and does not use an explicit sampler.
+    sgcl_recsys2025 = lightgcn_core()[:7]
+    sgcl_recsys2025.extend(
+        [
+            component(
+                "objective",
+                "PRIMARY_OBJECTIVE",
+                "objective.unified_supervised_graph_contrastive",
+                [
+                    ("representation", source("fusion", "representation")),
+                    ("supervision", data("TRAIN_INTERACTIONS")),
+                ],
+                {
+                    "weight": 1.0,
+                    "temperature": 0.2,
+                    "positive_pair_source": "TRAIN_INTERACTIONS",
+                    "representation_normalization": "L2",
+                    "denominator_scope": "IN_BATCH_SAME_TYPE_USER_PLUS_ITEM",
+                    "separate_recommendation_loss": False,
+                    "graph_augmentation": False,
+                },
+            ),
+            training([("objective", "objective")]),
+        ]
+    )
+
     simgcl = lightgcn_core()
-    simgcl.insert(7, ssl_view("noise_view", "ssl.view.gaussian_perturbation", "fusion", "representation"))
+    simgcl.insert(
+        7,
+        ssl_view(
+            "noise_view",
+            "ssl.view.uniform_perturbation",
+            "fusion",
+            "representation",
+            epsilon=0.1,
+        ),
+    )
     simgcl.insert(
         8,
         ssl_objective(
@@ -374,6 +441,99 @@ def fixtures() -> list[dict[str, Any]]:
         ),
     )
     simgcl[-1] = training([("objective", "objective"), ("ssl_objective", "auxiliary_objective")])
+
+    xsimgcl = lightgcn_core()
+    xsimgcl.insert(
+        7,
+        ssl_view(
+            "signed_noise_view",
+            "ssl.view.signed_uniform_perturbation",
+            "fusion",
+            "representation",
+            epsilon=0.1,
+        ),
+    )
+    xsimgcl.insert(
+        8,
+        ssl_view(
+            "cross_layer_view",
+            "ssl.view.cross_layer",
+            "propagation",
+            "representation",
+        ),
+    )
+    xsimgcl.insert(
+        9,
+        ssl_objective(
+            "cross_layer_objective",
+            "ssl.objective.cross_layer_info_nce",
+            [
+                ("signed_noise_view", "view"),
+                ("cross_layer_view", "view"),
+            ],
+            source_layer=1,
+            target_layer=3,
+        ),
+    )
+    xsimgcl[-1] = training(
+        [("objective", "objective"), ("cross_layer_objective", "auxiliary_objective")]
+    )
+
+    dgcf = [
+        relation(
+            "intent_graph",
+            "relation.intent_aware_bipartite",
+            intent_count=4,
+        ),
+        embedding("embedding", "embedding.intent_chunks", intent_count=4),
+        encoder("encoder.explicit_message_passing", relations=("intent_graph",)),
+        component(
+            "latent_intent_graphs",
+            "RELATION_DECOMPOSITION",
+            "relation_decomposition.latent_intent_graphs",
+            [("relation", source("intent_graph", "relation"))],
+            {"intent_count": 4},
+        ),
+        component(
+            "intent_refinement",
+            "RELATION_DECOMPOSITION",
+            "relation_decomposition.iterative_intent_refinement",
+            [("relation", source("latent_intent_graphs", "relation"))],
+            {"intent_count": 4, "routing_iterations": 2},
+        ),
+        message(
+            "intent_message",
+            "message.intent_routed",
+            representation="encoder",
+            relation_id="intent_refinement",
+            intent_count=4,
+            routing_iterations=2,
+        ),
+        propagation(
+            "intent_propagation",
+            "propagation.symmetric_normalization",
+            signal_id="intent_message",
+            relation_id="intent_refinement",
+            depth=3,
+        ),
+        fusion(
+            "fusion",
+            "fusion.gated",
+            [("encoder", "representation"), ("intent_propagation", "representation")],
+        ),
+        score("score", "score.dot_product", "fusion"),
+        sampler(),
+        objective("objective", "objective.bpr"),
+        regularizer(
+            "intent_independence",
+            "regularizer.distance_correlation_intent_independence",
+            "fusion",
+            "representation",
+        ),
+        training(
+            [("objective", "objective"), ("intent_independence", "regularization")]
+        ),
+    ]
 
     ncl = lightgcn_core()
     ncl.insert(1, relation("prototype_relation", "relation.prototype_cluster"))
@@ -395,13 +555,31 @@ def fixtures() -> list[dict[str, Any]]:
 
     lightgcl = lightgcn_core()
     lightgcl.insert(1, relation("svd_view", "relation.svd_global"))
-    lightgcl.insert(8, ssl_view("global_view", "ssl.view.svd_global", "svd_view", "relation"))
     lightgcl.insert(
-        9,
+        8,
+        ssl_view(
+            "directional_support",
+            "ssl.view.directional_edge_dropout",
+            "ui_graph",
+            "relation",
+            user_to_item_rate=0.1,
+            item_to_user_rate=0.1,
+            independent_directions=True,
+        ),
+    )
+    lightgcl.insert(9, ssl_view("global_view", "ssl.view.svd_global", "svd_view", "relation"))
+    lightgcl.insert(
+        10,
         ssl_objective(
             "local_global_objective",
             "ssl.objective.info_nce",
-            [("fusion", "representation"), ("global_view", "view")],
+            [
+                ("fusion", "representation"),
+                ("directional_support", "view"),
+                ("global_view", "view"),
+            ],
+            weight=0.0001,
+            temperature=2.0,
         ),
     )
     lightgcl[-1] = training([("objective", "objective"), ("local_global_objective", "auxiliary_objective")])
@@ -470,18 +648,278 @@ def fixtures() -> list[dict[str, Any]]:
         },
     ]
 
+    lightgode = [
+        relation("ui_graph", "relation.user_item_bipartite"),
+        embedding(),
+        encoder(
+            "encoder.post_training_graph_ode",
+            relations=("ui_graph",),
+        ),
+        efficiency(
+            "one_step_ode",
+            "efficiency.one_step_euler_ode",
+            "encoder",
+            "representation",
+            integration_steps=1,
+            step_size=1.0,
+        ),
+        score("score", "score.dot_product", "one_step_ode"),
+        sampler(),
+        objective("objective", "objective.bpr"),
+        component(
+            "training",
+            "TRAINING_PROCEDURE",
+            "training.pretrain_then_post_graph_inference",
+            [("objective", source("objective", "objective"))],
+            {"learning_rate": 0.001},
+        ),
+    ]
+
+    lightgcnpp = [
+        relation("ui_graph", "relation.user_item_bipartite"),
+        embedding(),
+        encoder("encoder.explicit_message_passing", relations=("ui_graph",)),
+        message("message", "message.identity", representation="encoder", relation_id="ui_graph"),
+        propagation(
+            "learned_normalization",
+            "propagation.learned_normalization",
+            signal_id="message",
+            relation_id="ui_graph",
+            depth=3,
+            left_degree_exponent=-0.5,
+            right_degree_exponent=-0.5,
+            learnable=True,
+        ),
+        fusion(
+            "residual_coefficients",
+            "fusion.layer_weighted_sum",
+            [("encoder", "representation"), ("learned_normalization", "representation")],
+            learnable_weights=True,
+        ),
+        score("score", "score.dot_product", "residual_coefficients"),
+        sampler(),
+        objective("objective", "objective.bpr"),
+        training([("objective", "objective")]),
+    ]
+
+    lightcscf = [
+        relation("ui_graph", "relation.user_item_bipartite"),
+        embedding(),
+        encoder("encoder.none_mf"),
+        ssl_view(
+            "parallel_filter_view",
+            "ssl.view.parallel_graph_filter",
+            "ui_graph",
+            "relation",
+            filter_order=1,
+            normalization="GENERALIZED_GRAM",
+            weight=1.0,
+        ),
+        score(
+            "score",
+            "score.margin_constrained_cosine",
+            "encoder",
+            margin=0.2,
+        ),
+        sampler(),
+        objective(
+            "objective",
+            "objective.cosine_contrastive",
+            weight=1.0,
+            temperature=0.3,
+        ),
+        ssl_objective(
+            "parallel_filter_objective",
+            "ssl.objective.info_nce",
+            [("encoder", "representation"), ("parallel_filter_view", "view")],
+            weight=1.0,
+            temperature=0.3,
+        ),
+        training(
+            [
+                ("objective", "objective"),
+                ("parallel_filter_objective", "auxiliary_objective"),
+            ]
+        ),
+    ]
+
+    lightccf = lightgcn_core()
+    lightccf.insert(
+        7,
+        ssl_view(
+            "neighborhood_view",
+            "ssl.view.structural_neighbor",
+            "ui_graph",
+            "relation",
+        ),
+    )
+    lightccf.insert(
+        8,
+        ssl_objective(
+            "neighborhood_objective",
+            "ssl.objective.neighborhood_aggregate",
+            [("fusion", "representation"), ("neighborhood_view", "view")],
+            weight=0.1,
+            temperature=0.2,
+        ),
+    )
+    lightccf[-1] = training(
+        [("objective", "objective"), ("neighborhood_objective", "auxiliary_objective")]
+    )
+
+    def egcf_program(training_primitive: str) -> list[dict[str, Any]]:
+        values = [
+            relation("ui_graph", "relation.user_item_bipartite"),
+            component(
+                "id_signal",
+                "EMBEDDING",
+                "embedding.embeddingless_id_signal",
+                [("identity", data("USER_ID")), ("identity", data("ITEM_ID"))],
+                {"signal_mode": "ONE_HOT_IDENTITY"},
+            ),
+            encoder(
+                "encoder.embeddingless_propagation",
+                representation="id_signal",
+                relations=("ui_graph",),
+            ),
+            message(
+                "message",
+                "message.identity",
+                representation="encoder",
+                relation_id="ui_graph",
+            ),
+            propagation(
+                "propagation",
+                "propagation.symmetric_normalization",
+                signal_id="message",
+                relation_id="ui_graph",
+                depth=3,
+            ),
+            score("score", "score.dot_product", "propagation"),
+            sampler(),
+            objective("objective", "objective.bpr"),
+            ssl_objective(
+                "layer_objective",
+                "ssl.objective.augmentation_free_layer_contrastive",
+                [("encoder", "representation"), ("propagation", "representation")],
+                weight=0.1,
+                temperature=0.2,
+            ),
+        ]
+        training_parameters: dict[str, Any] = {"learning_rate": 0.001}
+        if training_primitive == "training.parallel_joint_update":
+            training_parameters["update_mode"] = "PARALLEL_JOINT"
+        values.append(
+            component(
+                "training",
+                "TRAINING_PROCEDURE",
+                training_primitive,
+                [
+                    ("objective", source("objective", "objective")),
+                    ("objective", source("layer_objective", "auxiliary_objective")),
+                ],
+                training_parameters,
+            )
+        )
+        return values
+
+    egcf_parallel = egcf_program("training.parallel_joint_update")
+    egcf_alternating = egcf_program("training.view_model_alternating_update")
+
+    hgformer = [
+        relation("ui_graph", "relation.user_item_bipartite"),
+        embedding("embedding", "embedding.hyperbolic_manifold", curvature=1.0),
+        encoder(
+            "encoder.hyperbolic_local_global",
+            relations=("ui_graph",),
+        ),
+        message(
+            "hyperbolic_centroid",
+            "message.hyperbolic_centroid",
+            representation="encoder",
+            relation_id="ui_graph",
+            curvature=1.0,
+        ),
+        propagation(
+            "centroid_propagation",
+            "propagation.mean",
+            signal_id="hyperbolic_centroid",
+            relation_id="ui_graph",
+            depth=2,
+        ),
+        fusion(
+            "cross_attention",
+            "fusion.hyperbolic_cross_attention",
+            [("encoder", "representation"), ("centroid_propagation", "representation")],
+            curvature=1.0,
+        ),
+        efficiency(
+            "linear_attention",
+            "efficiency.linear_cross_attention",
+            "cross_attention",
+            "representation",
+            feature_map="ELU_PLUS_ONE",
+            projection_dimension=64,
+        ),
+        score("score", "score.distance_based", "linear_attention"),
+        sampler(),
+        objective("objective", "objective.bpr"),
+        regularizer(
+            "distortion",
+            "regularizer.hyperbolic_distortion",
+            "linear_attention",
+            "representation",
+            curvature=1.0,
+        ),
+        training([("objective", "objective"), ("distortion", "regularization")]),
+    ]
+
+    ddc = lightgcn_core()
+    ddc.insert(
+        -1,
+        component(
+            "directional_correction",
+            "DENOISING_LONG_TAIL",
+            "robustness.asymmetric_directional_correction",
+            [("signal", source("objective", "objective"))],
+            {
+                "popularity_direction_source": "PRETRAINED_ITEM_EMBEDDING",
+                "preference_direction_source": "USER_HISTORY",
+                "positive_correction": "PREFERENCE_ALIGNED",
+                "negative_correction": "POPULARITY_OPPOSING",
+                "freeze_base_representation": True,
+                "history_fraction": 0.2,
+                "weight": 1.0,
+            },
+        ),
+    )
+    ddc[-1] = training(
+        [("objective", "objective"), ("directional_correction", "robustness_term")]
+    )
+
     recipes = [
         ("BPR_MF", bpr, "COMPOSITION", [("PRIMARY_OBJECTIVE", "CORE")], "A no-propagation latent-factor program with dot scoring and pairwise BPR objective.", "objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("LIGHTGCN", lightgcn_core(), "COMPOSITION", [("PROPAGATION_AGGREGATION", "CORE")], "Linear symmetric graph propagation with layer fusion reproduces the LightGCN mechanism signature.", "propagation", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("NGCF", ngcf, "ARCHITECTURE_REWRITE", [("MESSAGE", "CORE"), ("PROPAGATION_AGGREGATION", "SUPPORT")], "Transformed and interaction messages express explicit nonlinear graph collaborative filtering.", "interaction_message", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("SGL", sgl, "COMPOSITION", [("SELF_SUPERVISION", "CORE"), ("RELATION_VIEW", "SUPPORT")], "Graph augmentation and a contrastive auxiliary objective express self-supervised graph CF.", "ssl_objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
-        ("SIMGCL_XSIMGCL", simgcl, "COMPOSITION", [("SELF_SUPERVISION", "CORE")], "Embedding perturbation plus contrastive learning expresses the noise-based graph SSL mechanism.", "noise_view", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("SGCL_RECSYS2025", sgcl_recsys2025, "ARCHITECTURE_REWRITE", [("PRIMARY_OBJECTIVE", "CORE")], "A single augmentation-free supervised graph-contrastive objective unifies interaction supervision and representation contrast without a separate BPR or SSL branch.", "objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("SIMGCL", simgcl, "COMPOSITION", [("SELF_SUPERVISION", "CORE")], "Embedding perturbation plus same-depth contrastive learning expresses the simple noise-based graph SSL mechanism.", "noise_view", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("XSIMGCL", xsimgcl, "ARCHITECTURE_REWRITE", [("SELF_SUPERVISION", "CORE"), ("FUSION_ROUTING", "SUPPORT")], "Signed uniform perturbation and cross-layer contrast express a noise-based graph SSL mechanism with depth-separated views.", "cross_layer_objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("DGCF", dgcf, "ARCHITECTURE_REWRITE", [("RELATION_DECOMPOSITION", "CORE"), ("GEOMETRY_REGULARIZATION", "SUPPORT")], "Intent-aware graph routing and distance-correlation regularization express disentangled collaborative propagation.", "intent_refinement", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("NCL", ncl, "ARCHITECTURE_REWRITE", [("SELF_SUPERVISION", "CORE"), ("RELATION_VIEW", "SUPPORT")], "Structural and prototype-semantic neighbors support a prototype contrastive objective.", "prototype_objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("LIGHTGCL", lightgcl, "ARCHITECTURE_REWRITE", [("RELATION_VIEW", "CORE"), ("SELF_SUPERVISION", "SUPPORT")], "A train-derived SVD global relation enables local-global contrastive learning.", "svd_view", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("DIRECTAU", directau, "ARCHITECTURE_REWRITE", [("PRIMARY_OBJECTIVE", "CORE"), ("GEOMETRY_REGULARIZATION", "SUPPORT")], "Direct alignment and uniformity optimization expresses a geometry-first CF objective.", "objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("SIMPLEX", simplex, "COMPOSITION", [("PRIMARY_OBJECTIVE", "CORE"), ("NEGATIVE_SAMPLER", "SUPPORT")], "Cosine contrastive training with a large negative ratio expresses sampling-centric CF.", "objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("GF_CF", gfcf, "ARCHITECTURE_REWRITE", [("ENCODER", "CORE"), ("EFFICIENCY_APPROXIMATION", "SUPPORT")], "A train-derived spectral relation and precomputed closed-form filter express graph-filter CF.", "precompute", [{"operator_id": "derive_closed_form", "targets": ["encoder"], "replacements": ["precompute"], "parameters": {}, "rationale": "Derive the scoring representation through a precomputed graph filter."}], [], "VALID_NEEDS_IMPLEMENTATION"),
         ("ULTRAGCN", ultra, "ARCHITECTURE_REWRITE", [("ENCODER", "CORE"), ("RELATION_DECOMPOSITION", "SUPPORT")], "Fixed-point user-item and item-item constraints replace explicit propagation while preserving collaborative structure.", "encoder", ultra_operators, ["PROPAGATION_AGGREGATION"], "VALID_NEEDS_IMPLEMENTATION"),
+        ("LIGHTGODE", lightgode, "ARCHITECTURE_REWRITE", [("ENCODER", "CORE"), ("EFFICIENCY_APPROXIMATION", "SUPPORT")], "MF-style training followed by one-step graph-ODE inference separates representation learning from graph smoothing.", "one_step_ode", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("LIGHTGCNPP", lightgcnpp, "ARCHITECTURE_REWRITE", [("PROPAGATION_AGGREGATION", "CORE"), ("FUSION_ROUTING", "SUPPORT")], "Learnable propagation normalization and residual layer coefficients expose a controlled LightGCN propagation replacement.", "learned_normalization", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("LIGHTCSCF", lightcscf, "ARCHITECTURE_REWRITE", [("SCORE_HEAD", "CORE"), ("SELF_SUPERVISION", "SUPPORT")], "Margin-constrained cosine scoring and a parallel train-derived graph-filter view express the audited cosine-filter mechanism without changing the frozen candidate universe.", "score", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("LIGHTCCF", lightccf, "ARCHITECTURE_REWRITE", [("SELF_SUPERVISION", "CORE")], "Neighborhood-aggregate contrast over a graph-derived support view expresses the audited local-neighborhood contrastive mechanism.", "neighborhood_objective", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("EGCF_PARALLEL", egcf_parallel, "ARCHITECTURE_REWRITE", [("EMBEDDING", "SUPPORT"), ("ENCODER", "CORE"), ("SELF_SUPERVISION", "SUPPORT"), ("TRAINING_PROCEDURE", "SUPPORT")], "A deterministic identity signal, embeddingless graph propagation, augmentation-free layer contrast, and parallel joint updates express the published embeddingless regime without a hidden embedding table.", "encoder", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("EGCF_ALTERNATING", egcf_alternating, "ARCHITECTURE_REWRITE", [("EMBEDDING", "SUPPORT"), ("ENCODER", "CORE"), ("SELF_SUPERVISION", "SUPPORT"), ("TRAINING_PROCEDURE", "SUPPORT")], "The same embeddingless augmentation-free mechanism with explicit view/model alternating updates keeps the published optimization regimes semantically distinct.", "training", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("HGFORMER", hgformer, "ARCHITECTURE_REWRITE", [("EMBEDDING", "SUPPORT"), ("ENCODER", "CORE"), ("FUSION_ROUTING", "SUPPORT"), ("EFFICIENCY_APPROXIMATION", "SUPPORT"), ("GEOMETRY_REGULARIZATION", "SUPPORT")], "Hyperbolic local-global encoding, centroid aggregation, cross-attention, distortion control, and a causal linear-attention approximation express the audited hyperbolic mechanism and its stability boundary.", "cross_attention", [], [], "VALID_NEEDS_IMPLEMENTATION"),
+        ("DDC", ddc, "ARCHITECTURE_REWRITE", [("DENOISING_LONG_TAIL", "CORE"), ("TRAINING_PROCEDURE", "SUPPORT")], "A train-derived global popularity direction and user-specific preference direction support asymmetric positive and negative corrections while the pretrained collaborative representation stays frozen.", "directional_correction", [], [], "VALID_NEEDS_IMPLEMENTATION"),
     ]
     result = []
     for name, values, mode, changes, hypothesis, ablation, operators, removed, expected_status in recipes:
@@ -507,7 +945,7 @@ def fixtures() -> list[dict[str, Any]]:
 def fixture_document() -> dict[str, Any]:
     return {
         "record_type": "BL_ICF_ANCHOR_EXPRESSIBILITY_FIXTURES",
-        "fixture_version": "1.0.0",
+        "fixture_version": "1.1.0",
         "test_only": True,
         "proposal_prompt_exposure": "FORBIDDEN",
         "fixtures": fixtures(),
@@ -530,11 +968,11 @@ def main() -> int:
         if not OUTPUT.exists() or OUTPUT.read_bytes() != expected:
             print(f"DRIFT {OUTPUT.relative_to(ROOT).as_posix()}")
             return 2
-        print("PASS fixtures=11")
+        print(f"PASS fixtures={len(fixtures())}")
         return 0
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_bytes(expected)
-    print("WROTE fixtures=11")
+    print(f"WROTE fixtures={len(fixtures())}")
     return 0
 
 

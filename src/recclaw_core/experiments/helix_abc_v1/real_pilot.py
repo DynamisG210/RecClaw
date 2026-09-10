@@ -761,11 +761,19 @@ class RealPilotOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             completed_round_index=round_index,
             aggregate={
                 "calibration_error": 0.05 if success else 0.2,
-                "mechanism_axis_gaps": (
+                "measured_axes": ("architecture",),
+                "uncovered_axes": (
+                    "geometry",
+                    "message_transform",
                     "objective",
                     "propagation",
+                    "sampling",
                     "self_supervision",
                 ),
+                "causal_followup_axes": (
+                    "architecture",
+                ) if not success else (),
+                "axis_scores": {"architecture": 1.0 if success else -1.0},
                 "producer_useful_rates": {
                     role: 0.8 if success else 0.2
                     for role in DISCOVERY_PRODUCERS

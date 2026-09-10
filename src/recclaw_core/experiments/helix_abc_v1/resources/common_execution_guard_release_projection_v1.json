@@ -26,7 +26,7 @@
   ],
   "runner_abi": "recclaw.fake-non-training-runner.v1",
   "runtime_release_digest": "0a616ee205f494a161e7b10424181f37247347de8c5d714328dfa2f3f1ffb41d",
-  "search_space_digest": "782c5a0d743c014a7b8a5312f96a7fa8e558429454bfdf2c25c42ae77fe7d4a4",
+    "search_space_digest": "fbe63260de6430537dd66b0724fe1beb0cf165ea47407ae18addd61a17dd1720",
   "search_space_id": "BL_ICF_MECHANISM_SPACE_V1",
   "source_manifest": [
     {

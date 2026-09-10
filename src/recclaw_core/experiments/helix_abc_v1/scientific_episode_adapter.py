@@ -93,7 +93,9 @@ _COMPARISON_FIELDS = (
     "protocol_digest",
 )
 
-_MECHANISM_AXIS_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_MECHANISM_AXIS_PATTERN = re.compile(
+    r"^(?:[a-z][a-z0-9_]{0,63}|[A-Z][A-Z0-9_]{0,63})$"
+)
 _ORIGIN_AXIS_TOKENS = frozenset(
     {
         "arm",
@@ -139,7 +141,9 @@ def _validate_mechanism_axis(mechanism_axis: str) -> str:
     if (
         not isinstance(mechanism_axis, str)
         or _MECHANISM_AXIS_PATTERN.fullmatch(mechanism_axis) is None
-        or not _ORIGIN_AXIS_TOKENS.isdisjoint(mechanism_axis.split("_"))
+        or not _ORIGIN_AXIS_TOKENS.isdisjoint(
+            token.lower() for token in mechanism_axis.split("_")
+        )
     ):
         _reject(
             ScientificEpisodeAdapterReasonV1.MECHANISM_AXIS_INVALID,

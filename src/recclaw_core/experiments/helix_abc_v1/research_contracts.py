@@ -24,6 +24,78 @@ DISCOVERY_PRODUCERS = (
     "frontier_architect",
 )
 
+# This is the semantic axis universe used by the Research policy.  A policy
+# may reorder it after a round, but it may never turn the ordered priority
+# list into a subset.  The translation below is policy-only: complete
+# mechanism footprints must retain the original BL-ICF slot/dimension labels.
+MECHANISM_AXIS_UNIVERSE_V1 = (
+    "architecture",
+    "geometry",
+    "message_transform",
+    "objective",
+    "propagation",
+    "sampling",
+    "self_supervision",
+)
+
+MECHANISM_DIMENSION_TO_AXIS_V1 = {
+    # The BL-ICF slot IDs below are the closed mechanism vocabulary from
+    # primitive_registry_v1.json.  They are a policy projection only; raw
+    # program footprints must continue to carry the slot IDs themselves.
+    # Relation/graph operators change the propagation pathway, while
+    # encoder/message/fusion operators change the message transformation.
+    "RELATION_VIEW": "propagation",
+    "EMBEDDING": "geometry",
+    "ENCODER": "message_transform",
+    "MESSAGE": "message_transform",
+    "PROPAGATION_AGGREGATION": "propagation",
+    "RELATION_DECOMPOSITION": "propagation",
+    "FUSION_ROUTING": "message_transform",
+    "SCORE_HEAD": "geometry",
+    "PRIMARY_OBJECTIVE": "objective",
+    "NEGATIVE_SAMPLER": "sampling",
+    "SELF_SUPERVISION": "self_supervision",
+    "GEOMETRY_REGULARIZATION": "geometry",
+    "DENOISING_LONG_TAIL": "objective",
+    "TRAINING_PROCEDURE": "self_supervision",
+    # The registry's efficiency primitives are graph/relation propagation
+    # rewrites (including remove/cache/decouple propagation and relation
+    # sparsification), so propagation is the closest closed policy axis.
+    "EFFICIENCY_APPROXIMATION": "propagation",
+    "POSTHOC_RERANK": "objective",
+    "COMPOSITE_MECHANISM": "architecture",
+    "CORE_OBJECTIVE": "objective",
+    "CORE_RELATION": "message_transform",
+    "CORE_REPRESENTATION": "geometry",
+    "CUSTOM_EXECUTABLE_CAPABILITY": "architecture",
+    "INTERACTION_STRUCTURE": "message_transform",
+    "MODEL_STRUCTURE": "architecture",
+    "PROPAGATION_MECHANISM": "propagation",
+    "SAMPLING_STRATEGY": "sampling",
+    "NEGATIVE_SAMPLING": "sampling",
+}
+
+# These are closed, already-used capability labels from the mechanism
+# compiler/BL-ICF adapters.  Do not infer axes from arbitrary Provider text.
+MECHANISM_AXIS_ALIAS_TO_AXIS_V1 = {
+    **MECHANISM_DIMENSION_TO_AXIS_V1,
+    "relation": "message_transform",
+    "fusion": "message_transform",
+    "negative_sampling": "sampling",
+    "regularization": "geometry",
+}
+
+
+def canonical_mechanism_axis(value: Any) -> str | None:
+    """Map one known mechanism label to the closed seven-axis space."""
+
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if text in MECHANISM_AXIS_UNIVERSE_V1:
+        return text
+    return MECHANISM_AXIS_ALIAS_TO_AXIS_V1.get(text)
+
 
 class ProposalIntentV1(str, Enum):
     DISCOVERY = "DISCOVERY"

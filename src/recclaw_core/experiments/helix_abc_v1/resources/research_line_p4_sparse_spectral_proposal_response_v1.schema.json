@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RecClaw P4 Sparse-Spectral Proposal Response V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "proposals"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "recclaw.research-line.p4-sparse-spectral-proposal-response.v1"
+      ]
+    },
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "producer_role",
+          "idea_mode",
+          "research_question",
+          "observed_failure_mode",
+          "hypothesis",
+          "closest_parent",
+          "minimal_testable_wedge",
+          "causal_chain",
+          "mechanism_change",
+          "competing_explanation",
+          "discriminative_predictions",
+          "mechanism_off_definition",
+          "matched_control_requirement",
+          "implementation_requirements",
+          "execution_contract",
+          "expected_evidence",
+          "falsifier",
+          "compatibility_requirements",
+          "resource_hypothesis",
+          "realization_mode",
+          "high_change_justification",
+          "current_profile_expressibility_claim",
+          "resolution_facts",
+          "mechanism_config_json"
+        ],
+        "properties": {
+          "producer_role": {
+            "type": "string",
+            "enum": [
+              "mechanism_composer",
+              "lineage_refiner",
+              "falsification_designer",
+              "frontier_architect"
+            ]
+          },
+          "idea_mode": {
+            "type": "string",
+            "enum": [
+              "DIAGNOSIS_DRIVEN",
+              "FRONTIER_HYPOTHESIS"
+            ]
+          },
+          "research_question": {
+            "type": "string"
+          },
+          "observed_failure_mode": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "hypothesis": {
+            "type": "string"
+          },
+          "closest_parent": {
+            "type": "string",
+            "enum": [
+              "p4-parent:fagsp:fixed-ml1m"
+            ]
+          },
+          "minimal_testable_wedge": {
+            "type": "string"
+          },
+          "causal_chain": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mechanism_change": {
+            "type": "string"
+          },
+          "competing_explanation": {
+            "type": "string"
+          },
+          "discriminative_predictions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mechanism_off_definition": {
+            "type": "string"
+          },
+          "matched_control_requirement": {
+            "type": "string"
+          },
+          "implementation_requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "execution_contract": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "capability_family",
+              "model",
+              "base_model_config",
+              "config_json"
+            ],
+            "properties": {
+              "capability_family": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string",
+                "enum": [
+                  "FreshCandidateModel"
+                ]
+              },
+              "base_model_config": {
+                "type": "string",
+                "enum": [
+                  "P4SparseSpectral"
+                ]
+              },
+              "config_json": {
+                "type": "string",
+                "enum": [
+                  "{}"
+                ]
+              }
+            }
+          },
+          "expected_evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "falsifier": {
+            "type": "string"
+          },
+          "compatibility_requirements": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "static unordered implicit-feedback recommendation",
+                "train-only operator fitting",
+                "full-sort NDCG@10 validation selection",
+                "no learned sequential, semantic-ID, or diffusion/flow state"
+              ]
+            }
+          },
+          "resource_hypothesis": {
+            "type": "string"
+          },
+          "realization_mode": {
+            "type": "string",
+            "enum": [
+              "PARENT_PRESERVING"
+            ]
+          },
+          "high_change_justification": {
+            "type": "string"
+          },
+          "current_profile_expressibility_claim": {
+            "type": "string",
+            "enum": [
+              "NOT_EXPRESSIBLE"
+            ]
+          },
+          "resolution_facts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requested_current_semantics_digest",
+              "capability_diff",
+              "high_change_dimensions",
+              "required_dependencies",
+              "required_budget"
+            ],
+            "properties": {
+              "requested_current_semantics_digest": {
+                "type": "null"
+              },
+              "capability_diff": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "high_change_dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "CORE_RELATION",
+                    "CORE_REPRESENTATION",
+                    "CUSTOM_EXECUTABLE_CAPABILITY",
+                    "INTERACTION_STRUCTURE",
+                    "MODEL_STRUCTURE",
+                    "PROPAGATION_MECHANISM"
+                  ]
+                }
+              },
+              "required_dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "numpy",
+                    "python-stdlib",
+                    "pytorch",
+                    "recbole-runtime",
+                    "scipy",
+                    "torch"
+                  ]
+                }
+              },
+              "required_budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "implementation_token_ceiling",
+                  "qualification_gpu_minutes",
+                  "qualification_wall_minutes"
+                ],
+                "properties": {
+                  "implementation_token_ceiling": {
+                    "type": "integer"
+                  },
+                  "qualification_gpu_minutes": {
+                    "type": "integer"
+                  },
+                  "qualification_wall_minutes": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          },
+          "mechanism_config_json": {
+            "type": "string",
+            "description": "JSON object declaring p4_fit_mode, p4_fit_input_mode (FULL_TRAIN or MASKED_TRAIN), p4_mask_fraction only for MASKED_TRAIN, p4_zero_action (COEFFICIENTS_ZERO or NOT_DECLARED), and scientific mechanism settings. Fitting input semantics are explicit, not inferred from prose."
+          }
+        }
+      }
+    }
+  }
+}

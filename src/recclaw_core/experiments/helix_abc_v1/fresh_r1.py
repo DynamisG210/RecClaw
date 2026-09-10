@@ -7,15 +7,19 @@ candidate catalog, fallback path, mutable service, or post-outcome repair path.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import math
 import os
+import shutil
 import sqlite3
+import socket
 import subprocess
 import time
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -27,8 +31,21 @@ from .canonical import (
     canonical_json_bytes,
     canonical_value,
     sha256_digest,
+    validate_sha256,
 )
 from .capability_admission import admit_qualified_capability
+from .experiment_binding import (
+    COMMON_DATASET,
+    COMMON_EVALUATOR,
+    COMMON_SPLIT,
+    DEVELOPMENT_EVALUATOR,
+    DEVELOPMENT_SPLIT,
+    P4_SPARSE_SPECTRAL_EVALUATOR,
+    ExperimentBindingError,
+    ExperimentBindingV1,
+    render_campaign_worker_command,
+    validate_execution_recipe,
+)
 from .innovation_recbole_adapter import (
     MechanicalQualificationRun,
     MechanicalRecBoleAdapterV1,
@@ -42,7 +59,13 @@ from .innovation_spine import (
     build_shared_implementer_request,
     materialize_candidate_package,
 )
-from .lab_api_broker import LabApiCanaryBrokerV1, load_lab_api_credentials
+from .lab_api_broker import (
+    LabApiCanaryBrokerV1,
+    load_lab_api_credential_pairs,
+    load_lab_api_credentials,
+    provider_http_failure_kind,
+    provider_http_failure_is_unbilled,
+)
 from .open_spec import (
     frozen_search_bindings,
     frozen_search_resolver_environment,
@@ -54,6 +77,7 @@ from .training_filesystem import (
     materialize_training_filesystem_capability,
 )
 from .training_runtime_release import (
+    CAMPAIGN_DEVELOPMENT_TRAINING_RELEASE_RESOURCE,
     CAMPAIGN_TRAINING_RUNNER_ABI,
     campaign_training_runtime_release,
 )
@@ -69,6 +93,11 @@ from .vnext_contracts import (
     ResearchFailureClassV1,
     TypedResearchEpisodeV1,
 )
+from .provider_model_routing import (
+    STRONG_MODEL,
+    require_returned_model_identity,
+    select_provider_model,
+)
 
 
 ACCEPTED_COMMIT = "e43bb78acbfbe1e616cc320cf9ff6b55b2144286"
@@ -76,12 +105,50 @@ ACCEPTED_PARENT = "dd75f8f50d1c9e26593bf60171a9b3019ad6420b"
 ACCEPTED_TREE = "b058b17cd1c35e68b2402444b66cfd01deb9ff07"
 READY_SHA256 = "aede1d9fbbded5b0145e4ff48ff6d7d19d2bdbb40959dfe73c61fa5bb8cf8de9"
 MANIFEST_SHA256 = "b021e49d24d3b1cbe8d9cec52fc902351d46f975b34d31bf18d32ecfe2941a9a"
-MODEL = "gpt-5.4"
+
+
+MODEL = STRONG_MODEL
+LAB_API_WIRE_API = os.environ.get(
+    "RECCLAW_LAB_API_WIRE_API", "chat_completions"
+).strip()
+if LAB_API_WIRE_API not in {"chat_completions", "responses"}:
+    raise RuntimeError("RECCLAW_LAB_API_WIRE_API is invalid")
 PROPOSAL_TOKEN_CEILING = 6000
 IMPLEMENTATION_TOKEN_CEILING = 20_000
 EXPERIMENT_EPOCHS = 100
 BACKOFF_MS = (1000, 3000)
 MAX_PHYSICAL_ATTEMPTS = 3
+MAX_WORKER_CEILING_SECONDS = 3600
+GPU_RESERVATION_EVIDENCE_SCHEMA = "recclaw.gpu-reservation-evidence.v1"
+GPU_RESERVATION_STATUS_MEASURED = (
+    "MEASURED_RESERVATION_SCOPED_PROCESS_INTERVAL_NOT_GPU_ACTIVE"
+)
+GPU_RESERVATION_STATUS_UNMEASURED = "UNMEASURED_NO_EXCLUSIVE_RESERVATION"
+GPU_RESERVATION_STATUS_CONTRADICTORY = (
+    "UNMEASURED_CONTRADICTORY_DEVICE_EVIDENCE"
+)
+GPU_WORKER_SECONDS_SEMANTICS = (
+    "RESERVATION_SCOPED_PARENT_PROCESS_INTERVAL; NOT_GPU_ACTIVE_UTILIZATION"
+)
+DIRECT_GPU_SELECTION_MODE = "DIRECT_RECOBOLE_GPU_ID"
+_GPU_RESERVATION_SCOPES = frozenset(
+    {"CANDIDATE_WORKER", "ONE_CANDIDATE_ONE_WORKER"}
+)
+DEFAULT_NATIVE_STOPPING_PATIENCE = 5
+EFFICIENCY_LOSS_WINDOW = 6
+EFFICIENCY_MIN_RELATIVE_LOSS_IMPROVEMENT = 1e-4
+EFFICIENCY_LONG_EPOCH_RELATIVE_LOSS_IMPROVEMENT = 1e-3
+HEALTH_ACTION_CONTINUE = "CONTINUE"
+HEALTH_ACTION_NATIVE_SEAL = "NATIVE_SEAL"
+HEALTH_ACTION_HEALTH_ABORT = "HEALTH_ABORT"
+HEALTH_ACTION_HARD_CEILING = "HARD_CEILING"
+HEALTH_STATE_STARTING = "STARTING"
+HEALTH_STATE_INITIALIZED = "INITIALIZED"
+HEALTH_STATE_TRAIN_PROGRESS = "TRAIN_PROGRESS"
+HEALTH_STATE_VALIDATION_PROGRESS = "VALIDATION_PROGRESS"
+HEALTH_STATE_NATIVE_SEAL = "NATIVE_SEAL"
+HEALTH_STATE_HEALTH_ABORT = "HEALTH_ABORT"
+HEALTH_STATE_HARD_CEILING = "HARD_CEILING"
 CONTEXT_REF = "fresh-r1-r2-prefreeze-context-v1"
 CONTEXT_DIGEST = "4965758687e260c490e4f103910cf683d6d3b695c631d67ee27e0385c5704bce"
 R1_ROOT = Path(
@@ -181,8 +248,10 @@ ROLE_INSTRUCTIONS = {
         "declarations within the exact lists below."
     ),
     "frontier_architect": (
-        "Propose a new structural frontier for pairwise recommendation, not a "
-        "wrapper or hyperparameter change. Keep protocol and dependency "
+        "Make the final portfolio-level research decision for this round. Review "
+        "state.research_portfolio from the three preceding roles, then select, "
+        "refine, combine, or replace those ideas with one new structural frontier "
+        "for recommendation, not a wrapper or hyperparameter change. Keep protocol and dependency "
         "declarations within the exact lists below."
     ),
 }
@@ -194,11 +263,34 @@ class FreshR1Error(RuntimeError):
     """A run-level identity, protocol, or orchestration failure."""
 
 
+def _resolve_wire_api(wire_api: str | None) -> str:
+    effective = LAB_API_WIRE_API if wire_api is None else str(wire_api).strip()
+    if effective not in {"chat_completions", "responses"}:
+        raise FreshR1Error("Provider wire API is invalid")
+    return effective
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderAttemptResult:
     call: CanaryBrokerCallV1 | None
     attempts: tuple[Mapping[str, Any], ...]
     failure: Mapping[str, Any] | None
+    sealed_request: Mapping[str, Any] | None = None
+
+
+class ProviderUnavailableError(FreshR1Error):
+    """An external call failed without evidence against the requested candidate."""
+
+    def __init__(self, result: ProviderAttemptResult, *, kind: str) -> None:
+        super().__init__(f"{kind} Provider unavailable: {dict(result.failure or {})}")
+        self.result = result
+
+
+def provider_failure_is_external(failure: Mapping[str, Any] | None) -> bool:
+    return isinstance(failure, Mapping) and (
+        failure.get("http_status") in {401, 402, 403}
+        or retry_eligible(failure)
+    )
 
 
 def _resource_root() -> Path:
@@ -210,6 +302,16 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise FreshR1Error(f"JSON artifact is not an object: {path}")
     return value
+
+
+def _checkpoint_footprint(checkpoint_dir: Path) -> dict[str, int]:
+    """Measure serialized model state without loading candidate-owned bytes."""
+
+    files = [path for path in checkpoint_dir.rglob("*") if path.is_file()]
+    return {
+        "bytes": sum(path.stat().st_size for path in files),
+        "file_count": len(files),
+    }
 
 
 def derive_fresh_r1_proposal_schema(
@@ -291,6 +393,30 @@ def _git(repo_root: Path, *args: str) -> str:
         ["/usr/bin/git", "-C", str(repo_root), *args],
         text=True,
     ).strip()
+
+
+def recbole_source_identity(recbole_root: Path = RECBole_ROOT) -> dict[str, Any]:
+    """Content-bind the RecBole Python/config tree actually used by a run."""
+
+    root = Path(recbole_root).resolve()
+    rows = tuple(
+        {
+            "path": path.relative_to(root).as_posix(),
+            "sha256": bytes_sha256(path.read_bytes()),
+            "size_bytes": path.stat().st_size,
+        }
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and path.suffix in {".py", ".yaml"}
+    )
+    if not rows:
+        raise FreshR1Error("RecBole source tree contains no Python/config files")
+    return canonical_value(
+        {
+            "file_count": len(rows),
+            "source_root": str(root),
+            "source_tree_digest": sha256_digest(rows),
+        }
+    )
 
 
 def _credential_identity(config_path: Path) -> dict[str, str]:
@@ -406,12 +532,14 @@ def render_proposal_prompt(
     logical_slot_id: str,
     proposal_seed: int,
     producer_role: str,
+    protocol_requirements: Sequence[str] = PROTOCOL_REQUIREMENTS,
+    role_instruction: str | None = None,
 ) -> str:
-    instruction = ROLE_INSTRUCTIONS[producer_role] + (
+    instruction = (ROLE_INSTRUCTIONS[producer_role] if role_instruction is None else role_instruction) + (
         " Each compatibility_requirements array item MUST be copied verbatim "
         "as one token from this list; do not emit a sentence, paraphrase, or "
         "combined clause: "
-        + ", ".join(PROTOCOL_REQUIREMENTS)
+        + ", ".join(protocol_requirements)
         + ". Each resolution_facts.required_dependencies array item MUST be "
         "copied verbatim as one token from this list; do not emit a sentence, "
         "paraphrase, or combined clause: "
@@ -446,26 +574,132 @@ def render_implementation_prompt(template: str, request: Mapping[str, Any]) -> s
     return rendered
 
 
-def _attempt_failure(private_root: Path, error: CanaryBrokerError) -> dict[str, Any]:
-    http_status = None
+def _usage_from_mapping(value: Any) -> dict[str, int] | None:
+    if not isinstance(value, Mapping):
+        return None
+    nested = next(
+        (
+            value[key]
+            for key in ("usage", "actual_usage", "token_usage")
+            if isinstance(value.get(key), Mapping)
+        ),
+        value,
+    )
+    if not isinstance(nested, Mapping):
+        return None
+    input_value = nested.get("input_tokens", nested.get("prompt_tokens"))
+    output_value = nested.get("output_tokens", nested.get("completion_tokens"))
+    total_value = nested.get("total_tokens")
+    if input_value is None and output_value is None and total_value is None:
+        return None
+    try:
+        input_tokens = int(input_value or 0)
+        output_tokens = int(output_value or 0)
+        total_tokens = int(
+            total_value
+            if total_value is not None
+            else input_tokens + output_tokens
+        )
+        cached_input_tokens = int(nested.get("cached_input_tokens", 0) or 0)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if min(input_tokens, output_tokens, total_tokens, cached_input_tokens) < 0:
+        return None
+    if total_tokens <= 0 and input_tokens + output_tokens <= 0:
+        return None
+    return {
+        "billed_tokens": total_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    }
+
+
+def _attempt_failure(
+    private_root: Path,
+    error: CanaryBrokerError,
+    token_ceiling: int = PROPOSAL_TOKEN_CEILING,
+) -> dict[str, Any]:
+    outcome = error.outcome
+    request_digest = (
+        outcome.request_envelope_digest if outcome is not None else None
+    )
+    http_status = (
+        error.receipt.exit_code_or_NONE if error.receipt is not None else None
+    )
     exception_type = None
+    reason_code = None
     receipt: dict[str, Any] = {}
+    usage: dict[str, int] | None = None
+    detail: dict[str, Any] = {}
     db_path = private_root / "broker.sqlite3"
     if db_path.is_file():
         connection = sqlite3.connect(db_path)
         try:
-            row = connection.execute(
-                "SELECT error_detail_json, receipt_json FROM calls"
-            ).fetchone()
+            if outcome is not None:
+                row = connection.execute(
+                    "SELECT error_detail_json, receipt_json, input_tokens, "
+                    "cached_input_tokens, output_tokens, total_tokens FROM calls "
+                    "WHERE logical_call_id=?",
+                    (outcome.logical_call_id,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT error_detail_json, receipt_json, input_tokens, "
+                    "cached_input_tokens, output_tokens, total_tokens FROM calls "
+                    "ORDER BY rowid DESC LIMIT 1"
+                ).fetchone()
         finally:
             connection.close()
         if row is not None:
             detail = json.loads(str(row[0])) if row[0] else {}
             receipt = json.loads(str(row[1])) if row[1] else {}
             exception_type = detail.get("exception_type")
-            http_status = receipt.get("http_status")
+            reason_code = detail.get("reason_code") or receipt.get("reason_code")
+            usage = _usage_from_mapping(detail) or _usage_from_mapping(receipt)
+            if usage is None and any(value is not None for value in row[2:]):
+                usage = _usage_from_mapping(
+                    {
+                        "input_tokens": row[2],
+                        "cached_input_tokens": row[3],
+                        "output_tokens": row[4],
+                        "total_tokens": row[5],
+                    }
+                )
+            if http_status is None:
+                http_status = receipt.get("http_status")
+            if request_digest is None:
+                request_digest = receipt.get("request_digest")
+    if reason_code is None and isinstance(error.outcome, Mapping):
+        reason_code = error.outcome.get("reason_code")
+    if usage is None:
+        usage = _usage_from_mapping(
+            {
+                "input_tokens": error.input_tokens,
+                "cached_input_tokens": 0,
+                "output_tokens": error.output_tokens,
+                "total_tokens": error.billed_tokens,
+            }
+        )
+    usage_charge_basis = "ACTUAL" if usage is not None else (
+        "FROZEN_MAX_TOTAL_TOKENS_PER_CALL"
+    )
+    if usage is None and provider_http_failure_is_unbilled(http_status, detail):
+        usage = {"billed_tokens": 0, "cached_input_tokens": 0,
+                 "input_tokens": 0, "output_tokens": 0}
+        usage_charge_basis = "CONFIRMED_UNBILLED_EXTERNAL_FAILURE"
+    if usage is None:
+        usage = {
+            "billed_tokens": token_ceiling,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        }
     return canonical_value(
         {
+            **usage,
+            **{key: value for key, value in detail.items()
+               if key.startswith("provider_error_") or key == "provider_response_has_output"},
             "error_type": type(error).__name__,
             "exception_type": exception_type,
             "failure_class": (
@@ -475,24 +709,377 @@ def _attempt_failure(private_root: Path, error: CanaryBrokerError) -> dict[str, 
             "message": str(error),
             "mechanism_negative_evidence": False,
             "physical_call_count": error.physical_call_count,
-            "request_digest": receipt.get("request_digest"),
+            "reason_code": reason_code,
+            "request_digest": request_digest,
             "receipt_digest": (
                 error.receipt.receipt_digest if error.receipt is not None else None
             ),
+            "usage_charge_basis": usage_charge_basis,
         }
     )
 
 
 def retry_eligible(failure: Mapping[str, Any]) -> bool:
     status = failure.get("http_status")
+    if provider_http_failure_kind(status, failure) == "TRANSIENT_PROVIDER_ROUTING":
+        return True
     if isinstance(status, int) and (status in {408, 429} or status >= 500):
         return True
-    if failure.get("failure_class") == "TIMEOUT":
+    if failure.get("failure_class") in {"TIMEOUT", "CONNECTIVITY_ERROR"}:
         return True
     return failure.get("exception_type") in {
         "ConnectionResetError",
         "RemoteDisconnected",
     }
+
+
+def _credential_schedule(
+    *,
+    config_path: Path,
+    credential_index: int | None,
+    credential_schedule: Sequence[int] | None,
+) -> tuple[int, ...]:
+    pairs = load_lab_api_credential_pairs(config_path)
+    if credential_schedule is None:
+        schedule = (
+            (credential_index,)
+            if credential_index is not None
+            else tuple(range(len(pairs)))
+        )
+    else:
+        schedule = tuple(credential_schedule)
+        if credential_index is not None and (
+            not schedule or schedule[0] != credential_index
+        ):
+            raise FreshR1Error(
+                "credential_index does not match credential_schedule"
+            )
+    if not schedule:
+        raise FreshR1Error("credential schedule must not be empty")
+    for index in schedule:
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+            raise FreshR1Error("credential schedule contains an invalid index")
+        if index >= len(pairs):
+            raise FreshR1Error(
+                "credential schedule index is outside the configured pairs"
+            )
+    return schedule
+
+
+def _expected_release_digest(
+    expected: str | Sequence[str] | None,
+    *,
+    credential_index: int,
+    schedule_position: int,
+) -> str | None:
+    if expected is None:
+        return None
+    if isinstance(expected, str):
+        # The legacy scalar identifies the first physical credential. A
+        # per-index sequence pins fallback releases too.
+        return expected if schedule_position == 0 else None
+    expected_by_index = tuple(expected)
+    if credential_index >= len(expected_by_index):
+        return None
+    value = expected_by_index[credential_index]
+    if not isinstance(value, str):
+        raise FreshR1Error("expected transport release digest is invalid")
+    return value
+
+
+def _bounded_provider_call_direct(
+    *,
+    call_root: Path,
+    schema_path: Path,
+    logical_call_id: str,
+    session_id: str,
+    prompt: str,
+    token_ceiling: int,
+    provider_role: str = "unspecified_strong",
+    requested_model: str | None = None,
+    expected_proposal_count: int = 1,
+    output_token_ceiling: int | None = None,
+    expected_transport_release_digest: str | Sequence[str] | None = None,
+    credential_config_path: Path | None = None,
+    credential_index: int | None = None,
+    credential_schedule: Sequence[int] | None = None,
+    maximum_physical_attempts: int | None = MAX_PHYSICAL_ATTEMPTS,
+    sleep: Callable[[float], None] = time.sleep,
+    resume_request_digest: str | None = None,
+    wire_api: str | None = None,
+    request_budget: Any = None,
+) -> ProviderAttemptResult:
+    selection = select_provider_model(provider_role)
+    effective_model = requested_model or selection.requested_model
+    if effective_model != selection.requested_model:
+        raise FreshR1Error("requested Provider model differs from formal role routing")
+    effective_wire_api = _resolve_wire_api(wire_api)
+    if maximum_physical_attempts is not None and (
+        isinstance(maximum_physical_attempts, bool)
+        or not isinstance(maximum_physical_attempts, int)
+        or maximum_physical_attempts < 1
+    ):
+        raise FreshR1Error("maximum_physical_attempts must be positive or None")
+    config_path = Path(credential_config_path or API_CONFIG).resolve()
+    schedule = _credential_schedule(
+        config_path=config_path,
+        credential_index=credential_index,
+        credential_schedule=credential_schedule,
+    )
+    attempts: list[dict[str, Any]] = []
+    request_digests: set[str] = set()
+    ordinal = 1
+    while maximum_physical_attempts is None or ordinal <= maximum_physical_attempts:
+        if ordinal > 1:
+            sleep(BACKOFF_MS[min(ordinal - 2, len(BACKOFF_MS) - 1)] / 1000)
+        schedule_position = min(ordinal - 1, len(schedule) - 1)
+        selected_credential_index = schedule[schedule_position]
+        private_root = call_root / f"physical_attempt_{ordinal:02d}"
+        broker: LabApiCanaryBrokerV1 | None = None
+        sealed_request: Mapping[str, Any] | None = None
+        started = time.monotonic_ns()
+        try:
+            broker_kwargs: dict[str, Any] = {
+                "schema_path": schema_path,
+                "config_path": config_path,
+                "model": effective_model,
+                "reasoning_effort": selection.reasoning_effort,
+                "max_total_tokens_per_call": token_ceiling,
+                "credential_index": selected_credential_index,
+                "release_manifest_path": None,
+            }
+            if effective_wire_api != "chat_completions":
+                broker_kwargs["wire_api"] = effective_wire_api
+            if request_budget is not None:
+                broker_kwargs["request_budget"] = request_budget
+            broker = LabApiCanaryBrokerV1(private_root, **broker_kwargs)
+            expected_release_digest = _expected_release_digest(
+                expected_transport_release_digest,
+                credential_index=selected_credential_index,
+                schedule_position=schedule_position,
+            )
+            current_request_identity = broker.sealed_request_identity(
+                proposal_generation_session_id=session_id,
+                prompt=prompt,
+                expected_proposal_count=expected_proposal_count,
+                max_total_tokens=token_ceiling,
+                max_output_tokens=output_token_ceiling,
+            )
+            current_request_digest = sha256_digest(current_request_identity)
+            if (
+                resume_request_digest is not None
+                and current_request_digest != resume_request_digest
+            ):
+                raise FreshR1Error(
+                    "sealed replay request differs from the current Provider request"
+                )
+            sealed_request = canonical_value(
+                {
+                    **dict(current_request_identity),
+                    "logical_call_id": logical_call_id,
+                    "request_digest": current_request_digest,
+                    "schema": "recclaw.provider.sealed-request.v1",
+                }
+            )
+            if (
+                expected_release_digest is not None
+                and broker.release.release_digest != expected_release_digest
+            ):
+                raise FreshR1Error("proposal transport release identity mismatch")
+            call = (
+                broker.replay_stored(
+                    logical_call_id=logical_call_id,
+                    proposal_generation_session_id=session_id,
+                    request_digest=resume_request_digest,
+                )
+                if resume_request_digest is not None
+                else broker.call_with_session(
+                    logical_call_id=logical_call_id,
+                    proposal_generation_session_id=session_id,
+                    prompt=prompt,
+                    expected_proposal_count=expected_proposal_count,
+                    max_total_tokens=token_ceiling,
+                    max_output_tokens=output_token_ceiling,
+                )
+            )
+            request_digests.add(call.request_digest)
+            if len(request_digests) != 1:
+                raise FreshR1Error("bounded retry changed the request payload digest")
+            try:
+                require_returned_model_identity(
+                    effective_model,
+                    call.returned_model,
+                )
+            except ValueError as error:
+                raise FreshR1Error(str(error)) from error
+            attempts.append(
+                {
+                    "billed_tokens": call.total_tokens,
+                    "credential_config_digest": broker.credential_config_digest,
+                    "credential_identity_digest": broker.credential_identity_digest,
+                    "credential_index": broker.credential_index,
+                    "endpoint_digest": broker.endpoint_digest,
+                    "input_tokens": call.input_tokens,
+                    "latency_ms": call.latency_ms,
+                    "ordinal": ordinal,
+                    "output_tokens": call.output_tokens,
+                    "provider_role": provider_role,
+                    "request_digest": call.request_digest,
+                    "requested_model": effective_model,
+                    "returned_model": call.returned_model,
+                    "role_routing_digest": selection.role_routing_digest,
+                    "physical_call_count": (
+                        0 if resume_request_digest is not None else 1
+                    ),
+                    "sealed_request_replay": resume_request_digest is not None,
+                    "status": "SUCCESS",
+                }
+            )
+            return ProviderAttemptResult(
+                call=call,
+                attempts=tuple(canonical_value(attempts)),
+                failure=None,
+                sealed_request=sealed_request,
+            )
+        except FreshR1Error:
+            raise
+        except CanaryBrokerError as error:
+            failure = _attempt_failure(private_root, error)
+            billed_tokens = failure.get("billed_tokens")
+            if (
+                failure.get("usage_charge_basis")
+                == "FROZEN_MAX_TOTAL_TOKENS_PER_CALL"
+                or isinstance(billed_tokens, bool)
+                or not isinstance(billed_tokens, int)
+                or (billed_tokens < 1 and failure.get("usage_charge_basis")
+                    != "CONFIRMED_UNBILLED_EXTERNAL_FAILURE")
+            ):
+                failure = canonical_value(
+                    {
+                        **failure,
+                        "billed_tokens": token_ceiling,
+                        "usage_charge_basis": (
+                            "FROZEN_MAX_TOTAL_TOKENS_PER_CALL"
+                        ),
+                    }
+                )
+            if failure.get("request_digest"):
+                request_digests.add(str(failure["request_digest"]))
+            if len(request_digests) != 1:
+                raise FreshR1Error("bounded retry changed the request payload digest")
+            attempts.append(
+                {
+                    **failure,
+                    "credential_config_digest": (
+                        broker.credential_config_digest
+                        if broker is not None
+                        else None
+                    ),
+                    "credential_identity_digest": (
+                        broker.credential_identity_digest
+                        if broker is not None
+                        else None
+                    ),
+                    "credential_index": selected_credential_index,
+                    "endpoint_digest": (
+                        broker.endpoint_digest if broker is not None else None
+                    ),
+                    "latency_ms": max(1, (time.monotonic_ns() - started) // 1_000_000),
+                    "ordinal": ordinal,
+                    "provider_role": provider_role,
+                    "requested_model": effective_model,
+                    "role_routing_digest": selection.role_routing_digest,
+                    "status": "FAILED",
+                }
+            )
+            if not retry_eligible(failure) or (
+                maximum_physical_attempts is not None
+                and ordinal >= maximum_physical_attempts
+            ):
+                return ProviderAttemptResult(
+                    call=None,
+                    attempts=tuple(canonical_value(attempts)),
+                    failure=failure,
+                    sealed_request=sealed_request,
+                )
+        finally:
+            if broker is not None:
+                broker.close()
+        ordinal += 1
+    raise AssertionError("bounded Provider loop did not terminate")
+
+
+def _paired_provider_identity(
+    *,
+    schema_path: Path,
+    logical_call_id: str,
+    session_id: str,
+    prompt: str,
+    token_ceiling: int,
+    output_token_ceiling: int | None,
+    credential_config_path: Path,
+    credential_index: int | None,
+    credential_schedule: Sequence[int] | None,
+    maximum_physical_attempts: int | None,
+    provider_role: str = "unspecified_strong",
+    requested_model: str | None = None,
+    expected_proposal_count: int = 1,
+    wire_api: str | None = None,
+) -> dict[str, Any]:
+    selection = select_provider_model(provider_role)
+    effective_model = requested_model or selection.requested_model
+    if effective_model != selection.requested_model:
+        raise FreshR1Error("requested Provider model differs from formal role routing")
+    effective_wire_api = _resolve_wire_api(wire_api)
+    schedule = _credential_schedule(
+        config_path=credential_config_path,
+        credential_index=credential_index,
+        credential_schedule=credential_schedule,
+    )
+    identity = {
+            "expected_proposal_count": expected_proposal_count,
+            "credential_config_digest": bytes_sha256(
+                credential_config_path.read_bytes()
+            ),
+            "credential_schedule": list(schedule),
+            "logical_call_id": logical_call_id,
+            "maximum_physical_attempts": maximum_physical_attempts,
+            "model": effective_model,
+            "reasoning_effort": selection.reasoning_effort,
+            "provider_role": provider_role,
+            "role_routing_digest": selection.role_routing_digest,
+            "output_token_ceiling": output_token_ceiling,
+            "prompt_digest": hashlib.sha256(
+                prompt.encode("utf-8")
+            ).hexdigest(),
+            "schema_file_sha256": bytes_sha256(schema_path.read_bytes()),
+            "schema_version": "RECCLAW_PAIRED_PROVIDER_CALL_IDENTITY_V1",
+            "session_id": session_id,
+            "token_ceiling": token_ceiling,
+        }
+    if effective_wire_api != "chat_completions":
+        identity["wire_api"] = effective_wire_api
+    return canonical_value(identity)
+
+
+def _write_canonical_json(path: Path, value: Mapping[str, Any]) -> None:
+    payload = canonical_json_bytes(value) + b"\n"
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    temporary.write_bytes(payload)
+    os.replace(temporary, path)
+
+
+def _copy_paired_provider_evidence(
+    *, source_root: Path, destination_root: Path
+) -> None:
+    destination_root.mkdir(parents=True, exist_ok=True)
+    for source in sorted(source_root.glob("physical_attempt_*")):
+        if source.is_dir():
+            shutil.copytree(
+                source,
+                destination_root / source.name,
+                dirs_exist_ok=True,
+            )
 
 
 def bounded_provider_call(
@@ -503,90 +1090,171 @@ def bounded_provider_call(
     session_id: str,
     prompt: str,
     token_ceiling: int,
-    expected_transport_release_digest: str | None = None,
-    maximum_physical_attempts: int = MAX_PHYSICAL_ATTEMPTS,
+    provider_role: str = "unspecified_strong",
+    requested_model: str | None = None,
+    expected_proposal_count: int = 1,
+    output_token_ceiling: int | None = None,
+    expected_transport_release_digest: str | Sequence[str] | None = None,
+    credential_config_path: Path | None = None,
+    credential_index: int | None = None,
+    credential_schedule: Sequence[int] | None = None,
+    maximum_physical_attempts: int | None = MAX_PHYSICAL_ATTEMPTS,
     sleep: Callable[[float], None] = time.sleep,
+    resume_request_digest: str | None = None,
+    wire_api: str | None = None,
+    request_budget: Any = None,
 ) -> ProviderAttemptResult:
-    if not isinstance(maximum_physical_attempts, int) or not (
-        1 <= maximum_physical_attempts <= MAX_PHYSICAL_ATTEMPTS
-    ):
-        raise FreshR1Error("maximum_physical_attempts is outside the bounded policy")
-    attempts: list[dict[str, Any]] = []
-    request_digests: set[str] = set()
-    for ordinal in range(1, maximum_physical_attempts + 1):
-        if ordinal > 1:
-            sleep(BACKOFF_MS[ordinal - 2] / 1000)
-        private_root = call_root / f"physical_attempt_{ordinal:02d}"
-        broker: LabApiCanaryBrokerV1 | None = None
-        started = time.monotonic_ns()
-        try:
-            broker = LabApiCanaryBrokerV1(
-                private_root,
-                schema_path=schema_path,
-                config_path=API_CONFIG,
-                model=MODEL,
-                max_total_tokens_per_call=token_ceiling,
-                timeout_ms=900_000,
-                release_manifest_path=None,
-            )
-            if (
-                expected_transport_release_digest is not None
-                and broker.release.release_digest != expected_transport_release_digest
-            ):
-                raise FreshR1Error("proposal transport release identity mismatch")
-            call = broker.call_with_session(
-                logical_call_id=logical_call_id,
-                proposal_generation_session_id=session_id,
-                prompt=prompt,
-                expected_proposal_count=1,
-                max_total_tokens=token_ceiling,
-            )
-            request_digests.add(call.request_digest)
-            if len(request_digests) != 1:
-                raise FreshR1Error("bounded retry changed the request payload digest")
-            attempts.append(
-                {
-                    "billed_tokens": call.total_tokens,
-                    "input_tokens": call.input_tokens,
-                    "latency_ms": call.latency_ms,
-                    "ordinal": ordinal,
-                    "output_tokens": call.output_tokens,
-                    "request_digest": call.request_digest,
-                    "returned_model": call.returned_model,
-                    "status": "SUCCESS",
-                }
-            )
-            return ProviderAttemptResult(
-                call=call,
-                attempts=tuple(canonical_value(attempts)),
-                failure=None,
-            )
-        except FreshR1Error:
-            raise
-        except CanaryBrokerError as error:
-            failure = _attempt_failure(private_root, error)
-            if failure.get("request_digest"):
-                request_digests.add(str(failure["request_digest"]))
-            if len(request_digests) != 1:
-                raise FreshR1Error("bounded retry changed the request payload digest")
-            attempts.append(
-                {
-                    **failure,
-                    "latency_ms": max(1, (time.monotonic_ns() - started) // 1_000_000),
-                    "ordinal": ordinal,
-                    "status": "FAILED",
-                }
-            )
-            if not retry_eligible(failure) or ordinal == maximum_physical_attempts:
-                return ProviderAttemptResult(
-                    call=None,
-                    attempts=tuple(canonical_value(attempts)),
-                    failure=failure,
+    """Execute one logical call, optionally shared by the paired B/C arms.
+
+    The Provider is not deterministic even with temperature zero.  When the
+    paired-call root is explicit, equal Research requests therefore serialize
+    on one canonical durable call.  Both arms receive the exact same validated
+    response bytes while keeping their own evidence copy and an explicit
+    provenance reference.  Non-identical requests have different identities
+    and never share a response.
+    """
+
+    effective_wire_api = _resolve_wire_api(wire_api)
+    shared_root_text = os.environ.get("RECCLAW_PAIRED_PROVIDER_CALL_ROOT")
+    if not shared_root_text or resume_request_digest is not None:
+        return _bounded_provider_call_direct(
+            call_root=call_root,
+            schema_path=schema_path,
+            logical_call_id=logical_call_id,
+            session_id=session_id,
+            prompt=prompt,
+            token_ceiling=token_ceiling,
+            provider_role=provider_role,
+            requested_model=requested_model,
+            output_token_ceiling=output_token_ceiling,
+            expected_proposal_count=expected_proposal_count,
+            expected_transport_release_digest=expected_transport_release_digest,
+            credential_config_path=credential_config_path,
+            credential_index=credential_index,
+            credential_schedule=credential_schedule,
+            maximum_physical_attempts=maximum_physical_attempts,
+            sleep=sleep,
+            resume_request_digest=resume_request_digest,
+            wire_api=effective_wire_api,
+            request_budget=request_budget,
+        )
+
+    participant = os.environ.get("RECCLAW_PAIRED_PROVIDER_PARTICIPANT", "").strip()
+    if not participant:
+        raise FreshR1Error(
+            "paired Provider participant is required with the shared call root"
+        )
+    shared_root = Path(shared_root_text)
+    if not shared_root.is_absolute():
+        raise FreshR1Error("paired Provider call root must be absolute")
+    shared_root = shared_root.resolve()
+    config_path = Path(credential_config_path or API_CONFIG).resolve()
+    schema_path = Path(schema_path).resolve()
+    identity = _paired_provider_identity(
+        schema_path=schema_path,
+        logical_call_id=logical_call_id,
+        session_id=session_id,
+        prompt=prompt,
+        token_ceiling=token_ceiling,
+        provider_role=provider_role,
+        requested_model=requested_model,
+        output_token_ceiling=output_token_ceiling,
+        expected_proposal_count=expected_proposal_count,
+        credential_config_path=config_path,
+        credential_index=credential_index,
+        credential_schedule=credential_schedule,
+        maximum_physical_attempts=maximum_physical_attempts,
+        wire_api=effective_wire_api,
+    )
+    identity_digest = sha256_digest(identity)
+    identity_root = shared_root / identity_digest[:2] / identity_digest
+    shared_call_root = identity_root / "provider_call"
+    identity_root.mkdir(parents=True, exist_ok=True)
+    lock_path = identity_root / "paired_call.lock"
+    identity_path = identity_root / "PAIRED_PROVIDER_CALL_IDENTITY_V1.json"
+
+    with lock_path.open("a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        if identity_path.exists():
+            stored_identity = json.loads(identity_path.read_bytes())
+            if stored_identity != identity:
+                raise FreshR1Error(
+                    "paired Provider call identity differs from stored bytes"
                 )
-        finally:
-            if broker is not None:
-                broker.close()
-    raise AssertionError("bounded Provider loop did not terminate")
+        else:
+            _write_canonical_json(identity_path, identity)
+        cache_preexisting = any(
+            shared_call_root.glob("physical_attempt_*/broker.sqlite3")
+        )
+        result = _bounded_provider_call_direct(
+            call_root=shared_call_root,
+            schema_path=schema_path,
+            logical_call_id=logical_call_id,
+            session_id=session_id,
+            prompt=prompt,
+            token_ceiling=token_ceiling,
+            provider_role=provider_role,
+            requested_model=requested_model,
+            output_token_ceiling=output_token_ceiling,
+            expected_proposal_count=expected_proposal_count,
+            expected_transport_release_digest=expected_transport_release_digest,
+            credential_config_path=config_path,
+            credential_index=credential_index,
+            credential_schedule=credential_schedule,
+            maximum_physical_attempts=maximum_physical_attempts,
+            sleep=sleep,
+            resume_request_digest=resume_request_digest,
+            wire_api=effective_wire_api,
+            request_budget=request_budget,
+        )
+        _copy_paired_provider_evidence(
+            source_root=shared_call_root,
+            destination_root=Path(call_root),
+        )
+        reference = canonical_value(
+            {
+                "cache_preexisting": cache_preexisting,
+                "call_status": "SUCCESS" if result.call is not None else "FAILED",
+                "canonical_call_root": str(shared_call_root),
+                "identity_digest": identity_digest,
+                "logical_call_id": logical_call_id,
+                "participant": participant,
+                "request_digest": (
+                    result.call.request_digest if result.call is not None else None
+                ),
+                "response_digest": (
+                    result.call.response_digest if result.call is not None else None
+                ),
+                "schema_version": "RECCLAW_PAIRED_PROVIDER_CALL_REF_V1",
+                "shared_execution_mode": (
+                    "SHARED_RESPONSE_REUSE"
+                    if cache_preexisting
+                    else "CANONICAL_PROVIDER_CALL"
+                ),
+            }
+        )
+        call_root = Path(call_root)
+        call_root.mkdir(parents=True, exist_ok=True)
+        _write_canonical_json(
+            call_root / "PAIRED_PROVIDER_CALL_REF_V1.json", reference
+        )
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        return ProviderAttemptResult(
+            call=result.call,
+            attempts=tuple(
+                canonical_value(
+                    {
+                        **attempt,
+                        "paired_provider_call_identity_digest": identity_digest,
+                        "shared_execution_mode": reference[
+                            "shared_execution_mode"
+                        ],
+                    }
+                )
+                for attempt in result.attempts
+            ),
+            failure=result.failure,
+        )
 
 
 def evaluate_gate(side_records: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str, Any]:
@@ -638,18 +1306,31 @@ def _shared_behavioral_unit_check(
     evidence: dict[str, Any],
     *,
     require_extra_parameters: bool = True,
+    base_model_config: str = "BPR",
 ) -> Callable[[Any, Any, Any], None]:
     def check(model: Any, config: Any, dataset: Any) -> None:
         import torch
 
         from recbole.data.interaction import Interaction
         from recbole.model.general_recommender.bpr import BPR
+        from recbole.model.general_recommender.lightgcn import LightGCN
         from recbole.utils import InputType, ModelType
+
+        reference_classes = {"BPR": BPR, "LightGCN": LightGCN}
+        if base_model_config not in reference_classes:
+            raise AssertionError(
+                "family-neutral qualifier requires a known frozen base configuration"
+            )
+        reference_class = reference_classes[base_model_config]
 
         if config["MODEL_TYPE"] is not ModelType.GENERAL:
             raise AssertionError("candidate is not a general recommender")
         if model.input_type is not InputType.PAIRWISE:
             raise AssertionError("candidate is not pairwise")
+        if base_model_config == "LightGCN" and isinstance(model, BPR):
+            raise AssertionError(
+                "LightGCN execution contract cannot be implemented as a BPR subclass"
+            )
         overridden = tuple(
             name
             for name in ("calculate_loss", "predict", "full_sort_predict")
@@ -657,12 +1338,16 @@ def _shared_behavioral_unit_check(
         )
         if len(overridden) != 3:
             raise AssertionError("candidate must implement all three behavioral methods")
-        baseline = BPR(config, dataset).to(config["device"])
+        baseline = reference_class(config, dataset).to(config["device"])
         with torch.no_grad():
-            if hasattr(model, "user_embedding") and hasattr(baseline, "user_embedding"):
-                baseline.user_embedding.weight.copy_(model.user_embedding.weight)
-            if hasattr(model, "item_embedding") and hasattr(baseline, "item_embedding"):
-                baseline.item_embedding.weight.copy_(model.item_embedding.weight)
+            candidate_parameters = dict(model.named_parameters())
+            for name, parameter in baseline.named_parameters():
+                candidate_parameter = candidate_parameters.get(name)
+                if (
+                    candidate_parameter is not None
+                    and candidate_parameter.shape == parameter.shape
+                ):
+                    parameter.copy_(candidate_parameter)
         user_count = int(dataset.user_num)
         item_count = int(dataset.item_num)
         if user_count < 3 or item_count < 4:
@@ -707,6 +1392,7 @@ def _shared_behavioral_unit_check(
             raise AssertionError("candidate has no additional trainable mechanism")
         evidence.update(
             {
+                "base_model_config": base_model_config,
                 "baseline_parameter_count": baseline_parameter_count,
                 "behavioral_loss_max_abs_delta": loss_delta,
                 "behavioral_score_max_abs_delta": score_delta,
@@ -720,7 +1406,13 @@ def _shared_behavioral_unit_check(
     return check
 
 
-def _qualification_fixture(repo_root: Path, *, seed: int, root: Path) -> RecBoleQualificationFixture:
+def _qualification_fixture(
+    repo_root: Path,
+    *,
+    seed: int,
+    root: Path,
+    base_model_config: str = "BPR",
+) -> RecBoleQualificationFixture:
     mini_data = (
         repo_root
         / "tests/experiments/helix_abc_v1/fixtures/innovation_spine/data"
@@ -730,7 +1422,7 @@ def _qualification_fixture(repo_root: Path, *, seed: int, root: Path) -> RecBole
         recbole_root=RECBole_ROOT,
         data_path=mini_data,
         dataset="mini",
-        base_model_config="BPR",
+        base_model_config=base_model_config,
         seed=seed,
         checkpoint_dir=root / "qualification/checkpoints",
         runtime_identity_ref="repo:docs/research_line/vnext/R1_R2_RUNTIME_DEPENDENCY_LOCK_V1#runtime_identity",
@@ -749,11 +1441,12 @@ def _materialize_and_qualify(
     implementation_prompt_digest: str,
     tool_policy_digest: str,
     run_identity: str = CORRECTED_RUN_IDENTITY,
+    policy: SharedImplementerPolicy | None = None,
     unit_check_factory: Callable[
         [dict[str, Any]], Callable[[Any, Any, Any], None]
     ] = _shared_behavioral_unit_check,
 ) -> tuple[MaterializedCandidate, MechanicalQualificationRun, dict[str, Any]]:
-    policy = _shared_policy(implementation_prompt_digest, tool_policy_digest)
+    policy = policy or _shared_policy(implementation_prompt_digest, tool_policy_digest)
     request = build_shared_implementer_request(spec, policy=policy)
     candidate_parent = side_root / "candidates" / slot_id
     candidate_parent.mkdir(parents=True, exist_ok=True)
@@ -791,6 +1484,88 @@ def _materialize_and_qualify(
     return materialized, qualification, behavior
 
 
+def _bpr_comparator_execution_recipe(
+    *,
+    spec: Any,
+    run_id: str,
+    entrypoint: str,
+    source_sha256: str,
+) -> dict[str, Any]:
+    comparator_ref = f"{CORRECTED_RUN_IDENTITY}:bpr-comparator:{run_id}"
+    comparator_digest = sha256_digest(
+        {
+            "base_model_config": "BPR",
+            "entrypoint": entrypoint,
+            "entrypoint_source_sha256": source_sha256,
+            "model": "BPR",
+        }
+    )
+    return canonical_value(
+        {
+            "base_model_config": "BPR",
+            "capability_digest": comparator_digest,
+            "capability_family": "BPR_MF",
+            "capability_ref": comparator_ref,
+            "comparator_digest": comparator_digest,
+            "comparator_ref": comparator_ref,
+            "config": {},
+            "dataset": COMMON_DATASET,
+            "entrypoint": entrypoint,
+            "entrypoint_source_sha256": source_sha256,
+            "evaluator": COMMON_EVALUATOR,
+            "execution_role": "COMPARATOR",
+            "mechanism_id": run_id,
+            "model": "BPR",
+            "profile_digest": spec.current_profile_digest,
+            "profile_ref": spec.current_profile_ref,
+            "split": COMMON_SPLIT,
+        }
+    )
+
+
+def _fresh_r1_candidate_execution_recipe(
+    *,
+    spec: Any,
+    capability: Any,
+    package: Any,
+    run_id: str,
+    entrypoint: str,
+    source_sha256: str,
+) -> dict[str, Any]:
+    """Bind the current R1 qualified candidate's explicit BPR interface.
+
+    R1 qualification currently requires a general pairwise BPR-compatible
+    implementation.  That is an explicit caller recipe; it is not a runner
+    default.  A later family-neutral producer can replace these two model
+    fields without changing the worker seam.
+    """
+
+    return canonical_value(
+        {
+            "base_model_config": "BPR",
+            "candidate_package_digest": package.digest,
+            "candidate_package_ref": package.package_id,
+            "candidate_root_digest": package.candidate_root_digest,
+            "candidate_root_ref": package.candidate_root_ref,
+            "candidate_source_tree_digest": package.source_tree_digest,
+            "capability_digest": capability.digest,
+            "capability_family": "BPR_MF",
+            "capability_ref": capability.capability_id,
+            "config": {},
+            "dataset": COMMON_DATASET,
+            "entrypoint": entrypoint,
+            "entrypoint_source_sha256": source_sha256,
+            "evaluator": COMMON_EVALUATOR,
+            "execution_role": "CANDIDATE",
+            "mechanism_id": run_id,
+            "model": "BPR",
+            "profile_digest": spec.current_profile_digest,
+            "profile_ref": spec.current_profile_ref,
+            "split": COMMON_SPLIT,
+        }
+    )
+
+
 def _symlink_new(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     os.symlink(source.resolve(), target, target_is_directory=source.is_dir())
@@ -800,24 +1575,1460 @@ def _write_start_gate(path: Path, identity: Mapping[str, Any]) -> None:
     _write_new_json(path, {**identity, "gate_status": "TRAINING_AUTHORIZED"})
 
 
-def _worker_environment(capability: Any, candidate_root: Path | None) -> dict[str, str]:
+def _write_training_setup(path: Path, value: Mapping[str, Any]) -> None:
+    """Reuse only the same immutable setup after an interrupted initialization."""
+
+    if path.exists():
+        if _read_json(path) != canonical_value(dict(value)):
+            raise FreshR1Error(f"interrupted worker setup identity mismatch: {path.name}")
+    else:
+        _write_new_json(path, value)
+
+
+def _initialization_resume_suffix(result_root: Path) -> str:
+    """Preserve old handshakes and never restart a live or trained worker."""
+
+    confirmations = sorted(result_root.glob("start_confirmation*.json"))
+    for path in confirmations:
+        pid = _read_json(path).get("pid")
+        if isinstance(pid, int) and not isinstance(pid, bool):
+            process = Path("/proc") / str(pid) / "cmdline"
+            try:
+                command = process.read_bytes()
+            except FileNotFoundError:
+                command = b""
+            if str(result_root).encode() in command:
+                raise FreshR1Error("interrupted worker is still active; do not launch twice")
+    if not confirmations and not (result_root / "start_gate.json").exists():
+        return ""
+    if (result_root / "resource_telemetry.json").exists() or any(
+        (result_root / "checkpoints").rglob("*")
+    ):
+        raise FreshR1Error(
+            "interrupted worker has training evidence; recover its checkpoint before restart"
+        )
+    index = 1
+    while (
+        (result_root / f"start_confirmation.resume-{index:02d}.json").exists()
+        or (result_root / f"start_gate.resume-{index:02d}.json").exists()
+    ):
+        index += 1
+    return f".resume-{index:02d}"
+
+
+def _round_feedback_metrics(
+    worker: Mapping[str, Any],
+    evaluator: Mapping[str, Any],
+) -> tuple[dict[str, float], bool]:
+    normalized = canonical_value(dict(evaluator))
+    if normalized == DEVELOPMENT_EVALUATOR:
+        identity_matches = (
+            worker.get("metric_source") == "BEST_VALID_RESULT"
+            and worker.get("online_partition_role") == "DEVELOPMENT_VALIDATION"
+        )
+        payload = worker.get("best_valid_result", {}) if identity_matches else {}
+    elif normalized == P4_SPARSE_SPECTRAL_EVALUATOR:
+        identity_matches = (worker.get("metric_source") == "FROZEN_RECBole_RS811_VALIDATION_RESULT"
+                            and worker.get("online_partition_role") == "P4_VALIDATION_SELECTION")
+        payload = worker.get("best_valid_result", {}) if identity_matches else {}
+    elif normalized == COMMON_EVALUATOR:
+        identity_matches = (
+            worker.get("metric_source") == "BEST_CHECKPOINT_TEST_RESULT"
+            and worker.get("online_partition_role") == "ROUND_TEST_FEEDBACK"
+        )
+        payload = worker.get("test_result", {}) if identity_matches else {}
+    else:
+        identity_matches = False
+        payload = {}
+    metrics = {
+        str(key).lower(): float(value)
+        for key, value in dict(payload).items()
+        if isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    }
+    return metrics, identity_matches
+
+
+def _round_test_feedback_metrics(
+    worker: Mapping[str, Any],
+) -> tuple[dict[str, float], bool]:
+    """Compatibility projection for sealed test-feedback callers."""
+
+    return _round_feedback_metrics(worker, COMMON_EVALUATOR)
+
+
+def _finite_number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    converted = float(value)
+    return converted if math.isfinite(converted) else None
+
+
+def _flatten_numeric_values(value: object) -> list[float]:
+    if isinstance(value, (list, tuple)):
+        values: list[float] = []
+        for item in value:
+            values.extend(_flatten_numeric_values(item))
+        return values
+    converted = _finite_number(value)
+    return [] if converted is None else [converted]
+
+
+def _loss_observations(telemetry: Mapping[str, Any]) -> tuple[list[float], bool]:
+    """Return scalar loss observations and whether any explicit value is invalid."""
+
+    observations: list[float] = []
+    invalid = telemetry.get("non_finite_loss") is True
+    trend = telemetry.get("loss_trend")
+    if isinstance(trend, (list, tuple)):
+        for item in trend:
+            flattened = _flatten_numeric_values(item)
+            if flattened:
+                observations.append(sum(flattened) / len(flattened))
+            elif item is not None:
+                invalid = True
+    phases = telemetry.get("phase_records")
+    if isinstance(phases, (list, tuple)):
+        for row in phases:
+            if not isinstance(row, Mapping) or row.get("phase") != "TRAIN":
+                continue
+            value = row.get("loss")
+            flattened = _flatten_numeric_values(value)
+            if flattened and not observations:
+                observations.append(sum(flattened) / len(flattened))
+            elif value is not None and not flattened:
+                invalid = True
+    active = telemetry.get("active_progress")
+    if isinstance(active, Mapping):
+        value = active.get("last_loss_observation")
+        flattened = _flatten_numeric_values(value)
+        if flattened:
+            observed = sum(flattened) / len(flattened)
+            if not observations or observed != observations[-1]:
+                observations.append(observed)
+        elif value is not None:
+            invalid = True
+    return observations, invalid
+
+
+def _phase_rows(telemetry: Mapping[str, Any], phase: str) -> list[Mapping[str, Any]]:
+    rows = telemetry.get("phase_records")
+    if not isinstance(rows, (list, tuple)):
+        return []
+    return [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and row.get("phase") == phase
+        and row.get("status") not in {"RUNTIME_FAILURE", "FAILED"}
+    ]
+
+
+def _completed_epochs(telemetry: Mapping[str, Any], train_rows: Sequence[Mapping[str, Any]]) -> int:
+    explicit = telemetry.get("epochs_completed")
+    if isinstance(explicit, int) and not isinstance(explicit, bool) and explicit >= 0:
+        return explicit
+    return sum(
+        row.get("status") in {None, "SUCCESS", "PHASE_COMPLETED"}
+        for row in train_rows
+    )
+
+
+def _median(values: Sequence[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(float(value) for value in values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def _prediction_number(
+    prediction: Mapping[str, Any] | None,
+    *keys: str,
+) -> float | None:
+    if not isinstance(prediction, Mapping):
+        return None
+    containers: list[Mapping[str, Any]] = [prediction]
+    decision_inputs = prediction.get("decision_inputs")
+    if isinstance(decision_inputs, Mapping):
+        containers.append(decision_inputs)
+    nested_prediction = prediction.get("prediction")
+    if isinstance(nested_prediction, Mapping):
+        containers.append(nested_prediction)
+    for container in containers:
+        for key in keys:
+            if key not in container:
+                continue
+            raw = container.get(key)
+            if raw is None:
+                continue
+            value = _finite_number(raw)
+            if value is None or value <= 0:
+                raise FreshR1Error(f"resource prediction {key} must be positive")
+            return value
+    return None
+
+
+def resolve_candidate_deadline_seconds(
+    *,
+    default_seconds: int,
+    prediction: Mapping[str, Any] | None = None,
+    final_worker_ceiling_seconds: int = MAX_WORKER_CEILING_SECONDS,
+) -> int:
+    """Resolve a candidate allocation while retaining a separate hard ceiling."""
+
+    if (
+        isinstance(default_seconds, bool)
+        or not isinstance(default_seconds, int)
+        or default_seconds < 1
+    ):
+        raise FreshR1Error("default candidate deadline must be a positive integer")
+    if (
+        isinstance(final_worker_ceiling_seconds, bool)
+        or not isinstance(final_worker_ceiling_seconds, int)
+        or final_worker_ceiling_seconds < 1
+    ):
+        raise FreshR1Error("final worker ceiling must be a positive integer")
+    hard_ceiling = final_worker_ceiling_seconds
+    predicted = _prediction_number(
+        prediction,
+        "candidate_deadline_seconds",
+        "requested_deadline_seconds",
+        "deadline_seconds",
+    )
+    return max(1, min(hard_ceiling, math.ceil(predicted or default_seconds)))
+
+
+def _first_progress_deadline_seconds(
+    *,
+    candidate_deadline_seconds: int,
+    prediction: Mapping[str, Any] | None,
+) -> float:
+    predicted = _prediction_number(
+        prediction,
+        "first_progress_deadline_seconds",
+        "first_epoch_deadline_seconds",
+        "initialization_deadline_seconds",
+    )
+    if predicted is not None:
+        return min(float(candidate_deadline_seconds), predicted)
+    predicted_epoch = _prediction_number(
+        prediction,
+        "epoch_seconds",
+        "train_epoch_seconds",
+        "estimated_epoch_seconds",
+    )
+    if predicted_epoch is None:
+        estimated_total = _prediction_number(
+            prediction,
+            "estimated_total_wall_time_seconds",
+        )
+        native_early_stop_min_epochs = _prediction_number(
+            prediction,
+            "native_early_stop_min_epochs",
+        )
+        if (
+            estimated_total is not None
+            and native_early_stop_min_epochs is not None
+        ):
+            predicted_epoch = estimated_total / native_early_stop_min_epochs
+    if predicted_epoch is not None:
+        return min(
+            float(candidate_deadline_seconds),
+            max(30.0, 2.0 * predicted_epoch),
+        )
+    return min(float(candidate_deadline_seconds), 120.0)
+
+
+def _observed_cycle_seconds(
+    train_rows: Sequence[Mapping[str, Any]],
+    eval_rows: Sequence[Mapping[str, Any]],
+    *,
+    prediction: Mapping[str, Any] | None,
+) -> float | None:
+    train = [
+        float(row["wall_time_ms"]) / 1000.0
+        for row in train_rows
+        if _finite_number(row.get("wall_time_ms")) is not None
+        and float(row["wall_time_ms"]) > 0
+    ]
+    evaluation = [
+        float(row["wall_time_ms"]) / 1000.0
+        for row in eval_rows
+        if _finite_number(row.get("wall_time_ms")) is not None
+        and float(row["wall_time_ms"]) > 0
+    ]
+    observed = _median(train) or _median(evaluation)
+    if train and evaluation:
+        observed = _median(
+            [
+                (train[index] if index < len(train) else train[-1])
+                + (evaluation[index] if index < len(evaluation) else evaluation[-1])
+                for index in range(max(len(train), len(evaluation)))
+            ]
+        )
+    if observed is not None:
+        return observed
+    predicted = _prediction_number(
+        prediction,
+        "cycle_seconds",
+        "epoch_seconds",
+        "train_epoch_seconds",
+    )
+    if predicted is not None:
+        evaluation_seconds = _prediction_number(
+            prediction,
+            "eval_seconds",
+            "evaluation_seconds",
+        )
+        return predicted + (evaluation_seconds or 0.0)
+    return None
+
+
+def _native_stop_projection_seconds(
+    *,
+    telemetry: Mapping[str, Any],
+    completed_epochs: int,
+    elapsed_seconds: float,
+    cycle_seconds: float | None,
+    epochs_requested: int,
+    prediction: Mapping[str, Any] | None,
+) -> float | None:
+    if cycle_seconds is None:
+        return _prediction_number(
+            prediction,
+            "native_seal_seconds",
+            "estimated_total_wall_time_seconds",
+        )
+    full_projection = elapsed_seconds + max(0, epochs_requested - completed_epochs) * cycle_seconds
+    best_epoch = telemetry.get("best_observed_epoch")
+    if not isinstance(best_epoch, int) or best_epoch < 0:
+        eval_rows = _phase_rows(telemetry, "EVAL")
+        scored = [
+            row
+            for row in eval_rows
+            if _finite_number(row.get("valid_score")) is not None
+        ]
+        if scored:
+            best_epoch = max(
+                scored,
+                key=lambda row: float(row["valid_score"]),
+            ).get("epoch")
+    patience = _prediction_number(
+        prediction,
+        "native_stopping_patience",
+        "stopping_step",
+    )
+    patience_epochs = int(patience or DEFAULT_NATIVE_STOPPING_PATIENCE)
+    if isinstance(best_epoch, int) and completed_epochs >= best_epoch:
+        epochs_since_best = completed_epochs - best_epoch
+        remaining = max(1, patience_epochs - epochs_since_best)
+        native_projection = elapsed_seconds + remaining * cycle_seconds
+        return min(full_projection, native_projection)
+    return full_projection
+
+
+def _failure_scope_for_trigger(trigger: str | None) -> str | None:
+    if trigger is None:
+        return None
+    if trigger in {"SHARED_INFRASTRUCTURE", "DATASET_OR_EVALUATOR_UNAVAILABLE"}:
+        return "SHARED_INFRASTRUCTURE"
+    if trigger in {"WORKER_TRANSIENT", "WORKER_EXIT"}:
+        return "WORKER_TRANSIENT"
+    if trigger in {
+        "MEMORY_INFEASIBLE",
+        "NO_FIRST_PROGRESS",
+        "EPOCH_EVAL_PREDICTION",
+        "PROJECTED_SEAL_EXCEEDS_FINAL_CEILING",
+        "HARD_CEILING",
+    }:
+        return "LINEAGE_COMPUTE_PATTERN"
+    return "CANDIDATE_LOCAL"
+
+
+def _decision(
+    *,
+    action: str,
+    state: str,
+    trigger: str | None,
+    reason: str,
+    elapsed_seconds: float,
+    candidate_deadline_seconds: int,
+    final_worker_ceiling_seconds: int,
+    projected_seal_seconds: float | None = None,
+    failure_scope: str | None = None,
+) -> dict[str, Any]:
+    return canonical_value(
+        {
+            "action": action,
+            "candidate_deadline_seconds": candidate_deadline_seconds,
+            "elapsed_seconds": max(0.0, float(elapsed_seconds)),
+            "failure_scope": failure_scope or _failure_scope_for_trigger(trigger),
+            "final_worker_ceiling_seconds": final_worker_ceiling_seconds,
+            "health_state": state,
+            "mechanism_effect_update_allowed": action
+            not in {HEALTH_ACTION_HEALTH_ABORT, HEALTH_ACTION_HARD_CEILING},
+            "projected_seal_seconds": projected_seal_seconds,
+            "reason": reason,
+            "schema": "recclaw.training-health-supervisor.v1",
+            "trigger": trigger,
+        }
+    )
+
+
+def assess_training_health(
+    telemetry: Mapping[str, Any] | None,
+    *,
+    elapsed_seconds: float,
+    candidate_deadline_seconds: int,
+    final_worker_ceiling_seconds: int = MAX_WORKER_CEILING_SECONDS,
+    prediction: Mapping[str, Any] | None = None,
+    process_return_code: int | None = None,
+    telemetry_enabled: bool = True,
+    epochs_requested: int = EXPERIMENT_EPOCHS,
+) -> dict[str, Any]:
+    """Classify one durable telemetry snapshot without censoring finite science."""
+
+    if elapsed_seconds < 0:
+        raise FreshR1Error("health elapsed_seconds must not be negative")
+    if (
+        isinstance(candidate_deadline_seconds, bool)
+        or not isinstance(candidate_deadline_seconds, int)
+        or candidate_deadline_seconds < 1
+    ):
+        raise FreshR1Error("candidate deadline must be a positive integer")
+    if (
+        isinstance(final_worker_ceiling_seconds, bool)
+        or not isinstance(final_worker_ceiling_seconds, int)
+        or final_worker_ceiling_seconds < 1
+    ):
+        raise FreshR1Error("final worker ceiling must be a positive integer")
+    if (
+        isinstance(epochs_requested, bool)
+        or not isinstance(epochs_requested, int)
+        or epochs_requested < 1
+    ):
+        raise FreshR1Error("epochs_requested must be a positive integer")
+    hard_ceiling = final_worker_ceiling_seconds
+    candidate_deadline = min(candidate_deadline_seconds, hard_ceiling)
+    current = telemetry if isinstance(telemetry, Mapping) else {}
+    active = current.get("active_progress")
+    active = active if isinstance(active, Mapping) else {}
+    train_rows = _phase_rows(current, "TRAIN")
+    eval_rows = _phase_rows(current, "EVAL")
+    completed = _completed_epochs(current, train_rows)
+    phase = str(active.get("phase") or "")
+    state = (
+        HEALTH_STATE_VALIDATION_PROGRESS
+        if phase == "EVAL" or eval_rows
+        else HEALTH_STATE_TRAIN_PROGRESS
+        if phase == "TRAIN" or completed > 0
+        else HEALTH_STATE_INITIALIZED
+        if current
+        else HEALTH_STATE_STARTING
+    )
+
+    if process_return_code == 0:
+        return _decision(
+            action=HEALTH_ACTION_NATIVE_SEAL,
+            state=HEALTH_STATE_NATIVE_SEAL,
+            trigger=None,
+            reason="worker completed and native result is available",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+        )
+    if process_return_code is not None and process_return_code != 0:
+        explicit_scope = current.get("failure_scope")
+        trigger = (
+            "SHARED_INFRASTRUCTURE"
+            if current.get("shared_infrastructure_failure") is True
+            else "WORKER_TRANSIENT"
+        )
+        return _decision(
+            action=HEALTH_ACTION_HEALTH_ABORT,
+            state=HEALTH_STATE_HEALTH_ABORT,
+            trigger=trigger,
+            reason="worker exited before a valid native seal",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+            failure_scope=(
+                str(explicit_scope)
+                if explicit_scope in {
+                    "CANDIDATE_LOCAL",
+                    "LINEAGE_COMPUTE_PATTERN",
+                    "WORKER_TRANSIENT",
+                    "SHARED_INFRASTRUCTURE",
+                }
+                else None
+            ),
+        )
+
+    if current.get("shared_infrastructure_failure") is True or current.get(
+        "failure_scope"
+    ) == "SHARED_INFRASTRUCTURE":
+        return _decision(
+            action=HEALTH_ACTION_HEALTH_ABORT,
+            state=HEALTH_STATE_HEALTH_ABORT,
+            trigger="SHARED_INFRASTRUCTURE",
+            reason="durable telemetry marked a shared infrastructure failure",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+            failure_scope="SHARED_INFRASTRUCTURE",
+        )
+    if current.get("worker_transient_failure") is True:
+        return _decision(
+            action=HEALTH_ACTION_HEALTH_ABORT,
+            state=HEALTH_STATE_HEALTH_ABORT,
+            trigger="WORKER_TRANSIENT",
+            reason="durable telemetry marked a recoverable worker failure",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+            failure_scope="WORKER_TRANSIENT",
+        )
+
+    losses, invalid_loss = _loss_observations(current)
+    if invalid_loss or current.get("loss_is_finite") is False:
+        return _decision(
+            action=HEALTH_ACTION_HEALTH_ABORT,
+            state=HEALTH_STATE_HEALTH_ABORT,
+            trigger="NON_FINITE_LOSS",
+            reason="loss telemetry contains a non-finite observation",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+        )
+    if len(losses) >= 3:
+        recent = losses[-3:]
+        if (
+            all(recent[index] >= recent[index - 1] for index in range(1, len(recent)))
+            and recent[0] > 0
+            and recent[-1] / recent[0] >= 8.0
+            and min(
+                recent[index] / recent[index - 1]
+                for index in range(1, len(recent))
+                if recent[index - 1] > 0
+            )
+            >= 1.5
+        ):
+            return _decision(
+                action=HEALTH_ACTION_HEALTH_ABORT,
+                state=HEALTH_STATE_HEALTH_ABORT,
+                trigger="EXPLOSIVE_LOSS",
+                reason="finite loss has a robust multi-step explosive trend",
+                elapsed_seconds=elapsed_seconds,
+                candidate_deadline_seconds=candidate_deadline,
+                final_worker_ceiling_seconds=hard_ceiling,
+            )
+
+    optimizer = current.get("optimizer")
+    optimizer = optimizer if isinstance(optimizer, Mapping) else {}
+    no_op = current.get("optimizer_no_op") is True or optimizer.get("no_op") is True
+    expected_steps = current.get("expected_optimizer_steps")
+    actual_steps = current.get("optimizer_steps")
+    if (
+        isinstance(expected_steps, int)
+        and not isinstance(expected_steps, bool)
+        and expected_steps > 0
+        and isinstance(actual_steps, int)
+        and not isinstance(actual_steps, bool)
+        and actual_steps == 0
+    ):
+        no_op = True
+    update_records = current.get("update_records")
+    if isinstance(update_records, (list, tuple)) and update_records:
+        numeric_updates = [
+            _finite_number(
+                row.get("parameter_update_norm", row.get("update_norm"))
+            )
+            for row in update_records
+            if isinstance(row, Mapping)
+        ]
+        if numeric_updates and all(value is not None and value <= 1e-12 for value in numeric_updates):
+            no_op = True
+    if no_op:
+        return _decision(
+            action=HEALTH_ACTION_HEALTH_ABORT,
+            state=HEALTH_STATE_HEALTH_ABORT,
+            trigger="OPTIMIZER_NO_OP",
+            reason="durable optimizer telemetry proves zero parameter updates",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+        )
+
+    predicted_memory = _prediction_number(
+        prediction,
+        "peak_memory_prediction_mib",
+        "predicted_peak_memory_mib",
+    )
+    observed_memory = _finite_number(current.get("peak_gpu_memory_mib"))
+    memory_limit = _prediction_number(
+        prediction,
+        "gpu_memory_limit_mib",
+        "memory_limit_mib",
+    )
+    if memory_limit is None:
+        memory_limit = _finite_number(current.get("gpu_memory_limit_mib"))
+    memory_infeasible = current.get("memory_infeasible") is True
+    if memory_limit is not None:
+        memory_infeasible = memory_infeasible or (
+            predicted_memory is not None
+            and predicted_memory >= memory_limit * 0.95
+        ) or (
+            observed_memory is not None
+            and observed_memory >= memory_limit * 0.99
+        )
+    if memory_infeasible:
+        return _decision(
+            action=HEALTH_ACTION_HEALTH_ABORT,
+            state=HEALTH_STATE_HEALTH_ABORT,
+            trigger="MEMORY_INFEASIBLE",
+            reason="predicted or observed memory exceeds the admitted capacity margin",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+        )
+
+    if not telemetry_enabled:
+        if elapsed_seconds >= hard_ceiling:
+            return _decision(
+                action=HEALTH_ACTION_HARD_CEILING,
+                state=HEALTH_STATE_HARD_CEILING,
+                trigger="HARD_CEILING",
+                reason="worker reached the final safety ceiling without telemetry",
+                elapsed_seconds=elapsed_seconds,
+                candidate_deadline_seconds=candidate_deadline,
+                final_worker_ceiling_seconds=hard_ceiling,
+            )
+        return _decision(
+            action=HEALTH_ACTION_CONTINUE,
+            state=state,
+            trigger=None,
+            reason="telemetry is disabled; no health inference is permitted",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+        )
+
+    if elapsed_seconds >= hard_ceiling:
+        return _decision(
+            action=HEALTH_ACTION_HARD_CEILING,
+            state=HEALTH_STATE_HARD_CEILING,
+            trigger="HARD_CEILING",
+            reason="worker reached the caller's final safety ceiling",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+        )
+
+    if not current and elapsed_seconds >= candidate_deadline:
+        return _decision(
+            action=HEALTH_ACTION_HEALTH_ABORT,
+            state=HEALTH_STATE_HEALTH_ABORT,
+            trigger="WORKER_TRANSIENT",
+            reason="durable telemetry never became readable before candidate deadline",
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+            failure_scope="WORKER_TRANSIENT",
+        )
+
+    cycle_seconds = _observed_cycle_seconds(
+        train_rows,
+        eval_rows,
+        prediction=prediction,
+    )
+    projected_seal = _native_stop_projection_seconds(
+        telemetry=current,
+        completed_epochs=completed,
+        elapsed_seconds=elapsed_seconds,
+        cycle_seconds=cycle_seconds,
+        epochs_requested=epochs_requested,
+        prediction=prediction,
+    )
+
+    scored_eval_rows = [
+        row for row in eval_rows
+        if isinstance(row.get("epoch"), int)
+        and _finite_number(row.get("valid_score")) is not None
+    ]
+    epochs_since_best: int | None = None
+    if scored_eval_rows:
+        best_eval = max(
+            scored_eval_rows,
+            key=lambda row: (float(row["valid_score"]), int(row["epoch"])),
+        )
+        latest_eval_epoch = max(int(row["epoch"]) for row in scored_eval_rows)
+        epochs_since_best = latest_eval_epoch - int(best_eval["epoch"])
+
+    if (
+        completed >= 4
+        and cycle_seconds is not None
+        and cycle_seconds > hard_ceiling / 20.0
+        and len(losses) >= 3
+        and not scored_eval_rows
+    ):
+        recent_losses = losses[-3:]
+        relative_improvement = max(
+            0.0,
+            (recent_losses[0] - min(recent_losses[1:]))
+            / max(abs(recent_losses[0]), 1e-12),
+        )
+        if relative_improvement < EFFICIENCY_LONG_EPOCH_RELATIVE_LOSS_IMPROVEMENT:
+            return _decision(
+                action=HEALTH_ACTION_HEALTH_ABORT,
+                state=HEALTH_STATE_HEALTH_ABORT,
+                trigger="LONG_EPOCH_LOSS_STAGNATION",
+                reason="expensive epochs are no longer producing meaningful loss improvement",
+                elapsed_seconds=elapsed_seconds,
+                candidate_deadline_seconds=candidate_deadline,
+                final_worker_ceiling_seconds=hard_ceiling,
+                projected_seal_seconds=projected_seal,
+            )
+
+    if len(losses) >= EFFICIENCY_LOSS_WINDOW:
+        recent_losses = losses[-EFFICIENCY_LOSS_WINDOW:]
+        relative_improvement = max(
+            0.0,
+            (recent_losses[0] - min(recent_losses[1:]))
+            / max(abs(recent_losses[0]), 1e-12),
+        )
+        if (
+            relative_improvement < EFFICIENCY_MIN_RELATIVE_LOSS_IMPROVEMENT
+            and not scored_eval_rows
+        ):
+            return _decision(
+                action=HEALTH_ACTION_HEALTH_ABORT,
+                state=HEALTH_STATE_HEALTH_ABORT,
+                trigger="LOSS_STAGNATION",
+                reason="training loss and validation evidence have both stalled",
+                elapsed_seconds=elapsed_seconds,
+                candidate_deadline_seconds=candidate_deadline,
+                final_worker_ceiling_seconds=hard_ceiling,
+                projected_seal_seconds=projected_seal,
+            )
+
+    if elapsed_seconds >= candidate_deadline:
+        return _decision(
+            action=HEALTH_ACTION_CONTINUE,
+            state=state,
+            trigger=None,
+            reason=(
+                "candidate allocation elapsed; native completion or the actual "
+                "final ceiling remains authoritative"
+            ),
+            elapsed_seconds=elapsed_seconds,
+            candidate_deadline_seconds=candidate_deadline,
+            final_worker_ceiling_seconds=hard_ceiling,
+            projected_seal_seconds=projected_seal,
+        )
+
+    return _decision(
+        action=HEALTH_ACTION_CONTINUE,
+        state=state,
+        trigger=None,
+        reason="finite training is making admissible progress; native stopping remains authoritative",
+        elapsed_seconds=elapsed_seconds,
+        candidate_deadline_seconds=candidate_deadline,
+        final_worker_ceiling_seconds=hard_ceiling,
+        projected_seal_seconds=projected_seal,
+    )
+
+
+def classify_failure_scope(
+    *,
+    trigger: str | None,
+    telemetry: Mapping[str, Any] | None = None,
+    worker: Mapping[str, Any] | None = None,
+) -> str | None:
+    """Assign the narrowest supported scope for routing/resource memory."""
+
+    telemetry = telemetry if isinstance(telemetry, Mapping) else {}
+    worker = worker if isinstance(worker, Mapping) else {}
+    explicit = telemetry.get("failure_scope") or worker.get("failure_scope")
+    if explicit in {
+        "CANDIDATE_LOCAL",
+        "LINEAGE_COMPUTE_PATTERN",
+        "SHARED_INFRASTRUCTURE",
+    }:
+        return str(explicit)
+    text = " ".join(
+        str(worker.get(key) or "")
+        for key in ("error_message", "error_type")
+    ).lower()
+    if any(
+        marker in text
+        for marker in (
+            "training loss is nan",
+            "training loss is inf",
+            "training loss is -inf",
+            "loss is non-finite",
+            "non-finite loss",
+            "nonfinite loss",
+        )
+    ):
+        return "CANDIDATE_LOCAL"
+    if explicit == "WORKER_TRANSIENT":
+        return "WORKER_TRANSIENT"
+    if any(
+        marker in text
+        for marker in (
+            "m6e_cuda_device_capability_unavailable",
+            "cuda_device_capability_unavailable",
+            "cuda unavailable",
+            "cuda is not available",
+            "no cuda gpus are available",
+            "found no nvidia driver",
+            "cuda driver version is insufficient",
+            "cuda initialization error",
+            "nvidia driver",
+            "nccl",
+            "no space left on device",
+            "data root unavailable",
+            "data root is unavailable",
+        )
+    ):
+        return "SHARED_INFRASTRUCTURE"
+    if any(
+        marker in text
+        for marker in (
+            "brokenpipe",
+            "broken pipe",
+            "connectionreset",
+            "connection reset",
+            "connectionaborted",
+            "connectionerror",
+            "worker exited before start_confirmed",
+            "worker result missing",
+            "worker start_confirmed timeout",
+        )
+    ):
+        return "WORKER_TRANSIENT"
+    if (
+        worker.get("error_type")
+        or worker.get("error_message")
+        or worker.get("exit_status") == "RUNTIME_FAILURE"
+    ):
+        return "CANDIDATE_LOCAL"
+    return _failure_scope_for_trigger(trigger)
+
+
+def _single_cuda_visible_device(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise FreshR1Error(
+            "cuda_visible_devices must be one normalized physical device token"
+        )
+    tokens = tuple(token.strip() for token in value.split(","))
+    if len(tokens) != 1 or not tokens[0] or tokens[0] in {"-1", "NoDevFiles"}:
+        raise FreshR1Error(
+            "cuda_visible_devices must bind exactly one concrete device"
+        )
+    return tokens[0]
+
+
+def _validated_gpu_id(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise FreshR1Error("gpu_id must be a non-negative integer")
+    return int(value)
+
+
+def _worker_recipe_for_gpu_selection(
+    worker_recipe: Mapping[str, Any],
+    gpu_id: int | None,
+    *,
+    dataloader_workers: int = 8,
+) -> Mapping[str, Any]:
+    """Add only direct-device fields to the worker-facing recipe."""
+
+    validated_gpu_id = _validated_gpu_id(gpu_id)
+    if validated_gpu_id is None:
+        return worker_recipe
+    if (
+        isinstance(dataloader_workers, bool)
+        or not isinstance(dataloader_workers, int)
+        or dataloader_workers not in {0, 8}
+    ):
+        raise FreshR1Error("direct GPU dataloader_workers must be 0 or 8")
+    config = worker_recipe.get("config", {})
+    if not isinstance(config, Mapping):
+        raise FreshR1Error("worker recipe config must be a mapping")
+    return canonical_value(
+        {
+            **dict(worker_recipe),
+            "config": {
+                **dict(config),
+                "gpu_id": validated_gpu_id,
+                "worker": dataloader_workers,
+            },
+            "gpu_selection_mode": DIRECT_GPU_SELECTION_MODE,
+        }
+    )
+
+
+def _reservation_text(identity: Mapping[str, Any], field_name: str) -> str:
+    value = identity.get(field_name)
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise FreshR1Error(
+            f"GPU reservation identity {field_name} must be normalized and non-empty"
+        )
+    return value
+
+
+def validate_gpu_reservation_evidence(
+    evidence: Mapping[str, Any] | None,
+    *,
+    cuda_visible_devices: str | None,
+    physical_gpu_selector: str | None = None,
+    run_id: str | None = None,
+) -> Mapping[str, Any] | None:
+    """Validate an optional sealed, single-device reservation identity.
+
+    This is evidence input only.  It does not allocate or renew a device lease;
+    without the caller-supplied sealed identity the launcher reports reserved
+    GPU worker seconds as unmeasured.
+    """
+
+    visible = _single_cuda_visible_device(cuda_visible_devices)
+    physical_selector = _single_cuda_visible_device(physical_gpu_selector)
+    if visible is not None and physical_selector is not None:
+        raise FreshR1Error(
+            "cuda_visible_devices and physical_gpu_selector are mutually exclusive"
+        )
+    selector = visible if visible is not None else physical_selector
+    if evidence is None:
+        return None
+    if not isinstance(evidence, Mapping):
+        raise FreshR1Error("gpu_reservation_evidence must be a mapping")
+    if evidence.get("schema") != GPU_RESERVATION_EVIDENCE_SCHEMA:
+        raise FreshR1Error("GPU reservation evidence schema is unsupported")
+    reservation_ref = evidence.get("reservation_ref")
+    if (
+        not isinstance(reservation_ref, str)
+        or not reservation_ref
+        or reservation_ref != reservation_ref.strip()
+    ):
+        raise FreshR1Error("GPU reservation evidence requires reservation_ref")
+    identity = evidence.get("identity")
+    if not isinstance(identity, Mapping):
+        raise FreshR1Error("GPU reservation evidence requires an identity mapping")
+    host = _reservation_text(identity, "host")
+    physical_gpu_id = _reservation_text(identity, "physical_gpu_id")
+    identity_visible = _reservation_text(identity, "cuda_visible_devices")
+    if selector is None or identity_visible != selector:
+        raise FreshR1Error(
+            "GPU reservation identity must match the selected physical GPU"
+        )
+    if physical_gpu_id != selector:
+        raise FreshR1Error(
+            "GPU reservation physical_gpu_id must equal the selected physical GPU"
+        )
+    reservation_owner_ref = _reservation_text(
+        identity,
+        "reservation_owner_ref",
+    )
+    if run_id is not None:
+        if (
+            not isinstance(run_id, str)
+            or not run_id
+            or run_id != run_id.strip()
+        ):
+            raise FreshR1Error("run_id must be normalized and non-empty")
+        if reservation_owner_ref != run_id:
+            raise FreshR1Error(
+                "GPU reservation owner does not match the training run_id"
+            )
+    observed_at_utc = _reservation_text(identity, "observed_at_utc")
+    if not observed_at_utc.endswith("Z"):
+        raise FreshR1Error("GPU reservation observed_at_utc must be UTC")
+    try:
+        parsed_observed_at = datetime.fromisoformat(
+            observed_at_utc[:-1] + "+00:00"
+        )
+    except ValueError as error:
+        raise FreshR1Error(
+            "GPU reservation observed_at_utc must be normalized ISO-8601 UTC"
+        ) from error
+    if (
+        parsed_observed_at.tzinfo is None
+        or parsed_observed_at.utcoffset() is None
+        or parsed_observed_at.utcoffset().total_seconds() != 0
+        or parsed_observed_at.isoformat().replace("+00:00", "Z")
+        != observed_at_utc
+    ):
+        raise FreshR1Error(
+            "GPU reservation observed_at_utc must be normalized ISO-8601 UTC"
+        )
+    for field_name in ("device_inventory_sha256", "process_snapshot_sha256"):
+        try:
+            validate_sha256(
+                identity.get(field_name),
+                field_name=f"gpu_reservation_evidence.identity.{field_name}",
+            )
+        except (TypeError, ValueError) as error:
+            raise FreshR1Error(str(error)) from error
+    if identity.get("exclusive") is not True:
+        raise FreshR1Error("GPU reservation evidence must prove exclusivity")
+    scope = _reservation_text(identity, "scope")
+    if scope not in _GPU_RESERVATION_SCOPES:
+        raise FreshR1Error("GPU reservation evidence scope is not candidate-local")
+    device_identity_fields = [
+        field_name
+        for field_name in ("device_uuid", "device_ref")
+        if identity.get(field_name) is not None
+    ]
+    if not device_identity_fields:
+        raise FreshR1Error(
+            "GPU reservation evidence requires a concrete device_uuid or device_ref"
+        )
+    for field_name in device_identity_fields:
+        _reservation_text(identity, field_name)
+    try:
+        identity_digest = validate_sha256(
+            evidence.get("identity_digest"),
+            field_name="gpu_reservation_evidence.identity_digest",
+        )
+        reservation_digest = validate_sha256(
+            evidence.get("reservation_digest"),
+            field_name="gpu_reservation_evidence.reservation_digest",
+        )
+    except (TypeError, ValueError) as error:
+        raise FreshR1Error(str(error)) from error
+    if identity_digest != sha256_digest(identity):
+        raise FreshR1Error("GPU reservation identity digest mismatch")
+    sealed = {
+        "identity": canonical_value(dict(identity)),
+        "identity_digest": identity_digest,
+        "reservation_ref": reservation_ref,
+        "schema": GPU_RESERVATION_EVIDENCE_SCHEMA,
+    }
+    if reservation_digest != sha256_digest(sealed):
+        raise FreshR1Error("GPU reservation sealed digest mismatch")
+    if host != socket.gethostname():
+        raise FreshR1Error("GPU reservation host does not match the current host")
+    return canonical_value(dict(evidence))
+
+
+def _cross_check_training_device_evidence(
+    device_evidence: Mapping[str, Any] | None,
+    *,
+    cuda_visible_devices: str | None,
+    gpu_id: int | None = None,
+    reservation_evidence: Mapping[str, Any] | None,
+) -> str | None:
+    """Return a contradiction without inventing physical identity evidence."""
+
+    if not isinstance(device_evidence, Mapping):
+        return None
+    visible = _single_cuda_visible_device(cuda_visible_devices)
+    direct_selector = str(gpu_id) if gpu_id is not None else None
+    binding_present = (
+        visible is not None
+        or direct_selector is not None
+        or reservation_evidence is not None
+    )
+    if gpu_id is not None:
+        if device_evidence.get("selection_mode") != DIRECT_GPU_SELECTION_MODE:
+            return "worker did not report direct RecBole gpu_id selection"
+        if device_evidence.get("gpu_id") != gpu_id:
+            return "worker gpu_id differs from the direct launch selector"
+        if str(device_evidence.get("physical_gpu_id")) != direct_selector:
+            return "worker physical_gpu_id differs from the direct launch selector"
+        if device_evidence.get("cuda_visible_devices") is not None:
+            return "direct gpu_id worker unexpectedly reports CUDA_VISIBLE_DEVICES"
+    if "cuda_available" in device_evidence and device_evidence.get(
+        "cuda_available"
+    ) is not True:
+        if binding_present:
+            return "worker reports CUDA unavailable"
+        return None
+    device_count = device_evidence.get("cuda_device_count")
+    if (visible is not None or gpu_id is not None) and device_count is not None:
+        if isinstance(device_count, bool) or not isinstance(device_count, int):
+            return "worker cuda_device_count is not an integer"
+        if device_count != 1:
+            return "single-device binding contradicts worker cuda_device_count"
+    for field_name in ("logical_device", "cuda_device_index", "current_device"):
+        if (
+            binding_present
+            and field_name in device_evidence
+            and device_evidence.get(field_name) != 0
+        ):
+            return f"worker {field_name} contradicts logical device 0"
+    for field_name in ("cuda_visible_devices", "visible_device"):
+        worker_visible = device_evidence.get(field_name)
+        if worker_visible is not None and visible is not None:
+            try:
+                worker_visible = _single_cuda_visible_device(worker_visible)
+            except FreshR1Error as error:
+                return str(error)
+            if worker_visible != visible:
+                return f"worker {field_name} contradicts CUDA_VISIBLE_DEVICES"
+    if reservation_evidence is None:
+        return None
+    identity = reservation_evidence.get("identity")
+    if not isinstance(identity, Mapping):
+        return "validated reservation identity is unavailable"
+    for field_name in ("physical_gpu_id", "device_uuid", "device_ref"):
+        worker_value = device_evidence.get(field_name)
+        reserved_value = identity.get(field_name)
+        if worker_value is not None and reserved_value is not None:
+            if str(worker_value) != str(reserved_value):
+                return f"worker {field_name} contradicts reservation identity"
+    for worker_field, reservation_field in (
+        ("cuda_device_name", "device_name"),
+        ("gpu_name", "device_name"),
+    ):
+        worker_value = device_evidence.get(worker_field)
+        reserved_value = identity.get(reservation_field)
+        if worker_value is not None and reserved_value is not None:
+            if str(worker_value) != str(reserved_value):
+                return f"worker {worker_field} contradicts reservation identity"
+    return None
+
+
+def _parent_process_interval(
+    started_ns: int,
+    *,
+    ended_ns: int | None = None,
+) -> dict[str, Any]:
+    if isinstance(started_ns, bool) or not isinstance(started_ns, int):
+        raise FreshR1Error("parent process start monotonic timestamp is invalid")
+    observed_end_ns = time.monotonic_ns() if ended_ns is None else ended_ns
+    if isinstance(observed_end_ns, bool) or not isinstance(observed_end_ns, int):
+        raise FreshR1Error("parent process end monotonic timestamp is invalid")
+    if observed_end_ns < started_ns:
+        raise FreshR1Error("parent process monotonic interval is inverted")
+    elapsed_ns = observed_end_ns - started_ns
+    return {
+        # Absolute monotonic clock values routinely exceed the RFC 8785 safe
+        # integer domain.  Preserve them losslessly as decimal strings while
+        # keeping the derived interval fields numeric for cost accounting.
+        "parent_process_started_monotonic_ns": str(started_ns),
+        "parent_process_ended_monotonic_ns": str(observed_end_ns),
+        "parent_process_interval_seconds": elapsed_ns / 1_000_000_000,
+        "parent_process_interval_wall_time_ms": max(1, elapsed_ns // 1_000_000),
+    }
+
+
+def _finalize_process_outcome(
+    value: Mapping[str, Any],
+    *,
+    started_ns: int,
+    ended_ns: int | None,
+    cuda_visible_devices: str | None,
+    gpu_id: int | None,
+    reservation_evidence: Mapping[str, Any] | None,
+    device_evidence_consistent: bool = True,
+) -> dict[str, Any]:
+    interval = _parent_process_interval(started_ns, ended_ns=ended_ns)
+    result = dict(value)
+    result["parent_process_interval"] = interval
+    result["wall_time_ms"] = interval["parent_process_interval_wall_time_ms"]
+    visible = _single_cuda_visible_device(cuda_visible_devices)
+    physical_selector = str(gpu_id) if gpu_id is not None else visible
+    reservation_proven = (
+        reservation_evidence is not None
+        and physical_selector is not None
+        and device_evidence_consistent
+    )
+    result["cuda_visible_devices"] = visible
+    result["gpu_reservation_evidence"] = reservation_evidence
+    result["gpu_reservation_status"] = (
+        GPU_RESERVATION_STATUS_MEASURED
+        if reservation_proven
+        else (
+            GPU_RESERVATION_STATUS_CONTRADICTORY
+            if not device_evidence_consistent
+            else GPU_RESERVATION_STATUS_UNMEASURED
+        )
+    )
+    result["reserved_gpu_worker_seconds_semantics"] = (
+        GPU_WORKER_SECONDS_SEMANTICS
+    )
+    result["reserved_gpu_worker_seconds"] = (
+        interval["parent_process_interval_seconds"]
+        if reservation_proven
+        else None
+    )
+    if gpu_id is not None:
+        result.update(
+            {
+                "gpu_id": gpu_id,
+                "physical_gpu_id": physical_selector,
+                "selection_mode": DIRECT_GPU_SELECTION_MODE,
+            }
+        )
+    return canonical_value(result)
+
+
+def _read_optional_json(path: Path) -> dict[str, Any] | None:
+    try:
+        if not path.is_file():
+            return None
+        value = json.loads(path.read_bytes())
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _supervise_training_process(
+    process: subprocess.Popen[str],
+    *,
+    telemetry_path: Path,
+    candidate_deadline_seconds: int,
+    final_worker_ceiling_seconds: int,
+    prediction: Mapping[str, Any] | None,
+    telemetry_enabled: bool,
+    epochs_requested: int,
+    poll_interval_seconds: float = 0.25,
+) -> tuple[str, str, int, dict[str, Any], Mapping[str, Any] | None, bool]:
+    """Poll durable worker telemetry and terminate only typed health failures."""
+
+    if poll_interval_seconds <= 0:
+        raise FreshR1Error("supervisor poll interval must be positive")
+    started = time.monotonic()
+    last_telemetry: Mapping[str, Any] | None = None
+    active_phase_key: tuple[object, object] | None = None
+    active_phase_started = 0.0
+    hard_ceiling = final_worker_ceiling_seconds
+    while True:
+        current = _read_optional_json(telemetry_path) if telemetry_enabled else None
+        if current is not None:
+            active = current.get("active_progress")
+            active = active if isinstance(active, Mapping) else {}
+            phase_key = (active.get("phase"), active.get("epoch"))
+            elapsed = time.monotonic() - started
+            if phase_key != active_phase_key:
+                active_phase_key = phase_key
+                active_phase_started = elapsed
+            if active.get("phase") is not None:
+                current = {
+                    **current,
+                    "active_progress": {
+                        **dict(active),
+                        "phase_elapsed_ms": max(
+                            0,
+                            int((elapsed - active_phase_started) * 1000),
+                        ),
+                    },
+                }
+            last_telemetry = current
+        return_code = process.poll()
+        elapsed = time.monotonic() - started
+        decision = assess_training_health(
+            last_telemetry,
+            elapsed_seconds=elapsed,
+            candidate_deadline_seconds=candidate_deadline_seconds,
+            final_worker_ceiling_seconds=hard_ceiling,
+            prediction=prediction,
+            process_return_code=return_code,
+            telemetry_enabled=telemetry_enabled,
+            epochs_requested=epochs_requested,
+        )
+        if return_code is not None:
+            stdout, stderr = process.communicate()
+            return (
+                stdout or "",
+                stderr or "",
+                int(return_code),
+                decision,
+                last_telemetry,
+                False,
+            )
+        if decision["action"] in {
+            HEALTH_ACTION_HEALTH_ABORT,
+            HEALTH_ACTION_HARD_CEILING,
+        }:
+            process.kill()
+            stdout, stderr = process.communicate()
+            return (
+                stdout or "",
+                stderr or "",
+                124,
+                decision,
+                last_telemetry,
+                True,
+            )
+        time.sleep(min(poll_interval_seconds, 0.25))
+
+
+def _worker_environment(
+    capability: Any,
+    candidate_root: Path | None,
+    cuda_visible_devices: str | None = None,
+    gpu_id: int | None = None,
+) -> dict[str, str]:
     allowed = {
+        "CC",
         "CUDA_VISIBLE_DEVICES",
         "LANG",
         "LC_ALL",
         "LD_LIBRARY_PATH",
+        "MKL_NUM_THREADS",
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
         "PATH",
+        "TRITON_LIBCUDA_PATH",
         "TZ",
     }
+    cpu_thread_variables = {"MKL_NUM_THREADS", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"}
+    trusted_parent_only = {"CC", "TRITON_LIBCUDA_PATH", *cpu_thread_variables}
     environment = {key: value for key, value in os.environ.items() if key in allowed}
-    environment.update(capability.environment)
+    for variable in cpu_thread_variables:
+        environment.setdefault(variable, "1")
+    if gpu_id is None and cuda_visible_devices is not None:
+        environment["CUDA_VISIBLE_DEVICES"] = str(cuda_visible_devices)
+    environment.update(
+        {
+            key: value
+            for key, value in capability.environment.items()
+            if key not in trusted_parent_only
+        }
+    )
+    if gpu_id is not None:
+        # Direct mode is selected by RecBole's explicit gpu_id config.  Remove
+        # any inherited CVD so the launcher cannot silently become the selector.
+        environment.pop("CUDA_VISIBLE_DEVICES", None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     roots = []
     if candidate_root is not None:
         roots.append(candidate_root.as_posix())
-    roots.extend([str(Path(__file__).resolve().parents[4] / "src"), str(Path(__file__).resolve().parents[4])])
-    environment["PYTHONPATH"] = os.pathsep.join(roots)
+    roots.extend(
+        [
+            str(Path(__file__).resolve().parents[4] / "src"),
+            str(Path(__file__).resolve().parents[4]),
+            str(RECBole_ROOT.resolve()),
+        ]
+    )
+    # Qualification inherits the launcher's runtime overlays.  The actual
+    # worker needs those same dependencies, after its selected code roots.
+    # Only inherit the trusted process environment, never candidate overrides.
+    roots.extend(
+        str(Path(root).resolve())
+        for root in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        if root
+    )
+    environment["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(roots))
     return environment
+
+
+def _runtime_search_data_identity(
+    execution_recipe: Mapping[str, Any],
+    search_data_identity: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    from recclaw_core.research_line.p4_runtime import is_p4_recipe, dataset_roots_for_recipe
+
+    if is_p4_recipe(execution_recipe):
+        root, dataset_root, digest, partition = dataset_roots_for_recipe(
+            execution_recipe, default_root=SEARCH_DATA_ROOT,
+            default_partition=EXPECTED_SEARCH_FILES,
+        )
+        return canonical_value({
+            "dataset": "ml-1m", "root": str(root),
+            "dataset_root": str(dataset_root),
+            "manifest_path": str(dataset_root / "ml-1m.inter"),
+            "manifest_sha256": digest, "file_hashes": partition,
+        })
+    config = execution_recipe.get("config")
+    if not isinstance(config, Mapping):
+        raise FreshR1Error("execution recipe lacks search-data config")
+    # validate_execution_recipe already binds the top-level dataset, including
+    # native adapters whose fixed model config does not repeat that field.
+    dataset = execution_recipe.get("dataset")
+    if not isinstance(dataset, str) or not dataset:
+        raise FreshR1Error("execution recipe dataset is invalid")
+    if search_data_identity is None:
+        manifest_path = SEARCH_DATA_ROOT / "search_partition_manifest.json"
+        if not manifest_path.is_file():
+            raise FreshR1Error("active search-data manifest is missing")
+        return canonical_value(
+            {
+                "dataset": dataset,
+                "dataset_root": str((SEARCH_DATA_ROOT / dataset).resolve()),
+                "root": str(SEARCH_DATA_ROOT.resolve()),
+                "manifest_path": str(manifest_path.resolve()),
+                "manifest_sha256": bytes_sha256(manifest_path.read_bytes()),
+                "file_hashes": EXPECTED_SEARCH_FILES,
+            }
+        )
+    if not isinstance(search_data_identity, Mapping):
+        raise FreshR1Error("search_data_identity must be a mapping")
+    required = {
+        "dataset",
+        "dataset_root",
+        "root",
+        "manifest_path",
+        "manifest_sha256",
+        "file_hashes",
+    }
+    if not required.issubset(search_data_identity):
+        raise FreshR1Error("search_data_identity is incomplete")
+    root = Path(str(search_data_identity["root"])).resolve()
+    dataset_root = Path(str(search_data_identity["dataset_root"])).resolve()
+    manifest_path = Path(str(search_data_identity["manifest_path"])).resolve()
+    if search_data_identity["dataset"] != dataset:
+        raise FreshR1Error("search-data dataset differs from the execution recipe")
+    if config.get("data_path") is not None and Path(str(config["data_path"])).resolve() != root:
+        raise FreshR1Error("search-data root differs from the execution recipe")
+    if dataset_root != (root / dataset).resolve():
+        raise FreshR1Error("search-data dataset root is inconsistent")
+    try:
+        manifest_path.relative_to(root)
+    except ValueError as error:
+        raise FreshR1Error("search-data manifest escapes the active root") from error
+    if not root.is_dir() or not dataset_root.is_dir() or not manifest_path.is_file():
+        raise FreshR1Error("search-data runtime paths are unavailable")
+    manifest_sha256 = validate_sha256(
+        search_data_identity["manifest_sha256"],
+        field_name="search_data_identity.manifest_sha256",
+    )
+    if bytes_sha256(manifest_path.read_bytes()) != manifest_sha256:
+        raise FreshR1Error("search-data manifest changed after READY validation")
+    recipe_manifest_sha256 = config.get("recclaw_search_data_manifest_sha256")
+    if recipe_manifest_sha256 is not None and recipe_manifest_sha256 != manifest_sha256:
+        raise FreshR1Error("search-data manifest differs from the execution recipe")
+    file_hashes = search_data_identity["file_hashes"]
+    if not isinstance(file_hashes, Mapping):
+        raise FreshR1Error("search-data file identity is invalid")
+    for relative_path, expected_sha256 in file_hashes.items():
+        if not isinstance(relative_path, str):
+            raise FreshR1Error("search-data relative path is invalid")
+        path = (root / relative_path).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError as error:
+            raise FreshR1Error("search-data file escapes the active root") from error
+        digest = validate_sha256(
+            expected_sha256,
+            field_name=f"search_data_identity.file_hashes.{relative_path}",
+        )
+        if not path.is_file() or bytes_sha256(path.read_bytes()) != digest:
+            raise FreshR1Error(f"search-data file changed after READY: {relative_path}")
+    return canonical_value(dict(search_data_identity))
+
+
+def development_run_root(side_root: Path, run_id: str) -> Path:
+    """Keep logical run identity separate from a bounded filesystem component.
+
+    Existing short names stay unchanged so completed runs remain reusable.
+    Fresh-campaign lineage can exceed Linux NAME_MAX; retain that full identity
+    in bindings and use its complete digest only for the physical directory.
+    """
+    component = run_id
+    if len(run_id.encode("utf-8")) > 255:
+        component = "run-sha256-" + sha256_digest(run_id)
+    return side_root / "experiments" / component
 
 
 def run_development_training(
@@ -833,77 +3044,277 @@ def run_development_training(
     authority: str = "user-delegated-corrected-formal-fresh-r1",
     timeout_seconds: int = 1500,
     recbole_commit_identity: str | None = None,
+    expected_recbole_source_tree_digest: str | None = None,
     epochs: int = EXPERIMENT_EPOCHS,
     execution_purpose: str = "DEVELOPMENT_PILOT_OFFLINE_TOPN",
     resource_telemetry: bool = False,
     watchdog_seconds: int | None = None,
+    final_worker_ceiling_seconds: int | None = None,
+    resource_prediction: Mapping[str, Any] | None = None,
     prefix_contract_path: Path | None = None,
+    execution_recipe: Mapping[str, Any] | None = None,
+    cuda_visible_devices: str | None = None,
+    gpu_id: int | None = None,
+    gpu_reservation_evidence: Mapping[str, Any] | None = None,
+    search_data_identity: Mapping[str, Any] | None = None,
+    on_training_start: Callable[[Mapping[str, Any]], None] | None = None,
+    process_launcher: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
+    if execution_recipe is None:
+        raise FreshR1Error(
+            "explicit execution_recipe is required; generic BPR execution is disabled"
+        )
+    try:
+        validate_execution_recipe(execution_recipe)
+    except ExperimentBindingError as error:
+        raise FreshR1Error(str(error)) from error
+    if execution_recipe["entrypoint"] != entrypoint:
+        raise FreshR1Error("execution recipe entrypoint does not match the launch request")
+    if execution_recipe["entrypoint_source_sha256"] != source_sha256:
+        raise FreshR1Error(
+            "execution recipe entrypoint source digest does not match the launch request"
+        )
+    runtime_search_data = _runtime_search_data_identity(
+        execution_recipe,
+        search_data_identity,
+    )
+    if resource_prediction is None:
+        recipe_prediction = execution_recipe.get("resource_prediction")
+        if recipe_prediction is not None:
+            if not isinstance(recipe_prediction, Mapping):
+                raise FreshR1Error("execution recipe resource_prediction must be a mapping")
+            resource_prediction = recipe_prediction
+    if prefix_contract_path is not None and not resource_telemetry:
+        raise FreshR1Error("fixed-batch prefix requires resource telemetry")
+    if resource_prediction is not None and not isinstance(resource_prediction, Mapping):
+        raise FreshR1Error("resource_prediction must be a mapping")
+    if on_training_start is not None and not callable(on_training_start):
+        raise FreshR1Error("on_training_start must be callable")
+    validated_gpu_id = _validated_gpu_id(gpu_id)
+    validated_cuda_visible_devices = _single_cuda_visible_device(cuda_visible_devices)
+    if validated_gpu_id is not None and validated_cuda_visible_devices is not None:
+        raise FreshR1Error("gpu_id and cuda_visible_devices are mutually exclusive")
+    validated_reservation_evidence = validate_gpu_reservation_evidence(
+        gpu_reservation_evidence,
+        cuda_visible_devices=validated_cuda_visible_devices,
+        physical_gpu_selector=(
+            str(validated_gpu_id) if validated_gpu_id is not None else None
+        ),
+        run_id=run_id,
+    )
+    if final_worker_ceiling_seconds is None:
+        hard_worker_ceiling = MAX_WORKER_CEILING_SECONDS
+    else:
+        if (
+            isinstance(final_worker_ceiling_seconds, bool)
+            or not isinstance(final_worker_ceiling_seconds, int)
+            or final_worker_ceiling_seconds < 1
+        ):
+            raise FreshR1Error(
+                "final_worker_ceiling_seconds must be a positive integer"
+            )
+        hard_worker_ceiling = final_worker_ceiling_seconds
+    candidate_deadline_seconds = resolve_candidate_deadline_seconds(
+        default_seconds=timeout_seconds,
+        prediction=resource_prediction,
+        final_worker_ceiling_seconds=hard_worker_ceiling,
+    )
     if recbole_commit_identity is not None and recbole_commit_identity != (
         "7b02be5ec80a88310f2d04a27a82adfcbb5dc211"
     ):
         raise FreshR1Error("delegated RecBole commit identity mismatch")
-    run_root = side_root / "experiments" / run_id
+    run_root = development_run_root(side_root, run_id)
     result_root = run_root / "worker"
     checkpoint_dir = result_root / "checkpoints"
     runtime_view = run_root / "runtime_view"
-    runtime_view.mkdir(parents=True)
-    _symlink_new(repo_root / "scripts", runtime_view / "scripts")
-    _symlink_new(repo_root / "configs", runtime_view / "configs")
-    if candidate_root is not None:
-        _symlink_new(candidate_root / "recclaw_ext", runtime_view / "recclaw_ext")
-    else:
-        _symlink_new(repo_root / "recclaw_ext", runtime_view / "recclaw_ext")
+    output_path = result_root / "worker_result.json"
+    binding_path = run_root / "experiment_binding.json"
+    if output_path.is_file() and binding_path.is_file():
+        worker = _read_json(output_path)
+        if worker.get("exit_status") != "SUCCESS":
+            raise FreshR1Error("existing worker result is not a completed success")
+        try:
+            experiment_binding = ExperimentBindingV1.from_canonical_dict(
+                _read_json(binding_path)
+            )
+        except ExperimentBindingError as error:
+            raise FreshR1Error(str(error)) from error
+        expected_existing = {
+            "run_id": run_id,
+            "seed": seed,
+            "epochs": epochs,
+            "timeout_seconds": candidate_deadline_seconds,
+            "execution_purpose": execution_purpose,
+            "resource_telemetry": resource_telemetry,
+            "watchdog_seconds": watchdog_seconds,
+            "candidate_root_path": (
+                str(candidate_root.resolve()) if candidate_root is not None else None
+            ),
+            "entrypoint": entrypoint,
+            "entrypoint_source_sha256": source_sha256,
+            "execution_recipe_digest": sha256_digest(execution_recipe),
+        }
+        existing_mismatches = [
+            field_name
+            for field_name, expected_value in expected_existing.items()
+            if getattr(experiment_binding, field_name) != expected_value
+        ]
+        if existing_mismatches:
+            raise FreshR1Error(
+                "completed worker identity mismatch: "
+                + ", ".join(existing_mismatches)
+            )
+        metrics, metric_identity_matches = _round_feedback_metrics(
+            worker,
+            execution_recipe["evaluator"],
+        )
+        if not metric_identity_matches:
+            raise FreshR1Error("completed worker metric identity mismatch")
+        recbole_identity_path = run_root / "recbole_source_identity.json"
+        if not recbole_identity_path.is_file():
+            raise FreshR1Error("completed worker lacks RecBole source identity")
+        recbole_identity = _read_json(recbole_identity_path)
+        if (
+            expected_recbole_source_tree_digest is not None
+            and recbole_identity.get("source_tree_digest")
+            != expected_recbole_source_tree_digest
+        ):
+            raise FreshR1Error("completed worker RecBole source identity mismatch")
+        device_evidence = worker.get("training_device_evidence")
+        device_evidence_error = _cross_check_training_device_evidence(
+            device_evidence,
+            cuda_visible_devices=validated_cuda_visible_devices,
+            gpu_id=validated_gpu_id,
+            reservation_evidence=validated_reservation_evidence,
+        )
+        if device_evidence_error is not None:
+            raise FreshR1Error(
+                "completed worker training device evidence mismatch: "
+                + device_evidence_error
+            )
+        telemetry_path = result_root / "resource_telemetry.json"
+        recovered = {
+            "binding_digest": experiment_binding.digest,
+            "candidate_deadline_seconds": candidate_deadline_seconds,
+            "experiment_binding": experiment_binding.canonical_dict(),
+            "experiment_binding_digest": experiment_binding.digest,
+            "experiment_binding_ref": experiment_binding.ref,
+            "device_evidence": device_evidence,
+            "training_device_evidence": device_evidence,
+            "device_evidence_validation": (
+                "AVAILABLE_AND_CONSISTENT"
+                if isinstance(device_evidence, Mapping)
+                else "UNAVAILABLE"
+            ),
+            "epochs_requested": epochs,
+            "execution_recipe_digest": experiment_binding.execution_recipe_digest,
+            "exit_status": "SUCCESS",
+            "filesystem_mount_audit": worker.get("filesystem_mount_audit"),
+            "final_worker_ceiling_seconds": hard_worker_ceiling,
+            "launcher_return_code": 0,
+            "metrics": metrics,
+            "metric_source": worker.get("metric_source"),
+            "online_partition_role": worker.get("online_partition_role"),
+            "result_sha256": bytes_sha256(output_path.read_bytes()),
+            "runtime_binding_digest": experiment_binding.runtime_binding_digest,
+            "runtime_release_digest": experiment_binding.runtime_release_digest,
+            "seed": experiment_binding.seed,
+            "recbole_source_identity": recbole_identity,
+            "training_health": {
+                "action": "COMPLETE",
+                "trigger": "COMPLETED_WORKER_RESULT_REPLAY",
+                "mechanism_effect_update_allowed": True,
+            },
+            "failure_scope": None,
+            "recovered_completed_worker_result": True,
+            "checkpoint_footprint": _checkpoint_footprint(checkpoint_dir),
+        }
+        if validated_gpu_id is not None:
+            recovered.update(
+                {
+                    "gpu_id": validated_gpu_id,
+                    "physical_gpu_id": str(validated_gpu_id),
+                    "selection_mode": DIRECT_GPU_SELECTION_MODE,
+                    "cuda_visible_devices": None,
+                }
+            )
+        elif validated_cuda_visible_devices is not None:
+            recovered["cuda_visible_devices"] = validated_cuda_visible_devices
+        if resource_telemetry:
+            recovered.update(
+                {
+                    "resource_telemetry": (
+                        _read_json(telemetry_path)
+                        if telemetry_path.is_file()
+                        else worker.get("resource_telemetry")
+                    ),
+                    "resource_telemetry_sha256": (
+                        bytes_sha256(telemetry_path.read_bytes())
+                        if telemetry_path.is_file()
+                        else None
+                    ),
+                }
+            )
+        return canonical_value(recovered)
+    resume_suffix = _initialization_resume_suffix(result_root)
+    if not runtime_view.exists():
+        runtime_view.mkdir(parents=True)
+    for name, source_root in (
+        ("scripts", repo_root),
+        ("configs", repo_root),
+        ("recclaw_ext", candidate_root if candidate_root is not None else repo_root),
+    ):
+        target = runtime_view / name
+        source = source_root / name
+        if target.is_symlink():
+            if target.resolve() != source.resolve():
+                raise FreshR1Error(f"interrupted worker runtime source mismatch: {name}")
+        else:
+            _symlink_new(source, target)
+    worker_cache_base = os.environ.get("RECCLAW_WORKER_CACHE_ROOT")
     capability = build_training_filesystem_capability(
         instance_private_root=side_root,
         result_root=result_root,
         checkpoint_root=checkpoint_dir,
         project_root=runtime_view,
         recbole_root=RECBole_ROOT,
-        dataset_root=SEARCH_DATASET_ROOT,
+        dataset_root=Path(str(runtime_search_data["dataset_root"])),
+        cache_root=(
+            Path(worker_cache_base) / sha256_digest(str(result_root.resolve()))[:24]
+            if worker_cache_base else None
+        ),
     )
     materialize_training_filesystem_capability(capability)
     capability_path = run_root / "filesystem_capability.v2.json"
-    _write_new_json(capability_path, capability.to_dict())
-    recipe = {
-        "base_model_config": "BPR",
-        "config": {},
-        "entrypoint": entrypoint,
-        "entrypoint_source_sha256": source_sha256,
-        "mechanism_id": run_id,
-        "model": "BPR",
-    }
-    recipe_path = run_root / "execution_recipe.json"
-    _write_new_json(recipe_path, {"execution_recipe": recipe})
-    release_digest = campaign_training_runtime_release().digest
-    binding = {
-        "candidate_source_digest": source_sha256,
-        "dataset_manifest_digest": bytes_sha256(
-            (SEARCH_DATA_ROOT / "search_partition_manifest.json").read_bytes()
-        ),
-        "entrypoint": entrypoint,
-        "run_id": run_id,
-        "seed": seed,
-    }
+    _write_training_setup(capability_path, capability.to_dict())
+    release_resource = (
+        CAMPAIGN_DEVELOPMENT_TRAINING_RELEASE_RESOURCE
+        if canonical_value(dict(execution_recipe["evaluator"]))
+        == DEVELOPMENT_EVALUATOR
+        and execution_recipe["split"] == DEVELOPMENT_SPLIT
+        else None
+    )
+    training_release = campaign_training_runtime_release(release_resource)
+    release_digest = training_release.digest
+    direct_dataloader_workers = 8
+    if release_resource == CAMPAIGN_DEVELOPMENT_TRAINING_RELEASE_RESOURCE:
+        target_data_loading = training_release.backend_identity.get(
+            "target_data_loading"
+        )
+        if not isinstance(target_data_loading, Mapping):
+            raise FreshR1Error("development release lacks target data loading")
+        direct_dataloader_workers = target_data_loading.get(
+            "dataloader_workers"
+        )
+    recbole_identity = recbole_source_identity(RECBole_ROOT)
     if (
-        epochs != EXPERIMENT_EPOCHS
-        or execution_purpose != "DEVELOPMENT_PILOT_OFFLINE_TOPN"
-        or resource_telemetry
+        expected_recbole_source_tree_digest is not None
+        and recbole_identity["source_tree_digest"]
+        != expected_recbole_source_tree_digest
     ):
-        binding.update(
-            {
-                "epochs": epochs,
-                "execution_purpose": execution_purpose,
-                "resource_telemetry": resource_telemetry,
-            }
-        )
-    if prefix_contract_path is not None:
-        if not resource_telemetry:
-            raise FreshR1Error("fixed-batch prefix requires resource telemetry")
-        binding["prefix_contract_file_sha256"] = bytes_sha256(
-            prefix_contract_path.read_bytes()
-        )
-    binding_digest = sha256_digest(binding)
+        raise FreshR1Error("delegated RecBole source tree identity mismatch")
+    _write_training_setup(run_root / "recbole_source_identity.json", recbole_identity)
+    dataset_manifest_digest = str(runtime_search_data["manifest_sha256"])
     runtime_binding_digest = sha256_digest(
         {
             "python_sha256": bytes_sha256(PYTHON_EXECUTABLE.read_bytes()),
@@ -912,161 +3323,345 @@ def run_development_training(
                 if recbole_commit_identity is not None
                 else _git(RECBole_ROOT, "rev-parse", "HEAD")
             ),
+            "recbole_source_tree_digest": recbole_identity[
+                "source_tree_digest"
+            ],
             "runtime_release_digest": release_digest,
-            "search_partition": EXPECTED_SEARCH_FILES,
+            "search_partition": runtime_search_data["file_hashes"],
         }
     )
+    claim_id = f"{run_identity}-claim:{run_id}"
+    round_id = f"{run_identity}-round:{run_id}"
+    permit_digest = sha256_digest({"authority": authority})
+    prefix_contract_digest = (
+        bytes_sha256(prefix_contract_path.read_bytes())
+        if prefix_contract_path is not None
+        else None
+    )
+    try:
+        experiment_binding = ExperimentBindingV1.from_execution_recipe(
+            execution_recipe,
+            candidate_root=candidate_root,
+            dataset_manifest_digest=dataset_manifest_digest,
+            seed=seed,
+            epochs=epochs,
+            timeout_seconds=candidate_deadline_seconds,
+            execution_purpose=execution_purpose,
+            resource_telemetry=resource_telemetry,
+            watchdog_seconds=watchdog_seconds,
+            prefix_contract_digest=prefix_contract_digest,
+            run_id=run_id,
+            round_id=round_id,
+            claim_id=claim_id,
+            permit_digest=permit_digest,
+            runtime_binding_digest=runtime_binding_digest,
+            runtime_release_digest=release_digest,
+            runner_abi=CAMPAIGN_TRAINING_RUNNER_ABI,
+            filesystem_capability_digest=capability.capability_digest,
+        )
+    except ExperimentBindingError as error:
+        raise FreshR1Error(str(error)) from error
+    _write_training_setup(binding_path, experiment_binding.canonical_dict())
+    recipe_path = run_root / "execution_recipe.json"
+    worker_recipe = _worker_recipe_for_gpu_selection(
+        experiment_binding.worker_recipe(),
+        validated_gpu_id,
+        dataloader_workers=direct_dataloader_workers,
+    )
+    _write_training_setup(recipe_path, worker_recipe)
     start_identity = {
-        "binding_digest": binding_digest,
-        "claim_id": f"{run_identity}-claim:{run_id}",
-        "execution_purpose": execution_purpose,
+        "binding_digest": experiment_binding.digest,
+        "claim_id": experiment_binding.claim_id,
+        "execution_purpose": experiment_binding.execution_purpose,
         "ordinary_launch_attempt_ordinal": 1,
-        "permit_digest": sha256_digest(
-            {"authority": authority}
-        ),
-        "round_id": f"{run_identity}-round:{run_id}",
-        "run_id": run_id,
-        "runner_abi": CAMPAIGN_TRAINING_RUNNER_ABI,
-        "runtime_binding_digest": runtime_binding_digest,
-        "runtime_release_digest": release_digest,
+        "permit_digest": experiment_binding.permit_digest,
+        "round_id": experiment_binding.round_id,
+        "run_id": experiment_binding.run_id,
+        "runner_abi": experiment_binding.runner_abi,
+        "runtime_binding_digest": experiment_binding.runtime_binding_digest,
+        "runtime_release_digest": experiment_binding.runtime_release_digest,
     }
-    output_path = result_root / "worker_result.json"
     telemetry_path = result_root / "resource_telemetry.json"
-    log_path = Path(capability.log_root) / "training.log"
-    confirmation_path = result_root / "start_confirmation.json"
-    gate_path = result_root / "start_gate.json"
-    command = [
-        str(PYTHON_EXECUTABLE),
-        str(repo_root / "scripts/campaign_train_worker.py"),
-        "--binding-digest", binding_digest,
-        "--claim-id", str(start_identity["claim_id"]),
-        "--checkpoint-dir", str(checkpoint_dir),
-        "--data-path", str(SEARCH_DATA_ROOT),
-        "--dataset", "ml-1m",
-        "--epochs", str(epochs),
-        "--execution-purpose", str(start_identity["execution_purpose"]),
-        "--execution-recipe-path", str(recipe_path),
-        "--filesystem-capability-path", str(capability_path),
-        "--filesystem-mode", "HASH_AUDITED_PRIVATE_ROOT_V1",
-        "--log-path", str(log_path),
-        "--model", "BPR",
-        "--output-path", str(output_path),
-        "--permit-digest", str(start_identity["permit_digest"]),
-        "--project-root", str(runtime_view),
-        "--recbole-root", str(RECBole_ROOT),
-        "--round-id", str(start_identity["round_id"]),
-        "--run-id", run_id,
-        "--runner-abi", CAMPAIGN_TRAINING_RUNNER_ABI,
-        "--runtime-binding-digest", runtime_binding_digest,
-        "--runtime-release-digest", release_digest,
-        "--seed", str(seed),
-        "--start-confirmation-path", str(confirmation_path),
-        "--start-gate-path", str(gate_path),
-    ]
-    if resource_telemetry:
-        command.extend(
-            [
-                "--resource-telemetry",
-                "--resource-telemetry-path",
-                str(telemetry_path),
-            ]
-        )
-    if prefix_contract_path is not None:
-        command.extend(
-            ["--prefix-contract-path", str(prefix_contract_path.resolve())]
-        )
+    log_path = Path(capability.log_root) / f"training{resume_suffix}.log"
+    confirmation_path = result_root / f"start_confirmation{resume_suffix}.json"
+    gate_path = result_root / f"start_gate{resume_suffix}.json"
+    command = render_campaign_worker_command(
+        experiment_binding,
+        python_executable=PYTHON_EXECUTABLE,
+        worker_path=repo_root / "scripts/campaign_train_worker.py",
+        checkpoint_dir=checkpoint_dir,
+        data_path=Path(str(runtime_search_data["root"])),
+        execution_recipe_path=recipe_path,
+        filesystem_capability_path=capability_path,
+        log_path=log_path,
+        output_path=output_path,
+        project_root=runtime_view,
+        recbole_root=RECBole_ROOT,
+        start_confirmation_path=confirmation_path,
+        start_gate_path=gate_path,
+        resource_telemetry_path=(telemetry_path if resource_telemetry else None),
+        prefix_contract_path=prefix_contract_path,
+    )
     started_ns = time.monotonic_ns()
-    process = subprocess.Popen(
+    launch = process_launcher or subprocess.Popen
+    launch_context = (
+        {"capability": capability, "candidate_root": candidate_root}
+        if process_launcher is not None else {}
+    )
+    process = launch(
         command,
         cwd=capability.run_working_directory,
-        env=_worker_environment(capability, candidate_root),
+        env=_worker_environment(
+            capability,
+            candidate_root,
+            cuda_visible_devices=validated_cuda_visible_devices,
+            gpu_id=validated_gpu_id,
+        ),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        **launch_context,
     )
+
+    def finalize_process_outcome(
+        value: Mapping[str, Any],
+        *,
+        ended_ns: int | None = None,
+        device_evidence_consistent: bool = True,
+    ) -> dict[str, Any]:
+        enriched_value = dict(value)
+        enriched_value.setdefault(
+            "candidate_deadline_seconds",
+            candidate_deadline_seconds,
+        )
+        enriched_value.setdefault(
+            "final_worker_ceiling_seconds",
+            hard_worker_ceiling,
+        )
+        enriched_value.setdefault(
+            "resource_prediction",
+            (
+                canonical_value(dict(resource_prediction))
+                if isinstance(resource_prediction, Mapping)
+                else None
+            ),
+        )
+        return _finalize_process_outcome(
+            enriched_value,
+            started_ns=started_ns,
+            ended_ns=ended_ns,
+            cuda_visible_devices=validated_cuda_visible_devices,
+            gpu_id=validated_gpu_id,
+            reservation_evidence=validated_reservation_evidence,
+            device_evidence_consistent=device_evidence_consistent,
+        )
+
     deadline = time.monotonic() + 30
     while not confirmation_path.is_file():
         if process.poll() is not None:
             stdout, stderr = process.communicate()
-            return {
+            return finalize_process_outcome({
+                "experiment_binding": experiment_binding.canonical_dict(),
+                "experiment_binding_digest": experiment_binding.digest,
+                "experiment_binding_ref": experiment_binding.ref,
+                "execution_recipe_digest": experiment_binding.execution_recipe_digest,
+                "recbole_source_identity": recbole_identity,
                 "error_message": "worker exited before START_CONFIRMED",
                 "exit_status": "RUNTIME_FAILURE",
+                "failure_scope": "WORKER_TRANSIENT",
+                "censoring_semantics": (
+                    "RESOURCE_OR_COMPLETION_ONLY; NEVER_MECHANISM_EFFECT"
+                ),
+                "censoring_trigger": "ENGINEERING_STARTUP",
+                "mechanism_effect_update_allowed": False,
                 "launcher_return_code": process.returncode,
                 "stderr_digest": sha256_digest(stderr),
                 "stdout_digest": sha256_digest(stdout),
-                "wall_time_ms": max(1, (time.monotonic_ns() - started_ns) // 1_000_000),
-            }
+                "seed": experiment_binding.seed,
+            }, ended_ns=time.monotonic_ns())
         if time.monotonic() >= deadline:
             process.kill()
             process.wait()
-            return {
+            return finalize_process_outcome({
+                "experiment_binding": experiment_binding.canonical_dict(),
+                "experiment_binding_digest": experiment_binding.digest,
+                "experiment_binding_ref": experiment_binding.ref,
+                "execution_recipe_digest": experiment_binding.execution_recipe_digest,
+                "recbole_source_identity": recbole_identity,
                 "error_message": "worker START_CONFIRMED timeout",
                 "exit_status": "RUNTIME_FAILURE",
+                "failure_scope": "WORKER_TRANSIENT",
+                "censoring_semantics": (
+                    "RESOURCE_OR_COMPLETION_ONLY; NEVER_MECHANISM_EFFECT"
+                ),
+                "censoring_trigger": "ENGINEERING_STARTUP",
+                "mechanism_effect_update_allowed": False,
                 "launcher_return_code": 124,
-                "wall_time_ms": max(1, (time.monotonic_ns() - started_ns) // 1_000_000),
-            }
+                "seed": experiment_binding.seed,
+            }, ended_ns=time.monotonic_ns())
         time.sleep(0.05)
     confirmation = _read_json(confirmation_path)
-    if int(confirmation.get("pid", -1)) != process.pid:
+    worker_pid = getattr(process, "worker_pid", process.pid)
+    if int(confirmation.get("pid", -1)) != worker_pid:
         process.kill()
         process.wait()
-        raise FreshR1Error("training START_CONFIRMED pid mismatch")
+        return finalize_process_outcome(
+            {
+                "experiment_binding": experiment_binding.canonical_dict(),
+                "experiment_binding_digest": experiment_binding.digest,
+                "experiment_binding_ref": experiment_binding.ref,
+                "execution_recipe_digest": experiment_binding.execution_recipe_digest,
+                "recbole_source_identity": recbole_identity,
+                "error_message": "training START_CONFIRMED pid mismatch",
+                "exit_status": "RUNTIME_FAILURE",
+                "failure_scope": "CANDIDATE_LOCAL",
+                "censoring_semantics": (
+                    "RESOURCE_OR_COMPLETION_ONLY; NEVER_MECHANISM_EFFECT"
+                ),
+                "censoring_trigger": "ENGINEERING_STARTUP",
+                "mechanism_effect_update_allowed": False,
+                "launcher_return_code": 124,
+                "seed": experiment_binding.seed,
+            },
+            ended_ns=time.monotonic_ns(),
+        )
+    if on_training_start is not None:
+        try:
+            on_training_start(
+                canonical_value(
+                    {
+                        **start_identity,
+                        "pid": worker_pid,
+                        "seed": experiment_binding.seed,
+                    }
+                )
+            )
+        except Exception as error:
+            process.kill()
+            process.wait()
+            # Preserve the caller's typed budget/ledger failure.  The worker
+            # has not received its start gate, so no training step occurred.
+            raise
     _write_start_gate(gate_path, start_identity)
-    effective_timeout = (
-        min(timeout_seconds, watchdog_seconds)
-        if watchdog_seconds is not None
-        else timeout_seconds
+    (
+        stdout,
+        stderr,
+        return_code,
+        health_decision,
+        durable_telemetry,
+        supervisor_terminated,
+    ) = (
+        _supervise_training_process(
+            process,
+            telemetry_path=telemetry_path,
+            candidate_deadline_seconds=candidate_deadline_seconds,
+            final_worker_ceiling_seconds=hard_worker_ceiling,
+            prediction=resource_prediction,
+            telemetry_enabled=resource_telemetry,
+            epochs_requested=epochs,
+        )
     )
+    process_ended_ns = time.monotonic_ns()
+    health_action = health_decision.get("action")
+    health_terminated = supervisor_terminated
     censoring_trigger = None
-    try:
-        stdout, stderr = process.communicate(timeout=effective_timeout)
-        return_code = int(process.returncode)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        stdout, stderr = process.communicate()
-        return_code = 124
+    if health_terminated:
         censoring_trigger = (
             "ENGINEERING_WATCHDOG"
-            if watchdog_seconds is not None and watchdog_seconds <= timeout_seconds
-            else "RESOURCE_BUDGET_DEADLINE"
+            if health_action == HEALTH_ACTION_HARD_CEILING
+            else "ENGINEERING_HEALTH_SUPERVISOR"
         )
-    wall_time_ms = max(1, (time.monotonic_ns() - started_ns) // 1_000_000)
     worker = _read_json(output_path) if output_path.is_file() else {
         "error_message": "worker result missing",
         "exit_status": "RUNTIME_FAILURE",
+        "failure_scope": "WORKER_TRANSIENT",
     }
-    durable_telemetry = (
-        _read_json(telemetry_path) if telemetry_path.is_file() else None
+    if durable_telemetry is None and telemetry_path.is_file():
+        durable_telemetry = _read_optional_json(telemetry_path)
+    supervisor_failure_scope = None
+    if health_terminated:
+        supervisor_failure_scope = health_decision.get(
+            "failure_scope"
+        ) or _failure_scope_for_trigger(health_decision.get("trigger"))
+    resolved_failure_scope = (
+        str(supervisor_failure_scope)
+        if supervisor_failure_scope is not None
+        else classify_failure_scope(
+            trigger=health_decision.get("trigger"),
+            telemetry=durable_telemetry,
+            worker=worker,
+        )
     )
-    metrics = {
-        str(key).lower(): float(value)
-        for key, value in dict(worker.get("best_valid_result", {})).items()
-        if isinstance(value, (int, float)) and math.isfinite(float(value))
-    }
+    metrics, metric_identity_matches = _round_feedback_metrics(
+        worker,
+        execution_recipe["evaluator"],
+    )
+    exit_status = "RESOURCE_CENSORED" if health_terminated else worker.get("exit_status")
+    if exit_status == "SUCCESS" and not metric_identity_matches:
+        exit_status = "RUNTIME_FAILURE"
+        return_code = 126
+    device_evidence = worker.get("training_device_evidence")
+    device_evidence_error = _cross_check_training_device_evidence(
+        device_evidence,
+        cuda_visible_devices=validated_cuda_visible_devices,
+        gpu_id=validated_gpu_id,
+        reservation_evidence=validated_reservation_evidence,
+    )
+    device_evidence_consistent = device_evidence_error is None
+    if device_evidence_error is not None:
+        exit_status = "RUNTIME_FAILURE"
+        return_code = 126
     result = {
-        "binding_digest": binding_digest,
-        "device_evidence": worker.get("training_device_evidence"),
-        "epochs_requested": epochs,
-        "execution_recipe_digest": sha256_digest(recipe),
-        "exit_status": (
-            "RESOURCE_CENSORED"
-            if censoring_trigger is not None
-            else worker.get("exit_status")
+        "binding_digest": experiment_binding.digest,
+        "candidate_deadline_seconds": candidate_deadline_seconds,
+        "experiment_binding": experiment_binding.canonical_dict(),
+        "experiment_binding_digest": experiment_binding.digest,
+        "experiment_binding_ref": experiment_binding.ref,
+        "device_evidence": device_evidence,
+        "training_device_evidence": device_evidence,
+        "device_evidence_validation": (
+            "CONTRADICTORY"
+            if device_evidence_error is not None
+            else "AVAILABLE_AND_CONSISTENT"
+            if isinstance(device_evidence, Mapping)
+            else "UNAVAILABLE"
         ),
+        "epochs_requested": epochs,
+        "execution_recipe_digest": experiment_binding.execution_recipe_digest,
+        "exit_status": exit_status,
         "filesystem_mount_audit": worker.get("filesystem_mount_audit"),
+        "final_worker_ceiling_seconds": hard_worker_ceiling,
         "launcher_return_code": return_code,
         "log_sha256": bytes_sha256(log_path.read_bytes()) if log_path.is_file() else None,
         "metrics": metrics,
+        "metric_source": worker.get("metric_source"),
+        "online_partition_role": worker.get("online_partition_role"),
         "result_sha256": bytes_sha256(output_path.read_bytes()) if output_path.is_file() else None,
-        "runtime_binding_digest": runtime_binding_digest,
-        "runtime_release_digest": release_digest,
-        "seed": seed,
+        "runtime_binding_digest": experiment_binding.runtime_binding_digest,
+        "runtime_release_digest": experiment_binding.runtime_release_digest,
+        "resource_prediction": (
+            canonical_value(dict(resource_prediction))
+            if isinstance(resource_prediction, Mapping)
+            else None
+        ),
+        "seed": experiment_binding.seed,
         "stderr_digest": sha256_digest(stderr),
         "stdout_digest": sha256_digest(stdout),
-        "wall_time_ms": wall_time_ms,
-        "worker_error_message": worker.get("error_message"),
+        "training_health": health_decision,
+        "failure_scope": resolved_failure_scope,
+        "worker_error_message": (
+            "training device evidence mismatch: " + device_evidence_error
+            if device_evidence_error is not None
+            else (
+                "worker metric identity mismatch"
+                if worker.get("exit_status") == "SUCCESS"
+                and not metric_identity_matches
+                else worker.get("error_message")
+            )
+        ),
         "worker_error_type": worker.get("error_type"),
+        "checkpoint_footprint": _checkpoint_footprint(checkpoint_dir),
     }
     if resource_telemetry:
         result.update(
@@ -1083,6 +3678,7 @@ def run_development_training(
                 ),
             }
         )
+    result["recbole_source_identity"] = recbole_identity
     if watchdog_seconds is not None:
         result.update(
             {
@@ -1092,12 +3688,46 @@ def run_development_training(
                     else None
                 ),
                 "censoring_trigger": censoring_trigger,
-                "mechanism_effect_update_allowed": False,
-                "resource_deadline_seconds": timeout_seconds,
+                "failure_scope": resolved_failure_scope,
+                "mechanism_effect_update_allowed": (
+                    False
+                    if health_terminated
+                    else health_decision.get("mechanism_effect_update_allowed")
+                ),
+                "resource_deadline_seconds": candidate_deadline_seconds,
                 "watchdog_seconds": watchdog_seconds,
+                "final_worker_ceiling_seconds": hard_worker_ceiling,
             }
         )
-    return canonical_value(result)
+    if health_terminated:
+        result.update(
+            {
+                "censoring_semantics": (
+                    "RESOURCE_OR_COMPLETION_ONLY; NEVER_MECHANISM_EFFECT"
+                ),
+                "censoring_trigger": censoring_trigger,
+                "failure_scope": resolved_failure_scope,
+                "mechanism_effect_update_allowed": False,
+                "resource_deadline_seconds": candidate_deadline_seconds,
+                "watchdog_seconds": watchdog_seconds,
+                "final_worker_ceiling_seconds": hard_worker_ceiling,
+            }
+        )
+    if result.get("exit_status") != "SUCCESS":
+        result.setdefault("mechanism_effect_update_allowed", False)
+    if device_evidence_error is not None:
+        result.update(
+            {
+                "failure_scope": "CANDIDATE_LOCAL",
+                "mechanism_effect_update_allowed": False,
+                "device_evidence_failure": "CONTRADICTORY_PHYSICAL_OR_LOGICAL_IDENTITY",
+            }
+        )
+    return finalize_process_outcome(
+        result,
+        ended_ns=process_ended_ns,
+        device_evidence_consistent=device_evidence_consistent,
+    )
 
 
 def _episode(
@@ -1127,14 +3757,6 @@ def _episode(
             "physical_training_runs": 2,
         }
     )
-    binding = canonical_value(
-        {
-            "baseline_binding_digest": baseline_run["binding_digest"],
-            "candidate_binding_digest": candidate_run["binding_digest"],
-            "matched_seed": candidate_run["seed"],
-            "protocol_digest": spec.protocol_digest,
-        }
-    )
     profile = canonical_value(
         {
             "candidate_package_digest": capability.candidate_package_digest,
@@ -1153,15 +3775,10 @@ def _episode(
             f"{CORRECTED_RUN_IDENTITY}-development-profile:{sha256_digest(profile)}"
         ),
         executable_profile_digest=sha256_digest(profile),
-        experiment_binding_ref=(
-            f"{CORRECTED_RUN_IDENTITY}-experiment-binding:{sha256_digest(binding)}"
-        ),
-        experiment_binding_digest=sha256_digest(binding),
-        comparator_ref=(
-            f"{CORRECTED_RUN_IDENTITY}-bpr-comparator:"
-            f"{baseline_run['binding_digest']}"
-        ),
-        comparator_digest=sha256_digest(baseline_run),
+        experiment_binding_ref=candidate_run["experiment_binding_ref"],
+        experiment_binding_digest=candidate_run["experiment_binding_digest"],
+        comparator_ref=baseline_run["experiment_binding_ref"],
+        comparator_digest=baseline_run["experiment_binding_digest"],
         outcome_ref=(
             f"{CORRECTED_RUN_IDENTITY}-development-outcome:{sha256_digest(outcome)}"
         ),
@@ -1185,9 +3802,16 @@ def _episode(
     )
 
 
-def _shared_policy(implementation_prompt_digest: str, tool_policy_digest: str) -> SharedImplementerPolicy:
+def _shared_policy(
+    implementation_prompt_digest: str,
+    tool_policy_digest: str,
+    *,
+    allowed_files: tuple[str, ...] | None = None,
+    execution_contract: Mapping[str, Any] | None = None,
+) -> SharedImplementerPolicy:
     return SharedImplementerPolicy(
-        allowed_files=("recclaw_ext/__init__.py", "recclaw_ext/candidate.py"),
+        allowed_files=allowed_files
+        or ("recclaw_ext/__init__.py", "recclaw_ext/candidate.py"),
         dependency_identity_ref=(
             "repo:docs/research_line/vnext/R1_R2_RUNTIME_DEPENDENCY_LOCK_V1#dependency_identity"
         ),
@@ -1203,6 +3827,7 @@ def _shared_policy(implementation_prompt_digest: str, tool_policy_digest: str) -
         prompt_digest=implementation_prompt_digest,
         tool_policy_digest=tool_policy_digest,
         implementation_token_ceiling=IMPLEMENTATION_TOKEN_CEILING,
+        execution_contract=execution_contract,
     )
 
 
@@ -1653,6 +4278,12 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
                 candidate_root=None,
                 entrypoint="recbole.model.general_recommender.bpr:BPR",
                 source_sha256=baseline_source_sha256,
+                execution_recipe=_bpr_comparator_execution_recipe(
+                    spec=spec,
+                    run_id=f"{slot_id}-matched-bpr",
+                    entrypoint="recbole.model.general_recommender.bpr:BPR",
+                    source_sha256=baseline_source_sha256,
+                ),
             )
             blind_candidate_id = str(
                 materialized.shared_request["blind_candidate_id"]
@@ -1661,14 +4292,24 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
                 side_root / "candidates" / slot_id / blind_candidate_id
             )
             candidate_source = candidate_root / "recclaw_ext/candidate.py"
+            candidate_entrypoint = materialized.package.executable_entrypoint
+            candidate_source_sha256 = bytes_sha256(candidate_source.read_bytes())
             candidate_run = run_development_training(
                 repo_root=repo_root,
                 side_root=side_root,
                 run_id=f"{slot_id}-candidate",
                 seed=seed,
                 candidate_root=candidate_root,
-                entrypoint=materialized.package.executable_entrypoint,
-                source_sha256=bytes_sha256(candidate_source.read_bytes()),
+                entrypoint=candidate_entrypoint,
+                source_sha256=candidate_source_sha256,
+                execution_recipe=_fresh_r1_candidate_execution_recipe(
+                    spec=spec,
+                    capability=capability,
+                    package=materialized.package,
+                    run_id=f"{slot_id}-candidate",
+                    entrypoint=candidate_entrypoint,
+                    source_sha256=candidate_source_sha256,
+                ),
             )
             training_runs.extend(
                 [
@@ -1821,13 +4462,23 @@ def run_formal_fresh_r1(repo_root: Path, *, canonical_receipt_path: Path) -> dic
 
 
 __all__ = [
+    "GPU_RESERVATION_EVIDENCE_SCHEMA",
+    "GPU_RESERVATION_STATUS_CONTRADICTORY",
+    "GPU_RESERVATION_STATUS_MEASURED",
+    "GPU_RESERVATION_STATUS_UNMEASURED",
+    "GPU_WORKER_SECONDS_SEMANTICS",
+    "assess_training_health",
+    "classify_failure_scope",
     "FreshR1Error",
+    "MAX_WORKER_CEILING_SECONDS",
     "ProviderAttemptResult",
     "bounded_provider_call",
     "evaluate_gate",
     "render_implementation_prompt",
     "render_proposal_prompt",
+    "resolve_candidate_deadline_seconds",
     "retry_eligible",
     "run_formal_fresh_r1",
+    "validate_gpu_reservation_evidence",
     "verify_formal_identity",
 ]

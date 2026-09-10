@@ -1,0 +1,140 @@
+{
+  "schema": "recclaw.single-parent-mechanism-language.v2",
+  "language_id": "recclaw.bl-icf.lightgcnpp-parent-language.v2",
+  "research_profile_id": "BL_ICF_LIGHTGCNPP_PARENT_V2",
+  "compiler_search_space_id": "BL_ICF_MECHANISM_SPACE_V1",
+  "parent_contract": {
+    "name": "LightGCN++",
+    "base_model_config": "LightGCN",
+    "role": "FROZEN_ROOT_ANCHOR_AND_PAIRED_COMPARATOR",
+    "parent_is_construction_anchor": true,
+    "successful_frontier_may_become_active_construction_parent": true,
+    "frozen_root_remains_paired_comparator": true,
+    "unchanged_parent_slots_are_inherited": true,
+    "required_parent_foundation_primitives": [
+      "relation.user_item_bipartite",
+      "embedding.independent_user_item",
+      "encoder.explicit_message_passing",
+      "message.identity",
+      "propagation.learned_normalization",
+      "fusion.layer_weighted_sum",
+      "score.dot_product",
+      "sampler.uniform",
+      "objective.bpr",
+      "training.adam"
+    ]
+  },
+  "language_semantics": {
+    "known_affordances_are_implementation_material_not_candidate_menu": true,
+    "parameter_only_tuning_is_not_a_mechanism": true,
+    "ordinary_delta": "A focused, faithful mechanism improvement from the active successful construction parent. One or several coordinated zones are allowed when the causal thesis requires them; unrelated mechanism bundles are not.",
+    "frontier_delta": "A more aggressive LightGCN++-rooted causal thesis may coordinate multiple zones, replace a parent subsystem, or define a new typed mechanism when the expected effect and falsifier justify the added implementation risk.",
+    "single_root_search_tree": "LightGCN++ is the permanent frozen root and paired comparator. A genuinely improved measured candidate becomes the active construction parent for later ordinary and frontier search while remaining in the LightGCN++ lineage.",
+    "success": "A faithful candidate improves the exact fixed-protocol parent data/dev NDCG@10 while remaining efficient enough for repeated search."
+  },
+  "causal_zones": [
+    {
+      "zone_id": "PROPAGATION_AND_NORMALIZATION",
+      "parent_slots": ["MESSAGE", "PROPAGATION_AGGREGATION"],
+      "research_question": "Can information flow or depth allocation improve ranking beyond the parent's learned normalization without erasing its stable graph-CF signal?",
+      "known_affordance_ids": [
+        "propagation.residual_skip_ego",
+        "propagation.layer_gate",
+        "propagation.adaptive_stopping",
+        "propagation.multi_hop_decoupling"
+      ]
+    },
+    {
+      "zone_id": "PATH_FUSION_AND_ROUTING",
+      "parent_slots": ["FUSION_ROUTING", "RELATION_DECOMPOSITION"],
+      "research_question": "Can the parent and transformed paths be combined conditionally so that useful collaborative signal survives while harmful paths are suppressed?",
+      "known_affordance_ids": [
+        "fusion.residual",
+        "fusion.gated",
+        "fusion.dual_path",
+        "fusion.base_augmented_branch"
+      ]
+    },
+    {
+      "zone_id": "INTERACTION_RELIABILITY_AND_TAIL",
+      "parent_slots": ["RELATION_VIEW", "MESSAGE", "DENOISING_LONG_TAIL"],
+      "research_question": "Can train-derived reliability or degree structure reduce noisy and popularity-dominated propagation while preserving true interactions?",
+      "known_affordance_ids": [
+        "robustness.edge_confidence",
+        "robustness.interaction_denoising",
+        "robustness.degree_adaptive_propagation",
+        "robustness.false_negative_suppression"
+      ]
+    },
+    {
+      "zone_id": "RANKING_SIGNAL_AND_NEGATIVES",
+      "parent_slots": ["PRIMARY_OBJECTIVE", "NEGATIVE_SAMPLER"],
+      "research_question": "Can a mechanism-level ranking signal expose more informative preference contrasts than the parent's uniform BPR pairs?",
+      "known_affordance_ids": [
+        "objective.weighted_bpr",
+        "objective.adaptive_margin_pairwise",
+        "objective.partial_auc_surrogate",
+        "sampler.dynamic_hard",
+        "sampler.false_negative_aware",
+        "sampler.curriculum_hardness"
+      ]
+    },
+    {
+      "zone_id": "AUXILIARY_REPRESENTATION_SIGNAL",
+      "parent_slots": ["SELF_SUPERVISION", "GEOMETRY_REGULARIZATION", "EMBEDDING"],
+      "research_question": "Can a train-only auxiliary signal improve ranking geometry without becoming a generic regularization bundle or overwhelming the parent objective?",
+      "known_affordance_ids": [
+        "ssl.view.uniform_perturbation",
+        "ssl.view.cross_layer",
+        "ssl.objective.info_nce",
+        "ssl.objective.augmentation_free_layer_contrastive",
+        "regularizer.residual_norm",
+        "regularizer.layer_diversity"
+      ]
+    },
+    {
+      "zone_id": "EFFICIENT_REALIZATION",
+      "parent_slots": ["EFFICIENCY_APPROXIMATION", "TRAINING_PROCEDURE"],
+      "research_question": "Can the same scientific mechanism be realized with lower repeated-search cost without changing its causal meaning?",
+      "known_affordance_ids": [
+        "efficiency.sparse_matrix_kernel",
+        "efficiency.adaptive_depth",
+        "efficiency.memory_aware_batching",
+        "training.mixed_precision",
+        "training.adaptive_batch_negative_budget"
+      ]
+    }
+  ],
+  "innovation_extension": {
+    "primary_role": "frontier_architect",
+    "available_to_other_roles_when_scientifically_required": true,
+    "construction_modes": ["ARCHITECTURE_REWRITE", "CUSTOM_MODEL"],
+    "may_cross_multiple_support_zones": true,
+    "may_define_new_typed_custom_components": true,
+    "may_use_unlisted_registry_primitives": true,
+    "known_affordances_limit_innovation": false,
+    "source_ownership_compilation": {
+      "scientific_input": "Declare every changed slot and custom component accurately; source ownership is compiler-derived rather than selected by the Producer.",
+      "CUSTOM_MODEL": "For an exact parent, the compiler selects the narrowest available typed slot hook and keeps every undeclared parent slot machine-owned.",
+      "ARCHITECTURE_REWRITE": "Retains the high-permission full-source path when the declared scientific mechanism genuinely rewrites architecture or coordinates unsupported multiple slots."
+    },
+    "required_scientific_content": [
+      "parent_relative_causal_intervention",
+      "why_known_affordances_are_insufficient",
+      "mechanism_activation_witness",
+      "matched_parent_control",
+      "falsifier",
+      "faithful_candidate_local_implementation_plan",
+      "honest_training_and_memory_cost"
+    ],
+    "forbidden_shortcuts": [
+      "parameter_only_tuning",
+      "catalog_item_renaming",
+      "unrelated_baseline_substitution",
+      "dataset_or_split_change",
+      "evaluator_or_candidate_universe_change",
+      "text_only_mechanism",
+      "silent_fallback_to_parent"
+    ]
+  }
+}

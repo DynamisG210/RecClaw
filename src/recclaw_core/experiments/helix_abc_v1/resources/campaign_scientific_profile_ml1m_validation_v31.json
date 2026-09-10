@@ -1,0 +1,54 @@
+{
+  "schema": "recclaw.campaign.development-validation-profile-manifest.v31",
+  "profile_id": "recclaw.campaign.ml1m-development-validation-v31",
+  "profile_kind": "OFFLINE_TOPN",
+  "profile_digest_derivation": "SHA256_EXACT_MANIFEST_UTF8_BYTES",
+  "claim_boundary": "ADAPTIVE_DEVELOPMENT_SEARCH_ONLY; OUTER_HELDOUT_POST_SELECTION_ONLY",
+  "dataset": {
+    "dataset_id": "ml-1m",
+    "dataset_snapshot_digest": "bd98568d367e8ddca8d9b496595b07e484a45ec1615e1037355fe73e48803a7a",
+    "partition_profile_id": "RECCLAW_ML1M_DEVELOPMENT_VALIDATION_PARTITION_V31",
+    "partition_seed": 2026,
+    "split": "SHA256_SEEDED_WITHIN_USER_80_10_10",
+    "file_sha256": {
+      "ml-1m.dev.inter": "631911b8e59d312e110ba7205151bcda3d52378ecbf510d48d8b9cc162956cc9",
+      "ml-1m.item": "6eff097333db47adf003039eb90cb6ab13978fa9577d915d2366e4d073844dc3",
+      "ml-1m.train.inter": "c84b1a4f6c6d974f32f126b173f11f7af8e12e1a143a50ac5a53e9945903491a",
+      "ml-1m.user": "bbc7b4f8d3204d00e0465cf1451b8e8bae2c9e94378292223603c229cf2df09f"
+    }
+  },
+  "protocol": {
+    "protocol_ref": "recclaw.campaign.ml1m-full-sort.v1",
+    "protocol_digest": "7f623fd953001f999e8b5d2657749f6a3ca86c7be5410a48bb8281241a258bbe",
+    "candidate_universe": "FULL",
+    "metric": "NDCG@10",
+    "aggregation": "USER_MEAN",
+    "checkpoint_selection": "BEST_DEVELOPMENT_VALIDATION_NDCG_AT_10",
+    "round_metric_source": "BEST_VALID_RESULT",
+    "round_partition_role": "DEVELOPMENT_VALIDATION",
+    "adaptive_reuse": "DEVELOPMENT_VALIDATION_ONLY",
+    "heldout_access": "POST_SELECTION_ONLY"
+  },
+  "training": {
+    "epochs_requested": 100,
+    "eval_step": 1,
+    "stopping_step": 5,
+    "optimizer": "adam",
+    "training_negative_sampling": "MECHANISM_PROGRAM_DEFINED",
+    "benchmark_filename": ["train", "dev", "dev"]
+  },
+  "campaign": {
+    "metric_round_count": 100,
+    "ordered_seed_first": 55103,
+    "ordered_seed_last": 55202,
+    "max_attempts_per_round": 16,
+    "worker_ceiling_seconds": 3600,
+    "no_metric_no_round_advance": true,
+    "arm_budget_binding": "HELIX_V31_MATCHED_BUDGET_SHARED_CONTRACT"
+  },
+  "outer_heldout": {
+    "access": "POST_SELECTION_ONLY",
+    "online_feedback_allowed": false,
+    "identity_binding": "EXTERNAL_PREOUTCOME_MANIFEST_REQUIRED"
+  }
+}

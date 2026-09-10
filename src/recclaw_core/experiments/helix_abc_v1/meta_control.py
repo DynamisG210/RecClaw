@@ -14,6 +14,7 @@ from .canonical import canonical_value, sha256_digest, validate_sha256
 from .contracts import validate_no_research_evidence_authority_fields
 from .research_capability import (
     SearchMemorySnapshotV1,
+    VersionedMetaPolicyUpdaterV1,
     VersionedResearchPolicyV1,
 )
 from .research_contracts import DISCOVERY_PRODUCERS
@@ -44,6 +45,8 @@ class MetaControlUpdateProposalV1:
     proposed_memory_retrieval_policy: str
     proposed_producer_token_allocation: tuple[tuple[str, float], ...]
     meta_router_policy_digest: str
+    proposed_router_priors: tuple[tuple[str, float], ...]
+    proposed_acquisition_parameters: tuple[tuple[str, Any], ...]
     evaluation_mode: str = "PAIRED_PROPOSAL_ONLY_SHADOW_V1"
     activation_boundary: str = "NEXT_CAMPAIGN"
 
@@ -57,12 +60,22 @@ class MetaControlUpdateProposalV1:
         if self.source_round_index < 1:
             raise MetaControlError("Meta proposal requires a closed SearchRound")
         axes = tuple(str(item) for item in self.proposed_axis_priority)
-        if (
-            len(axes) != len(CANONICAL_CONTROL_AXES_V1)
-            or set(axes) != set(CANONICAL_CONTROL_AXES_V1)
-        ):
+        legacy_members = tuple(
+            axis for axis in axes if axis in CANONICAL_CONTROL_AXES_V1
+        )
+        if legacy_members:
+            valid_axes = (
+                len(legacy_members) == len(axes)
+                and len(axes) == len(CANONICAL_CONTROL_AXES_V1)
+                and set(axes) == set(CANONICAL_CONTROL_AXES_V1)
+            )
+        else:
+            valid_axes = bool(axes) and len(axes) == len(set(axes)) and all(
+                axis and axis == axis.strip() for axis in axes
+            )
+        if not valid_axes:
             raise MetaControlError(
-                "Meta proposal must order the exact canonical mechanism axes"
+                "Meta proposal must order one complete mechanism-axis universe"
             )
         allocations = dict(self.proposed_producer_token_allocation)
         if (
@@ -72,6 +85,18 @@ class MetaControlUpdateProposalV1:
         ):
             raise MetaControlError(
                 "Meta proposal must preserve four positive Producer shares"
+            )
+        priors = dict(self.proposed_router_priors)
+        if set(priors) != {"runnable_probability", "useful_signal"} or any(
+            value < 0.0 or value > 1.0 for value in priors.values()
+        ):
+            raise MetaControlError("Meta proposal has invalid Router priors")
+        acquisition = dict(self.proposed_acquisition_parameters)
+        if not acquisition or len(acquisition) != len(
+            self.proposed_acquisition_parameters
+        ):
+            raise MetaControlError(
+                "Meta proposal requires unique active acquisition parameters"
             )
         if self.activation_boundary != "NEXT_CAMPAIGN":
             raise MetaControlError("Meta proposals cannot activate mid-campaign")
@@ -235,32 +260,84 @@ def build_meta_update_proposal(
     *,
     policy: VersionedResearchPolicyV1,
     search_memory: SearchMemorySnapshotV1,
+    outcome_aggregate: Mapping[str, Any],
 ) -> MetaControlUpdateProposalV1:
-    """Build a challenger from a closed development Search Memory snapshot."""
+    """Build an outcome-driven challenger at a closed SearchRound boundary."""
 
     if search_memory.round_index < 1:
         raise MetaControlError("Search Memory is not closed")
-    counts = {axis: 0 for axis in CANONICAL_CONTROL_AXES_V1}
-    unresolved = {axis: 0 for axis in CANONICAL_CONTROL_AXES_V1}
+    meta_fields = {
+        "producer_useful_rates",
+        "producer_quality_scores",
+        "family_quality_scores",
+        "experiment_quality_scores",
+        "measured_axes",
+        "focused_axes",
+        "uncovered_axes",
+        "causal_followup_axes",
+        "axis_priority_order",
+        "axis_scores",
+        "calibration_error",
+        "next_discriminative_task",
+        "core_mechanism_contrast",
+        "unresolved_confounding",
+        "last_evidence_class",
+        "last_failure_class",
+        "last_axis_footprint",
+        "attempted_family_digests",
+        "attempted_experiment_digests",
+    }
+    aggregate = {
+        str(key): value
+        for key, value in outcome_aggregate.items()
+        if str(key) in meta_fields
+    }
+    aggregate.setdefault(
+        "producer_useful_rates",
+        dict(policy.producer_token_allocation),
+    )
+    axis_universe = tuple(policy.mechanism_axis_targeting)
+    counts = {axis: 0 for axis in axis_universe}
+    unresolved = {axis: 0 for axis in axis_universe}
     for belief in search_memory.beliefs:
         axis = str(belief.mechanism_axis)
         if axis not in counts:
             continue
         counts[axis] += 1
         unresolved[axis] += int(bool(belief.unresolved_confounds))
-    axis_priority = tuple(
+    memory_axis_priority = tuple(
         sorted(
-            CANONICAL_CONTROL_AXES_V1,
+            axis_universe,
             key=lambda axis: (
                 counts[axis],
                 -unresolved[axis],
-                CANONICAL_CONTROL_AXES_V1.index(axis),
+                axis_universe.index(axis),
             ),
         )
     )
-    allocations = tuple(
-        (role, float(dict(policy.producer_token_allocation)[role]))
-        for role in DISCOVERY_PRODUCERS
+    aggregate.setdefault("axis_priority_order", memory_axis_priority)
+    learned = VersionedMetaPolicyUpdaterV1().update(
+        policy,
+        completed_round_index=search_memory.round_index,
+        aggregate=aggregate,
+    )
+    active_acquisition_fields = meta_fields | {
+        "exploration_weight",
+        "cost_weight",
+        "task_alignment_weight",
+        "novelty_weight",
+        "axis_coverage_weight",
+        "executability_weight",
+        "producer_balance_weight",
+        "cost_tiebreak_weight",
+        "outcome_quality_weight",
+        "producer_coverage_fraction",
+        "producer_coverage_block_size",
+    }
+    proposed_acquisition = tuple(
+        (key, value)
+        for key, value in learned.acquisition_parameters
+        if key in active_acquisition_fields
     )
     router_digest = policy.meta_router_policy_digest
     if router_digest is None:
@@ -271,12 +348,12 @@ def build_meta_update_proposal(
         "parent_policy_digest": policy.digest,
         "source_search_memory_digest": search_memory.digest,
         "source_round_index": search_memory.round_index,
-        "proposed_axis_priority": axis_priority,
-        "proposed_memory_retrieval_policy": (
-            "ROLE_SCOPED_GAP_AWARE_V1"
-        ),
-        "proposed_producer_token_allocation": allocations,
+        "proposed_axis_priority": learned.mechanism_axis_targeting,
+        "proposed_memory_retrieval_policy": "ROLE_SCOPED_GAP_AWARE_V1",
+        "proposed_producer_token_allocation": learned.producer_token_allocation,
         "meta_router_policy_digest": router_digest,
+        "proposed_router_priors": learned.router_priors,
+        "proposed_acquisition_parameters": proposed_acquisition,
     }
     return MetaControlUpdateProposalV1(
         proposal_id=f"meta-control-{sha256_digest(payload)[:20]}",
@@ -377,6 +454,17 @@ def materialize_proposed_control_policy(
 ) -> VersionedResearchPolicyV1:
     if parent.digest != proposal.parent_policy_digest:
         raise MetaControlError("Meta proposal parent does not match")
+    if (
+        len(proposal.proposed_axis_priority)
+        != len(parent.mechanism_axis_targeting)
+        or set(proposal.proposed_axis_priority)
+        != set(parent.mechanism_axis_targeting)
+    ):
+        raise MetaControlError(
+            "Meta proposal mechanism axes differ from the parent policy universe"
+        )
+    acquisition = dict(parent.acquisition_parameters)
+    acquisition.update(dict(proposal.proposed_acquisition_parameters))
     return VersionedResearchPolicyV1(
         version=parent.version + 1,
         producer_token_allocation=(
@@ -386,8 +474,8 @@ def materialize_proposed_control_policy(
         memory_retrieval_policy=(
             proposal.proposed_memory_retrieval_policy
         ),
-        router_priors=parent.router_priors,
-        acquisition_parameters=parent.acquisition_parameters,
+        router_priors=proposal.proposed_router_priors,
+        acquisition_parameters=tuple(acquisition.items()),
         predecessor_digest=parent.digest,
         meta_router_policy_digest=proposal.meta_router_policy_digest,
         meta_router_promotion_decision_digest=(

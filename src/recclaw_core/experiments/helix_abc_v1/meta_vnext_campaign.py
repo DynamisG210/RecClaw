@@ -346,6 +346,20 @@ class _BoundRound:
     singleton_candidate: CandidateMechanismDeltaV1 | None = None
 
 
+def _causal_delta_allows_effect_update(
+    candidate: CandidateMechanismDeltaV1 | None,
+    *,
+    success: bool,
+) -> bool:
+    """Keep real metrics while withholding mismatched mechanism attribution."""
+
+    return bool(
+        success
+        and candidate is not None
+        and candidate.causal_delta_verified
+    )
+
+
 class MetaV17CampaignRuntimeV1:
     """Run the same promoted slow+fast policy in B and C.
 
@@ -1414,10 +1428,15 @@ class MetaV17CampaignRuntimeV1:
             selected_axis = candidate.primary_mechanism_axis
             if candidate.ablation_or_falsification:
                 discriminative = min(0.05, abs(frontier))
+        causal_credit_allowed = _causal_delta_allows_effect_update(
+            candidate,
+            success=success,
+        )
         state.executed_axes = (*state.executed_axes, selected_axis)
         if (
             candidate is None
             or not success
+            or not causal_credit_allowed
             or not self._fast_observation_supported(
                 candidate=candidate,
                 route=bound.route,
@@ -1460,11 +1479,13 @@ class MetaV17CampaignRuntimeV1:
             canonical_value(
                 {
                     "arm": arm.value,
+                    "causal_credit_allowed": causal_credit_allowed,
                     "candidate_id": candidate_id,
                     "decision_digest": bound.route.decision_digest,
                     "fast_state_after_digest": state.fast_state.digest,
                     "frontier_value": frontier,
                     "mode": bound.route.mode,
+                    "mechanism_effect_update_allowed": causal_credit_allowed,
                     "observation_digest": observation_digest,
                     "observation_path": observation_path,
                     "pool_digest": bound.route.pool_digest,

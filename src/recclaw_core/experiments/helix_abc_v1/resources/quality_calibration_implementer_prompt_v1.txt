@@ -4,9 +4,10 @@ The implementation must:
 - use the fixed entrypoint recclaw_ext.candidate:FreshCandidateModel;
 - subclass recbole.model.general_recommender.bpr.BPR so the frozen matched BPR runtime configuration remains valid;
 - override calculate_loss, predict, and full_sort_predict and keep InputType.PAIRWISE and the RecBole GeneralRecommender API;
+- for sampler.uniform, use RecBole's supplied NEG_ITEM_ID; any custom sampler hook must be called from calculate_loss, return ids only in [1, n_items), and exclude padding, the current positive, and every known positive for that user;
 - use only Python, PyTorch, NumPy, SciPy, and RecBole already present in the frozen runtime;
 - provide complete source bytes for exactly recclaw_ext/__init__.py and recclaw_ext/candidate.py;
-- keep all tensors device-safe and all returned losses and scores finite;
+- keep all tensors device-safe; do not mask NaN or infinity with nan_to_num, replacement constants, or equivalent fallback behavior. Nonfinite operations must fail qualification or training;
 - work for batched pairwise training interactions and full-sort user-only interactions.
 
 Implement the blind OpenSpec literally:

@@ -1,0 +1,182 @@
+{
+  "schema": "recclaw.single-parent-search-space-launch.v1",
+  "profile_key": "sequential_scaling",
+  "protocol_ref": "recclaw.protocol.p5.ml1m-native-to-ls-development.v1",
+  "seed": 54201,
+  "frozen_profile": {
+    "profile_id": "recclaw-profile-p5-sequential-scaling-ml1m-chrono-time-v1-seed54201-single-parent-v1",
+    "frozen_fields": {
+      "dataset": "ml-1m-chrono-time",
+      "dataset_snapshot": {
+        "interaction_sha256": "6da47eafec10a2dfe3933f601e340462abeb9558c1ee6000733fb030c3d86f1c",
+        "source_interaction_sha256": "e943abb91013a54c385828fdf5ab4ce49e957ca3a772adb30cde2a7d5539b389",
+        "rows": 1000209,
+        "users": 6040,
+        "items": 3706
+      },
+      "timestamp_order": "PER_USER_STABLE_RAW_TIMESTAMP_THEN_SOURCE_ROW",
+      "ordering_time_field": "chrono_order",
+      "interval_time_field": "timestamp",
+      "interval_time_unit": "UNIX_SECONDS",
+      "timestamp_interval_construction": "ADJACENT_PREFIX_GAPS_PLUS_QUERY_GAP",
+      "chronological_split": {
+        "strategy": "TO_LS",
+        "valid": "LAST_EVENT",
+        "group_by": "user"
+      },
+      "history_construction": "STRICT_OBSERVED_PREFIX",
+      "maximum_history_length": 50,
+      "evaluation_mode": "FULL_SORT",
+      "candidate_universe": "FULL_CATALOG",
+      "exclude_seen_policy": {
+        "repeatable_recommendation": true,
+        "exclude_seen": false
+      },
+      "metric_semantics": "NDCG@10_BEST_VALIDATION_SELECTED_DEVELOPMENT_ONLY",
+      "evaluator": "NATIVE_RECBOLE_SEQUENTIAL_FULL_SORT",
+      "seed_policy": {
+        "actual_discovery_training_seed": 54201,
+        "non_54201_training_requires_explicit_authorization": true
+      },
+      "token_update_budget": {
+        "epochs_ceiling": 200,
+        "validation_every": 1,
+        "patience": 20,
+        "history_length": 50
+      }
+    }
+  },
+  "execution_contract": {
+    "capability_family": "CHRONOLOGICAL_SEQUENTIAL_RECOMMENDATION",
+    "model": "FreshCandidateModel",
+    "base_model_config": "BERT4Rec",
+    "required_dependencies": [
+      "numpy",
+      "python-stdlib",
+      "pytorch",
+      "recbole-runtime",
+      "mamba-ssm",
+      "torch"
+    ],
+    "config_overrides": {
+      "recclaw_model_type": "SEQUENTIAL",
+      "recclaw_input_semantics": "CHRONOLOGICAL_PREFIX_NEXT_ITEM",
+      "recclaw_qualification_train_batch_limit": 2,
+      "TIME_FIELD": "chrono_order",
+      "ITEM_LIST_LENGTH_FIELD": "item_length",
+      "MAX_ITEM_LIST_LENGTH": 50,
+      "alias_of_item_id": [
+        "item_id_list"
+      ],
+      "eval_args": {
+        "split": {
+          "LS": "valid_only"
+        },
+        "order": "TO",
+        "group_by": "user",
+        "mode": "full"
+      },
+      "repeatable": true,
+      "metrics": [
+        "NDCG"
+      ],
+      "topk": [
+        10
+      ],
+      "valid_metric": "NDCG@10",
+      "hidden_size": 256,
+      "num_layers": 2,
+      "dropout_prob": 0.2,
+      "norm_embedding": true,
+      "beta": 0.1,
+      "maskratio": 0.1,
+      "d_state": 64,
+      "d_conv": 4,
+      "expand": 2,
+      "headdim": 16,
+      "loss_type": "CE",
+      "learning_rate": 0.001,
+      "weight_decay": 0.0,
+      "train_batch_size": 1024,
+      "eval_batch_size": 2048,
+      "epochs": 200,
+      "eval_step": 1,
+      "stopping_step": 20,
+      "recclaw_resource_efficiency_envelope": {
+        "schema": "recclaw.profile-resource-efficiency-envelope.v1",
+        "parent_reference_epoch_wall_time_ms": 315818,
+        "maximum_candidate_to_parent_ratio": 1.25
+      },
+      "train_neg_sample_args": null
+    },
+    "search_data": {
+      "root": null,
+      "manifest_ref": null,
+      "manifest_sha256": null
+    }
+  },
+  "parent_source": {
+    "source_ref": null,
+    "source_sha256": null,
+    "comparator_ref": null,
+    "comparator_digest": null,
+    "frozen_ndcg_at_10": null
+  },
+  "baseline_context": {
+    "schema": "recclaw.research-baseline-context.v2",
+    "research_profile_id": "SEQUENTIAL_SCALING_SSD4REC_PARENT_V2",
+    "mechanism_space": "SEQUENTIAL_SCALING_MECHANISM_SPACE_V1",
+    "mechanism_language_id": "recclaw.sequential-scaling.ssd4rec-parent-language.v2",
+    "metric": "NDCG@10",
+    "split": "data/dev",
+    "parent_anchor": {
+      "name": "SSD4Rec",
+      "base_model_config": "BERT4Rec",
+      "mechanism_summary": "Shared bidirectional Mamba2/SSD over padded observed prefixes, with valid-prefix reversal, learned mask-token training, residual FFN mixing, and tied next-item scoring.",
+      "binding": null,
+      "mechanism_program": null,
+      "source_bundle": null,
+      "paired_metric": {
+        "seed": 54201,
+        "value": null
+      }
+    },
+    "search_objective": "Start from frozen SSD4Rec and maximize real fixed-protocol data/dev NDCG@10. A faithful measured improvement may become the next construction parent while SSD4Rec remains the fixed root comparator.",
+    "decision_semantics": {
+      "parent": "SSD4Rec is the initial construction anchor and fixed paired comparator; later construction may use a successful measured descendant.",
+      "frontier": "The best faithful measured descendant becomes eligible as the active construction parent and supplies mechanism feedback.",
+      "ordinary_search": "One core causal delta plus at most one support delta.",
+      "innovation_lane": "frontier_architect may cross zones or define new typed mechanisms when expected effect justifies it."
+    }
+  },
+  "research_runtime": {
+    "epochs": 200,
+    "eval_step": 1,
+    "stopping_step": 20,
+    "implementation_requirements": [
+      "native RecBole SequentialRecommender",
+      "strict prefix-only next-item prediction",
+      "finite differentiable sequence objective",
+      "full-catalog score vector"
+    ],
+    "compatibility_requirements": [
+      "history length exactly 50",
+      "native TO_LS chronology",
+      "no future-suffix access",
+      "repeatable full-catalog evaluation"
+    ],
+    "protocol_requirements": [
+      "raw timestamp orders no split",
+      "chrono_order owns ordering",
+      "timestamp is only an optional interval signal",
+      "best development NDCG@10 checkpoint"
+    ]
+  },
+  "evidence": {
+    "known_parent_result_seed": 2026,
+    "known_parent_development_ndcg_at_10": 0.176283,
+    "known_result_ref": "/ssd/tingrangan/recclaw_baseline_profiles_20260823/results/p5_ssd4rec/formal_seed2026.json",
+    "launch_asset_status": "The exact strongest-parent adapter and seed-2026 result identify SSD4Rec, but no strict validation-only seed-54201 comparator or physical train-plus-development-only search root exists yet.",
+    "formal_launch_rule": "Generate READY only from an SSD4Rec seed-54201 data/dev result that explicitly did not open heldout, plus physical train and development files; never reuse the seed-2026 value as the comparator."
+  }
+}

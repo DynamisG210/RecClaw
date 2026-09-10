@@ -1,0 +1,403 @@
+"""Official LIGER/TIGER parent with a thin RecBole execution adapter."""
+
+from __future__ import annotations
+
+import json
+from collections import defaultdict
+from pathlib import Path
+
+import torch
+import torch.nn.functional as F
+from recbole.utils import InputType, ModelType
+
+
+RECCLAW_COMPILER_CANDIDATE_ID = __RECCLAW_CANDIDATE_ID__
+RECCLAW_MECHANISM_PROGRAM_DIGEST = __RECCLAW_PROGRAM_DIGEST__
+RECCLAW_MECHANISM_SEMANTICS_DIGEST = __RECCLAW_SEMANTICS_DIGEST__
+RECCLAW_IMPLEMENTED_COMPONENT_IDS = __RECCLAW_COMPONENT_IDS__
+RECCLAW_IMPLEMENTED_COMPONENT_SPECS = __RECCLAW_COMPONENT_SPECS__
+RECCLAW_IMPLEMENTED_PRIMITIVE_IDS = __RECCLAW_PRIMITIVE_IDS__
+RECCLAW_IMPLEMENTED_CUSTOM_COMPONENT_IDS = []
+RECCLAW_IMPLEMENTED_ARCHITECTURE_OPERATOR_IDS = ["add_component"]
+
+PARENT_SOURCE_REVISION = "b6ccc37af5ee623ddc1d1ead3490c31aaeaf4524"
+PARENT_RUNNER_SHA256 = "c6dac8f952fcc71c6f9df85ffd1f6744c1657c31d097dae96906d07a3d91337f"
+PARENT_SELECTION_METRIC = "validation hybrid_gen20_dense NDCG@10"
+PARENT_ADAPTER_EQUIVALENCE = "OFFICIAL_LIGER_T5_EXACT_PARENT"
+OFFICIAL_PARENT_RUNTIME_REQUIREMENT = "transformers==4.41.2"
+
+
+__RECCLAW_OFFICIAL_TIGER_SOURCE__
+
+
+__RECCLAW_OFFICIAL_EVALUATION_HELPERS__
+
+
+METHOD_CONFIG = {
+    "use_id": "sid",
+    "include_user_id": False,
+    "flag_add_input_embedding": True,
+    "flag_use_output_embedding": True,
+    "embedding_loss_weight": 1.0,
+    "sid_loss_weight": 1.0,
+    "embedding_head_dict": {
+        "use_new_init": False,
+        "embed_target": "ground_truth",
+        "embed_proj_type": "mlp",
+        "normalize_logits": True,
+        "logits_temperature": 0.07,
+        "text_embedding_dim": 768,
+        "hidden_sizes": [256, 512, 768],
+        "embd_proj_dropout_rate": 0.5,
+        "embd_proj_in_dropout_rate": 0.2,
+    },
+}
+
+
+def _load_content_embeddings(path: str) -> torch.Tensor:
+    payload = torch.load(Path(path), map_location="cpu", weights_only=False)
+    embeddings = payload.get("embeddings") if isinstance(payload, dict) else payload
+    if not isinstance(embeddings, torch.Tensor) or tuple(embeddings.shape) != (12101, 768):
+        raise ValueError("recclaw_content_asset is not the frozen LIGER embedding")
+    return embeddings.detach().float()
+
+
+def _load_catalog_tokens(path: str) -> list[str]:
+    tokens = []
+    with Path(path).open("r", encoding="utf-8") as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            token = json.loads(line).get("item_id")
+            if not isinstance(token, str) or not token:
+                raise ValueError("catalog mapping row lacks item_id")
+            tokens.append(token)
+    if len(tokens) != 12101 or len(tokens) != len(set(tokens)):
+        raise ValueError("frozen LIGER catalog identity differs")
+    return tokens
+
+
+def _load_expanded_sids(path: str, expected_items: int) -> list[list[int]]:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if {int(key) for key in raw} != set(range(expected_items)):
+        raise ValueError("frozen LIGER SID coverage differs")
+    collision_counts = defaultdict(int)
+    expanded = []
+    for index in range(expected_items):
+        prefix = tuple(int(value) for value in raw[str(index)][:3])
+        if len(prefix) != 3 or any(value < 0 or value >= 256 for value in prefix):
+            raise ValueError("frozen LIGER SID prefix differs")
+        collision = collision_counts[prefix]
+        collision_counts[prefix] += 1
+        expanded.append([prefix[0] + 1, prefix[1] + 257, prefix[2] + 513, collision + 769])
+    if len({tuple(row) for row in expanded}) != expected_items:
+        raise ValueError("frozen LIGER collision extension is not one-to-one")
+    return expanded
+
+
+class FreshCandidateModel(TIGER):
+    """The official T5 parent, translated only at the RecBole batch boundary."""
+
+    type = ModelType.SEQUENTIAL
+    input_type = InputType.POINTWISE
+    __recclaw_implemented_component_ids__ = tuple(RECCLAW_IMPLEMENTED_COMPONENT_IDS)
+    __recclaw_implemented_component_specs__ = RECCLAW_IMPLEMENTED_COMPONENT_SPECS
+    __recclaw_implemented_primitive_ids__ = tuple(RECCLAW_IMPLEMENTED_PRIMITIVE_IDS)
+    __recclaw_hidden_fallback__ = False
+    __recclaw_static_candidate__ = False
+    __recclaw_post_device_mechanism_init__ = True
+    recclaw_invalid_sid_sentinel = -1
+
+    def __init__(self, config, dataset):
+        catalog_tokens = _load_catalog_tokens(config["recclaw_catalog_mapping"])
+        expanded_sids = _load_expanded_sids(config["recclaw_sid_mapping"], len(catalog_tokens))
+        content = _load_content_embeddings(config["recclaw_content_asset"])
+        max_collision = max(row[3] - 769 for row in expanded_sids) + 1
+        vocab_size = 3 * 256 + max(256, max_collision) + 2
+        t5_config = T5Config(
+            num_layers=6,
+            num_decoder_layers=6,
+            d_model=128,
+            d_ff=1024,
+            num_heads=6,
+            d_kv=64,
+            dropout_rate=0.2,
+            vocab_size=vocab_size,
+            pad_token_id=0,
+            eos_token_id=vocab_size - 1,
+            decoder_start_token_id=0,
+            feed_forward_proj="relu",
+            n_positions=102,
+            layer_norm_epsilon=1e-8,
+            initializer_factor=0.02,
+        )
+        super().__init__(
+            config=t5_config,
+            n_semantic_codebook=3,
+            max_items_per_seq=20,
+            flag_use_learnable_text_embed=True,
+            flag_use_output_embedding=True,
+            embedding_head_dict=METHOD_CONFIG["embedding_head_dict"],
+        )
+        self.USER_ID = config["USER_ID_FIELD"]
+        self.ITEM_ID = config["ITEM_ID_FIELD"]
+        self.ITEM_SEQ = self.ITEM_ID + config["LIST_SUFFIX"]
+        self.ITEM_SEQ_LEN = config["ITEM_LIST_LENGTH_FIELD"]
+        self.POS_ITEM_ID = self.ITEM_ID
+        self.n_items = int(dataset.item_num)
+        self.generator_topk = 20
+        self.sid_depth = 4
+
+        dataset_tokens = dataset.field2id_token[self.ITEM_ID]
+        token_to_internal = {str(token): index for index, token in enumerate(dataset_tokens)}
+        internal_content = torch.zeros(self.n_items, content.shape[1])
+        internal_sids = torch.zeros(self.n_items, self.sid_depth, dtype=torch.long)
+        catalog_mask = torch.zeros(self.n_items, dtype=torch.bool)
+        sid_to_item = {}
+        for source_index, token in enumerate(catalog_tokens):
+            internal_index = token_to_internal.get(token)
+            if internal_index is None or internal_index == 0:
+                raise ValueError("full frozen catalog is absent from the RecBole item feature")
+            internal_content[internal_index] = content[source_index]
+            sid = expanded_sids[source_index]
+            internal_sids[internal_index] = torch.tensor(sid, dtype=torch.long)
+            catalog_mask[internal_index] = True
+            sid_to_item[tuple(sid)] = int(internal_index)
+        if (
+            int(catalog_mask.sum()) != len(catalog_tokens)
+            or len(sid_to_item) != len(catalog_tokens)
+            or self.n_items != len(catalog_tokens) + 1
+        ):
+            raise ValueError("LIGER catalog, content, and SID identities differ")
+
+        train_targets = dataset.inter_feat[self.ITEM_ID]
+        train_histories = dataset.inter_feat[self.ITEM_SEQ]
+        seen = torch.cat((train_targets.reshape(-1), train_histories.reshape(-1)))
+        seen = torch.unique(seen[seen > 0])
+        train_seen_mask = torch.zeros(self.n_items - 1, dtype=torch.bool)
+        train_seen_mask[seen - 1] = True
+        self._recclaw_sid_to_item = sid_to_item
+        self.register_buffer("item_content", internal_content, persistent=False)
+        self.register_buffer("item_sids", internal_sids, persistent=False)
+        self.register_buffer("catalog_mask", catalog_mask, persistent=False)
+        self.register_buffer("train_seen_mask", train_seen_mask, persistent=False)
+        self._recclaw_deferred_mechanism_config = config
+
+    def recclaw_initialize_mechanism(self, config, dataset):
+        """Initialize candidate-local mechanism modules without owning the outer ABI."""
+        del config, dataset
+
+    def recclaw_before_epoch(self, epoch_idx):
+        """Apply an optional mechanism-owned stage transition at an epoch boundary."""
+        del epoch_idx
+
+    def other_parameter(self):
+        return None
+
+    def load_other_parameter(self, para):
+        del para
+
+    def _left_padded_history(self, interaction):
+        sequence = interaction[self.ITEM_SEQ][:, :20]
+        lengths = interaction[self.ITEM_SEQ_LEN].long().clamp(min=1, max=20)
+        positions = torch.arange(20, device=sequence.device).unsqueeze(0)
+        source_positions = positions - (20 - lengths.unsqueeze(1))
+        valid = source_positions >= 0
+        gathered = sequence.gather(1, source_positions.clamp(min=0, max=19))
+        return torch.where(valid, gathered, torch.zeros_like(gathered))
+
+    def _liger_batch(self, interaction, targets):
+        history_ids = self._left_padded_history(interaction)
+        mask = history_ids.ne(0)
+        history_sids = self.item_sids[history_ids].clone()
+        history_sids[~mask] = 0
+        input_sids = history_sids.reshape(history_ids.shape[0], -1)
+        input_sids = torch.cat((input_sids, input_sids.new_zeros((history_ids.shape[0], 22))), dim=1)
+        attention_mask_sids = torch.cat(
+            (
+                mask.unsqueeze(-1).expand(-1, -1, 4).reshape(history_ids.shape[0], -1),
+                mask.new_zeros((history_ids.shape[0], 22)),
+            ),
+            dim=1,
+        ).long()
+        input_embeddings = self.item_content[history_ids].clone()
+        input_embeddings[~mask] = 0
+        return {
+            "input_sids": input_sids,
+            "attention_mask_sids": attention_mask_sids,
+            "labels_sids": self.item_sids[targets],
+            "input_ids": history_ids,
+            "attention_mask_ids": mask.long(),
+            "labels_ids": targets.unsqueeze(1),
+            "input_embeddings": input_embeddings,
+            "label_embeddings": self.item_content[targets],
+        }
+
+    def recclaw_prepare_liger_batch(self, input_batch):
+        """Target-blind seam for a declared context intervention."""
+        return input_batch
+
+    def _recclaw_parent_preserved_batch(self, interaction, targets):
+        parent_batch = self._liger_batch(interaction, targets)
+        input_keys = (
+            "input_sids",
+            "attention_mask_sids",
+            "input_ids",
+            "attention_mask_ids",
+            "input_embeddings",
+        )
+        parent_history = parent_batch["input_ids"].clone()
+        input_batch = self.recclaw_prepare_liger_batch(
+            {key: parent_batch[key] for key in input_keys}
+        )
+        if not isinstance(input_batch, dict):
+            raise TypeError("recclaw_prepare_liger_batch must return an input dictionary")
+        batch = {key: input_batch[key] for key in input_keys}
+        for key in ("labels_sids", "labels_ids", "label_embeddings"):
+            batch[key] = parent_batch[key]
+        return batch, parent_history, {key: batch[key] for key in input_keys}
+
+    def recclaw_generation_kwargs(self, input_batch):
+        """Target-blind decoding controls around the exact T5.generate call."""
+        del input_batch
+        return {
+            "num_beams": 20,
+            "num_return_sequences": 20,
+            "max_new_tokens": 4,
+            "use_cache": True,
+        }
+
+    def recclaw_postprocess_generated(self, generated, input_batch):
+        """Convert active-parent T5 output to the declared SID candidate tensor."""
+        generated = generated[:, 1:]
+        if generated.shape[1] < 4:
+            generated = torch.cat(
+                (generated, generated.new_zeros((generated.shape[0], 4 - generated.shape[1]))), dim=1
+            )
+        return generated[:, :4].reshape(input_batch["input_ids"].shape[0], 20, 4)
+
+    def recclaw_additional_objective(self, interaction, outputs, logits, targets):
+        """Add a declared local loss without removing either parent objective."""
+        del interaction, logits, targets
+        return outputs.loss.new_zeros(())
+
+    def _dense_logits(self):
+        _, logits = get_target_embed(
+            self.predicted_embedding, self, METHOD_CONFIG, self.item_content[1:]
+        )
+        return logits
+
+    def _generated_semantic_ids_and_logits(self, interaction, targets):
+        semantic_ids, _query_state, history = self.recclaw_generation_batch(
+            interaction, targets
+        )
+        with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+            logits = self._dense_logits()
+        return semantic_ids, logits, history
+
+    def recclaw_generation_batch(self, interaction, targets):
+        """Generate once and expose the loss-aligned query to the canonical evaluator."""
+        batch, parent_history, input_batch = self._recclaw_parent_preserved_batch(
+            interaction, targets
+        )
+        device = interaction[self.ITEM_SEQ].device
+        with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+            _, input_kwargs = model_forward(self, batch, device, 4, METHOD_CONFIG, skip_forward=True)
+            model_forward(self, batch, device, 4, METHOD_CONFIG, skip_forward=False)
+            query_state = self.predicted_embedding
+            generation_kwargs = self.recclaw_generation_kwargs(dict(input_batch))
+            generated = self.generate(**input_kwargs, **generation_kwargs)
+        semantic_ids = self.recclaw_postprocess_generated(generated, dict(input_batch))
+        return semantic_ids, query_state, parent_history
+
+    def recclaw_generate_semantic_ids(self, interaction):
+        targets = (
+            interaction[self.POS_ITEM_ID]
+            if self.POS_ITEM_ID in interaction
+            else torch.ones(len(interaction), dtype=torch.long, device=interaction[self.ITEM_SEQ].device)
+        )
+        semantic_ids, _query_state, _history = self.recclaw_generation_batch(
+            interaction, targets
+        )
+        return semantic_ids
+
+    def recclaw_resolve_semantic_ids(self, semantic_ids):
+        if semantic_ids.ndim not in (2, 3) or semantic_ids.shape[-1] != self.sid_depth:
+            raise ValueError("Semantic IDs must end in the four official LIGER levels")
+        resolved = [
+            self._recclaw_sid_to_item.get(
+                tuple(int(token) for token in row), self.recclaw_invalid_sid_sentinel
+            )
+            for row in semantic_ids.detach().cpu().reshape(-1, self.sid_depth).tolist()
+        ]
+        return torch.tensor(resolved, dtype=torch.long, device=semantic_ids.device).reshape(
+            semantic_ids.shape[:-1]
+        )
+
+    def recclaw_target_ranks(self, interaction, targets):
+        semantic_ids, logits, history = self._generated_semantic_ids_and_logits(interaction, targets)
+        generated_items = self.recclaw_resolve_semantic_ids(semantic_ids)
+        ranks = []
+        for row_index in range(generated_items.shape[0]):
+            target = int(targets[row_index])
+            seen = {int(item) for item in history[row_index].tolist() if item > 0}
+            candidates = []
+            for item in generated_items[row_index].tolist():
+                item = int(item)
+                if item < 1 or (item in seen and item != target):
+                    continue
+                if item not in candidates:
+                    candidates.append(item)
+            if not candidates:
+                ranks.append(None)
+                continue
+            scores = logits[row_index, torch.tensor(candidates, device=logits.device) - 1]
+            order = torch.argsort(scores, descending=True).tolist()
+            ranked = [candidates[index] for index in order[:10]]
+            ranks.append(ranked.index(target) if target in ranked else None)
+        return ranks
+
+    def _hybrid_scores(self, interaction):
+        targets = (
+            interaction[self.POS_ITEM_ID]
+            if self.POS_ITEM_ID in interaction
+            else torch.ones(len(interaction), dtype=torch.long, device=interaction[self.ITEM_SEQ].device)
+        )
+        semantic_ids, logits, history = self._generated_semantic_ids_and_logits(interaction, targets)
+        generated_items = self.recclaw_resolve_semantic_ids(semantic_ids)
+        floor = torch.finfo(logits.dtype).min
+        scores = logits.new_full((logits.shape[0], self.n_items), floor)
+        for row_index in range(generated_items.shape[0]):
+            target = int(targets[row_index])
+            seen = {int(item) for item in history[row_index].tolist() if item > 0}
+            candidates = []
+            for item in generated_items[row_index].tolist():
+                item = int(item)
+                if item < 1 or (item in seen and item != target):
+                    continue
+                if item not in candidates:
+                    candidates.append(item)
+            if candidates:
+                index = torch.tensor(candidates, device=logits.device)
+                scores[row_index, index] = logits[row_index, index - 1]
+        return scores
+
+    def calculate_loss(self, interaction):
+        targets = interaction[self.POS_ITEM_ID]
+        batch, _parent_history, _input_batch = self._recclaw_parent_preserved_batch(
+            interaction, targets
+        )
+        outputs, _ = model_forward(self, batch, interaction[self.ITEM_SEQ].device, 4, METHOD_CONFIG)
+        logits = self._dense_logits()
+        logits[:, ~self.train_seen_mask] = -100
+        parent_objective = outputs.loss + F.cross_entropy(logits, targets - 1)
+        return parent_objective + self.recclaw_additional_objective(
+            interaction, outputs, logits, targets
+        )
+
+    def predict(self, interaction):
+        scores = self._hybrid_scores(interaction)
+        return scores.gather(1, interaction[self.ITEM_ID].view(-1, 1)).squeeze(1)
+
+    def full_sort_predict(self, interaction):
+        return self._hybrid_scores(interaction).reshape(-1)

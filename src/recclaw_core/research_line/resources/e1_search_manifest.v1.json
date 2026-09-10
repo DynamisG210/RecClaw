@@ -1,0 +1,22 @@
+{
+  "schema_version": "e1-ml1m-v1",
+  "dataset": "ml-1m",
+  "files": {
+    "train": {
+      "path": "ml-1m/ml-1m.train.inter",
+      "sha256": "c84b1a4f6c6d974f32f126b173f11f7af8e12e1a143a50ac5a53e9945903491a"
+    },
+    "dev": {
+      "path": "ml-1m/ml-1m.dev.inter",
+      "sha256": "631911b8e59d312e110ba7205151bcda3d52378ecbf510d48d8b9cc162956cc9"
+    },
+    "user": {
+      "path": "ml-1m/ml-1m.user",
+      "sha256": "bbc7b4f8d3204d00e0465cf1451b8e8bae2c9e94378292223603c229cf2df09f"
+    },
+    "item": {
+      "path": "ml-1m/ml-1m.item",
+      "sha256": "6eff097333db47adf003039eb90cb6ab13978fa9577d915d2366e4d073844dc3"
+    }
+  }
+}

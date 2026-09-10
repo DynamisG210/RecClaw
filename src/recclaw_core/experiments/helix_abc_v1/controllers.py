@@ -376,6 +376,54 @@ class OriginalRuntimeAdapterV1:
             }
         )
 
+    def to_state(self) -> Mapping[str, Any]:
+        """Return the complete resumable Original proposal/selection state."""
+
+        return canonical_value(
+            {
+                "schema": "recclaw.original-runtime-adapter-state.v1",
+                "identity_digest": self.identity_digest,
+                "history": tuple(dict(item) for item in self.history),
+                "cached_proposals": tuple(
+                    dict(item) for item in self.cached_proposals
+                ),
+                "last_refresh_round": self.last_refresh_round,
+            }
+        )
+
+    @classmethod
+    def from_state(cls, value: Mapping[str, Any]) -> "OriginalRuntimeAdapterV1":
+        """Restore state only for the exact sealed Original policy identity."""
+
+        if not isinstance(value, Mapping):
+            raise ControllerContractError(
+                "Original controller state must be a mapping"
+            )
+        controller = cls()
+        if (
+            value.get("schema")
+            != "recclaw.original-runtime-adapter-state.v1"
+            or value.get("identity_digest") != controller.identity_digest
+        ):
+            raise ControllerContractError(
+                "Original controller state identity drift"
+            )
+        history = value.get("history", ())
+        cached = value.get("cached_proposals", ())
+        if not isinstance(history, (tuple, list)) or not isinstance(
+            cached, (tuple, list)
+        ):
+            raise ControllerContractError(
+                "Original controller state payload is invalid"
+            )
+        controller.history = [dict(item) for item in history]
+        controller.cached_proposals = tuple(dict(item) for item in cached)
+        last_refresh = value.get("last_refresh_round")
+        controller.last_refresh_round = (
+            None if last_refresh is None else int(last_refresh)
+        )
+        return controller
+
 
 @dataclass(frozen=True, slots=True)
 class ResearchLineControllerV1:

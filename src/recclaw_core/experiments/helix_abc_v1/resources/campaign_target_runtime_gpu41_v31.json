@@ -1,0 +1,47 @@
+{
+  "dataset_contract": {
+    "development_validation_file_digest": "631911b8e59d312e110ba7205151bcda3d52378ecbf510d48d8b9cc162956cc9",
+    "search_data_root": "/ssd/tingrangan/recclaw_research_line/p7_stage_20260805/evaluator-data-v2-round-test-feedback",
+    "train_file_digest": "c84b1a4f6c6d974f32f126b173f11f7af8e12e1a143a50ac5a53e9945903491a"
+  },
+  "data_loading": {
+    "dataloader_workers": 0,
+    "scope": "LOADING_CONCURRENCY_ONLY",
+    "selection_basis": "GPU41_CU128_EPOCH0_MULTIPROCESS_STALL_PREFLIGHT"
+  },
+  "data_loading_digest": "d432f8718e8e87885be6b7a6eccd3d70b4e4da435b1a5d77312920900e8dd8bc",
+  "driver_stack": {
+    "nvidia_driver_version": "570.144",
+    "path": "/NAS2020/Datasets/DMGroup/tingrangan/recclaw_gpu41_preflight_gpu_stack_20260804_01/driver-570.144"
+  },
+  "gpu_selection": {
+    "cuda_visible_devices": "MUST_BE_UNSET",
+    "native_gpu_id": 2,
+    "selection_mode": "NATIVE_GPU_ID"
+  },
+  "pip_freeze_digest": "b4630fc79fc7ef4fb00247b98656bd28919648bb87fba2a9abf594ff0edc32d4",
+  "python_executable": "/ssd/tingrangan/recclaw_research_line/p7_stage_20260805/env-py310-cu128/bin/python",
+  "python_executable_sha256": "dc3f1b0946f2d238b4aa14a20ac21f99220ab4871b3953e596b677455f927a0d",
+  "recbole_contract": {
+    "root": "/ssd/tingrangan/recclaw_research_formal_20260811_01/stage/recbole-v17-matched-gpu5",
+    "source_manifest_count": 736,
+    "source_manifest_digest": "eb81a24cde2d3061ad8ad6cd8a6aec9190a5a3410a853b4c9645fc434145c57d"
+  },
+  "schema": "recclaw.campaign-target-runtime.v31",
+  "status": "FROZEN_PREOUTCOME_READ_ONLY_OBSERVATION",
+  "target_host": "gpu41",
+  "torch_cuda_environment": {
+    "cuda_available": true,
+    "cudnn_version": 91002,
+    "device_count": 8,
+    "nvidia_driver_version": "570.144",
+    "primary_device_capability": [
+      8,
+      6
+    ],
+    "primary_device_name": "NVIDIA GeForce RTX 3080 Ti",
+    "torch_cuda_build": "12.8",
+    "torch_version": "2.10.0+cu128"
+  },
+  "torch_cuda_environment_digest": "52ebe9572dcd1fb8dea0a3ed4ad746d085b5d0fd65d239232badf867f2dbc3ea"
+}

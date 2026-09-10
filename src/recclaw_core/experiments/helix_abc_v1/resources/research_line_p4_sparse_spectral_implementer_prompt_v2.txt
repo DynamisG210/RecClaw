@@ -1,0 +1,98 @@
+Implement the selected P4 sparse/spectral mechanism using fitting/scoring ABI 2.
+Return the shared strict-schema response with exactly three files. The executor
+owns the model class, immutable FaGSP parent, loss, public scoring, data binding,
+coefficient/state registration, device movement, checkpoints and static caching.
+Do not implement those interfaces, import the model base, or define model classes.
+
+recclaw_ext/candidate.py contains imports, mathematical helpers and two functions:
+
+def fit_residual(parameters, inputs):
+    # Return {"coefficients": floating Tensor, "state": {name: Tensor, ...}}.
+    # Fit only the declared scientific coefficients and operator state.
+
+def residual_scores(coefficients, state, parameters, inputs):
+    # Return only delta, shape [U,I]. The executor computes parent_scores + delta.
+
+Neither function receives self, Config or Dataset. Do not register buffers or
+parameters, manage a cache, or create another coefficient copy in the scoring
+function. The executor supplies your fitted coefficients and tensor state.
+parameters is the ordinary resolved config dictionary. State is a flat mapping
+of names to tensors, NumPy arrays or numeric values, persisted as tensor buffers.
+Use parameters for configuration; do not put functions or configuration dicts in state.
+Coefficient tensors can have the shape required by the mathematics. A static
+operator with no scientific coefficients may return an empty floating tensor;
+do not invent a gain or optimizer parameter merely to satisfy this interface.
+
+Fitting input ownership:
+- p4_fit_input_mode explicitly selects FULL_TRAIN or MASKED_TRAIN. Do not infer it
+  from a word in the proposal or replace the declared runtime fitting/target split.
+- FULL_TRAIN supplies the existing full training matrix and its parent factors.
+- MASKED_TRAIN removes ceil(p4_mask_fraction * observed_train_edges) edges using
+  NumPy default_rng(actual_seed).choice without replacement. All supplied matrices,
+  degrees, singular factors and parent reference scores are recomputed from this
+  masked matrix. The full training input is not passed to fit_residual.
+- target_rows, target_cols and target_values identify the binary fitting targets:
+  removed train edges for MASKED_TRAIN, observed train edges for FULL_TRAIN.
+  Use the declared objective. If it fits a score residual, target_values minus
+  inputs["parent_scores"][target_rows,target_cols] uses the same fitting view.
+- Do not redraw or replace the runtime-owned fitting input or target mask, or
+  substitute row subsampling for that input masking.
+- The mechanism may construct declared train-only internal views, including
+  masked views, from the supplied fitting matrix. Leave the runtime inputs and
+  targets unchanged; MASKED_TRAIN supervision edges stay outside all fitting
+  feature views. Any normalization, degrees or factors used to represent an
+  internal view must correspond to that view; supplied factors describe the
+  supplied fitting view. Follow the proposal's view construction and decomposition.
+  Additional views are required only when the selected mechanism calls for them.
+  A scientifically different decomposition remains yours to compute from the
+  supplied fitting matrix; its solver, rank and precision must match the proposal.
+
+Both fitting and scoring inputs contain these same stable field names, referring
+to the appropriate view at each stage:
+- parent_scores: float64 Tensor [U,I], frozen FaGSP evaluated on that view.
+- train_matrix: binary float64 sparse COO Tensor [U,I]; train_csr: its CPU CSR.
+- user_degree [U], item_degree [I], including RecBole zero padding.
+- svd_left [U,K], svd_values [K], svd_right_t [K,I]: exact degree-normalized
+  SVD of that view, descending singular values, with item padding restored.
+- seed: actual frozen training seed. U and I include padding and can be read
+  from inputs["parent_scores"].shape. Input tensors follow the model device.
+Inputs are read-only. The scoring function receives the unchanged full-training
+view, plus the previously fitted coefficients/state. It applies the declared
+operator; it must not refit coefficients from the scoring view or its labels.
+
+TRAIN_ONLY_PRECOMPUTE fits once and evaluates residual_scores once to cache the
+static delta. BPR_COEFFICIENTS registers the declared coefficients as parameters
+and evaluates this function differentiably under the existing fixed BPR objective.
+Honor the declared fitting mode and objective; do not substitute one for the other.
+
+p4_zero_action is COEFFICIENTS_ZERO only when zeroing the actual scientific
+coefficient tensor is the proposal's zero action; otherwise it is NOT_DECLARED.
+For COEFFICIENTS_ZERO, the executor zeros that same tensor, keeps the mechanism
+enabled, recomputes dependent static output with residual_scores, and checks the
+real public scores against parent. It then restores the coefficients and output.
+Thus this function must return zero delta for the declared zero action. Returning
+parent_scores would produce twice the parent. Do not create a parallel switch or
+zero cache by hand to bypass the mechanism. Nonlinear operator dependence is allowed.
+
+A complete changed operator is represented by F_new(A) - inputs["parent_scores"]
+in the scoring function; the public parent addition remains machine-owned exactly
+once. If a changed interaction matrix needs new normalization/decomposition and
+FaGSP stages, implement them. Projecting a delta through old factors is not equal
+to rebuilding the changed operator. The reference below binarizes its input;
+calling it on weighted CSR would discard those weights.
+
+Include empty recclaw_ext/__init__.py and recclaw_ext/trainer.py; the executor
+writes their canonical export and Trainer. Preserve frozen FaGSP parameters,
+seed2026 raw ML1M per-user RS8/1/1 and full-sort dev selection. No embeddings,
+GCN, undeclared loss, hidden fallback, test access, network/filesystem access,
+static answers or outcome claims. Reject nonfinite math without nan_to_num.
+Implement the actual minimal_testable_wedge; a passing interface check alone
+does not establish the scientific hypothesis or a matched-control result.
+
+Frozen parent reference (do not redefine or mutate the inherited parent):
+```python
+{{FROZEN_FAGSP_REFERENCE}}
+```
+
+Shared blind request:
+{{SHARED_IMPLEMENTER_REQUEST_JSON}}

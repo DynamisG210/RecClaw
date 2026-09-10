@@ -1,0 +1,200 @@
+{
+  "schema": "recclaw.single-parent-search-space-launch.v1",
+  "profile_key": "semantic_id_generative",
+  "protocol_ref": "recclaw.protocol.p6.amazon2014-beauty-legal-sid-development.v1",
+  "seed": 54201,
+  "frozen_profile": {
+    "profile_id": "recclaw-profile-p6-semantic-id-amazon2014-beauty-v1-seed54201-single-parent-v1",
+    "frozen_fields": {
+      "dataset": "beauty-sasrec",
+      "dataset_snapshot": {
+        "interaction_sha256": "a1342aa7c0e586a6e2587cf39190b3c18c3f26b250ffe15fef6029c74805f36a",
+        "rows": 198502,
+        "users": 22363,
+        "items": 12101
+      },
+      "content_asset_identity": {
+        "kind": "SENTENCE_T5_ITEM_EMBEDDING",
+        "sha256": "dfa12623e026474a5ee5e4fe62a77136bcaf9acc2359bbcf4fba1ccb423a8703"
+      },
+      "structured_field_asset_identity": {
+        "kind": "RESID_BEAUTY_DERIVATION",
+        "sha256": "74c79a63af26002b66b0db3979f28ab97788a6b10bc3259f38321b492cc21fdd",
+        "missing_value_policy": "EXPLICIT_UNKNOWN"
+      },
+      "item_id_mapping_identity": {
+        "catalog_items_sha256": "fd167c8e3b505a4feea02c0dba229b845f3ef6f5c06d667a7e2e2554287ac9dd",
+        "mapping_scope": "RAW_FULL_CATALOG_ITEM_TO_INTERNAL_ID"
+      },
+      "split": {
+        "strategy": "LEAVE_TWO_OUT",
+        "order": "CHRONOLOGICAL",
+        "group_by": "user",
+        "valid": "PENULTIMATE_EVENT",
+        "test": "LAST_EVENT"
+      },
+      "history_protocol": {
+        "construction": "STRICT_OBSERVED_PREFIX",
+        "maximum_length": 20
+      },
+      "candidate_universe": "ORDINARY_BEAM20_LEGAL_GENERATED_ITEMS_DENSE_RERANKED_WITHOUT_STATIC_FILL",
+      "seen_repeat_policy": "EXCLUDE_HISTORY_AT_ITEM_LEVEL_AFTER_RESOLUTION",
+      "metric_semantics": "NDCG@10_BEST_VALIDATION_SELECTED_DEVELOPMENT_ONLY",
+      "evaluator": "OFFICIAL_LIGER_CANDIDATE_LOCAL_GEN20_DENSE",
+      "seed_policy": {
+        "actual_discovery_training_seed": 54201,
+        "non_54201_training_requires_explicit_authorization": true
+      },
+      "tokenizer_update_budget": {
+        "stage_ceiling_epochs": 150,
+        "asset_training_is_charged_and_reported": true
+      },
+      "recommender_update_budget": {
+        "epochs_ceiling": 150,
+        "validation_every": 10,
+        "patience_epochs": 30
+      },
+      "posttraining_budget": {
+        "epochs_ceiling": 100,
+        "stage_must_be_declared": true
+      },
+      "decoding_budget": {
+        "maximum_beams": 50,
+        "legal_item_resolution_required": true,
+        "dense_rerank_must_report_separate_cost": true
+      }
+    }
+  },
+  "execution_contract": {
+    "capability_family": "SEMANTIC_ID_GENERATIVE_RECOMMENDATION",
+    "model": "FreshCandidateModel",
+    "base_model_config": "BERT4Rec",
+    "required_dependencies": [
+      "numpy",
+      "python-stdlib",
+      "pytorch",
+      "recbole-runtime",
+      "torch",
+      "transformers==4.41.2"
+    ],
+    "config_overrides": {
+      "recclaw_model_type": "SEQUENTIAL",
+      "recclaw_input_semantics": "SEMANTIC_ID_PREFIX_TO_LEGAL_ITEM",
+      "recclaw_qualification_train_batch_limit": 2,
+      "recclaw_qualification_eval_batch_limit": 2,
+      "TIME_FIELD": "chrono_order",
+      "ITEM_LIST_LENGTH_FIELD": "item_length",
+      "MAX_ITEM_LIST_LENGTH": 20,
+      "alias_of_item_id": [
+        "item_id_list"
+      ],
+      "eval_args": {
+        "split": {
+          "LS": "valid_and_test"
+        },
+        "order": "TO",
+        "group_by": "user",
+        "mode": {
+          "valid": "full",
+          "test": "full"
+        }
+      },
+      "repeatable": true,
+      "metrics": [
+        "NDCG"
+      ],
+      "topk": [
+        10
+      ],
+      "valid_metric": "NDCG@10",
+      "train_neg_sample_args": null,
+      "train_batch_size": 256,
+      "eval_batch_size": 32,
+      "epochs": 150,
+      "eval_step": 10,
+      "stopping_step": 3,
+      "recclaw_liger_eval_every": 10,
+      "recclaw_liger_patience_epochs": 30,
+      "recclaw_liger_eval_chunk_size": 32,
+      "recclaw_liger_learning_rate": 0.0003,
+      "recclaw_liger_weight_decay": 0.035,
+      "recclaw_liger_warmup_steps": 10000,
+      "recclaw_liger_scheduler_total_steps": 200000,
+      "recclaw_content_asset": null,
+      "recclaw_structured_field_manifest": null,
+      "recclaw_catalog_mapping": null,
+      "recclaw_candidate_local_evaluator": true
+    },
+    "search_data": {
+      "root": null,
+      "manifest_ref": null,
+      "manifest_sha256": null
+    }
+  },
+  "parent_source": {
+    "source_ref": null,
+    "source_sha256": null,
+    "comparator_ref": null,
+    "comparator_digest": null,
+    "frozen_ndcg_at_10": null
+  },
+  "baseline_context": {
+    "schema": "recclaw.research-baseline-context.v2",
+    "research_profile_id": "SEMANTIC_ID_GENERATIVE_LIGER_PARENT_V2",
+    "mechanism_space": "SEMANTIC_ID_GENERATIVE_MECHANISM_SPACE_V1",
+    "mechanism_language_id": "recclaw.semantic-id-generative.liger-parent-language.v2",
+    "metric": "NDCG@10",
+    "split": "data/dev",
+    "parent_anchor": {
+      "name": "LIGER",
+      "base_model_config": "BERT4Rec",
+      "mechanism_summary": "Frozen content features and frozen three-level LETTER semantic IDs plus collision suffix condition a 6-layer encoder/6-layer decoder T5 over SID histories; token CE and train-seen-masked dense CE train the parent, ordinary beam-20 generation drops invalid SIDs, resolves and deduplicates legal items, then ranks only those candidates by dense logits without generator-score fusion.",
+      "binding": null,
+      "mechanism_program": null,
+      "source_bundle": null,
+      "paired_metric": {
+        "seed": 54201,
+        "value": null
+      }
+    },
+    "search_objective": "After replacing the non-equivalent scaffold with official T5-compatible LIGER source and reproducing the frozen development parent, maximize real fixed-protocol data/dev NDCG@10. A faithful measured improvement may become the next construction parent while LIGER remains the fixed root comparator.",
+    "decision_semantics": {
+      "parent": "LIGER is the initial construction anchor and fixed paired comparator after official-source replacement and frozen development reproduction; later construction may use a successful measured descendant.",
+      "frontier": "The best faithful measured descendant becomes eligible as the active construction parent and supplies mechanism feedback.",
+      "ordinary_search": "One core causal delta plus at most one support delta.",
+      "innovation_lane": "frontier_architect may cross zones or define new typed mechanisms when expected effect justifies it."
+    }
+  },
+  "research_runtime": {
+    "epochs": 150,
+    "eval_step": 10,
+    "stopping_step": 3,
+    "implementation_requirements": [
+      "official T5-compatible candidate plus candidate-local staged trainer/evaluator",
+      "complete legal SID-to-item mapping",
+      "full-catalog item scores after resolution",
+      "finite tokenizer and recommender gradients when jointly declared"
+    ],
+    "compatibility_requirements": [
+      "12101-item catalog preserved",
+      "history excluded after item resolution",
+      "invalid SIDs cannot become static fallback candidates",
+      "empty or short legal candidate lists are scored candidate-locally without catalog fill",
+      "official exact-parent execution requires transformers==4.41.2 in the frozen runtime",
+      "tokenizer and recommender budgets reported separately"
+    ],
+    "protocol_requirements": [
+      "chronological leave-two-out",
+      "validation never reads test",
+      "best legal-item development NDCG@10 checkpoint",
+      "one post-selection test read only outside Research Line"
+    ]
+  },
+  "evidence": {
+    "known_parent_result_seed": 54201,
+    "known_parent_development_ndcg_at_10": 0.06440683664232674,
+    "known_result_ref": "EXPLICIT_PARENT_RESULT_REQUIRED_BY_READY_BUILDER",
+    "launch_asset_status": "BUILDER_INPUTS_REQUIRED",
+    "formal_launch_rule": "The local PyTorch adapter is a non-equivalent mechanical scaffold. Formal launch requires official T5-compatible exact source on transformers==4.41.2, the exact seed-54201 hybrid Gen20+dense result, and an explicitly supplied physical train-and-development-only search substrate."
+  }
+}

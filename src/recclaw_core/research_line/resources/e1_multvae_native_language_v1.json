@@ -1,0 +1,86 @@
+{
+  "schema": "recclaw.e1.multvae-native-language.v1",
+  "language_id": "recclaw.e1.multvae-native-language.v1",
+  "research_profile_id": "recclaw.search-space-adapter.e1-multvae.v1",
+  "language_semantics": {
+    "kind": "causal_research_map",
+    "not_a_candidate_catalog": true,
+    "known_affordances_limit_innovation": false,
+    "one_coherent_intervention_per_candidate": true
+  },
+  "frozen_parent": {
+    "candidate_id": "e1-multvae-pilot-rh-parent-v1",
+    "origin": "RecHarness pilot winner, shared symmetrically; not independently calibrated or globally optimal",
+    "input": "implicit user-item interaction vector",
+    "preprocessing": "effective training dropout 0.125 then per-user L2 normalization; external dropout_prob remains 0.5 and exact model source multiplies it by 0.25",
+    "encoder": "n_items -> tanh(384) -> 128-dimensional diagonal Gaussian",
+    "latent_sampling": "mu + Normal(0,1) * exp(0.5 * log_variance)",
+    "decoder": "128 -> tanh(384) -> n_items unnormalized logits",
+    "objective": "multinomial negative log likelihood plus KL weight min(0.2, update/2000), reaching the 0.2 cap at update 400",
+    "optimization": "Adam lr=0.001 weight_decay=0 batch_size=256",
+    "selection": "best development NDCG@10 with patience 5"
+  },
+  "causal_zones": [
+    {
+      "zone_id": "INPUT_REPRESENTATION",
+      "research_question": "Which corruption, normalization, history weighting, or representation transform exposes useful preference signal without leaking development targets?",
+      "parent_behavior": "dropout then L2 normalization of the train-history vector",
+      "known_affordances": ["adaptive corruption", "frequency-aware history weighting", "learned normalization"]
+    },
+    {
+      "zone_id": "POSTERIOR_PRIOR",
+      "research_question": "Which posterior family or prior geometry better preserves ranking-relevant uncertainty?",
+      "parent_behavior": "diagonal Gaussian posterior and standard-normal prior",
+      "known_affordances": ["mixture or hierarchical priors", "structured covariance", "deterministic posterior alternatives"]
+    },
+    {
+      "zone_id": "BOTTLENECK_GEOMETRY",
+      "research_question": "Which latent geometry, routing, or capacity allocation improves the ranking signal carried through the bottleneck?",
+      "parent_behavior": "one 128-dimensional Euclidean stochastic bottleneck",
+      "known_affordances": ["multi-interest bottlenecks", "product spaces", "adaptive latent capacity"]
+    },
+    {
+      "zone_id": "DECODER_SCORING",
+      "research_question": "Which decoder or item-scoring mechanism better separates relevant unseen items under full-sort ranking?",
+      "parent_behavior": "symmetric tanh MLP decoder emitting item logits",
+      "known_affordances": ["factorized item decoders", "residual history scoring", "calibrated or energy-based logits"]
+    },
+    {
+      "zone_id": "OBJECTIVE_REGULARIZATION",
+      "research_question": "Which training signal aligns representation learning more directly with top-k recommendation quality?",
+      "parent_behavior": "multinomial reconstruction plus scheduled KL",
+      "known_affordances": ["ranking-aware reconstruction", "contrastive latent regularization", "exposure or popularity correction"]
+    },
+    {
+      "zone_id": "OPTIMIZATION_DYNAMICS",
+      "research_question": "Which mechanism-specific optimization dynamics make a valid causal intervention learnable within the fixed budget?",
+      "parent_behavior": "Adam with one global objective and fixed KL schedule",
+      "known_affordances": ["within-model loss curricula", "gradient routing under the unchanged Adam step count", "uncertainty-aware loss schedules"],
+      "fixed_trainer_boundary": "Do not change the optimizer or scheduler and do not add optimizer steps, trainer steps, or training passes."
+    },
+    {
+      "zone_id": "INFERENCE_CALIBRATION",
+      "research_question": "Which inference-time aggregation or calibration converts learned preference evidence into better full-sort ordering?",
+      "parent_behavior": "posterior mean decoded directly to item logits",
+      "known_affordances": ["posterior aggregation", "history-aware calibration", "uncertainty-adjusted ranking"]
+    }
+  ],
+  "innovation_freedom": {
+    "architecture_rewrite_allowed": true,
+    "custom_model_allowed": true,
+    "may_cross_multiple_zones_when_causally_required": true,
+    "must_preserve": [
+      "RecBole GeneralRecommender user-wise ABI",
+      "frozen train and development data",
+      "3883-item metadata-defined catalog plus padding",
+      "full-sort development evaluator",
+      "training seed and budget"
+    ],
+    "forbidden_shortcuts": [
+      "parameter-only tuning presented as a new mechanism",
+      "unchanged-parent wrapper or silent fallback",
+      "heldout access or outcome-conditioned code",
+      "custom trainer or evaluator"
+    ]
+  }
+}

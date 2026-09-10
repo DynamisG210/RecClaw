@@ -23,7 +23,8 @@
                 "path": {
                   "enum": [
                     "recclaw_ext/__init__.py",
-                    "recclaw_ext/candidate.py"
+                    "recclaw_ext/candidate.py",
+                    "recclaw_ext/trainer.py"
                   ],
                   "type": "string"
                 }
@@ -34,8 +35,8 @@
               ],
               "type": "object"
             },
-            "maxItems": 2,
-            "minItems": 2,
+            "maxItems": 3,
+            "minItems": 1,
             "type": "array"
           },
           "implementation_summary": {

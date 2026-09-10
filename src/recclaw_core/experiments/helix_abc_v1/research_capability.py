@@ -29,6 +29,8 @@ from .research_contracts import (
     RouterHardGateDecisionV1,
     RouterHardGateReasonV1,
     SearchUtilityFeaturesV1,
+    MECHANISM_AXIS_UNIVERSE_V1,
+    canonical_mechanism_axis,
 )
 
 
@@ -318,7 +320,10 @@ class StrongStaticRouterV1:
             / 0.5
             * features.frontier_potential
             + 0.19 * features.information_gain
-            - 0.08 * features.cost
+            - 0.08
+            * float(acquisition.get("cost_weight", 0.5))
+            / 0.5
+            * features.cost
             - 0.10 * features.blocker_risk,
             12,
         )
@@ -454,7 +459,7 @@ class VersionedResearchPolicyV1:
     mechanism_axis_targeting: tuple[str, ...]
     memory_retrieval_policy: str
     router_priors: tuple[tuple[str, float], ...]
-    acquisition_parameters: tuple[tuple[str, float], ...]
+    acquisition_parameters: tuple[tuple[str, Any], ...]
     predecessor_digest: str | None
     meta_router_policy_digest: str | None = None
     meta_router_promotion_decision_digest: str | None = None
@@ -474,20 +479,178 @@ def initial_research_policy() -> VersionedResearchPolicyV1:
     return VersionedResearchPolicyV1(
         version=1,
         producer_token_allocation=tuple((role, 0.25) for role in DISCOVERY_PRODUCERS),
-        mechanism_axis_targeting=(
-            "architecture",
-            "geometry",
-            "message_transform",
-            "objective",
-            "propagation",
-            "sampling",
-            "self_supervision",
-        ),
+        mechanism_axis_targeting=MECHANISM_AXIS_UNIVERSE_V1,
         memory_retrieval_policy="ROLE_SCOPED_PRIOR_ROUND_V1",
         router_priors=(("runnable_probability", 0.5), ("useful_signal", 0.5)),
         acquisition_parameters=(("exploration_weight", 0.5), ("cost_weight", 0.5)),
         predecessor_digest=None,
     )
+
+
+def _axis_values(
+    value: Any,
+    *,
+    axis_universe: tuple[str, ...] = MECHANISM_AXIS_UNIVERSE_V1,
+) -> tuple[str, ...]:
+    if isinstance(value, str):
+        value = (value,)
+    if not isinstance(value, (tuple, list)):
+        return ()
+    allowed = tuple(axis_universe)
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        text = item.strip()
+        axis = text if text in allowed else canonical_mechanism_axis(text)
+        if axis in allowed and axis not in result:
+            result.append(axis)
+    return tuple(result)
+
+
+def _reorder_mechanism_axes(
+    policy: VersionedResearchPolicyV1,
+    aggregate: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Reorder evidence priorities while retaining the complete axis universe.
+
+    ``measured_axes`` describes what was actually touched.  ``uncovered_axes``
+    describes coverage gaps, and ``causal_followup_axes`` describes axes that
+    still need a discriminative contrast.  They are intentionally separate:
+    the current event is not itself a gap, and a measured axis may still be a
+    follow-up priority after a negative or confounded result.
+    """
+
+    raw_previous = tuple(policy.mechanism_axis_targeting)
+    legacy_members = tuple(
+        axis for axis in raw_previous if axis in MECHANISM_AXIS_UNIVERSE_V1
+    )
+    if legacy_members:
+        previous = _axis_values(raw_previous)
+        axis_universe = MECHANISM_AXIS_UNIVERSE_V1
+        valid_universe = (
+            len(legacy_members) == len(raw_previous)
+            and len(raw_previous) == len(axis_universe)
+            and raw_previous == previous
+            and set(previous) == set(axis_universe)
+        )
+    else:
+        previous = _axis_values(
+            raw_previous,
+            axis_universe=raw_previous,
+        )
+        axis_universe = previous
+        valid_universe = bool(previous) and raw_previous == previous
+    if not valid_universe:
+        raise ResearchCapabilityError(
+            "mechanism_axis_targeting must already contain a complete "
+            "canonical axis universe before reordering"
+        )
+    if legacy_members:
+        ranking_universe = axis_universe
+        non_focused_tail: tuple[str, ...] = ()
+    else:
+        focused_axes = _axis_values(
+            aggregate.get("focused_axes", axis_universe),
+            axis_universe=axis_universe,
+        )
+        ranking_universe = focused_axes or axis_universe
+        non_focused_tail = tuple(
+            axis for axis in axis_universe if axis not in ranking_universe
+        )
+    followups = _axis_values(
+        aggregate.get("causal_followup_axes", ()),
+        axis_universe=ranking_universe,
+    )
+    if "uncovered_axes" in aggregate:
+        uncovered = _axis_values(
+            aggregate.get("uncovered_axes"),
+            axis_universe=ranking_universe,
+        )
+    else:
+        measured = set(
+            _axis_values(
+                aggregate.get("measured_axes", ()),
+                axis_universe=ranking_universe,
+            )
+        )
+        uncovered = tuple(
+            axis for axis in ranking_universe if axis not in measured
+        )
+    explicit_order = _axis_values(
+        aggregate.get("axis_priority_order", ()),
+        axis_universe=ranking_universe,
+    )
+    raw_scores = aggregate.get("axis_scores", {})
+    scores = {
+        axis: float(raw_scores.get(axis, 0.0))
+        for axis in ranking_universe
+        if isinstance(raw_scores, Mapping)
+        and isinstance(raw_scores.get(axis, 0.0), (int, float))
+        and not isinstance(raw_scores.get(axis, 0.0), bool)
+    }
+    ordered: list[str] = []
+    for group in (followups, uncovered):
+        for axis in group:
+            if axis not in ordered:
+                ordered.append(axis)
+    remaining = [axis for axis in ranking_universe if axis not in ordered]
+    explicit_rank = {axis: index for index, axis in enumerate(explicit_order)}
+    remaining.sort(
+        key=lambda axis: (
+            -scores.get(axis, 0.0),
+            explicit_rank.get(axis, len(explicit_rank)),
+            previous.index(axis),
+        )
+    )
+    ordered.extend(remaining)
+    ordered.extend(non_focused_tail)
+    return tuple(ordered)
+
+
+def _next_acquisition_parameters(
+    policy: VersionedResearchPolicyV1,
+    aggregate: Mapping[str, Any],
+) -> tuple[tuple[str, Any], ...]:
+    """Carry the live research question into the next acquisition call."""
+
+    parameters: dict[str, Any] = dict(policy.acquisition_parameters)
+    # Discovery remains primary. Durable tasks inform ranking and persist for
+    # later satisfaction, but they do not turn every discovery lane into a
+    # matched-control chain around the latest candidate.
+    parameters.update(
+        {
+            "task_alignment_weight": 0.14,
+            "novelty_weight": 0.26,
+            "axis_coverage_weight": 0.17,
+            "executability_weight": 0.20,
+            "producer_balance_weight": 0.05,
+            "cost_tiebreak_weight": 0.03,
+            "outcome_quality_weight": 0.15,
+        }
+    )
+    for key in (
+        "next_discriminative_task",
+        "core_mechanism_contrast",
+        "unresolved_confounding",
+        "last_evidence_class",
+        "last_failure_class",
+        "last_axis_footprint",
+        "focused_axes",
+        "uncovered_axes",
+        "causal_followup_axes",
+        "axis_scores",
+        "producer_useful_rates",
+        "producer_quality_scores",
+        "family_quality_scores",
+        "experiment_quality_scores",
+        "attempted_family_digests",
+        "attempted_experiment_digests",
+        "research_task_record",
+    ):
+        if key in aggregate and aggregate[key] is not None:
+            parameters[key] = canonical_value(aggregate[key])
+    return tuple((str(key), value) for key, value in parameters.items())
 
 
 @dataclass(frozen=True, slots=True)
@@ -509,20 +672,66 @@ class VersionedMetaPolicyUpdaterV1:
             raise ResearchCapabilityError("Meta requires aggregate rates for every Producer")
         raw = {role: max(0.15, float(useful[role])) for role in DISCOVERY_PRODUCERS}
         total = sum(raw.values())
-        allocation = tuple((role, round(raw[role] / total, 12)) for role in DISCOVERY_PRODUCERS)
-        axis_gaps = aggregate.get("mechanism_axis_gaps", ())
-        targeting = tuple(dict.fromkeys(str(item) for item in axis_gaps)) or policy.mechanism_axis_targeting
-        calibration_error = float(aggregate.get("calibration_error", 0.0))
+        rounded = {
+            role: round(raw[role] / total, 12)
+            for role in DISCOVERY_PRODUCERS[:-1]
+        }
+        rounded[DISCOVERY_PRODUCERS[-1]] = round(
+            1.0 - sum(rounded.values()),
+            12,
+        )
+        allocation = tuple((role, rounded[role]) for role in DISCOVERY_PRODUCERS)
+        targeting = _reorder_mechanism_axes(policy, aggregate)
+        raw_quality = aggregate.get("producer_quality_scores", {})
+        quality_values = (
+            tuple(float(value) for value in raw_quality.values())
+            if isinstance(raw_quality, Mapping)
+            else ()
+        )
+        parent_priors = dict(policy.router_priors)
+        parent_useful = float(parent_priors["useful_signal"])
+        quality_signal = (
+            sum(quality_values) / len(quality_values)
+            if quality_values else 0.0
+        )
+        quality_signal = max(-0.5, min(0.5, quality_signal))
+        acquisition = dict(_next_acquisition_parameters(policy, aggregate))
+        # Signed comparator quality continuously shifts explore/exploit, while
+        # evidence magnitude strengthens outcome-aware ranking in both
+        # directions.  Negative evidence therefore remains influential enough
+        # to avoid repetition instead of being discounted as low quality.
+        acquisition.update(
+            {
+                "exploration_weight": round(0.5 - 0.4 * quality_signal, 12),
+                "novelty_weight": round(0.26 - 0.2 * quality_signal, 12),
+                "outcome_quality_weight": round(
+                    0.15 + 0.2 * abs(quality_signal),
+                    12,
+                ),
+            }
+        )
         return VersionedResearchPolicyV1(
             version=policy.version + 1,
             producer_token_allocation=allocation,
             mechanism_axis_targeting=targeting,
             memory_retrieval_policy=policy.memory_retrieval_policy,
             router_priors=(
-                ("runnable_probability", round(0.5 + min(calibration_error, 0.2), 12)),
-                ("useful_signal", round(0.5 - min(calibration_error, 0.2), 12)),
+                (
+                    "runnable_probability",
+                    float(parent_priors["runnable_probability"]),
+                ),
+                (
+                    "useful_signal",
+                    round(
+                        max(
+                            0.0,
+                            min(1.0, parent_useful + 0.4 * quality_signal),
+                        ),
+                        12,
+                    ),
+                ),
             ),
-            acquisition_parameters=policy.acquisition_parameters,
+            acquisition_parameters=tuple(acquisition.items()),
             predecessor_digest=policy.digest,
             meta_router_policy_digest=policy.meta_router_policy_digest,
             meta_router_promotion_decision_digest=(

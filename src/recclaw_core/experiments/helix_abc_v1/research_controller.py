@@ -159,7 +159,7 @@ class ResearchLineControllerV1:
         if not feedback.controller_update_allowed:
             if beliefs:
                 raise ValueError(
-                    "state-preserving V13 feedback cannot carry beliefs"
+                    "state-preserving V13 feedback cannot carry mechanism beliefs"
                 )
             return {
                 "feedback_consumption_count": 0,
@@ -254,4 +254,5 @@ class ResearchLineControllerV1:
         return build_meta_update_proposal(
             policy=self.policy,
             search_memory=self.memory_writer.head,
+            outcome_aggregate=dict(self.policy.acquisition_parameters),
         )

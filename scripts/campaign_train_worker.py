@@ -5,15 +5,93 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import hashlib
 import inspect
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
+
+
+def _use_short_multiprocessing_temp_root() -> str:
+    """Keep PyTorch worker IPC sockets below the AF_UNIX path limit."""
+
+    temp_root = Path("/tmp")
+    if not temp_root.is_dir() or not os.access(temp_root, os.W_OK | os.X_OK):
+        raise RuntimeError("direct GPU worker requires a writable /tmp for IPC")
+    value = temp_root.as_posix()
+    os.environ["TMPDIR"] = value
+    # tempfile may already have cached the long run-private TMPDIR before
+    # RecBole constructs its multiprocessing DataLoader.
+    tempfile.tempdir = value
+    return value
+
+
+def _failure_scope_for_exception(
+    error: Exception,
+    *,
+    failure_phase: str,
+    runtime_dependencies: tuple[str, ...] = (),
+) -> str:
+    """Classify a caught worker failure by its actual responsibility boundary."""
+
+    if isinstance(
+        error,
+        (
+            BrokenPipeError,
+            ConnectionAbortedError,
+            ConnectionResetError,
+            ConnectionError,
+        ),
+    ):
+        return "WORKER_TRANSIENT"
+    if isinstance(error, OSError) and error.errno == errno.ENOSPC:
+        return "SHARED_INFRASTRUCTURE"
+    message = str(error).lower()
+    if any(
+        marker in message
+        for marker in (
+            "m6e_cuda_device_capability_unavailable",
+            "cuda unavailable",
+            "cuda is not available",
+            "no cuda gpus are available",
+            "found no nvidia driver",
+            "cuda driver version is insufficient",
+            "cuda initialization error",
+            "nvidia driver",
+            "nccl",
+            "no space left on device",
+            "data root unavailable",
+            "data root is unavailable",
+        )
+    ):
+        return "SHARED_INFRASTRUCTURE"
+    if failure_phase in {"SHARED_RUNTIME_SETUP", "SHARED_DATA_SETUP"}:
+        return "SHARED_INFRASTRUCTURE"
+    trace = error.__traceback__
+    while trace is not None:
+        frame = trace.tb_frame
+        if (
+            frame.f_globals.get("__name__") == "triton.runtime.build"
+            and frame.f_code.co_name == "compile_module_from_src"
+            and frame.f_locals.get("name") == "cuda_utils"
+        ):
+            # Triton's CUDA driver bootstrap is framework-owned.  Generated
+            # candidate kernels use a different module and remain local errors.
+            return "SHARED_INFRASTRUCTURE"
+        trace = trace.tb_next
+    if isinstance(error, ModuleNotFoundError) and error.name:
+        # Only a missing declared top-level module establishes runtime failure.
+        # An invented submodule/API inside an installed package is still a
+        # candidate error.  Distribution names may use '-' instead of '_'.
+        if error.name.replace("_", "-") in runtime_dependencies:
+            return "SHARED_INFRASTRUCTURE"
+    return "CANDIDATE_LOCAL"
 
 
 def _numeric_loss(value: object) -> float | list[float] | None:
@@ -30,6 +108,59 @@ def _numeric_loss(value: object) -> float | list[float] | None:
         if all(isinstance(item, float) for item in converted):
             return [float(item) for item in converted]
     return None
+
+
+def _validate_recipe_identity(
+    recipe: dict[str, object],
+    *,
+    model: str,
+    binding_digest: str,
+) -> None:
+    if (
+        recipe.get("model") != model
+        or recipe.get("entrypoint") is None
+        or recipe.get("mechanism_id") is None
+        or recipe.get("execution_binding_digest") != binding_digest
+    ):
+        raise RuntimeError("training execution recipe identity mismatch")
+
+
+def _resolve_training_cadence(
+    recipe_config: object,
+    *,
+    requested_epochs: object,
+    prefix_contract: object | None,
+    execution_purpose: str,
+) -> dict[str, int]:
+    """Keep the bounded probe cadence separate from Profile-owned formal cadence."""
+
+    if (
+        isinstance(requested_epochs, bool)
+        or not isinstance(requested_epochs, int)
+        or requested_epochs <= 0
+    ):
+        raise RuntimeError("requested epochs must be a positive integer")
+    if prefix_contract is not None:
+        if execution_purpose != "RESOURCE_PROBE_ONLY":
+            raise RuntimeError("fixed-batch prefix is restricted to resource probes")
+        return {
+            "epochs": requested_epochs,
+            "eval_step": 1,
+            "stopping_step": min(5, requested_epochs),
+        }
+    if not isinstance(recipe_config, dict):
+        raise RuntimeError("formal training recipe config must be a mapping")
+    cadence: dict[str, int] = {}
+    for field_name in ("epochs", "eval_step", "stopping_step"):
+        value = recipe_config.get(field_name)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise RuntimeError(
+                f"formal training recipe {field_name} must be a positive integer"
+            )
+        cadence[field_name] = value
+    if cadence["epochs"] != requested_epochs:
+        raise RuntimeError("formal training epochs differ from execution recipe")
+    return cadence
 
 
 def _install_fixed_batch_iteration(
@@ -77,8 +208,8 @@ def _preallocate_batches(
             selected.append(batch)
         if source_index >= maximum:
             break
-    if len(selected) != len(indices):
-        raise RuntimeError("fixed-batch prefix index exceeds data loader")
+    if not selected:
+        raise RuntimeError("fixed-batch prefix has no available data loader batches")
     return tuple(selected)
 
 
@@ -124,6 +255,20 @@ def _install_resource_telemetry(
             if parameter.requires_grad
         ),
     }
+    if getattr(trainer, "p4_fit_mode", None) == "TRAIN_ONLY_PRECOMPUTE":
+        initialization_memory = {}
+        for kind in ("allocated", "reserved"):
+            initialization_memory[f"initialization_peak_{kind}_mib"] = (
+                float(getattr(torch.cuda, f"max_memory_{kind}")(trainer.device)) / (1024 * 1024)
+                if torch.device(trainer.device).type == "cuda" else None
+            )
+        telemetry.update({
+            "p4_fit_mode": "TRAIN_ONLY_PRECOMPUTE",
+            "operator_fit_completed": bool(trainer.model._recclaw_p4_fit_completed),
+            "operator_fit_location": "TRAIN_ONLY_MODEL_INITIALIZATION",
+            "optimization_epochs_completed": 0,
+            **initialization_memory,
+        })
 
     def flush() -> None:
         _write_durable_json(telemetry_path, _finalize_resource_telemetry(telemetry))
@@ -188,11 +333,16 @@ def _install_resource_telemetry(
         flush()
 
     restore_iterations: list[object] = []
+    original_loss_for_restore: object | None = None
     if prefix_contract is not None:
         if preallocated_train_batches is None or preallocated_valid_batches is None:
             raise RuntimeError("fixed-batch prefix was not preallocated")
-        train_indices = tuple(int(value) for value in prefix_contract["train_batch_indices"])
-        valid_indices = tuple(int(value) for value in prefix_contract["eval_batch_indices"])
+        train_indices = tuple(
+            int(value) for value in prefix_contract["train_batch_indices"]
+        )[: len(preallocated_train_batches)]
+        valid_indices = tuple(
+            int(value) for value in prefix_contract["eval_batch_indices"]
+        )[: len(preallocated_valid_batches)]
         if type(train_data) is type(valid_data):
             raise RuntimeError("fixed-batch train and eval loader types overlap")
         restore_iterations.append(_install_fixed_batch_iteration(
@@ -210,6 +360,7 @@ def _install_resource_telemetry(
             on_batch_completed=batch_completed,
         ))
         original_loss = trainer.model.calculate_loss
+        original_loss_for_restore = original_loss
 
         def measured_loss(interaction: object) -> object:
             result = original_loss(interaction)
@@ -278,7 +429,10 @@ def _install_resource_telemetry(
             }
         )
         active.clear()
-        active.update({"epoch": epoch, "phase": phase, "status": "PHASE_COMPLETED"})
+        active.update({
+            "epoch": epoch, "phase": phase,
+            "status": "PHASE_COMPLETED" if status == "SUCCESS" else status,
+        })
         flush()
 
     def measured_train_epoch(
@@ -298,7 +452,7 @@ def _install_resource_telemetry(
                 show_progress=show_progress,
             )
             return loss
-        except Exception:
+        except BaseException:
             status = "RUNTIME_FAILURE"
             raise
         finally:
@@ -328,7 +482,7 @@ def _install_resource_telemetry(
                 show_progress=show_progress,
             )
             return result
-        except Exception:
+        except BaseException:
             status = "RUNTIME_FAILURE"
             raise
         finally:
@@ -355,6 +509,8 @@ def _install_resource_telemetry(
     def restore() -> None:
         for restore_iteration in reversed(restore_iterations):
             restore_iteration()
+        if original_loss_for_restore is not None:
+            trainer.model.calculate_loss = original_loss_for_restore
 
     return telemetry, restore
 
@@ -376,15 +532,122 @@ def _finalize_resource_telemetry(value: dict[str, object]) -> dict[str, object]:
         for key in ("peak_allocated_mib", "peak_reserved_mib")
         if isinstance(row.get(key), (int, float))
     ]
+    if value.get("p4_fit_mode") == "TRAIN_ONLY_PRECOMPUTE":
+        peaks.extend(float(value[key]) for key in (
+            "initialization_peak_allocated_mib", "initialization_peak_reserved_mib")
+            if isinstance(value.get(key), (int, float)))
     return {
         **value,
         "best_observed_epoch": best_epoch,
         "completed_batch_records": len(batches),
-        "epochs_completed": len(train_rows),
+        "epochs_completed": sum(row["status"] == "SUCCESS" for row in train_rows),
         "loss_trend": [row.get("loss") for row in train_rows],
         "peak_gpu_memory_mib": max(peaks) if peaks else None,
         "schema": "recclaw.worker-resource-telemetry.v2",
     }
+
+
+def _config_for_selected_device(
+    config: dict[str, object],
+    *,
+    launch_cuda_visible_devices: str | None,
+    direct_selection: bool,
+) -> dict[str, object]:
+    # RecBole _init_device writes CUDA_VISIBLE_DEVICES from gpu_id. Preserve
+    # the launcher's selected physical device through that exact boundary.
+    if not direct_selection and launch_cuda_visible_devices is not None:
+        return {**config, "gpu_id": launch_cuda_visible_devices}
+    return config
+
+
+def _selected_device_evidence(
+    torch_module: object,
+    config: object,
+    *,
+    launch_cuda_visible_devices: str | None,
+    selection_mode: str | None,
+) -> dict[str, object]:
+    """Collect device evidence after RecBole has applied its device config."""
+
+    cuda = getattr(torch_module, "cuda")
+    cuda_available = bool(cuda.is_available())
+    cuda_device_count = int(cuda.device_count())
+    logical_device = (
+        int(cuda.current_device())
+        if cuda_available and cuda_device_count > 0
+        else None
+    )
+    device_properties = (
+        cuda.get_device_properties(logical_device)
+        if logical_device is not None
+        else None
+    )
+    total_memory_mib = (
+        int(device_properties.total_memory) // (1024 * 1024)
+        if device_properties is not None
+        else None
+    )
+    if total_memory_mib is not None and total_memory_mib <= 0:
+        raise RuntimeError("selected CUDA device reports invalid total memory")
+    evidence: dict[str, object] = {
+        "cuda_available": cuda_available,
+        "cuda_device_count": cuda_device_count,
+        "cuda_device_name": (
+            cuda.get_device_name(logical_device)
+            if logical_device is not None
+            else None
+        ),
+        "total_memory_mib": total_memory_mib,
+        "torch_cuda_version": getattr(getattr(torch_module, "version"), "cuda", None),
+    }
+    if selection_mode != "DIRECT_RECOBOLE_GPU_ID":
+        return evidence
+    if launch_cuda_visible_devices is not None:
+        raise RuntimeError(
+            "direct gpu_id worker must not launch with CUDA_VISIBLE_DEVICES"
+        )
+
+    try:
+        configured_gpu_id = config["gpu_id"]  # type: ignore[index]
+        configured_worker = config["worker"]  # type: ignore[index]
+    except (KeyError, TypeError) as error:
+        raise RuntimeError(
+            "direct gpu_id worker config is missing gpu_id or worker"
+        ) from error
+    if isinstance(configured_gpu_id, bool):
+        raise RuntimeError("direct gpu_id worker config is invalid")
+    if isinstance(configured_gpu_id, int):
+        normalized_gpu_id = configured_gpu_id
+    elif (
+        isinstance(configured_gpu_id, str)
+        and configured_gpu_id.strip()
+        and configured_gpu_id.strip().isdigit()
+    ):
+        normalized_gpu_id = int(configured_gpu_id.strip())
+    else:
+        raise RuntimeError("direct gpu_id worker config is invalid")
+    if normalized_gpu_id < 0:
+        raise RuntimeError("direct gpu_id worker config is invalid")
+    if (
+        isinstance(configured_worker, bool)
+        or not isinstance(configured_worker, int)
+        or configured_worker not in {0, 8}
+    ):
+        raise RuntimeError("direct gpu_id worker config must use worker=0 or worker=8")
+    if logical_device is not None and logical_device != 0:
+        raise RuntimeError(
+            "direct gpu_id worker must expose the selected device as logical 0"
+        )
+    evidence.update(
+        {
+            "gpu_id": normalized_gpu_id,
+            "physical_gpu_id": str(normalized_gpu_id),
+            "selection_mode": "DIRECT_RECOBOLE_GPU_ID",
+            "cuda_visible_devices": None,
+            "logical_device": logical_device,
+        }
+    )
+    return evidence
 
 
 def _write_durable_json(path: Path, value: dict[str, object]) -> None:
@@ -408,10 +671,7 @@ def _write_durable_json(path: Path, value: dict[str, object]) -> None:
     finally:
         os.close(descriptor)
     os.replace(temporary, path)
-    try:
-        directory = os.open(path.parent, os.O_RDONLY)
-    except OSError:
-        return
+    directory = os.open(path.parent, os.O_RDONLY)
     try:
         os.fsync(directory)
     finally:
@@ -421,12 +681,13 @@ def _write_durable_json(path: Path, value: dict[str, object]) -> None:
 def _load_prefix_contract(
     path: Path,
     *,
+    dataset: str,
     epochs: int,
     seed: int,
 ) -> dict[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     expected = {
-        "dataset": "ml-1m",
+        "dataset": dataset,
         "epochs": epochs,
         "execution_purpose": "RESOURCE_PROBE_ONLY",
         "seed": seed,
@@ -569,8 +830,12 @@ def _activate_hash_audited_filesystem(
         for key, value in expected_environment.items()
     ):
         raise RuntimeError("training writable environment projection mismatch")
+    writable_roots = [result_root.resolve().as_posix()]
+    cache_root = Path(capability.cache_root).resolve()
+    if not cache_root.is_relative_to(result_root.resolve()):
+        writable_roots.append(cache_root.as_posix())
     payload = {
-        "allowed_writable_mount_targets": [result_root.resolve().as_posix()],
+        "allowed_writable_mount_targets": writable_roots,
         "enforcement": [
             "PACKAGE_OWNED_WORKER_ONLY",
             "NO_CANDIDATE_EXECUTABLE_CODE",
@@ -582,7 +847,7 @@ def _activate_hash_audited_filesystem(
         "mount_count": 0,
         "status": "PASS",
         "unexpected_writable_mount_targets": [],
-        "writable_mount_targets": [result_root.resolve().as_posix()],
+        "writable_mount_targets": writable_roots,
     }
     return {**payload, "audit_digest": sha256_digest(payload)}
 
@@ -677,57 +942,6 @@ def main() -> int:
         timeout_seconds=30.0,
     )
 
-    sys.path.insert(0, str(project_root / "scripts"))
-    sys.path.insert(0, str(recbole_root))
-
-    import numpy as np
-
-    if not hasattr(np, "float_"):
-        np.float_ = np.float64
-    if not hasattr(np, "int_"):
-        np.int_ = np.int64
-    if not hasattr(np, "complex_"):
-        np.complex_ = np.complex128
-    if not hasattr(np, "unicode_"):
-        np.unicode_ = np.str_
-    if not hasattr(np, "string_"):
-        np.string_ = np.bytes_
-
-    import run_candidate
-
-    run_candidate.install_optional_dependency_stubs()
-    run_candidate.patch_recbole_runtime_compat()
-    recipe_document = json.loads(
-        Path(args.execution_recipe_path).read_text(encoding="utf-8")
-    )
-    recipe = dict(
-        recipe_document.get("execution_recipe", recipe_document)
-    )
-    if (
-        recipe.get("model") != args.model
-        or recipe.get("entrypoint") is None
-        or recipe.get("mechanism_id") is None
-    ):
-        raise RuntimeError("training execution recipe identity mismatch")
-    entrypoint = str(recipe["entrypoint"])
-    entrypoint_object = run_candidate.import_object(entrypoint)
-    entrypoint_module = inspect.getmodule(entrypoint_object)
-    if entrypoint_module is None or not getattr(entrypoint_module, "__file__", None):
-        raise RuntimeError("training entrypoint source is unavailable")
-    source_sha256 = hashlib.sha256(
-        Path(str(entrypoint_module.__file__)).read_bytes()
-    ).hexdigest()
-    if source_sha256 != recipe.get("entrypoint_source_sha256"):
-        raise RuntimeError("training entrypoint source digest mismatch")
-    if entrypoint.startswith("recclaw_ext."):
-        run_candidate.patch_recbole_model_lookup(
-            {args.model: entrypoint_object}
-        )
-
-    from recbole.config import Config
-    from recbole.data import create_dataset, data_preparation
-    from recbole.utils import get_model, get_trainer, init_seed
-
     output_path = Path(args.output_path)
     log_path = Path(args.log_path)
     checkpoint_dir = Path(args.checkpoint_dir)
@@ -738,77 +952,201 @@ def main() -> int:
     exit_code = 0
     argv_before = sys.argv[:]
     device_evidence: dict[str, object] = {}
+    launch_cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
     resource_telemetry: dict[str, object] | None = None
+    prefix_contract: dict[str, object] | None = None
     telemetry_path = (
         Path(args.resource_telemetry_path)
         if args.resource_telemetry_path is not None
         else None
     )
-    prefix_contract = (
-        _load_prefix_contract(
-            Path(args.prefix_contract_path),
-            epochs=args.epochs,
-            seed=args.seed,
-        )
-        if args.prefix_contract_path is not None
-        else None
-    )
+    runtime_dependencies: tuple[str, ...] = ()
+    failure_phase = "SHARED_RUNTIME_SETUP"
     try:
-        import torch
+        sys.path.insert(0, str(project_root / "scripts"))
+        sys.path.insert(0, str(recbole_root))
 
-        device_evidence = {
-            "cuda_available": torch.cuda.is_available(),
-            "cuda_device_count": torch.cuda.device_count(),
-            "cuda_device_name": (
-                torch.cuda.get_device_name(0)
-                if torch.cuda.is_available()
-                else None
-            ),
-            "torch_cuda_version": torch.version.cuda,
-        }
-        if (
-            device_evidence["cuda_available"] is not True
-            or int(device_evidence["cuda_device_count"]) < 1
-        ):
-            raise RuntimeError("M6E_CUDA_DEVICE_CAPABILITY_UNAVAILABLE")
+        import numpy as np
+
+        if not hasattr(np, "float_"):
+            np.float_ = np.float64
+        if not hasattr(np, "int_"):
+            np.int_ = np.int64
+        if not hasattr(np, "complex_"):
+            np.complex_ = np.complex128
+        if not hasattr(np, "unicode_"):
+            np.unicode_ = np.str_
+        if not hasattr(np, "string_"):
+            np.string_ = np.bytes_
+
+        import run_candidate
+
+        run_candidate.install_optional_dependency_stubs()
+        run_candidate.patch_recbole_runtime_compat()
+        recipe_document = json.loads(
+            Path(args.execution_recipe_path).read_text(encoding="utf-8")
+        )
+        recipe = dict(
+            recipe_document.get("execution_recipe", recipe_document)
+        )
+        _validate_recipe_identity(
+            recipe,
+            model=args.model,
+            binding_digest=args.binding_digest,
+        )
+        runtime_dependencies = tuple(
+            recipe.get("config", {}).get("recclaw_runtime_dependencies", ())
+        )
+        entrypoint = str(recipe["entrypoint"])
+        failure_phase = "CANDIDATE_IMPORT"
+        entrypoint_object = run_candidate.import_object(entrypoint)
+        uses_diffrec_user_loader = bool(
+            entrypoint.startswith("recclaw_ext.")
+            and recipe.get("base_model_config") == "DiffRec"
+        )
+        entrypoint_module = inspect.getmodule(entrypoint_object)
+        if entrypoint_module is None or not getattr(entrypoint_module, "__file__", None):
+            raise RuntimeError("training entrypoint source is unavailable")
+        source_sha256 = hashlib.sha256(
+            Path(str(entrypoint_module.__file__)).read_bytes()
+        ).hexdigest()
+        if source_sha256 != recipe.get("entrypoint_source_sha256"):
+            raise RuntimeError("training entrypoint source digest mismatch")
+        if entrypoint.startswith("recclaw_ext."):
+            run_candidate.patch_recbole_model_lookup(
+                {args.model: entrypoint_object}
+            )
+
+        from recbole.config import Config
+        from recbole.data import create_dataset, data_preparation
+        from recbole.utils import get_model, get_trainer, init_seed
+
+        prefix_contract = (
+            _load_prefix_contract(
+                Path(args.prefix_contract_path),
+                dataset=args.dataset,
+                epochs=args.epochs,
+                seed=args.seed,
+            )
+            if args.prefix_contract_path is not None
+            else None
+        )
+        import torch
+        from recclaw_core.research_line.p4_runtime import is_p4_recipe, p4_worker_config
+        p4_validation = is_p4_recipe(recipe)
+
         config_files = [
-            recbole_root
-            / "recbole"
-            / "properties"
-            / "model"
+            project_root / "configs" / "p4_sparse_spectral.yaml"
+            if p4_validation else recbole_root
+            / "recbole" / "properties" / "model"
             / f"{recipe['base_model_config']}.yaml",
             project_root / "configs" / "task_ml1m.yaml",
             project_root / "configs" / "lightgcn_metrics.yaml",
         ]
+        direct_selection = (
+            recipe.get("gpu_selection_mode") == "DIRECT_RECOBOLE_GPU_ID"
+        )
+        direct_dataloader_workers = 0
+        if direct_selection:
+            configured_worker = recipe.get("config", {}).get("worker")
+            if (
+                isinstance(configured_worker, bool)
+                or not isinstance(configured_worker, int)
+                or configured_worker not in {0, 8}
+            ):
+                raise RuntimeError(
+                    "direct training recipe must bind worker=0 or worker=8"
+                )
+            direct_dataloader_workers = configured_worker
+            if direct_dataloader_workers > 0:
+                _use_short_multiprocessing_temp_root()
+        evaluator = recipe.get("evaluator")
+        validation_only = evaluator == {
+            "candidate_universe": "FULL_SORT",
+            "heldout_access": "POST_SELECTION_ONLY",
+            "metric": "NDCG@10",
+            "nonfinite_policy": "REJECT",
+            "partition_role": "DEVELOPMENT_VALIDATION",
+            "source": "BEST_VALID_RESULT",
+        }
+        test_feedback = evaluator == {
+            "candidate_universe": "FULL_SORT",
+            "heldout_access": "AFTER_BEST_CHECKPOINT_SELECTION",
+            "metric": "NDCG@10",
+            "nonfinite_policy": "REJECT",
+            "partition_role": "ROUND_TEST_FEEDBACK",
+            "source": "BEST_CHECKPOINT_TEST_RESULT",
+        }
+        expected_split = recipe["split"] if p4_validation else "train/dev/dev" if validation_only else "train/dev/heldout"
+        if not (validation_only or test_feedback or p4_validation) or recipe.get("split") != expected_split:
+            raise RuntimeError("unsupported training split/evaluator contract")
+        benchmark_binding = {
+            "benchmark_filename": (
+                ["train", "dev", "dev"]
+                if validation_only
+                else ["train", "dev", "heldout"]
+            )
+        }
+        cadence = _resolve_training_cadence(
+            recipe.get("config"),
+            requested_epochs=args.epochs,
+            prefix_contract=prefix_contract,
+            execution_purpose=args.execution_purpose,
+        )
         config_dict = {
             **dict(recipe.get("config", {})),
-            "benchmark_filename": ["train", "dev", "dev"],
+            **benchmark_binding,
             "checkpoint_dir": str(checkpoint_dir),
             "data_path": str(Path(args.data_path).resolve()),
-            "epochs": args.epochs,
-            "eval_step": 1,
+            "epochs": cadence["epochs"],
+            "eval_batch_size": dict(recipe.get("config", {})).get(
+                "eval_batch_size", 65536
+            ),
+            "eval_step": cadence["eval_step"],
             "reproducibility": True,
             "seed": args.seed,
             "show_progress": False,
             "state": "ERROR",
-            "stopping_step": min(10, args.epochs),
+            "stopping_step": cadence["stopping_step"],
             "use_gpu": True,
+            "worker": 0,
         }
+        if p4_validation:
+            config_dict.update(p4_worker_config(recipe, seed=args.seed, epochs=args.epochs))
+        if direct_selection:
+            config_dict["worker"] = direct_dataloader_workers
+        config_dict = _config_for_selected_device(
+            config_dict,
+            launch_cuda_visible_devices=launch_cuda_visible_devices,
+            direct_selection=direct_selection,
+        )
         with log_path.open("w", encoding="utf-8", errors="replace") as handle:
             with contextlib.redirect_stdout(handle), contextlib.redirect_stderr(handle):
                 if args.force_failure:
                     raise RuntimeError("M6E_CONTROLLED_FORCED_RUNTIME_FAILURE")
+                failure_phase = "SHARED_DATA_SETUP"
                 config = Config(
-                    model=args.model,
-                    dataset=args.dataset,
+                    model=("DiffRec" if uses_diffrec_user_loader else args.model),
+                    dataset=config_dict.get("dataset", args.dataset),
                     config_file_list=[str(path) for path in config_files],
                     config_dict=config_dict,
                 )
+                device_evidence = _selected_device_evidence(
+                    torch,
+                    config,
+                    launch_cuda_visible_devices=launch_cuda_visible_devices,
+                    selection_mode=(
+                        "DIRECT_RECOBOLE_GPU_ID" if direct_selection else None
+                    ),
+                )
+                if (
+                    device_evidence["cuda_available"] is not True
+                    or int(device_evidence["cuda_device_count"]) < 1
+                ):
+                    raise RuntimeError("M6E_CUDA_DEVICE_CAPABILITY_UNAVAILABLE")
                 init_seed(config["seed"], config["reproducibility"])
                 dataset = create_dataset(config)
-                train_data, valid_data, _unused_test_data = data_preparation(
-                    config, dataset
-                )
+                train_data, valid_data, test_data = data_preparation(config, dataset)
                 preallocated_train_batches = None
                 preallocated_valid_batches = None
                 if prefix_contract is not None:
@@ -829,13 +1167,32 @@ def main() -> int:
                         ),
                     )
                 init_seed(config["seed"], config["reproducibility"])
-                model_class = get_model(config["model"])
+                failure_phase = "CANDIDATE_EXECUTION"
+                model_class = (
+                    entrypoint_object
+                    if uses_diffrec_user_loader
+                    else get_model(config["model"])
+                )
                 model = model_class(config, train_data._dataset).to(
                     config["device"]
                 )
-                trainer = get_trainer(
-                    config["MODEL_TYPE"], config["model"]
-                )(config, model)
+                from recclaw_core.experiments.helix_abc_v1.epoch_sampler_scaffold import (
+                    prepare_candidate_train_data,
+                )
+
+                prepare_candidate_train_data(model, train_data)
+                trainer_entrypoint = dict(recipe.get("config", {})).get(
+                    "recclaw_trainer_entrypoint"
+                )
+                if trainer_entrypoint:
+                    trainer_class = run_candidate.import_object(
+                        str(trainer_entrypoint)
+                    )
+                else:
+                    trainer_class = get_trainer(
+                        config["MODEL_TYPE"], config["model"]
+                    )
+                trainer = trainer_class(config, model)
                 restore_fixed_batch_iteration = lambda: None
                 if args.resource_telemetry:
                     if telemetry_path is None:
@@ -858,28 +1215,59 @@ def main() -> int:
                     best_valid_score, best_valid_result = trainer.fit(
                         train_data,
                         valid_data,
-                        saved=False,
+                        saved=True,
                         show_progress=False,
                     )
                 finally:
                     restore_fixed_batch_iteration()
+                test_result = (
+                    None
+                    if validation_only or p4_validation
+                    else trainer.evaluate(
+                        test_data,
+                        load_best_model=True,
+                        show_progress=False,
+                    )
+                )
+        metric_binding = (
+            {"metric_source": "FROZEN_RECBole_RS811_VALIDATION_RESULT",
+             "online_partition_role": "P4_VALIDATION_SELECTION"}
+            if p4_validation else
+            {
+                "metric_source": "BEST_VALID_RESULT",
+                "online_partition_role": "DEVELOPMENT_VALIDATION",
+            }
+            if validation_only
+            else {
+                "metric_source": "BEST_CHECKPOINT_TEST_RESULT",
+                "online_partition_role": "ROUND_TEST_FEEDBACK",
+            }
+        )
         payload = {
             "best_valid_result": best_valid_result,
             "best_valid_score": best_valid_score,
             "exit_status": "SUCCESS",
             "execution_recipe_digest": recipe.get("execution_recipe_digest"),
             "filesystem_mount_audit": mount_audit,
-            "metric_source": "BEST_VALID_RESULT",
+            **metric_binding,
             "model": args.model,
-            "online_partition_role": "DEVELOPMENT_VALIDATION",
+            "trainer_class": trainer_class.__name__,
+            "trainer_entrypoint": trainer_entrypoint,
             "training_device_evidence": device_evidence,
         }
+        if not (validation_only or p4_validation):
+            payload["test_result"] = test_result
     except Exception as error:  # noqa: BLE001 - failure is a Pilot outcome.
         exit_code = 1
         payload = {
             "error_message": str(error),
             "error_type": type(error).__name__,
             "exit_status": "RUNTIME_FAILURE",
+            "failure_scope": _failure_scope_for_exception(
+                error,
+                failure_phase=failure_phase,
+                runtime_dependencies=runtime_dependencies,
+            ),
             "filesystem_mount_audit": mount_audit,
             "model": args.model,
             "traceback": traceback.format_exc(),

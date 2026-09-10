@@ -229,6 +229,7 @@ class CandidateMechanismDeltaV1(MetaVNextRecord):
     lineage_depth: int
     matched_control: bool
     ablation_or_falsification: bool
+    causal_delta_verified: bool
     estimated_compute_class: str
     estimated_memory_class: str
     static_utility_features: SearchUtilityFeaturesV1
@@ -249,6 +250,8 @@ class CandidateMechanismDeltaV1(MetaVNextRecord):
             validate_sha256(str(getattr(self, name)), field_name=name)
         if self.parameter_change_count < 0 or self.lineage_depth < 0:
             raise MetaVNextContractError("candidate counts must be non-negative")
+        if not isinstance(self.causal_delta_verified, bool):
+            raise MetaVNextContractError("causal_delta_verified must be boolean")
         if not 0.0 <= float(self.intervention_magnitude) <= 1.0:
             raise MetaVNextContractError("intervention_magnitude must be in [0,1]")
         if self.route_eligibility not in {"ELIGIBLE", "INELIGIBLE"}:

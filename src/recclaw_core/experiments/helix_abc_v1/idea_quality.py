@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 import time
 from pathlib import Path
@@ -27,6 +28,7 @@ from .fresh_r1 import (
     BUDGET_LIMITS,
     MODEL,
     PROTOCOL_REQUIREMENTS,
+    ROLE_INSTRUCTIONS,
     _materialize_and_qualify,
     _shared_policy,
     _write_new_json,
@@ -51,6 +53,7 @@ from .resource_scheduling import (
     Q0R_V2_PREFIX_CONTRACT_SHA256,
     structural_features,
 )
+from .research_contracts import RouterFeatureEvidenceV1, SearchUtilityFeaturesV1
 from .v4_response_contract import validate_v4_response_contract
 from .vnext_contracts import (
     CapabilityResolutionResultV1,
@@ -335,14 +338,22 @@ def build_q1_ab_contract() -> dict[str, Any]:
 
 
 def _contract_instruction(arm: str, slot: str) -> str:
+    resolution_contract = (
+        "For current_profile_expressibility_claim EXPRESSIBLE, set "
+        "resolution_facts.requested_current_semantics_digest to one exact "
+        "semantics_digest from the active profile catalog and leave "
+        "capability_diff and high_change_dimensions empty. For NOT_EXPRESSIBLE, "
+        "set requested_current_semantics_digest to null and provide non-empty "
+        "capability_diff and high_change_dimensions. "
+    )
     if arm == "baseline":
-        return (
+        return resolution_contract + (
             "Use only the current OpenSpec fields in the supplied response schema. "
             "For the diagnosis slot, bind the hypothesis to the accepted context gap. "
             "For the frontier slot, pose one open structural recommender hypothesis."
         )
     if arm == "enriched":
-        return (
+        return resolution_contract + (
             "Use the enriched OpenSpec fields. Set idea_mode to "
             f"{Q1_SLOT_MODES[slot]}. State research_question, closest_parent, "
             "minimal_testable_wedge, causal_chain, a prediction that distinguishes the "
@@ -378,6 +389,8 @@ def render_q1_producer_prompt(
         "{{LOGICAL_SLOT_ID}}": slot,
         "{{PROPOSAL_SEED}}": str(seed),
         "{{PRODUCER_ROLE}}": role,
+        "{{ROLE_INSTRUCTION}}": ROLE_INSTRUCTIONS[role],
+        "{{POOL_MECHANISM_SIGNATURES}}": json.dumps([], separators=(",", ":")),
         "{{CONTRACT_INSTRUCTION}}": _contract_instruction(arm, slot),
         "{{RESEARCH_CONTEXT_JSON}}": json.dumps(
             context, sort_keys=True, separators=(",", ":")
@@ -416,22 +429,284 @@ def score_preoutcome_testability(
     *,
     q0r2_resource_feasible: bool,
     outcome_features: Mapping[str, Any] | None = None,
+    structural_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Score only scientific clarity and resource feasibility before outcomes."""
 
     if outcome_features:
         raise ValueError("outcome or implementation features are forbidden in Q1 selection")
-    features = {
-        "scientific_testability": int(bool(spec.falsifier and spec.expected_evidence)),
-        "parent_clarity": int(bool(spec.closest_parent or spec.matched_control_requirement)),
-        "discriminative_value": int(
-            bool(spec.discriminative_predictions or spec.competing_explanation)
-        ),
-        "mechanism_off_executability": int(
-            bool(spec.mechanism_off_definition or spec.matched_control_requirement)
-        ),
-        "q0r2_resource_feasibility": int(q0r2_resource_feasible),
-    }
+    if structural_context is None:
+        features = {
+            "scientific_testability": int(bool(spec.falsifier and spec.expected_evidence)),
+            "parent_clarity": int(bool(spec.closest_parent or spec.matched_control_requirement)),
+            "discriminative_value": int(
+                bool(spec.discriminative_predictions or spec.competing_explanation)
+            ),
+            "mechanism_off_executability": int(
+                bool(spec.mechanism_off_definition or spec.matched_control_requirement)
+            ),
+            "q0r2_resource_feasibility": int(q0r2_resource_feasible),
+        }
+    else:
+        def text_score(value: Any, keywords: tuple[str, ...] = ()) -> float:
+            text = str(value or "").strip().lower()
+            if not text:
+                return 0.0
+            length_score = min(1.0, len(text) / 240.0)
+            keyword_score = sum(token in text for token in keywords) / max(1, len(keywords))
+            return round(0.5 * length_score + 0.5 * keyword_score, 6)
+
+        parent_text = str(spec.closest_parent or "").lower()
+        parent_catalog = structural_context.get("parent_catalog", ())
+        catalog_refs = {
+            str(value).lower()
+            for item in parent_catalog
+            if isinstance(item, Mapping)
+            for value in (
+                item.get("parent_id"),
+                item.get("profile_ref"),
+                item.get("ref"),
+                item.get("semantics_digest"),
+            )
+            if value
+        }
+        executable_parent = 1.0 if any(ref and ref in parent_text for ref in catalog_refs) else (
+            0.25 if parent_text else 0.0
+        )
+        signature_texts = []
+        parent_signature_sets = []
+        operator_signature_sets = []
+        for item in structural_context.get("pool_signatures", ()):
+            if isinstance(item, Mapping):
+                parent_signature_sets.append(
+                    set(re.findall(r"[a-z0-9]+", str(item.get("closest_parent", "")).lower()))
+                )
+                operator_signature_sets.append(
+                    set(
+                        re.findall(
+                            r"[a-z0-9]+",
+                            " ".join(
+                                str(item.get(field) or "")
+                                for field in ("causal_operator", "mechanism_change")
+                            ).lower(),
+                        )
+                    )
+                )
+                signature_texts.append(
+                    " ".join(
+                        str(item.get(field) or "")
+                        for field in ("closest_parent", "mechanism_change", "causal_operator")
+                    ).lower()
+                )
+            else:
+                signature_texts.append(str(item).lower())
+        parent_tokens = set(re.findall(r"[a-z0-9]+", parent_text))
+        operator_text = " ".join(str(value or "") for value in spec.causal_chain)
+        operator_tokens = set(re.findall(r"[a-z0-9]+", operator_text.lower()))
+
+        def _max_overlap(tokens: set[str], prior: Sequence[set[str]]) -> float:
+            if not tokens or not prior:
+                return 0.0
+            return max(
+                len(tokens & candidate) / max(1, len(tokens | candidate))
+                for candidate in prior
+            )
+
+        parent_family_novelty = round(
+            1.0 - _max_overlap(parent_tokens, parent_signature_sets), 6
+        )
+        causal_operator_novelty = round(
+            1.0 - _max_overlap(operator_tokens, operator_signature_sets), 6
+        )
+        mechanism_text = " ".join(
+            str(value or "")
+            for value in (spec.mechanism_change, spec.causal_chain, spec.minimal_testable_wedge)
+        ).lower()
+        overlap = max(
+            (
+                len(set(mechanism_text.split()) & set(signature.split()))
+                / max(1, len(set(mechanism_text.split())))
+                for signature in signature_texts
+            ),
+            default=0.0,
+        )
+        realization_mode = getattr(spec.realization_mode, "value", spec.realization_mode)
+        idea_mode = getattr(spec.idea_mode, "value", spec.idea_mode)
+        expected_mode = structural_context.get("mode") or idea_mode
+        expected_realization = (
+            "PARENT_PRESERVING"
+            if expected_mode == "DIAGNOSIS_DRIVEN"
+            else "NON_NESTED"
+        )
+        features = {
+            "executable_parent": round(executable_parent, 6),
+            "parent_preserving": float(realization_mode == "PARENT_PRESERVING"),
+            "causal_component_count": round(min(1.0, len(spec.causal_chain) / 3.0), 6),
+            "role_mode_fit": float(realization_mode == expected_realization),
+            "wedge_specificity": text_score(
+                spec.minimal_testable_wedge,
+                ("tensor", "loss", "score", "off"),
+            ),
+            "resource_margin": 0.0,
+            "mechanism_off_executability": text_score(
+                spec.mechanism_off_definition,
+                ("disable", "parent", "equivalent"),
+            ),
+            "pool_mechanism_novelty": round(1.0 - overlap, 6),
+            "parent_family_novelty": parent_family_novelty,
+            "causal_operator_novelty": causal_operator_novelty,
+            "qualifier_risk": 0.0,
+            "stage_feasibility": 0.0,
+            "scientific_falsifiability": text_score(
+                spec.falsifier,
+                ("reject", "compare", "control"),
+            ),
+        }
+        budget_text = " ".join(
+            (
+                str(spec.resource_hypothesis or ""),
+                str(structural_context.get("required_budget") or ""),
+            )
+        )
+        text_margin = text_score(budget_text, ("memory", "gpu", "time"))
+        budget = structural_context.get("required_budget")
+        limits = {
+            "implementation_token_ceiling": 20_000.0,
+            "implementation_tokens": 20_000.0,
+            "token_ceiling": 20_000.0,
+            "qualification_gpu_minutes": 10.0,
+            "gpu_minutes": 10.0,
+            "qualification_wall_minutes": 30.0,
+            "wall_minutes": 30.0,
+        }
+        ratios = []
+        if isinstance(budget, Mapping):
+            for key, limit in limits.items():
+                value = budget.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    ratios.append(max(0.0, float(value)) / limit)
+        numeric_margin = max(0.0, 1.0 - max(ratios, default=0.0))
+        features["resource_margin"] = round(
+            0.5 * text_margin + 0.5 * numeric_margin,
+            6,
+        ) * (1.0 if q0r2_resource_feasible else 0.25)
+        resource_profile = structural_context.get("resource_profile")
+        resource_prediction = (
+            resource_profile.get("prediction")
+            if isinstance(resource_profile, Mapping)
+            else None
+        )
+        if isinstance(resource_prediction, Mapping):
+            probability_value = resource_prediction.get("completion_probability", 0.0)
+            probability = (
+                float(probability_value)
+                if isinstance(probability_value, (int, float))
+                and not isinstance(probability_value, bool)
+                and math.isfinite(float(probability_value))
+                else 0.0
+            )
+            interval = resource_prediction.get("prediction_interval_seconds")
+            budget_value = (
+                resource_profile.get("full_run_budget_after_probes_seconds", 0.0)
+                if isinstance(resource_profile, Mapping)
+                else 0.0
+            )
+            budget_seconds = (
+                float(budget_value)
+                if isinstance(budget_value, (int, float))
+                and not isinstance(budget_value, bool)
+                and math.isfinite(float(budget_value))
+                else 0.0
+            )
+            upper_seconds = (
+                float(interval[1])
+                if isinstance(interval, (list, tuple))
+                and len(interval) == 2
+                and isinstance(interval[1], (int, float))
+                else float("inf")
+            )
+            peak_memory = resource_prediction.get("peak_memory_prediction_mib")
+            memory_ceiling = resource_prediction.get(
+                "peak_memory_candidate_ceiling_mib"
+            )
+            time_margin = (
+                max(0.0, min(1.0, 1.0 - upper_seconds / budget_seconds))
+                if budget_seconds > 0 and math.isfinite(upper_seconds)
+                else 0.0
+            )
+            memory_margin = (
+                max(
+                    0.0,
+                    min(
+                        1.0,
+                        1.0 - float(peak_memory) / float(memory_ceiling),
+                    ),
+                )
+                if isinstance(peak_memory, (int, float))
+                and not isinstance(peak_memory, bool)
+                and math.isfinite(float(peak_memory))
+                and isinstance(memory_ceiling, (int, float))
+                and not isinstance(memory_ceiling, bool)
+                and math.isfinite(float(memory_ceiling))
+                and float(memory_ceiling) > 0.0
+                else 0.0
+            )
+            profile_margin = min(
+                max(0.0, min(1.0, probability)),
+                time_margin,
+                memory_margin,
+            )
+            features["resource_margin"] = round(
+                0.5 * float(features["resource_margin"])
+                + 0.5 * profile_margin,
+                6,
+            )
+
+        failure_summary = structural_context.get("failure_summary", {})
+        taxonomy = (
+            failure_summary.get("qualifier_failure_taxonomy", {})
+            if isinstance(failure_summary, Mapping)
+            else {}
+        )
+        failure_count = sum(
+            float(value)
+            for value in taxonomy.values()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        )
+        denominator = (
+            float(failure_summary.get("implementer_success_count", 0))
+            if isinstance(failure_summary, Mapping)
+            else 0.0
+        )
+        observed_failure_rate = min(0.95, failure_count / denominator) if denominator else 0.5
+        mechanism_off_score = features["mechanism_off_executability"]
+        qualifier_risk_margin = 1.0 - observed_failure_rate * (1.0 - mechanism_off_score)
+        if realization_mode == "PARENT_PRESERVING" and mechanism_off_score < 0.5:
+            qualifier_risk_margin *= 0.75
+        features["qualifier_risk"] = round(max(0.0, min(1.0, qualifier_risk_margin)), 6)
+        stage_labels = (
+            failure_summary.get("stage_labels", {})
+            if isinstance(failure_summary, Mapping)
+            else {}
+        )
+        stage_rates = []
+        for stage_name in ("QUALIFY", "RESOURCE_ADMITTED", "FULL_EPISODE"):
+            row = stage_labels.get(stage_name, {}) if isinstance(stage_labels, Mapping) else {}
+            if isinstance(row, Mapping) and float(row.get("denominator", 0) or 0) > 0:
+                stage_rates.append(
+                    max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(row.get("success", 0) or 0)
+                            / float(row["denominator"]),
+                        ),
+                    )
+                )
+        features["stage_feasibility"] = round(
+            sum(stage_rates) / len(stage_rates) if stage_rates else 0.0,
+            6,
+        )
     return canonical_value(
         {
             "features": features,
@@ -439,6 +714,442 @@ def score_preoutcome_testability(
             "outcome_fields_consumed": [],
             "spec_digest": spec.digest,
             "score_digest": sha256_digest(features),
+        }
+    )
+
+
+_RESOURCE_PROFILE_FORBIDDEN_KEYS = frozenset(
+    {
+        "candidate_minus_bpr",
+        "candidate_ndcg_at_10",
+        "metrics",
+        "ndcg@10",
+        "test_feedback",
+        "test_metric",
+    }
+)
+
+
+def _assert_resource_profile_outcome_blind(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            normalized = str(key).lower()
+            if normalized in _RESOURCE_PROFILE_FORBIDDEN_KEYS:
+                raise IdeaQualityError(
+                    f"resource profile contains forbidden outcome field: {key}"
+                )
+            _assert_resource_profile_outcome_blind(child)
+    elif isinstance(value, (tuple, list)):
+        for child in value:
+            _assert_resource_profile_outcome_blind(child)
+
+
+def _qualification_admission_view(
+    qualification: Any,
+) -> tuple[str, str | None, bool]:
+    receipt = getattr(qualification, "receipt", None)
+    observations = getattr(qualification, "stage_observations", {})
+    if isinstance(qualification, Mapping):
+        receipt = qualification.get("receipt", receipt)
+        observations = qualification.get("stage_observations", observations)
+    if isinstance(receipt, Mapping):
+        status = receipt.get("status", "FAIL")
+        digest = receipt.get("digest")
+    else:
+        status = getattr(receipt, "status", "FAIL")
+        digest = getattr(receipt, "digest", None)
+    status_value = getattr(status, "value", status)
+    process = (
+        observations.get("DISPOSABLE_PROCESS", {})
+        if isinstance(observations, Mapping)
+        else {}
+    )
+    return str(status_value), digest if isinstance(digest, str) else None, bool(
+        isinstance(process, Mapping)
+        and process.get("process_isolated") is True
+        and process.get("status") == "RESULT"
+        and process.get("exit_code") == 0
+    )
+
+
+def _resolution_admission_view(resolution: Any) -> tuple[bool, str | None]:
+    def value(name: str, default: Any = False) -> Any:
+        if isinstance(resolution, Mapping):
+            return resolution.get(name, default)
+        return getattr(resolution, name, default)
+
+    ready = all(
+        bool(value(field))
+        for field in ("protocol_compatible", "dependency_compatible", "budget_compatible")
+    )
+    digest = value("digest")
+    return ready, digest if isinstance(digest, str) else None
+
+
+def _bounded_unit(value: Any) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return 0.0
+    converted = float(value)
+    if not math.isfinite(converted):
+        return 0.0
+    return max(0.0, min(1.0, converted))
+
+
+def _finite_nonnegative(
+    value: Any,
+    *,
+    upper: float | None = None,
+) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    converted = float(value)
+    if not math.isfinite(converted) or converted < 0.0:
+        return None
+    if upper is not None and converted > upper:
+        return None
+    return converted
+
+
+def _finite_interval(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    lower = _finite_nonnegative(value[0])
+    upper = _finite_nonnegative(value[1])
+    if lower is None or upper is None or lower > upper:
+        return None
+    return lower, upper
+
+
+def _prediction_interval_fits_resource_budget(
+    *,
+    prediction: Mapping[str, Any],
+    interval: tuple[float, float],
+    point_seconds: float,
+    budget_seconds: float,
+) -> bool:
+    """Apply the resource scheduler's explicit worker-ceiling semantics."""
+
+    worker_ceiling_seconds = _finite_nonnegative(
+        prediction.get("worker_ceiling_seconds")
+    )
+    native_budget_required_seconds = _finite_nonnegative(
+        prediction.get("execution_budget_required_seconds",
+                       prediction.get("native_early_stop_budget_required_seconds"))
+    )
+    if worker_ceiling_seconds is None or native_budget_required_seconds is None:
+        return False
+    effective_execution_limit = min(worker_ceiling_seconds, budget_seconds)
+    native_window_fits = bool(
+        effective_execution_limit > 0.0
+        and native_budget_required_seconds >= point_seconds
+        and native_budget_required_seconds <= effective_execution_limit
+    )
+    if interval[1] <= budget_seconds:
+        return native_window_fits
+    if prediction.get("prediction_interval_exceeds_worker_ceiling") is not True:
+        return False
+    return native_window_fits
+
+
+def admit_research_innovation_candidate(
+    *,
+    spec: OpenResearchSpecV1,
+    resolution: Any,
+    qualification: Any,
+    resource_profile: Mapping[str, Any],
+    structural_context: Mapping[str, Any] | None = None,
+    semantic_duplicate: bool = False,
+) -> dict[str, Any]:
+    """Return the pre-outcome Innovation admission and Router feature seam.
+
+    The function consumes only the OpenSpec, resolver facts, disposable
+    qualification receipt, and the resource-only profile.  A one-epoch smoke
+    or any profile without the fixed-batch prediction interval/memory fields
+    is never converted into a non-zero runnable probability.
+    """
+
+    if not isinstance(spec, OpenResearchSpecV1):
+        raise IdeaQualityError("spec must be OpenResearchSpecV1")
+    if not isinstance(resource_profile, Mapping):
+        raise IdeaQualityError("resource_profile must be a mapping")
+    _assert_resource_profile_outcome_blind(resource_profile)
+    if resource_profile.get("outcome_fields_consumed") != []:
+        raise IdeaQualityError("resource profile must consume no outcome fields")
+    if resource_profile.get("effect_fields_consumed") != []:
+        raise IdeaQualityError("resource profile must consume no effect fields")
+    if resource_profile.get("held_out_reads") != 0:
+        raise IdeaQualityError("resource profile crossed the held-out boundary")
+
+    qualification_status, qualification_digest, qualification_isolated = (
+        _qualification_admission_view(qualification)
+    )
+    resolution_ready, resolution_digest = _resolution_admission_view(resolution)
+    prediction = resource_profile.get("prediction")
+    probability = None
+    point_seconds = None
+    budget_seconds = _finite_nonnegative(
+        resource_profile.get("full_run_budget_after_probes_seconds")
+    )
+    interval_values: tuple[float, float] | None = None
+    profile_interval_values = _finite_interval(
+        resource_profile.get("prediction_interval_seconds")
+    )
+    peak_memory = None
+    memory_ceiling = None
+    top_level_probability = None
+    if isinstance(prediction, Mapping):
+        probability = _finite_nonnegative(
+            prediction.get("completion_probability"),
+            upper=1.0,
+        )
+        top_level_probability = _finite_nonnegative(
+            resource_profile.get("completion_probability"),
+            upper=1.0,
+        )
+        interval_values = _finite_interval(
+            prediction.get("prediction_interval_seconds")
+        )
+        peak_memory = _finite_nonnegative(
+            prediction.get("peak_memory_prediction_mib")
+        )
+        memory_ceiling = _finite_nonnegative(
+            prediction.get("peak_memory_candidate_ceiling_mib")
+        )
+        point_seconds = _finite_nonnegative(
+            prediction.get("estimated_total_wall_time_seconds")
+        )
+    process = resource_profile.get("probe_process")
+    prediction_contract = bool(
+        isinstance(prediction, Mapping)
+        and isinstance(prediction.get("model"), str)
+        and bool(prediction["model"].strip())
+        and probability is not None
+        and top_level_probability is not None
+        and math.isclose(probability, top_level_probability, abs_tol=1e-9)
+        and interval_values is not None
+        and profile_interval_values == interval_values
+        and point_seconds is not None
+        and budget_seconds is not None
+        and budget_seconds > 0.0
+        and interval_values[0] <= point_seconds <= interval_values[1]
+        and _prediction_interval_fits_resource_budget(
+            prediction=prediction,
+            interval=interval_values,
+            point_seconds=point_seconds,
+            budget_seconds=budget_seconds,
+        )
+        and peak_memory is not None
+        and memory_ceiling is not None
+        and memory_ceiling > 0.0
+        and peak_memory < memory_ceiling
+        and isinstance(process, Mapping)
+        and process.get("process_isolated") is True
+        and process.get("status") == "RESULT"
+        and process.get("exit_code") == 0
+    )
+    resource_admitted = (
+        resource_profile.get("status") == "RESOURCE_ADMITTED"
+        and prediction_contract
+    )
+    if not qualification_isolated:
+        resource_admitted = False
+    if qualification_status != QualificationStatusV1.PASS.value:
+        resource_admitted = False
+    if not resolution_ready or semantic_duplicate:
+        resource_admitted = False
+
+    efficiency_comparison = None
+    repair_context = (
+        structural_context.get("implementation_efficiency_repair_context")
+        if isinstance(structural_context, Mapping)
+        else None
+    )
+    repair_spec_digest = (
+        structural_context.get("implementation_efficiency_repair_spec_digest")
+        if isinstance(structural_context, Mapping)
+        else None
+    )
+    if (
+        isinstance(repair_context, Mapping)
+        and repair_context.get("schema")
+        == "recclaw.research-line.implementation-efficiency-repair-context.v1"
+        and repair_context.get("reason_code")
+        == "MEASURED_WORKER_RESOURCE_CEILING"
+        and repair_context.get("next_attempt_scope")
+        == "IMPLEMENTATION_EFFICIENCY_ONLY"
+        and isinstance(repair_spec_digest, str)
+        and repair_spec_digest == spec.digest
+        and isinstance(prediction, Mapping)
+    ):
+        prior_train_ms = _finite_nonnegative(
+            repair_context.get("mean_train_epoch_wall_time_ms")
+        )
+        prior_eval_ms = _finite_nonnegative(
+            repair_context.get("mean_eval_epoch_wall_time_ms")
+        )
+        current_epoch_ms = _finite_nonnegative(
+            prediction.get("estimated_epoch_wall_time_ms")
+        )
+        if (
+            prior_train_ms is not None
+            and prior_eval_ms is not None
+            and current_epoch_ms is not None
+        ):
+            prior_epoch_ms = prior_train_ms + prior_eval_ms
+            expected_semantic_digest = structural_context.get(
+                "implementation_efficiency_repair_semantic_digest"
+            )
+            current_semantic_digest = structural_context.get(
+                "candidate_semantic_digest"
+            )
+            mechanism_preserved = bool(
+                isinstance(expected_semantic_digest, str)
+                and expected_semantic_digest
+                and current_semantic_digest == expected_semantic_digest
+            )
+            efficiency_comparison = canonical_value(
+                {
+                    "schema": (
+                        "recclaw.research-line.implementation-efficiency-"
+                        "comparison.v1"
+                    ),
+                    "current_probe_epoch_wall_time_ms": current_epoch_ms,
+                    "prior_measured_epoch_wall_time_ms": prior_epoch_ms,
+                    "improved": current_epoch_ms < prior_epoch_ms,
+                    "mechanism_preserved": mechanism_preserved,
+                    "mechanism_effect_update_allowed": False,
+                    "repair_spec_digest": repair_spec_digest,
+                    "current_spec_digest": spec.digest,
+                }
+            )
+            if (
+                efficiency_comparison["improved"] is not True
+                or efficiency_comparison["mechanism_preserved"] is not True
+            ):
+                resource_admitted = False
+
+    scoring_context = dict(structural_context or {})
+    scoring_context["resource_profile"] = resource_profile
+    preoutcome_score = score_preoutcome_testability(
+        spec,
+        q0r2_resource_feasible=resource_admitted,
+        structural_context=scoring_context,
+    )
+    score_features = preoutcome_score["features"]
+    if prediction_contract and resource_admitted:
+        assert probability is not None
+        assert point_seconds is not None
+        assert budget_seconds is not None
+        runnable_probability = probability
+    else:
+        runnable_probability = 0.0
+        point_seconds = 0.0
+        budget_seconds = 0.0
+    estimated_cost = (
+        _bounded_unit(point_seconds / budget_seconds)
+        if budget_seconds > 0
+        else 1.0
+        if point_seconds > 0
+        else 0.0
+    )
+    useful_signal = sum(
+        _bounded_unit(score_features.get(name))
+        for name in ("scientific_falsifiability", "mechanism_off_executability", "wedge_specificity")
+    ) / 3.0
+    frontier_potential = sum(
+        _bounded_unit(score_features.get(name))
+        for name in ("executable_parent", "parent_preserving", "role_mode_fit")
+    ) / 3.0
+    information_gain = sum(
+        _bounded_unit(score_features.get(name))
+        for name in (
+            "scientific_falsifiability",
+            "mechanism_off_executability",
+            "causal_component_count",
+            "pool_mechanism_novelty",
+        )
+    ) / 4.0
+    if semantic_duplicate:
+        blocker_risk = 1.0
+    else:
+        blocker_risk = 1.0 - runnable_probability
+    utility = SearchUtilityFeaturesV1(
+        runnable_probability=round(runnable_probability, 6),
+        useful_signal=round(useful_signal, 6),
+        frontier_potential=round(frontier_potential, 6),
+        information_gain=round(information_gain, 6),
+        cost=round(estimated_cost, 6),
+        blocker_risk=round(_bounded_unit(blocker_risk), 6),
+    )
+    execution_contract = spec.execution_contract
+    executable_parent = spec.closest_parent
+    if not executable_parent and isinstance(execution_contract, Mapping):
+        executable_parent = execution_contract.get("base_model_config")
+    feature_evidence = RouterFeatureEvidenceV1(
+        compile_valid=qualification_status == QualificationStatusV1.PASS.value,
+        handler_available=resolution_ready,
+        materializer_available=resolution_ready,
+        blocker_rate=round(_bounded_unit(blocker_risk), 6),
+        semantic_duplicate=bool(semantic_duplicate),
+        parent_available=bool(executable_parent),
+        mechanism_depth=len(spec.causal_chain),
+        estimated_cost=round(estimated_cost, 6),
+        llm_diagnostic=utility,
+    )
+    if qualification_status != QualificationStatusV1.PASS.value:
+        status = "QUALIFICATION_BLOCKED"
+    elif not qualification_isolated:
+        status = "QUALIFICATION_PROCESS_NOT_ISOLATED"
+    elif not resolution_ready:
+        status = "RESOLUTION_BLOCKED"
+    elif resource_profile.get("status") != "RESOURCE_ADMITTED":
+        status = str(resource_profile.get("status") or "RESOURCE_PROFILE_INVALID")
+    elif not prediction_contract:
+        status = "RESOURCE_PROFILE_INVALID"
+    elif (
+        isinstance(efficiency_comparison, Mapping)
+        and efficiency_comparison.get("mechanism_preserved") is not True
+    ):
+        status = "RESOURCE_DEFERRED_IMPLEMENTATION_EFFICIENCY_MECHANISM_DRIFT"
+    elif (
+        isinstance(efficiency_comparison, Mapping)
+        and efficiency_comparison.get("improved") is not True
+    ):
+        status = "RESOURCE_DEFERRED_IMPLEMENTATION_EFFICIENCY_NOT_IMPROVED"
+    elif semantic_duplicate:
+        status = "SEMANTIC_DUPLICATE"
+    else:
+        status = "RESOURCE_ADMITTED"
+    admitted = status == "RESOURCE_ADMITTED" and utility.runnable_probability > 0.0
+    return canonical_value(
+        {
+            "admitted": admitted,
+            "candidate_ref": resource_profile.get("candidate_ref"),
+            "candidate_package_digest": resource_profile.get(
+                "candidate_package_digest"
+            ),
+            "effect_fields_consumed": [],
+            "feature_evidence": feature_evidence.to_dict(),
+            "held_out_reads": 0,
+            "mechanism_effect_updates": 0,
+            "outcome_fields_consumed": [],
+            "preoutcome_score": preoutcome_score,
+            "qualification": {
+                "disposable_process": qualification_isolated,
+                "receipt_digest": qualification_digest,
+                "status": qualification_status,
+            },
+            "resolution": {
+                "digest": resolution_digest,
+                "ready": resolution_ready,
+            },
+            "resource_profile_digest": resource_profile.get("profile_digest"),
+            "implementation_efficiency_comparison": efficiency_comparison,
+            "schema": "recclaw.research-line.innovation-quality-admission.v1",
+            "status": status,
+            "spec_digest": spec.digest,
+            "utility_features": utility.to_dict(),
+            "runnable_probability": utility.runnable_probability,
         }
     )
 
@@ -660,13 +1371,30 @@ def project_q1_resource_admission(
     )
 
 
-def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
+def run_idea_quality(
+    repo_root: Path,
+    *,
+    run_root: Path,
+    stop_after_pool: bool = False,
+    provider_run_identity: str = Q1_RUN_IDENTITY,
+    proposal_seeds: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
     """Execute the one-shot real Q1 Producer-to-resource-plan chain."""
 
     repo_root = repo_root.resolve()
     run_root = run_root.resolve()
     if run_root.exists():
         raise IdeaQualityError(f"Q1 root already exists: {run_root}")
+    effective_proposal_seeds = dict(proposal_seeds or Q1_PROPOSAL_SEEDS)
+    if set(effective_proposal_seeds) != set(Q1_CANDIDATE_SLOTS) or any(
+        not isinstance(value, int) or isinstance(value, bool)
+        for value in effective_proposal_seeds.values()
+    ):
+        raise IdeaQualityError("proposal seeds must exactly cover the frozen Q1 slots")
+    if not provider_run_identity or any(
+        character.isspace() for character in provider_run_identity
+    ):
+        raise IdeaQualityError("provider_run_identity must be whitespace-free")
     started_ns = time.monotonic_ns()
     context = build_research_context(repo_root)
     artifacts, _r1_receipt = load_registered_r1_artifacts(repo_root)
@@ -713,7 +1441,7 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                 arm=arm,
                 slot=slot,
                 role=Q1_SLOT_ROLES[slot],
-                seed=Q1_PROPOSAL_SEEDS[slot],
+                seed=effective_proposal_seeds[slot],
                 context=context,
                 profile_catalog=catalog,
                 protocol_ref=active.protocol_ref,
@@ -726,8 +1454,8 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
             call = bounded_provider_call(
                 call_root=run_root / "provider/proposals" / arm / slot,
                 schema_path=schema_paths[arm],
-                logical_call_id=f"{Q1_RUN_IDENTITY}:{slot}:proposal",
-                session_id=f"{Q1_RUN_IDENTITY}:{slot}:paired-proposal-session",
+                logical_call_id=f"{provider_run_identity}:{arm}:{slot}:proposal",
+                session_id=f"{provider_run_identity}:{slot}:paired-proposal-session",
                 prompt=prompt,
                 token_ceiling=Q1_PROPOSAL_TOKEN_CEILING,
                 maximum_physical_attempts=1,
@@ -763,7 +1491,7 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                         {
                             "slot": slot,
                             "producer_role": Q1_SLOT_ROLES[slot],
-                            "proposal_seed": Q1_PROPOSAL_SEEDS[slot],
+                            "proposal_seed": effective_proposal_seeds[slot],
                             "provider_attempts": call.attempts,
                             "proposal_response_digest": call.call.response_digest,
                             "research_spec": spec.canonical_dict(),
@@ -786,7 +1514,7 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
                 {
                     "slot": slot,
                     "producer_role": Q1_SLOT_ROLES[slot],
-                    "proposal_seed": Q1_PROPOSAL_SEEDS[slot],
+                    "proposal_seed": effective_proposal_seeds[slot],
                     "provider_attempts": call.attempts,
                     "proposal_response_digest": call.call.response_digest,
                     "research_spec": spec.canonical_dict(),
@@ -838,6 +1566,33 @@ def run_idea_quality(repo_root: Path, *, run_root: Path) -> dict[str, Any]:
     frozen_selection_digest = _write_new_json(
         run_root / "FROZEN_SELECTION_BEFORE_IMPLEMENTATION.json", frozen_selection
     )
+
+    if stop_after_pool:
+        proposal_usage = _provider_usage(proposal_attempt_groups)
+        receipt = canonical_value(
+            {
+                "schema": "recclaw.research-line.q4-provider-resolver-pool.v1",
+                "status": "POOL_FROZEN_BEFORE_IMPLEMENTATION",
+                "provider_run_identity": provider_run_identity,
+                "proposal_seeds": effective_proposal_seeds,
+                "candidate_count": sum(len(rows) for rows in pools.values()),
+                "candidate_pools": pools,
+                "frozen_pool_ref": str(
+                    run_root / "FROZEN_SELECTION_BEFORE_IMPLEMENTATION.json"
+                ),
+                "frozen_pool_sha256": frozen_selection_digest,
+                "proposal_provider_usage": proposal_usage,
+                "implementation_provider_calls": 0,
+                "implementation_or_qualification_outcomes_present_when_written": 0,
+                "outcome_fields_consumed": [],
+                "retries": proposal_usage["retries"],
+                "held_out_reads": 0,
+                "development_only": True,
+                "scientific_effect_claim": False,
+            }
+        )
+        _write_new_json(run_root / "PROVIDER_RESOLVER_RECEIPT.json", receipt)
+        return receipt
 
     implementer_template = implementer_template_path.read_text(encoding="utf-8")
     policy = _shared_policy(

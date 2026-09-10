@@ -1,5 +1,5 @@
 {
-  "profile_id": "RECCLAW_ML1M_DEVELOPMENT_PARTITION_V1",
+  "profile_id": "RECCLAW_ML1M_ROUND_TEST_FEEDBACK_PARTITION_V1",
   "dataset": "ml-1m",
   "seed": 2026,
   "group_by": "user_id",
@@ -15,13 +15,16 @@
   },
   "search_runtime_files": [
     "ml-1m.train.inter",
-    "ml-1m.dev.inter"
+    "ml-1m.dev.inter",
+    "ml-1m.heldout.inter"
   ],
   "search_runtime_benchmark_filename": [
     "train",
     "dev",
-    "dev"
+    "heldout"
   ],
-  "heldout_access": "POST_SELECTION_ONLY",
+  "heldout_access": "AFTER_BEST_CHECKPOINT_SELECTION",
+  "test_partition_role": "ROUND_TEST_FEEDBACK",
+  "adaptive_reuse": "DISCLOSED_ACROSS_RESEARCH_ROUNDS",
   "overlap_policy": "ZERO_ROW_ID_OVERLAP"
 }

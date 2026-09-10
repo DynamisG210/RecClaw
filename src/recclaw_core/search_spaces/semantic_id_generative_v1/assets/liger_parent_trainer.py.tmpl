@@ -1,0 +1,411 @@
+"""Official LIGER optimizer, stopping rule, and candidate-local evaluator."""
+
+from __future__ import annotations
+
+import math
+
+import torch
+from recbole.trainer import Trainer
+from transformers import get_scheduler
+
+RECCLAW_OPTIMIZATION_STAGE_SPEC = None
+
+
+class FreshCandidateTrainer(Trainer):
+    """Run the frozen LIGER recipe without RecBole full-sort list filling."""
+
+    def __init__(self, config, model):
+        super().__init__(config, model)
+        self.recclaw_config = config
+        self.optimizer = self.recclaw_build_optimizer()
+        self.scheduler = self.recclaw_build_scheduler(self.optimizer)
+        self.scaler = torch.amp.GradScaler("cuda")
+        self.eval_topks = tuple(int(value) for value in config["topk"])
+        self.recclaw_update_index = 0
+        self.recclaw_stage_receipts = []
+        self.recclaw_best_epoch = -1
+
+    def fit(
+        self,
+        train_data,
+        valid_data=None,
+        verbose=True,
+        saved=True,
+        show_progress=False,
+        callback_fn=None,
+    ):
+        """Use the measured parent's epoch-based selection and stopping rule."""
+        eval_every = int(self.recclaw_config["recclaw_liger_eval_every"])
+        patience = int(self.recclaw_config["recclaw_liger_patience_epochs"])
+        warmup_steps = int(self.recclaw_config["recclaw_liger_warmup_steps"])
+        self._recclaw_train_generator = getattr(train_data, "generator", None)
+        resume_rng = getattr(self, "_recclaw_resume_rng", None)
+        if resume_rng is not None:
+            self._recclaw_restore_rng(resume_rng)
+            self._recclaw_resume_rng = None
+        best_epoch = getattr(self, "recclaw_best_epoch", self.start_epoch - 1)
+        self.recclaw_best_epoch = best_epoch
+        for epoch_idx in range(self.start_epoch, self.epochs):
+            train_loss = self._train_epoch(
+                train_data, epoch_idx, show_progress=show_progress
+            )
+            self.train_loss_dict[epoch_idx] = train_loss
+            if verbose:
+                self.logger.info("epoch %d training loss %s", epoch_idx, train_loss)
+            if not valid_data:
+                if saved:
+                    self._save_checkpoint(epoch_idx, verbose=verbose)
+                continue
+            should_evaluate = (
+                (epoch_idx + 1) % eval_every == 0
+                or epoch_idx + 1 == self.epochs
+            )
+            if should_evaluate:
+                valid_score, valid_result = self._valid_epoch(
+                    valid_data, show_progress=show_progress
+                )
+                if valid_score > self.best_valid_score:
+                    self.best_valid_score = valid_score
+                    self.best_valid_result = valid_result
+                    best_epoch = epoch_idx
+                    self.recclaw_best_epoch = epoch_idx
+                    if saved:
+                        self._save_checkpoint(epoch_idx, verbose=verbose)
+                if verbose:
+                    self.logger.info("epoch %d validation %s", epoch_idx, valid_result)
+                if callback_fn:
+                    callback_fn(epoch_idx, valid_score)
+            if (
+                best_epoch >= 0
+                and epoch_idx - best_epoch >= patience
+                and (epoch_idx + 1) * len(train_data) > warmup_steps
+            ):
+                break
+        return self.best_valid_score, self.best_valid_result
+
+    def _save_checkpoint(self, epoch, verbose=True, **kwargs):
+        """Keep native optimizer progression with the selected parent checkpoint."""
+        import random
+        import numpy as np
+
+        if not self.config["single_spec"] and self.config["local_rank"] != 0:
+            return
+        generator = getattr(self, "_recclaw_train_generator", None)
+        rng = {
+            "python": random.getstate(),
+            "numpy": np.random.get_state(),
+            "torch": torch.get_rng_state(),
+            "loader": generator.get_state() if generator is not None else None,
+            "cuda": (
+                torch.cuda.get_rng_state(self.device)
+                if self.device.type == "cuda" else None
+            ),
+        }
+        state = {
+            "config": self.config,
+            "epoch": epoch,
+            "cur_step": self.cur_step,
+            "best_valid_score": self.best_valid_score,
+            "state_dict": self.model.state_dict(),
+            "other_parameter": self.model.other_parameter(),
+            "optimizer": self.optimizer.state_dict(),
+            "recclaw_native_state": {
+                "scheduler": self.scheduler.state_dict(),
+                "scaler": self.scaler.state_dict(),
+                "update_index": self.recclaw_update_index,
+                "stage_receipts": self.recclaw_stage_receipts,
+                "best_epoch": self.recclaw_best_epoch,
+                "best_valid_result": self.best_valid_result,
+                "train_loss_dict": self.train_loss_dict,
+                "rng": rng,
+            },
+        }
+        checkpoint_file = kwargs.pop("saved_model_file", self.saved_model_file)
+        torch.save(state, checkpoint_file, pickle_protocol=4)
+        if verbose:
+            self.logger.info("Saving current: %s", checkpoint_file)
+
+    def resume_checkpoint(self, resume_file):
+        checkpoint = torch.load(resume_file, map_location=self.device, weights_only=False)
+        native = checkpoint.get("recclaw_native_state")
+        if native is None:
+            raise ValueError(
+                "LIGER checkpoint lacks native scheduler/scaler/update/RNG state; "
+                "use it for saved-weight evaluation, not training continuation"
+            )
+        self.model.load_state_dict(checkpoint["state_dict"])
+        self.model.load_other_parameter(checkpoint.get("other_parameter"))
+        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        self.scheduler.load_state_dict(native["scheduler"])
+        self.scaler.load_state_dict(native["scaler"])
+        self.start_epoch = checkpoint["epoch"] + 1
+        self.cur_step = checkpoint["cur_step"]
+        self.best_valid_score = checkpoint["best_valid_score"]
+        self.best_valid_result = native["best_valid_result"]
+        self.recclaw_best_epoch = native["best_epoch"]
+        self.recclaw_update_index = native["update_index"]
+        self.recclaw_stage_receipts = native["stage_receipts"]
+        self.train_loss_dict = native["train_loss_dict"]
+        self.saved_model_file = str(resume_file)
+        # Restore after caller/model/data-loader construction has consumed RNG.
+        self._recclaw_resume_rng = native["rng"]
+        self.logger.info("Checkpoint loaded. Resume training from epoch %s", self.start_epoch)
+
+    def _recclaw_restore_rng(self, rng):
+        import random
+        import numpy as np
+
+        random.setstate(rng["python"])
+        np.random.set_state(rng["numpy"])
+        torch.set_rng_state(rng["torch"].cpu())
+        if rng["loader"] is not None:
+            self._recclaw_train_generator.set_state(rng["loader"].cpu())
+        if rng["cuda"] is not None:
+            torch.cuda.set_rng_state(rng["cuda"].cpu(), self.device)
+
+    def recclaw_build_optimizer(self):
+        return torch.optim.AdamW(
+            self.model.parameters(),
+            lr=float(self.recclaw_config["recclaw_liger_learning_rate"]),
+            weight_decay=float(
+                self.recclaw_config["recclaw_liger_weight_decay"]
+            ),
+        )
+
+    def recclaw_build_scheduler(self, optimizer):
+        stage_spec = RECCLAW_OPTIMIZATION_STAGE_SPEC
+        if (
+            stage_spec is not None
+            and stage_spec["primitive_id"]
+            == "staging.alternating_tokenizer_recommender"
+        ):
+            parameters = stage_spec["parameters"]
+            scheduler = parameters["scheduler"]
+            if scheduler == "CONSTANT":
+                return torch.optim.lr_scheduler.LambdaLR(
+                    optimizer,
+                    lr_lambda=lambda _step: 1.0,
+                )
+            total_steps = (
+                int(parameters["cycles"])
+                * (
+                    int(parameters["tokenizer_updates_per_cycle"])
+                    + int(parameters["recommender_updates_per_cycle"])
+                )
+                + int(parameters["final_recommender_finetune_updates"])
+            )
+            return get_scheduler(
+                "cosine",
+                optimizer=optimizer,
+                num_warmup_steps=int(parameters["warmup_updates"]),
+                num_training_steps=total_steps,
+            )
+        return get_scheduler(
+            "cosine",
+            optimizer=optimizer,
+            num_warmup_steps=int(
+                self.recclaw_config["recclaw_liger_warmup_steps"]
+            ),
+            num_training_steps=int(
+                self.recclaw_config["recclaw_liger_scheduler_total_steps"]
+            ),
+        )
+
+    def _recclaw_stage_for_update(self, update_index):
+        stage_spec = RECCLAW_OPTIMIZATION_STAGE_SPEC
+        if stage_spec is None:
+            return {"active": True, "stage": "PARENT"}
+        primitive_id = stage_spec["primitive_id"]
+        parameters = stage_spec["parameters"]
+        if primitive_id == "staging.freeze_tokenizer_then_sft":
+            tokenizer_updates = int(parameters["tokenizer_updates"])
+            recommender_updates = int(parameters["recommender_updates"])
+            if update_index < tokenizer_updates:
+                stage = "TOKENIZER"
+            elif update_index < tokenizer_updates + recommender_updates:
+                stage = "RECOMMENDER_SFT"
+            else:
+                return {"active": False, "stage": "COMPLETE"}
+            return {"active": True, "stage": stage}
+        if primitive_id == "staging.alternating_tokenizer_recommender":
+            tokenizer_updates = int(parameters["tokenizer_updates_per_cycle"])
+            recommender_updates = int(parameters["recommender_updates_per_cycle"])
+            cycles = int(parameters["cycles"])
+            cycle_size = tokenizer_updates + recommender_updates
+            alternating_updates = cycles * cycle_size
+            if update_index < alternating_updates:
+                cycle_index, cycle_offset = divmod(update_index, cycle_size)
+                stage = (
+                    "TOKENIZER"
+                    if cycle_offset < tokenizer_updates
+                    else "RECOMMENDER"
+                )
+                return {
+                    "active": True,
+                    "cycle_index": cycle_index,
+                    "stage": stage,
+                }
+            final_updates = int(parameters["final_recommender_finetune_updates"])
+            if update_index < alternating_updates + final_updates:
+                return {"active": True, "stage": "FINAL_RECOMMENDER_FINETUNE"}
+            return {"active": False, "stage": "COMPLETE"}
+        if primitive_id == "staging.sft_then_preference_posttrain":
+            sft_updates = int(parameters["sft_updates"])
+            posttrain_updates = int(parameters["posttrain_updates"])
+            if update_index < sft_updates:
+                return {"active": True, "stage": "SFT"}
+            if update_index < sft_updates + posttrain_updates:
+                return {
+                    "active": True,
+                    "reference_policy": parameters["reference_policy"],
+                    "stage": "PREFERENCE_POSTTRAIN",
+                }
+            return {"active": False, "stage": "COMPLETE"}
+        if primitive_id == "staging.joint_tokenizer_recommender":
+            if update_index < int(parameters["joint_updates"]):
+                return {
+                    "active": True,
+                    "gradient_balance": parameters["gradient_balance"],
+                    "stage": "JOINT",
+                    "tokenizer_warmstart": parameters["tokenizer_warmstart"],
+                }
+            return {"active": False, "stage": "COMPLETE"}
+        raise ValueError("unsupported compiler-owned optimization staging primitive")
+
+    def _recclaw_apply_stage(self, update_index, stage):
+        if RECCLAW_OPTIMIZATION_STAGE_SPEC is None:
+            return
+        if (
+            not self.recclaw_stage_receipts
+            or self.recclaw_stage_receipts[-1]["stage"] != stage["stage"]
+        ):
+            self.recclaw_stage_receipts.append(
+                {"start_update": update_index, **stage}
+            )
+        stage_hook = getattr(self.model, "recclaw_set_training_stage", None)
+        if stage_hook is not None:
+            stage_hook(stage)
+
+    def recclaw_before_update(
+        self,
+        update_index,
+        epoch_idx,
+        batch_index,
+        stage,
+    ):
+        del update_index, epoch_idx, batch_index, stage
+
+    def recclaw_after_update(
+        self,
+        update_index,
+        epoch_idx,
+        batch_index,
+        stage,
+    ):
+        del update_index, epoch_idx, batch_index, stage
+
+    def _train_epoch(
+        self,
+        train_data,
+        epoch_idx,
+        loss_func=None,
+        show_progress=False,
+    ):
+        del show_progress
+        self.model.train()
+        self.model.recclaw_before_epoch(epoch_idx)
+        loss_func = loss_func or self.model.calculate_loss
+        loss_sum = 0.0
+        batch_count = 0
+        for batch_index, interaction in enumerate(train_data):
+            update_index = self.recclaw_update_index
+            stage = self._recclaw_stage_for_update(update_index)
+            if not stage["active"]:
+                break
+            self._recclaw_apply_stage(update_index, stage)
+            self.recclaw_before_update(
+                update_index,
+                epoch_idx,
+                batch_index,
+                stage,
+            )
+            interaction = interaction.to(self.device)
+            self.optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast(
+                device_type="cuda",
+                dtype=torch.float16,
+            ):
+                loss = loss_func(interaction)
+            self._check_nan(loss)
+            self.scaler.scale(loss).backward()
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            self.scheduler.step()
+            self.recclaw_after_update(
+                update_index,
+                epoch_idx,
+                batch_index,
+                stage,
+            )
+            self.recclaw_update_index += 1
+            loss_sum += float(loss.detach())
+            batch_count += 1
+        return loss_sum / max(1, batch_count)
+
+    @staticmethod
+    def _targets_for_batch(interaction, positive_u, positive_i):
+        targets = torch.full((len(interaction),), -1, dtype=torch.long)
+        positive_u = torch.as_tensor(positive_u, dtype=torch.long).cpu()
+        positive_i = torch.as_tensor(positive_i, dtype=torch.long).cpu()
+        if positive_u.numel() != positive_i.numel():
+            raise ValueError("candidate-local evaluator positive indices differ")
+        for row, item in zip(positive_u.tolist(), positive_i.tolist(), strict=True):
+            if targets[row] != -1:
+                raise ValueError("candidate-local evaluator requires one dev target per row")
+            targets[row] = item
+        if torch.any(targets < 1):
+            raise ValueError("candidate-local evaluator lacks a dev target")
+        return targets
+
+    @torch.no_grad()
+    def evaluate(
+        self,
+        eval_data,
+        load_best_model=True,
+        model_file=None,
+        show_progress=False,
+    ):
+        del show_progress
+        if not eval_data:
+            return None
+        if load_best_model:
+            checkpoint_file = model_file or self.saved_model_file
+            checkpoint = torch.load(
+                checkpoint_file,
+                map_location=self.device,
+                weights_only=False,
+            )
+            self.model.load_state_dict(checkpoint["state_dict"])
+            self.model.load_other_parameter(checkpoint.get("other_parameter"))
+        self.model.eval()
+        ranks = []
+        for interaction, _history_index, positive_u, positive_i in eval_data:
+            targets = self._targets_for_batch(interaction, positive_u, positive_i)
+            batch = interaction.to(self.device)
+            batch_targets = targets.to(self.device)
+            ranks.extend(self.model.recclaw_target_ranks(batch, batch_targets))
+        if not ranks:
+            raise ValueError("candidate-local evaluator received no dev examples")
+        metrics = {}
+        for cutoff in self.eval_topks:
+            hits = [rank is not None and rank < cutoff for rank in ranks]
+            metrics[f"recall@{cutoff}"] = sum(hits) / len(hits)
+            metrics[f"ndcg@{cutoff}"] = sum(
+                1.0 / math.log2(rank + 2)
+                if hit and rank is not None
+                else 0.0
+                for rank, hit in zip(ranks, hits, strict=True)
+            ) / len(hits)
+        return metrics

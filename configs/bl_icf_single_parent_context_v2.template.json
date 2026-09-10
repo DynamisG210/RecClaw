@@ -1,0 +1,28 @@
+{
+  "schema": "recclaw.research-baseline-context.v2",
+  "research_profile_id": "BL_ICF_LIGHTGCNPP_PARENT_V2",
+  "mechanism_space": "BL_ICF_MECHANISM_SPACE_V1",
+  "mechanism_language_id": "recclaw.bl-icf.lightgcnpp-parent-language.v2",
+  "metric": "NDCG@10",
+  "split": "data/dev",
+  "parent_anchor": {
+    "name": "LightGCN++",
+    "base_model_config": "LightGCN",
+    "mechanism_summary": "Learned propagation normalization plus learned residual/layer fusion on the LightGCN collaborative graph backbone.",
+    "binding": null,
+    "mechanism_program": null,
+    "source_bundle": null,
+    "execution_contract": null,
+    "paired_metric": {
+      "seed": 54201,
+      "value": null
+    }
+  },
+  "search_objective": "Grow one LightGCN++-rooted search tree and maximize real fixed-protocol data/dev NDCG@10. Explicitly choose the frozen LightGCN++ root or an existing resolvable descendant as construction parent, independently of the best measured result; keep LightGCN++ as the permanent paired comparator.",
+  "decision_semantics": {
+    "root_parent": "LightGCN++ is the permanent frozen root anchor and paired comparator for every candidate.",
+    "active_lineage_parent": "Choose the construction parent from the available frozen root and existing descendants; update the measured best independently.",
+    "ordinary_search": "Develop focused, faithful improvements from the selected construction parent. The causal thesis may coordinate multiple mechanisms when needed, without unrelated mechanism bundling.",
+    "innovation_lane": "frontier_architect explores more aggressive improvements from the selected LightGCN++-rooted parent and may cross zones or define new typed mechanisms when expected effect justifies it."
+  }
+}

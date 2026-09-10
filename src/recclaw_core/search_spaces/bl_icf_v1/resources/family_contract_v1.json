@@ -60,7 +60,7 @@
     "LLM_AS_RECOMMENDER"
   ],
   "family_id": "BL_ICF_V1",
-  "family_version": "1.0.0",
+  "family_version": "1.1.0",
   "forbidden_data_roles": [
     "SEQUENCE_ORDER",
     "ITEM_METADATA",

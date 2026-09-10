@@ -1,0 +1,180 @@
+{
+  "schema": "recclaw.single-parent-search-space-launch.v1",
+  "profile_key": "diffusion_flow_cf",
+  "protocol_ref": "recclaw.protocol.p7.ml1m-fixed-train-dev-full-sort-development.v1",
+  "seed": 54201,
+  "frozen_profile": {
+    "profile_id": "recclaw-profile-p7-diffusion-flow-ml1m-fixed-train-dev-v1-seed54201-single-parent-v1",
+    "frozen_fields": {
+      "dataset": "ml-1m",
+      "dataset_snapshot": {
+        "interaction_sha256": "e943abb91013a54c385828fdf5ab4ce49e957ca3a772adb30cde2a7d5539b389",
+        "rows": 1000209,
+        "users": 6040,
+        "items": 3686,
+        "search_partition_semantic_identity": {
+          "train": {
+            "sha256": "c84b1a4f6c6d974f32f126b173f11f7af8e12e1a143a50ac5a53e9945903491a",
+            "interactions": 797758,
+            "shape": [6041, 3687]
+          },
+          "development": {
+            "sha256": "631911b8e59d312e110ba7205151bcda3d52378ecbf510d48d8b9cc162956cc9",
+            "interactions": 99692,
+            "shape": [6041, 3687]
+          }
+        }
+      },
+      "item_id_mapping_identity": {
+        "catalog_items_sha256": null,
+        "items": 3686
+      },
+      "split": {
+        "strategy": "BENCHMARK",
+        "benchmark_filename": [
+          "train",
+          "dev",
+          "dev"
+        ],
+        "split": null,
+        "group_by": "user",
+        "order": "TO"
+      },
+      "preprocessing": {
+        "implicit_feedback": true,
+        "train_only_state_graph_basis_and_condition": true
+      },
+      "evaluation_mode": "FULL_SORT",
+      "candidate_universe": "FULL_CATALOG",
+      "seen_repeat_policy": "DEVELOPMENT_MASK_TRAIN;DUPLICATE_DEV_SLOT_NOT_READ",
+      "metric_semantics": "NDCG@10_BEST_VALIDATION_SELECTED_DEVELOPMENT_ONLY",
+      "evaluator": "RECBOLE_GENERAL_CF_FULL_SORT_EXCLUDE_SEEN",
+      "seed_policy": {
+        "actual_discovery_training_seed": 54201,
+        "non_54201_training_requires_explicit_authorization": true
+      },
+      "training_update_budget": {
+        "epochs_ceiling": 300,
+        "validation_every": 1,
+        "patience_epochs": 10
+      },
+      "inference_function_evaluation_budget": {
+        "maximum_field_evaluations_per_user": 100,
+        "must_be_logged": true,
+        "prior_only_control_charged": true
+      }
+    }
+  },
+  "execution_contract": {
+    "capability_family": "DIFFUSION_FLOW_INTERACTION_VECTOR_CF",
+    "model": "FreshCandidateModel",
+    "base_model_config": "DiffRec",
+    "required_dependencies": [
+      "numpy",
+      "python-stdlib",
+      "pytorch",
+      "recbole-runtime",
+      "scipy",
+      "torch"
+    ],
+    "config_overrides": {
+      "recclaw_model_type": "GENERAL",
+      "recclaw_input_semantics": "USER_INTERACTION_VECTOR",
+      "eval_args": {
+        "split": null,
+        "order": "TO",
+        "group_by": "user",
+        "mode": "full"
+      },
+      "metrics": [
+        "Recall",
+        "NDCG",
+        "Hit"
+      ],
+      "topk": [
+        10,
+        20
+      ],
+      "valid_metric": "NDCG@10",
+      "train_batch_size": 4096,
+      "eval_batch_size": 131072,
+      "epochs": 300,
+      "eval_step": 1,
+      "stopping_step": 10,
+      "learning_rate": 0.001,
+      "reproducibility": true,
+      "repeatable": false,
+      "metric_decimal_place": 4,
+      "train_neg_sample_args": null
+    },
+    "search_data": {
+      "root": null,
+      "manifest_ref": null,
+      "manifest_sha256": null
+    }
+  },
+  "parent_source": {
+    "source_ref": null,
+    "source_sha256": null,
+    "comparator_ref": null,
+    "comparator_digest": null,
+    "frozen_ndcg_at_10": null
+  },
+  "baseline_context": {
+    "schema": "recclaw.research-baseline-context.v2",
+    "research_profile_id": "DIFFUSION_FLOW_CF_DIFFREC_PARENT_V2",
+    "mechanism_space": "DIFFUSION_FLOW_CF_MECHANISM_SPACE_V1",
+    "mechanism_language_id": "recclaw.diffusion-flow-cf.diffrec-parent-language.v2",
+    "metric": "NDCG@10",
+    "split": "data/dev",
+    "parent_anchor": {
+      "name": "DiffRec",
+      "base_model_config": "DiffRec",
+      "mechanism_summary": "Five-step low-scale Gaussian corruption of full interaction vectors, a tanh time-conditioned x0 predictor trained with SNR-weighted loss-history timestep sampling, and deterministic five-step recovery initialized from the observed interaction state.",
+      "binding": null,
+      "mechanism_program": null,
+      "source_bundle": null,
+      "paired_metric": {
+        "seed": 54201,
+        "value": null
+      }
+    },
+    "search_objective": "Start from frozen DiffRec and maximize real fixed-protocol data/dev NDCG@10. A faithful measured improvement may become the next construction parent while DiffRec remains the fixed root comparator.",
+    "decision_semantics": {
+      "parent": "DiffRec is the initial construction anchor and fixed paired comparator; later construction may use a successful measured descendant.",
+      "frontier": "The best faithful measured descendant becomes eligible as the active construction parent and supplies mechanism feedback.",
+      "ordinary_search": "One core causal delta plus at most one support delta.",
+      "innovation_lane": "frontier_architect may cross zones or define new typed mechanisms when expected effect justifies it."
+    }
+  },
+  "research_runtime": {
+    "epochs": 300,
+    "eval_step": 1,
+    "stopping_step": 10,
+    "implementation_requirements": [
+      "RecBole GeneralRecommender with LISTWISE user-interaction-vector semantics",
+      "finite differentiable denoising or flow objective",
+      "deterministic seeded full-catalog recovery",
+      "candidate-local trainer for nonstandard stages"
+    ],
+    "compatibility_requirements": [
+      "train-only graph, basis, prior, and condition derivation",
+      "full-catalog exclude-seen ranking",
+      "no static score fallback",
+      "inference field-evaluation cost reported"
+    ],
+    "protocol_requirements": [
+      "fixed train/dev/dev benchmark with no resplit and duplicate dev used only for the RecBole ABI",
+      "best development NDCG@10 checkpoint",
+      "trajectory and declared prior/condition ablations retained as feedback",
+      "paper-spec evidence explicitly labeled"
+    ]
+  },
+  "evidence": {
+    "known_parent_result_seed": 54201,
+    "known_parent_development_ndcg_at_10": null,
+    "known_result_ref": null,
+    "launch_asset_status": "P7_STRICT_FIXED_TRAIN_DEV_DIFFREC_PARENT_PENDING",
+    "formal_launch_rule": "Build READY only from a seed-54201 result produced against a physical train/dev-only root with heldout never opened."
+  }
+}

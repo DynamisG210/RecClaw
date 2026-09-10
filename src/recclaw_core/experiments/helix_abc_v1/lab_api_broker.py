@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import ast
+from contextlib import contextmanager
 import hashlib
 import json
+import re
+import signal
 import socket
 import sqlite3
 import ssl
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -29,6 +33,47 @@ from .canonical import canonical_json_bytes, sha256_digest, validate_sha256
 from .canary_broker import CanaryBrokerCallV1, CanaryBrokerError
 
 
+@contextmanager
+def _hard_transport_deadline(timeout_seconds: float):
+    """Bound the complete open/read operation on the Linux campaign parent.
+
+    ``urllib``'s timeout is a socket-operation timeout: a peer can keep the
+    connection alive indefinitely by producing occasional bytes.  The
+    campaign needs one wall-clock deadline around both ``urlopen`` and
+    ``read`` so a transient Provider stall reaches the existing bounded retry
+    loop instead of blocking round closure forever.
+    """
+
+    if (
+        timeout_seconds <= 0.0
+        or not hasattr(signal, "setitimer")
+        or threading.current_thread() is not threading.main_thread()
+    ):
+        yield
+        return
+
+    def expire(_signum: int, _frame: object) -> None:
+        raise TimeoutError("laboratory API hard wall-clock deadline exceeded")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    started = time.monotonic()
+    signal.signal(signal.SIGALRM, expire)
+    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0.0:
+            elapsed = time.monotonic() - started
+            signal.setitimer(
+                signal.ITIMER_REAL,
+                max(1e-6, previous_timer[0] - elapsed),
+                previous_timer[1],
+            )
+
+
 class LabApiResponseFailureReasonV1(str, Enum):
     """Allowlisted, content-free HTTP-200 response failure reasons."""
 
@@ -38,6 +83,10 @@ class LabApiResponseFailureReasonV1(str, Enum):
     CHOICE_SHAPE = "CHOICE_SHAPE"
     MESSAGE_SHAPE = "MESSAGE_SHAPE"
     MESSAGE_CONTENT_TYPE_OR_EMPTY = "MESSAGE_CONTENT_TYPE_OR_EMPTY"
+    RESPONSES_STATUS = "RESPONSES_STATUS"
+    RESPONSES_OUTPUT_SHAPE = "RESPONSES_OUTPUT_SHAPE"
+    RESPONSES_MESSAGE_SHAPE = "RESPONSES_MESSAGE_SHAPE"
+    RESPONSES_CONTENT_SHAPE = "RESPONSES_CONTENT_SHAPE"
     CONTENT_JSON_DECODE = "CONTENT_JSON_DECODE"
     SCHEMA_VALIDATION = "SCHEMA_VALIDATION"
     PROPOSAL_COUNT = "PROPOSAL_COUNT"
@@ -47,12 +96,129 @@ class LabApiResponseFailureReasonV1(str, Enum):
     RETURNED_MODEL_TYPE_OR_EMPTY = "RETURNED_MODEL_TYPE_OR_EMPTY"
 
 
+def _provider_http_error_fields(raw: bytes, api_key: str = "") -> dict[str, Any]:
+    """Retain bounded routing diagnostics and usage, not response content."""
+    try:
+        payload = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        payload = {"error": {"message": raw.decode("utf-8", errors="replace")}}
+    if not isinstance(payload, dict):
+        return {}
+    error = payload.get('error')
+    if isinstance(error, str):
+        error = {"message": error}
+    if not isinstance(error, dict):
+        error = {}
+    fields = {
+        'provider_error_' + name: (
+            value.replace(api_key, '[REDACTED]') if api_key else value
+        )[:512]
+        for name in ('code', 'type', 'param', 'message')
+        if isinstance(value := error.get(name), str)
+    }
+    if isinstance(payload.get("usage"), dict):
+        fields["usage"] = {
+            key: value for key, value in payload["usage"].items()
+            if key in {"input_tokens", "prompt_tokens", "output_tokens",
+                       "completion_tokens", "total_tokens", "cached_input_tokens"}
+        }
+    elif payload.get("usage") is not None:
+        fields["provider_usage_incomplete"] = True
+    if any(payload.get(key) for key in ("choices", "output", "content")):
+        fields["provider_response_has_output"] = True
+    return fields
+
+
+def provider_http_failure_kind(http_status: int, detail: Mapping[str, Any]) -> str | None:
+    """Recognize observed transient relay failures, including explicit routing faults."""
+    message = " ".join(str(detail.get("provider_error_message") or "").lower().split())
+    code = str(detail.get("provider_error_code") or "").lower()
+    if http_status == 400 and (
+        "unknown provider for model" in message
+        or "no available channel" in message
+        or "no channel available" in message
+        or code in {"unknown_provider", "no_available_channel"}
+    ):
+        return "TRANSIENT_PROVIDER_ROUTING"
+    if http_status == 503 and (
+        "overloaded" in message or "temporarily unavailable" in message
+    ):
+        return "SERVICE_UNAVAILABLE"
+    if http_status == 429 and "all credentials" in message and "cooling down" in message:
+        return "CREDENTIAL_COOLDOWN"
+    if http_status == 500 and (
+        "upstream error: do request failed" in message
+        or re.search(r"\bstream error:\s*stream id \d+;\s*protocol_error;\s*received from peer\b", message)
+    ):
+        return "UPSTREAM_TRANSPORT_FAILURE"
+    if http_status == 504:
+        return "GATEWAY_TIMEOUT"
+    return None
+
+
+def provider_http_failure_is_unbilled(http_status: int, detail: Mapping[str, Any]) -> bool:
+    """A recognized pure error is unbilled; partial/positive usage remains charged."""
+    usage = detail.get("usage")
+    if isinstance(usage, Mapping):
+        counts = (usage.get("input_tokens", usage.get("prompt_tokens")),
+                  usage.get("output_tokens", usage.get("completion_tokens")))
+        if not all(type(value) is int and value == 0 for value in counts):
+            return False
+        if "total_tokens" in usage and (
+            type(usage["total_tokens"]) is not int or usage["total_tokens"] != 0
+        ):
+            return False
+    if http_status == 400 and not re.search(
+        r"\bunknown provider for model gpt-5\.6-terra(?![\w.-])",
+        str(detail.get("provider_error_message") or "").lower(),
+    ):
+        # Other explicit routing faults can retry, but their price is not known.
+        return False
+    return (
+        provider_http_failure_kind(http_status, detail) is not None
+        and not detail.get("provider_response_has_output")
+        and not detail.get("provider_usage_incomplete")
+    )
+
+
+class LabApiRequestAdmissionError(RuntimeError):
+    """The request budget stopped this call before any HTTP work."""
+
+
 class LabApiResponseContractError(ValueError):
     """Typed response failure whose public value is an allowlisted code only."""
 
-    def __init__(self, reason: LabApiResponseFailureReasonV1) -> None:
+    def __init__(
+        self,
+        reason: LabApiResponseFailureReasonV1,
+        *,
+        usage: Mapping[str, int] | None = None,
+        response_metadata: Mapping[str, str] | None = None,
+    ) -> None:
         self.reason = reason
+        self.usage = dict(usage or {})
+        self.response_metadata = dict(response_metadata or {})
         super().__init__(reason.value)
+
+
+def _provider_json_content(content: str) -> str:
+    """Return the JSON payload after one endpoint-emitted reasoning prefix.
+
+    Endpoint 1 can prepend a closed ``<think>...</think>`` block even when
+    the request uses strict ``json_schema`` output.  Treat only that observed,
+    leading wrapper as transport metadata; the remaining payload still goes
+    through the unchanged JSON decode and schema validation path.
+    """
+
+    candidate = content.strip()
+    think_open = "<think>"
+    think_close = "</think>"
+    if not candidate.startswith(think_open):
+        return candidate
+    close_index = candidate.find(think_close, len(think_open))
+    if close_index < 0:
+        return candidate
+    return candidate[close_index + len(think_close) :].strip()
 
 
 def validate_provider_strict_schema(
@@ -63,7 +229,8 @@ def validate_provider_strict_schema(
     """Validate the strict object rule required by the laboratory Provider."""
 
     properties = schema.get("properties")
-    if isinstance(properties, Mapping):
+    if schema.get("type") == "object":
+        properties = properties if isinstance(properties, Mapping) else {}
         required = schema.get("required")
         property_names = set(str(item) for item in properties)
         required_names = (
@@ -117,6 +284,7 @@ class LabApiBrokerReleaseV1:
     max_total_tokens_per_call: int
     timeout_ms: int
     retry_count: int
+    reasoning_effort: str | None
     release_digest: str
 
     @classmethod
@@ -128,19 +296,30 @@ class LabApiBrokerReleaseV1:
         response_schema_digest: str,
         max_total_tokens_per_call: int,
         timeout_ms: int,
+        reasoning_effort: str | None = None,
+        wire_api: str = "chat_completions",
     ) -> "LabApiBrokerReleaseV1":
+        if wire_api == "chat_completions":
+            transport = "HTTPS_CHAT_COMPLETIONS_V1"
+            request_mode = "SINGLE_JSON_SCHEMA_NO_TOOLS"
+        elif wire_api == "responses":
+            transport = "HTTPS_RESPONSES_V1"
+            request_mode = "SINGLE_RESPONSES_JSON_SCHEMA_NO_TOOLS"
+        else:
+            raise CanaryBrokerError("laboratory API wire API is invalid")
         payload = {
-            "transport": "HTTPS_CHAT_COMPLETIONS_V1",
+            "transport": transport,
             "endpoint_digest": sha256_digest(
                 {"base_url": base_url.rstrip("/")}
             ),
             "model": model,
             "response_schema_digest": response_schema_digest,
-            "request_mode": "SINGLE_JSON_SCHEMA_NO_TOOLS",
+            "request_mode": request_mode,
             "temperature": 0.0,
             "max_total_tokens_per_call": max_total_tokens_per_call,
             "timeout_ms": timeout_ms,
             "retry_count": 0,
+            "reasoning_effort": reasoning_effort,
         }
         return cls(**payload, release_digest=sha256_digest(payload))
 
@@ -157,8 +336,17 @@ class LabApiBrokerReleaseV1:
         if sha256_digest(payload) != expected:
             raise CanaryBrokerError("laboratory API release digest mismatch")
         if (
-            self.transport != "HTTPS_CHAT_COMPLETIONS_V1"
-            or self.request_mode != "SINGLE_JSON_SCHEMA_NO_TOOLS"
+            (self.transport, self.request_mode)
+            not in {
+                (
+                    "HTTPS_CHAT_COMPLETIONS_V1",
+                    "SINGLE_JSON_SCHEMA_NO_TOOLS",
+                ),
+                (
+                    "HTTPS_RESPONSES_V1",
+                    "SINGLE_RESPONSES_JSON_SCHEMA_NO_TOOLS",
+                ),
+            }
             or self.temperature != 0.0
             or self.retry_count != 0
             or self.max_total_tokens_per_call < 1
@@ -175,6 +363,7 @@ class LabApiBrokerReleaseV1:
             "request_mode": self.request_mode,
             "response_schema_digest": self.response_schema_digest,
             "retry_count": self.retry_count,
+            "reasoning_effort": self.reasoning_effort,
             "temperature": self.temperature,
             "timeout_ms": self.timeout_ms,
             "transport": self.transport,
@@ -244,10 +433,12 @@ class LabApiCallReceiptV1:
         }
 
 
-def load_lab_api_credentials(config_path: Path) -> tuple[str, str]:
-    """Read the external credential source without persisting its secret."""
+def load_lab_api_credential_pairs(
+    config_path: Path,
+) -> tuple[tuple[str, str], ...]:
+    """Read ordered endpoint/key pairs without persisting their secrets."""
 
-    values: dict[str, str] = {}
+    values: dict[str, list[str]] = {"base_url": [], "api_key": []}
     for raw_line in config_path.resolve().read_text(
         encoding="utf-8"
     ).splitlines():
@@ -258,16 +449,47 @@ def load_lab_api_credentials(config_path: Path) -> tuple[str, str]:
         if separator and name.strip() in {"api_key", "base_url"}:
             parsed = ast.literal_eval(raw_value.strip())
             if isinstance(parsed, str):
-                values[name.strip()] = parsed
-    api_key = str(values.get("api_key", "")).strip()
-    base_url = str(values.get("base_url", "")).strip().rstrip("/")
-    if not api_key or not base_url:
+                values[name.strip()].append(parsed)
+    if not values["api_key"] or not values["base_url"]:
         raise CanaryBrokerError(
             "laboratory API config requires api_key and base_url"
         )
-    if not base_url.startswith("https://"):
-        raise CanaryBrokerError("laboratory API base_url must use HTTPS")
-    return base_url, api_key
+    if len(values["api_key"]) != len(values["base_url"]):
+        raise CanaryBrokerError(
+            "laboratory API config contains incomplete credential pairs"
+        )
+    pairs: list[tuple[str, str]] = []
+    for base_url, api_key in zip(
+        values["base_url"], values["api_key"], strict=True
+    ):
+        normalized_base_url = base_url.strip().rstrip("/")
+        normalized_api_key = api_key.strip()
+        if not normalized_api_key or not normalized_base_url:
+            raise CanaryBrokerError(
+                "laboratory API config contains an empty credential pair"
+            )
+        if not normalized_base_url.startswith("https://"):
+            raise CanaryBrokerError(
+                "laboratory API base_url must use HTTPS"
+            )
+        pairs.append((normalized_base_url, normalized_api_key))
+    return tuple(pairs)
+
+
+def load_lab_api_credentials(
+    config_path: Path,
+    credential_index: int = 0,
+) -> tuple[str, str]:
+    """Return one ordered credential pair; index zero is the default."""
+
+    if not isinstance(credential_index, int) or credential_index < 0:
+        raise CanaryBrokerError("laboratory API credential index is invalid")
+    pairs = load_lab_api_credential_pairs(config_path)
+    if credential_index >= len(pairs):
+        raise CanaryBrokerError(
+            "laboratory API credential index is outside the configured pairs"
+        )
+    return pairs[credential_index]
 
 
 class LabApiCanaryBrokerV1:
@@ -281,9 +503,14 @@ class LabApiCanaryBrokerV1:
         config_path: Path,
         model: str,
         max_total_tokens_per_call: int,
+        reasoning_effort: str | None = None,
+        wire_api: str = "chat_completions",
+        credential_index: int = 0,
         timeout_ms: int = 900_000,
         release_manifest_path: Path | None = None,
+        request_budget: Any = None,
     ) -> None:
+        self.request_budget = request_budget
         self.private_root = private_root.resolve()
         self.private_root.mkdir(parents=True, exist_ok=True)
         self.schema_path = schema_path.resolve()
@@ -296,8 +523,20 @@ class LabApiCanaryBrokerV1:
         self.schema_file_sha256 = hashlib.sha256(
             self.schema_bytes
         ).hexdigest()
-        self.base_url, self._api_key = load_lab_api_credentials(config_path)
+        self.config_path = config_path.resolve()
+        self.credential_index = credential_index
+        self.credential_config_digest = hashlib.sha256(
+            self.config_path.read_bytes()
+        ).hexdigest()
+        self.base_url, self._api_key = load_lab_api_credentials(
+            self.config_path,
+            credential_index=credential_index,
+        )
         self.model = model
+        self.reasoning_effort = reasoning_effort
+        if wire_api not in {"chat_completions", "responses"}:
+            raise CanaryBrokerError("laboratory API wire API is invalid")
+        self.wire_api = wire_api
         self.max_total_tokens_per_call = max_total_tokens_per_call
         self.timeout_ms = timeout_ms
         computed_release = LabApiBrokerReleaseV1.create(
@@ -306,6 +545,8 @@ class LabApiCanaryBrokerV1:
             response_schema_digest=self.schema_file_sha256,
             max_total_tokens_per_call=max_total_tokens_per_call,
             timeout_ms=timeout_ms,
+            reasoning_effort=reasoning_effort,
+            wire_api=wire_api,
         )
         if release_manifest_path is None:
             self.release = computed_release
@@ -324,6 +565,14 @@ class LabApiCanaryBrokerV1:
                 )
             self.release = frozen
         self.release.verify()
+        self.endpoint_digest = self.release.endpoint_digest
+        self.credential_identity_digest = sha256_digest(
+            {
+                "credential_config_digest": self.credential_config_digest,
+                "credential_index": self.credential_index,
+                "endpoint_digest": self.endpoint_digest,
+            }
+        )
         (self.private_root / "LAB_API_BROKER_RELEASE_V1.json").write_bytes(
             canonical_json_bytes(self.release.to_dict()) + b"\n"
         )
@@ -438,6 +687,144 @@ class LabApiCanaryBrokerV1:
             returned_model=str(row["returned_model"]),
         )
 
+    def replay_stored(
+        self,
+        *,
+        logical_call_id: str,
+        proposal_generation_session_id: str,
+        request_digest: str,
+    ) -> CanaryBrokerCallV1:
+        """Replay a sealed in-flight call without rebuilding its request bytes."""
+
+        self._connection.row_factory = sqlite3.Row
+        row = self._connection.execute(
+            "SELECT * FROM calls WHERE logical_call_id=?",
+            (logical_call_id,),
+        ).fetchone()
+        if row is None:
+            raise CanaryBrokerError("sealed laboratory API call is missing")
+        if (
+            row["proposal_generation_session_id"]
+            != proposal_generation_session_id
+            or row["request_digest"] != request_digest
+        ):
+            raise CanaryBrokerError(
+                "sealed laboratory API call identity differs from checkpoint"
+            )
+        if row["status"] != "SUCCESS":
+            outcome = BrokerCallOutcomeV2(**json.loads(str(row["outcome_json"])))
+            receipt = BrokerProcessExitReceiptV2(
+                **json.loads(str(row["closure_receipt_json"]))
+            )
+            raise CanaryBrokerError(
+                "stored laboratory API call is a terminal failure",
+                outcome=outcome,
+                receipt=receipt,
+                physical_call_count=0,
+                input_tokens=0,
+                output_tokens=0,
+                billed_tokens=0,
+                wall_time_ms=0,
+            )
+        return CanaryBrokerCallV1(
+            logical_call_id=logical_call_id,
+            request_digest=str(row["request_digest"]),
+            response_digest=str(row["response_digest"]),
+            response=json.loads(str(row["response_json"])),
+            input_tokens=0,
+            cached_input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            latency_ms=0,
+            returned_model=str(row["returned_model"]),
+        )
+
+    def sealed_request_identity(
+        self,
+        *,
+        proposal_generation_session_id: str,
+        prompt: str,
+        expected_proposal_count: int,
+        max_total_tokens: int | None = None,
+        max_output_tokens: int | None = None,
+    ) -> Mapping[str, Any]:
+        """Build the exact secret-free request identity consumed by the broker."""
+
+        effective_ceiling = int(
+            max_total_tokens
+            if max_total_tokens is not None
+            else self.max_total_tokens_per_call
+        )
+        if not 1 <= effective_ceiling <= self.max_total_tokens_per_call:
+            raise CanaryBrokerError(
+                "per-call token ceiling is outside the API release"
+            )
+        output_ceiling = int(
+            max_output_tokens if max_output_tokens is not None else effective_ceiling
+        )
+        if not 1 <= output_ceiling <= effective_ceiling:
+            raise CanaryBrokerError(
+                "output token ceiling is outside the total token ceiling"
+            )
+        if self.wire_api == "responses":
+            request_payload = {
+                "model": self.model,
+                "input": prompt,
+                # Responses applies this ceiling to visible output plus hidden
+                # reasoning, unlike the endpoint2 Chat Completions adapter.
+                "max_output_tokens": output_ceiling,
+                "store": False,
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "recclaw_campaign_proposals",
+                        "strict": True,
+                        "schema": self.schema,
+                    }
+                },
+            }
+            if self.reasoning_effort is not None:
+                request_payload["reasoning"] = {
+                    "effort": self.reasoning_effort
+                }
+        else:
+            request_payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+                "max_completion_tokens": output_ceiling,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "recclaw_campaign_proposals",
+                        "strict": True,
+                        "schema": self.schema,
+                    },
+                },
+            }
+            if self.reasoning_effort is not None:
+                request_payload["reasoning_effort"] = self.reasoning_effort
+        if self.request_budget is not None:
+            if self.wire_api != "responses" or self.reasoning_effort != "medium":
+                raise ValueError("E1 requires Responses with medium reasoning")
+            # Match the E1 supervisor's tokenizer and framing headroom. UTF-8
+            # bytes are not token counts and prematurely reject valid contexts.
+            import tiktoken
+
+            encoding = tiktoken.encoding_for_model("gpt-5")
+            input_bound = len(encoding.encode(
+                json.dumps(request_payload, ensure_ascii=False), disallowed_special=()
+            )) + 1024
+            allowance = min(output_ceiling, 16000, effective_ceiling - input_bound)
+            if allowance < 1024:
+                raise ValueError("E1 request exceeds per-call context budget; compact history")
+            request_payload["max_output_tokens"] = allowance
+        return {
+            "expected_proposal_count": expected_proposal_count,
+            "proposal_generation_session_id": proposal_generation_session_id,
+            "request_payload": request_payload,
+        }
+
     def call(
         self,
         *,
@@ -462,38 +849,21 @@ class LabApiCanaryBrokerV1:
         prompt: str,
         expected_proposal_count: int,
         max_total_tokens: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> CanaryBrokerCallV1:
         effective_ceiling = int(
             max_total_tokens
             if max_total_tokens is not None
             else self.max_total_tokens_per_call
         )
-        if not 1 <= effective_ceiling <= self.max_total_tokens_per_call:
-            raise CanaryBrokerError(
-                "per-call token ceiling is outside the API release"
-            )
-        request_payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
-            "max_tokens": effective_ceiling,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "recclaw_campaign_proposals",
-                    "strict": True,
-                    "schema": self.schema,
-                },
-            },
-        }
-        request_identity = {
-            "expected_proposal_count": expected_proposal_count,
-            "proposal_generation_session_id": (
-                proposal_generation_session_id
-            ),
-            "release_digest": self.release.release_digest,
-            "request_payload": request_payload,
-        }
+        request_identity = self.sealed_request_identity(
+            proposal_generation_session_id=proposal_generation_session_id,
+            prompt=prompt,
+            expected_proposal_count=expected_proposal_count,
+            max_total_tokens=max_total_tokens,
+            max_output_tokens=max_output_tokens,
+        )
+        request_payload = request_identity["request_payload"]
         request_digest = sha256_digest(request_identity)
         prior = self._stored(
             logical_call_id,
@@ -503,8 +873,19 @@ class LabApiCanaryBrokerV1:
         if prior is not None:
             return prior
 
+        reservation_ceiling = effective_ceiling
+        request_token_bound = getattr(self.request_budget, "request_token_bound", None)
+        if callable(request_token_bound):
+            reservation_ceiling = request_token_bound(
+                request_payload, ceiling=effective_ceiling
+            )
+
         request = urlrequest.Request(
-            f"{self.base_url}/chat/completions",
+            (
+                f"{self.base_url}/responses"
+                if self.wire_api == "responses"
+                else f"{self.base_url}/chat/completions"
+            ),
             data=canonical_json_bytes(request_payload),
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -514,18 +895,27 @@ class LabApiCanaryBrokerV1:
         )
         started = time.monotonic()
         http_status: int | None = None
+        envelope: Mapping[str, Any] | None = None
+        try:
+            reservation = (
+                self.request_budget.reserve_call(self.model, request_digest, reservation_ceiling)
+                if self.request_budget is not None else None
+            )
+        except Exception as error:
+            raise LabApiRequestAdmissionError(str(error)) from error
         try:
             context = ssl.create_default_context()
             ignore_eof = getattr(ssl, "OP_IGNORE_UNEXPECTED_EOF", 0)
             if ignore_eof:
                 context.options |= ignore_eof
-            with urlrequest.urlopen(
-                request,
-                timeout=self.timeout_ms / 1000,
-                context=context,
-            ) as raw_response:
-                http_status = int(raw_response.status)
-                raw_bytes = raw_response.read()
+            with _hard_transport_deadline(self.timeout_ms / 1000):
+                with urlrequest.urlopen(
+                    request,
+                    timeout=self.timeout_ms / 1000,
+                    context=context,
+                ) as raw_response:
+                    http_status = int(raw_response.status)
+                    raw_bytes = raw_response.read()
             latency_ms = int((time.monotonic() - started) * 1000)
             try:
                 envelope = json.loads(raw_bytes)
@@ -541,11 +931,17 @@ class LabApiCanaryBrokerV1:
                 envelope=envelope,
                 expected_proposal_count=expected_proposal_count,
                 effective_ceiling=effective_ceiling,
+                output_ceiling=int(request_payload[
+                    "max_output_tokens"
+                    if self.wire_api == "responses"
+                    else "max_completion_tokens"
+                ]),
             )
         except urlerror.HTTPError as error:
             http_status = int(error.code)
             latency_ms = int((time.monotonic() - started) * 1000)
-            error.read(16_384)
+            raw_error_body = error.read(16_384)
+            error_fields = _provider_http_error_fields(raw_error_body, self._api_key)
             receipt, outcome = self._persist_failure(
                 logical_call_id=logical_call_id,
                 proposal_generation_session_id=(
@@ -553,10 +949,19 @@ class LabApiCanaryBrokerV1:
                 ),
                 request_digest=request_digest,
                 error_type=f"HTTP_{error.code}",
-                error_detail={"http_status": http_status},
+                error_detail={"http_status": http_status, **error_fields},
                 http_status=http_status,
                 latency_ms=latency_ms,
             )
+            release_external_failure = getattr(
+                self.request_budget, "release_external_failure", None
+            )
+            if callable(release_external_failure):
+                release_external_failure(
+                    reservation,
+                    http_status=http_status,
+                    response_body=raw_error_body,
+                )
             raise CanaryBrokerError(
                 f"laboratory API returned HTTP {error.code}",
                 outcome=outcome,
@@ -606,6 +1011,8 @@ class LabApiCanaryBrokerV1:
             ) from error
         except LabApiResponseContractError as error:
             latency_ms = int((time.monotonic() - started) * 1000)
+            error_detail = {"reason_code": error.reason.value}
+            error_detail.update(error.response_metadata)
             receipt, outcome = self._persist_failure(
                 logical_call_id=logical_call_id,
                 proposal_generation_session_id=(
@@ -613,15 +1020,35 @@ class LabApiCanaryBrokerV1:
                 ),
                 request_digest=request_digest,
                 error_type="RESPONSE_CONTRACT_ERROR",
-                error_detail={"reason_code": error.reason.value},
+                error_detail=error_detail,
                 http_status=http_status,
                 latency_ms=latency_ms,
+                usage=error.usage,
+                returned_model=error.response_metadata.get("returned_model"),
             )
+            if (
+                error.reason
+                is LabApiResponseFailureReasonV1.CONTENT_JSON_DECODE
+                and envelope is not None
+            ):
+                try:
+                    self._write_content_json_decode_observation(
+                        envelope=envelope,
+                        logical_call_id=logical_call_id,
+                        request_digest=request_digest,
+                    )
+                except OSError:
+                    # This sidecar is audit-only. Its filesystem failure must
+                    # not change the already-persisted typed Provider failure.
+                    pass
             raise CanaryBrokerError(
                 "laboratory API response violated the frozen contract",
                 outcome=outcome,
                 receipt=receipt,
                 physical_call_count=1,
+                input_tokens=int(error.usage.get("input_tokens", 0)),
+                output_tokens=int(error.usage.get("output_tokens", 0)),
+                billed_tokens=int(error.usage.get("total_tokens", 0)),
                 wall_time_ms=latency_ms,
             ) from error
         except jsonschema.ValidationError as error:
@@ -648,6 +1075,21 @@ class LabApiCanaryBrokerV1:
                 physical_call_count=1,
                 wall_time_ms=latency_ms,
             ) from error
+
+        finally:
+            # Absent usage retains the reservation unless the budget's HTTP
+            # failure callback released it. Stored replay reserves nothing.
+            if reservation is not None and isinstance(envelope, Mapping):
+                measured_usage = envelope.get("usage")
+                if isinstance(measured_usage, Mapping):
+                    input_count = measured_usage.get("input_tokens")
+                    output_count = measured_usage.get("output_tokens")
+                    if all(type(value) is int and value >= 0
+                           for value in (input_count, output_count)):
+                        self.request_budget.settle_call(reservation, {
+                            **dict(measured_usage),
+                            "total_tokens": input_count + output_count,
+                        })
 
         response_digest = sha256_digest(response)
         receipt = LabApiCallReceiptV1.create(
@@ -695,6 +1137,13 @@ class LabApiCanaryBrokerV1:
             ),
         )
         self._connection.commit()
+        if self.wire_api == "responses":
+            self._write_responses_usage_observation(
+                logical_call_id=logical_call_id,
+                request_digest=request_digest,
+                returned_model=returned_model,
+                usage=usage,
+            )
         return CanaryBrokerCallV1(
             logical_call_id=logical_call_id,
             request_digest=request_digest,
@@ -714,35 +1163,94 @@ class LabApiCanaryBrokerV1:
         envelope: Mapping[str, Any],
         expected_proposal_count: int,
         effective_ceiling: int,
+        output_ceiling: int | None = None,
     ) -> tuple[Mapping[str, Any], dict[str, int], str]:
-        choices = envelope.get("choices")
-        if not isinstance(choices, list) or len(choices) != 1:
-            raise LabApiResponseContractError(
-                LabApiResponseFailureReasonV1.CHOICES_SHAPE
-            )
-        choice = choices[0]
-        if not isinstance(choice, Mapping):
-            raise LabApiResponseContractError(
-                LabApiResponseFailureReasonV1.CHOICE_SHAPE
-            )
-        message = choice.get("message")
-        if not isinstance(message, Mapping):
-            raise LabApiResponseContractError(
-                LabApiResponseFailureReasonV1.MESSAGE_SHAPE
-            )
-        content = message.get("content")
-        if isinstance(content, list):
-            content = "".join(
-                str(item.get("text") or item.get("content") or "")
-                for item in content
-                if isinstance(item, Mapping)
-            )
+        effective_output_ceiling = (
+            int(output_ceiling)
+            if output_ceiling is not None
+            else effective_ceiling
+        )
+        wire_api = getattr(self, "wire_api", "chat_completions")
+        choice: Mapping[str, Any] = {}
+        if wire_api == "responses":
+            response_status = envelope.get("status")
+            if response_status != "completed":
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.RESPONSES_STATUS,
+                    usage=self._best_effort_usage(envelope),
+                    response_metadata={"response_status": str(response_status)},
+                )
+            output = envelope.get("output")
+            if not isinstance(output, list):
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.RESPONSES_OUTPUT_SHAPE
+                )
+            messages = [
+                item
+                for item in output
+                if isinstance(item, Mapping) and item.get("type") == "message"
+            ]
+            if len(messages) != 1:
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.RESPONSES_MESSAGE_SHAPE
+                )
+            parts = messages[0].get("content")
+            if not isinstance(parts, list):
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.RESPONSES_CONTENT_SHAPE
+                )
+            output_text_parts = [
+                part.get("text")
+                for part in parts
+                if isinstance(part, Mapping)
+                and part.get("type") == "output_text"
+                and isinstance(part.get("text"), str)
+            ]
+            if len(output_text_parts) != 1:
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.RESPONSES_CONTENT_SHAPE
+                )
+            content = output_text_parts[0]
+        else:
+            choices = envelope.get("choices")
+            if not isinstance(choices, list) or len(choices) != 1:
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.CHOICES_SHAPE
+                )
+            raw_choice = choices[0]
+            if not isinstance(raw_choice, Mapping):
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.CHOICE_SHAPE
+                )
+            choice = raw_choice
+            message = choice.get("message")
+            if not isinstance(message, Mapping):
+                raise LabApiResponseContractError(
+                    LabApiResponseFailureReasonV1.MESSAGE_SHAPE
+                )
+            content = message.get("content")
+            if isinstance(content, list):
+                content = "".join(
+                    str(item.get("text") or item.get("content") or "")
+                    for item in content
+                    if isinstance(item, Mapping)
+                )
         if not isinstance(content, str) or not content.strip():
+            usage = self._best_effort_usage(envelope)
+            response_metadata: dict[str, str] = {}
+            returned_model = envelope.get("model")
+            if isinstance(returned_model, str) and returned_model.strip():
+                response_metadata["returned_model"] = returned_model
+            finish_reason = choice.get("finish_reason")
+            if isinstance(finish_reason, str) and finish_reason.strip():
+                response_metadata["finish_reason"] = finish_reason
             raise LabApiResponseContractError(
-                LabApiResponseFailureReasonV1.MESSAGE_CONTENT_TYPE_OR_EMPTY
+                LabApiResponseFailureReasonV1.MESSAGE_CONTENT_TYPE_OR_EMPTY,
+                usage=usage,
+                response_metadata=response_metadata,
             )
         try:
-            response = json.loads(content)
+            response = json.loads(_provider_json_content(content))
         except json.JSONDecodeError as error:
             raise LabApiResponseContractError(
                 LabApiResponseFailureReasonV1.CONTENT_JSON_DECODE
@@ -778,6 +1286,8 @@ class LabApiCanaryBrokerV1:
                 )
             )
             prompt_details = raw_usage.get("prompt_tokens_details")
+            if not isinstance(prompt_details, Mapping):
+                prompt_details = raw_usage.get("input_tokens_details")
             cached_input_tokens = (
                 int(prompt_details.get("cached_tokens", 0))
                 if isinstance(prompt_details, Mapping)
@@ -787,22 +1297,214 @@ class LabApiCanaryBrokerV1:
             raise LabApiResponseContractError(
                 LabApiResponseFailureReasonV1.TOKEN_USAGE_TYPE
             ) from error
-        if total_tokens < 1 or total_tokens > effective_ceiling:
-            raise LabApiResponseContractError(
-                LabApiResponseFailureReasonV1.TOKEN_CEILING
-            )
+        output_details = raw_usage.get("output_tokens_details")
         usage = {
             "cached_input_tokens": cached_input_tokens,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": total_tokens,
         }
+        if isinstance(output_details, Mapping):
+            usage["reasoning_output_tokens"] = int(
+                output_details.get("reasoning_tokens", 0)
+            )
+        if (
+            total_tokens < 1
+            or total_tokens > effective_ceiling
+            or output_tokens < 1
+            or output_tokens > effective_output_ceiling
+        ):
+            raise LabApiResponseContractError(
+                LabApiResponseFailureReasonV1.TOKEN_CEILING,
+                usage=usage,
+            )
         returned_model = envelope.get("model")
         if not isinstance(returned_model, str) or not returned_model.strip():
             raise LabApiResponseContractError(
                 LabApiResponseFailureReasonV1.RETURNED_MODEL_TYPE_OR_EMPTY
             )
         return response, usage, returned_model
+
+    @staticmethod
+    def _best_effort_usage(envelope: Mapping[str, Any]) -> dict[str, int]:
+        """Extract billed usage from an HTTP-200 response without masking its failure."""
+
+        raw_usage = envelope.get("usage")
+        if not isinstance(raw_usage, Mapping):
+            return {}
+        try:
+            input_tokens = int(
+                raw_usage.get("prompt_tokens", raw_usage.get("input_tokens", 0))
+            )
+            output_tokens = int(
+                raw_usage.get(
+                    "completion_tokens", raw_usage.get("output_tokens", 0)
+                )
+            )
+            total_tokens = int(
+                raw_usage.get("total_tokens", input_tokens + output_tokens)
+            )
+            prompt_details = raw_usage.get("prompt_tokens_details")
+            if not isinstance(prompt_details, Mapping):
+                prompt_details = raw_usage.get("input_tokens_details")
+            cached_input_tokens = (
+                int(prompt_details.get("cached_tokens", 0))
+                if isinstance(prompt_details, Mapping)
+                else int(raw_usage.get("cached_input_tokens", 0))
+            )
+        except (TypeError, ValueError, OverflowError):
+            return {}
+        output_details = raw_usage.get("output_tokens_details")
+        usage = {
+            "cached_input_tokens": cached_input_tokens,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+        }
+        if isinstance(output_details, Mapping):
+            usage["reasoning_output_tokens"] = int(
+                output_details.get("reasoning_tokens", 0)
+            )
+        return usage
+
+    def _write_responses_usage_observation(
+        self,
+        *,
+        logical_call_id: str,
+        request_digest: str,
+        returned_model: str,
+        usage: Mapping[str, int],
+    ) -> None:
+        """Persist content-free Responses reasoning usage for token-quality audit."""
+
+        payload = {
+            "logical_call_id": logical_call_id,
+            "release_digest": self.release.release_digest,
+            "request_digest": request_digest,
+            "returned_model": returned_model,
+            "schema": "recclaw.responses-usage-observation.v1",
+            "usage": dict(usage),
+        }
+        observation = {
+            **payload,
+            "observation_digest": sha256_digest(payload),
+        }
+        (self.private_root / "RESPONSES_USAGE_OBSERVATION_V1.json").write_bytes(
+            canonical_json_bytes(observation) + b"\n"
+        )
+
+    def _write_content_json_decode_observation(
+        self,
+        *,
+        envelope: Mapping[str, Any],
+        logical_call_id: str,
+        request_digest: str,
+    ) -> None:
+        """Persist content-free diagnostics without changing receipt identity."""
+
+        choice: Mapping[str, Any] = {}
+        if self.wire_api == "responses":
+            output = envelope.get("output")
+            if not isinstance(output, list):
+                return
+            messages = [
+                item
+                for item in output
+                if isinstance(item, Mapping) and item.get("type") == "message"
+            ]
+            if len(messages) != 1:
+                return
+            parts = messages[0].get("content")
+            if not isinstance(parts, list):
+                return
+            texts = [
+                part.get("text")
+                for part in parts
+                if isinstance(part, Mapping)
+                and part.get("type") == "output_text"
+                and isinstance(part.get("text"), str)
+            ]
+            if len(texts) != 1:
+                return
+            content = texts[0]
+            content_container = "RESPONSES_OUTPUT_TEXT"
+        else:
+            choices = envelope.get("choices")
+            if not isinstance(choices, list) or len(choices) != 1:
+                return
+            raw_choice = choices[0]
+            if not isinstance(raw_choice, Mapping):
+                return
+            choice = raw_choice
+            message = choice.get("message")
+            if not isinstance(message, Mapping):
+                return
+            content = message.get("content")
+            content_container = "STRING"
+            if isinstance(content, list):
+                content_container = "TEXT_PART_LIST"
+                content = "".join(
+                    str(item.get("text") or item.get("content") or "")
+                    for item in content
+                    if isinstance(item, Mapping)
+                )
+        if not isinstance(content, str):
+            return
+
+        stripped = content.strip()
+        normalized = _provider_json_content(content)
+        content_bytes = content.encode("utf-8", errors="surrogatepass")
+        normalized_bytes = normalized.encode("utf-8", errors="surrogatepass")
+        wrapper_class = "NONE"
+        if stripped.startswith("<think>"):
+            wrapper_class = (
+                "LEADING_CLOSED_THINK"
+                if "</think>" in stripped[len("<think>") :]
+                else "LEADING_UNCLOSED_THINK"
+            )
+
+        returned_model = envelope.get("model")
+        if not isinstance(returned_model, str) or not returned_model.strip():
+            returned_model = None
+        finish_reason = (
+            envelope.get("status")
+            if self.wire_api == "responses"
+            else choice.get("finish_reason")
+        )
+        if not isinstance(finish_reason, str) or not finish_reason.strip():
+            finish_reason = None
+        usage = self._best_effort_usage(envelope)
+        payload = {
+            "content_container": content_container,
+            "content_sha256": hashlib.sha256(content_bytes).hexdigest(),
+            "content_size_bytes": len(content_bytes),
+            "finish_reason": finish_reason,
+            "leading_wrapper_class": wrapper_class,
+            "logical_call_id": logical_call_id,
+            "normalized_candidate_sha256": hashlib.sha256(
+                normalized_bytes
+            ).hexdigest(),
+            "normalized_candidate_size_bytes": len(normalized_bytes),
+            "reason_code": (
+                LabApiResponseFailureReasonV1.CONTENT_JSON_DECODE.value
+            ),
+            "release_digest": self.release.release_digest,
+            "request_digest": request_digest,
+            "returned_model": returned_model,
+            "schema": "recclaw.lab-api-response-failure-observation.v1",
+            "usage": usage or None,
+        }
+        observation = {
+            **payload,
+            "observation_digest": sha256_digest(payload),
+        }
+        observation_path = self.private_root / (
+            "LAB_API_RESPONSE_FAILURE_OBSERVATION_V1_"
+            f"{request_digest}.json"
+        )
+        observation_path.write_bytes(
+            canonical_json_bytes(observation) + b"\n"
+        )
 
     def _persist_failure(
         self,
@@ -814,7 +1516,14 @@ class LabApiCanaryBrokerV1:
         error_detail: Mapping[str, Any],
         http_status: int | None,
         latency_ms: int,
+        usage: Mapping[str, int] | None = None,
+        returned_model: str | None = None,
     ) -> tuple[BrokerProcessExitReceiptV2, BrokerCallOutcomeV2]:
+        usage = dict(usage or {})
+        input_tokens = int(usage.get("input_tokens", 0))
+        cached_input_tokens = int(usage.get("cached_input_tokens", 0))
+        output_tokens = int(usage.get("output_tokens", 0))
+        total_tokens = int(usage.get("total_tokens", 0))
         error_detail_json = canonical_json_bytes(error_detail).decode(
             "utf-8"
         )
@@ -860,7 +1569,7 @@ class LabApiCanaryBrokerV1:
                 if http_status is not None
                 else ProviderRequestConfirmationV1.UNKNOWN.value
             ),
-            "returned_model_or_NONE": None,
+            "returned_model_or_NONE": returned_model,
         }
         closure_receipt = BrokerProcessExitReceiptV2(
             **closure_receipt_payload,
@@ -897,14 +1606,19 @@ class LabApiCanaryBrokerV1:
                 receipt_json, closure_receipt_json, outcome_json,
                 broker_release_digest
             ) VALUES (
-                ?, ?, NULL, NULL, 0, 0, 0, 0, ?, NULL, 'FAILED',
+                ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, 'FAILED',
                 ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
                 logical_call_id,
                 request_digest,
+                input_tokens,
+                cached_input_tokens,
+                output_tokens,
+                total_tokens,
                 latency_ms,
+                returned_model,
                 error_type,
                 error_detail_json,
                 proposal_generation_session_id,
@@ -949,5 +1663,6 @@ __all__ = [
     "LabApiCanaryBrokerV1",
     "LabApiResponseContractError",
     "LabApiResponseFailureReasonV1",
+    "load_lab_api_credential_pairs",
     "load_lab_api_credentials",
 ]

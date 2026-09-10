@@ -27,9 +27,9 @@ RUNTIME_DEPENDENCIES = {
 }
 
 SPACE_ID = "BL_ICF_MECHANISM_SPACE_V1"
-SPACE_VERSION = "1.0.0"
+SPACE_VERSION = "1.1.0-v2r4"
 FAMILY_ID = "BL_ICF_V1"
-FAMILY_VERSION = "1.0.0"
+FAMILY_VERSION = "1.1.0"
 PROVIDER_ID = "recclaw.search-space-provider.bl-icf.v1"
 PROGRAM_SCHEMA_VERSION = "recclaw.bl-icf.mechanism-program.v1"
 CLAIM_CEILING = "DEVELOPMENT_ONLY_SINGLE_PROTOCOL_NO_GENERAL_CLAIM"
@@ -129,6 +129,7 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "relation.degree_popularity",
         "relation.denoised_reweighted",
         "relation.multi_relation",
+        "relation.intent_aware_bipartite",
     ],
     "EMBEDDING": [
         "embedding.independent_user_item",
@@ -142,6 +143,9 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "embedding.prototype_residual",
         "embedding.hash_compressed",
         "embedding.partially_frozen",
+        "embedding.intent_chunks",
+        "embedding.embeddingless_id_signal",
+        "embedding.hyperbolic_manifold",
     ],
     "ENCODER": [
         "encoder.none_mf",
@@ -151,6 +155,9 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "encoder.fixed_point_constraint",
         "encoder.relation_constraint",
         "encoder.hybrid_multi_branch",
+        "encoder.embeddingless_propagation",
+        "encoder.post_training_graph_ode",
+        "encoder.hyperbolic_local_global",
     ],
     "MESSAGE": [
         "message.identity",
@@ -164,6 +171,8 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "message.confidence_weighted",
         "message.signed_positive_negative",
         "message.relation_specific",
+        "message.intent_routed",
+        "message.hyperbolic_centroid",
     ],
     "PROPAGATION_AGGREGATION": [
         "propagation.sum",
@@ -199,6 +208,8 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "relation_decomposition.independent_sparsification",
         "relation_decomposition.independent_update_schedule",
         "relation_decomposition.relation_gate",
+        "relation_decomposition.latent_intent_graphs",
+        "relation_decomposition.iterative_intent_refinement",
     ],
     "FUSION_ROUTING": [
         "fusion.layer_weighted_sum",
@@ -214,6 +225,7 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "fusion.base_augmented_branch",
         "fusion.early",
         "fusion.late",
+        "fusion.hyperbolic_cross_attention",
     ],
     "SCORE_HEAD": [
         "score.dot_product",
@@ -226,6 +238,7 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "score.multi_head",
         "score.calibrated",
         "score.ensemble",
+        "score.margin_constrained_cosine",
     ],
     "PRIMARY_OBJECTIVE": [
         "objective.bpr",
@@ -237,6 +250,7 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "objective.listwise_surrogate",
         "objective.partial_auc_surrogate",
         "objective.cosine_contrastive",
+        "objective.unified_supervised_graph_contrastive",
         "objective.alignment_uniformity",
         "objective.graph_constraint",
         "objective.user_item_structure_constraint",
@@ -281,6 +295,9 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "ssl.view.twin_ema_encoder",
         "ssl.view.cross_layer",
         "ssl.view.consecutive_state",
+        "ssl.view.directional_edge_dropout",
+        "ssl.view.signed_uniform_perturbation",
+        "ssl.view.parallel_graph_filter",
         "ssl.objective.info_nce",
         "ssl.objective.supervised_contrastive",
         "ssl.objective.prototype_contrastive",
@@ -290,7 +307,9 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "ssl.objective.decorrelation",
         "ssl.objective.redundancy_reduction",
         "ssl.objective.mutual_prediction",
-        "ssl.objective.unified_supervised_contrastive",
+        "ssl.objective.cross_layer_info_nce",
+        "ssl.objective.neighborhood_aggregate",
+        "ssl.objective.augmentation_free_layer_contrastive",
     ],
     "GEOMETRY_REGULARIZATION": [
         "regularizer.l2",
@@ -311,12 +330,15 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "regularizer.adversarial_robustness",
         "regularizer.spectral",
         "regularizer.popularity_sensitive",
+        "regularizer.distance_correlation_intent_independence",
+        "regularizer.hyperbolic_distortion",
     ],
     "DENOISING_LONG_TAIL": [
         "robustness.edge_confidence",
         "robustness.interaction_denoising",
         "robustness.suspicious_edge_downweighting",
         "robustness.popularity_aware_loss",
+        "robustness.asymmetric_directional_correction",
         "robustness.inverse_propensity_like_heuristic",
         "robustness.head_tail_balanced_sampler",
         "robustness.tail_aware_regularization",
@@ -353,6 +375,8 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "training.gradient_clipping",
         "training.mixed_precision",
         "training.adaptive_batch_negative_budget",
+        "training.pretrain_then_post_graph_inference",
+        "training.parallel_joint_update",
     ],
     "EFFICIENCY_APPROXIMATION": [
         "efficiency.remove_message_passing",
@@ -375,6 +399,8 @@ _AXIS_PRIMITIVES: dict[str, list[str]] = {
         "efficiency.closed_form_solver",
         "efficiency.incremental_update",
         "efficiency.memory_aware_batching",
+        "efficiency.one_step_euler_ode",
+        "efficiency.linear_cross_attention",
     ],
     "POSTHOC_RERANK": [
         "posthoc.score_normalization",
@@ -869,8 +895,12 @@ def _port_contract(
     if slot == "RELATION_VIEW":
         return [port("source", ["bl_icf/train_interactions", "bl_icf/relation", "bl_icf/train_statistics"], 1)], [{"port": "relation", "type": "bl_icf/relation"}]
     if slot == "EMBEDDING":
+        if primitive_id == "embedding.embeddingless_id_signal":
+            return [port("identity", ["core/user_id", "core/item_id", "bl_icf/train_statistics"], 1)], [{"port": "representation", "type": "bl_icf/representation"}]
         return [port("identity", ["core/user_id", "core/item_id", "bl_icf/train_statistics"], 0)], [{"port": "embedding", "type": "bl_icf/embedding"}]
     if slot == "ENCODER":
+        if primitive_id == "encoder.embeddingless_propagation":
+            return [port("representation", ["bl_icf/representation"], 1), port("relation", ["bl_icf/relation"], 1)], [{"port": "representation", "type": "bl_icf/representation"}]
         return [port("representation", ["bl_icf/embedding", "bl_icf/representation"], 1), port("relation", ["bl_icf/relation"], 0)], [{"port": "representation", "type": "bl_icf/representation"}]
     if slot == "MESSAGE":
         return [port("representation", ["bl_icf/embedding", "bl_icf/representation"], 1), port("relation", ["bl_icf/relation"], 1)], [{"port": "message", "type": "bl_icf/message"}]
@@ -883,6 +913,15 @@ def _port_contract(
     if slot == "SCORE_HEAD":
         return [port("representation", ["bl_icf/embedding", "bl_icf/representation"], 1)], [{"port": "score", "type": "core/user_item_relevance_score"}]
     if slot == "PRIMARY_OBJECTIVE":
+        if primitive_id == "objective.unified_supervised_graph_contrastive":
+            return [
+                port(
+                    "representation",
+                    ["bl_icf/embedding", "bl_icf/representation"],
+                    1,
+                ),
+                port("supervision", ["bl_icf/train_interactions"], 1),
+            ], [{"port": "objective", "type": "bl_icf/objective"}]
         return [port("score", ["core/user_item_relevance_score"], 1), port("supervision", ["bl_icf/train_interactions"], 1), port("negative_samples", ["bl_icf/negative_samples"], 0)], [{"port": "objective", "type": "bl_icf/objective"}]
     if slot == "NEGATIVE_SAMPLER":
         return [port("interactions", ["bl_icf/train_interactions"], 1)], [{"port": "negative_samples", "type": "bl_icf/negative_samples"}]
@@ -909,6 +948,8 @@ def _port_contract(
     if slot == "TRAINING_PROCEDURE":
         return [port("objective", ["bl_icf/objective", "bl_icf/auxiliary_objective", "bl_icf/regularization_term", "bl_icf/robustness_term"], 1)], [{"port": "training_plan", "type": "bl_icf/training_plan"}]
     if slot == "EFFICIENCY_APPROXIMATION":
+        if primitive_id in {"efficiency.linear_cross_attention", "efficiency.one_step_euler_ode"}:
+            return [port("target", ["bl_icf/representation"], 1)], [{"port": "representation", "type": "bl_icf/representation"}]
         return [port("target", ["bl_icf/relation", "bl_icf/embedding", "bl_icf/representation", "bl_icf/training_plan"], 1)], [{"port": "optimized", "type": "bl_icf/optimized_artifact"}]
     if slot == "POSTHOC_RERANK":
         return [port("score", ["core/user_item_relevance_score"], 1)], [{"port": "score", "type": "core/user_item_relevance_score"}]
@@ -918,19 +959,154 @@ def _port_contract(
 def _parameter_schema(slot: str, primitive_id: str) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
-    if slot == "EMBEDDING":
+    if slot == "EMBEDDING" and primitive_id != "embedding.embeddingless_id_signal":
         properties["dimension"] = {"type": "integer", "minimum": 4, "maximum": 4096}
+    if primitive_id == "embedding.embeddingless_id_signal":
+        properties["signal_mode"] = {"const": "ONE_HOT_IDENTITY"}
+        required.append("signal_mode")
+    if primitive_id == "encoder.embeddingless_propagation":
+        properties["depth"] = {"type": "integer", "minimum": 1, "maximum": 64}
     if slot == "PROPAGATION_AGGREGATION":
         properties["depth"] = {"type": "integer", "minimum": 0, "maximum": 64}
+    if primitive_id == "propagation.learned_normalization":
+        properties.update(
+            {
+                "left_degree_exponent": {"type": "number", "minimum": -2.0, "maximum": 2.0},
+                "right_degree_exponent": {"type": "number", "minimum": -2.0, "maximum": 2.0},
+                "learnable": {"type": "boolean"},
+            }
+        )
+    if primitive_id == "propagation.residual_skip_ego":
+        properties["ego_residual_weight"] = {"type": "number", "minimum": 0.0, "maximum": 2.0}
+    if primitive_id in {"propagation.weighted_layer_sum", "fusion.layer_weighted_sum"}:
+        properties["learnable_weights"] = {"type": "boolean"}
     if primitive_id == "message.linear_transform":
         properties["activation"] = {"enum": ["NONE", "RELU", "LEAKY_RELU"]}
     if "dropout" in primitive_id:
         properties["rate"] = {"type": "number", "minimum": 0.0, "maximum": 0.95}
+    if primitive_id == "ssl.view.directional_edge_dropout":
+        properties = {
+            "user_to_item_rate": {"type": "number", "minimum": 0.0, "maximum": 0.95},
+            "item_to_user_rate": {"type": "number", "minimum": 0.0, "maximum": 0.95},
+            "independent_directions": {"const": True},
+        }
+        required = ["user_to_item_rate", "item_to_user_rate", "independent_directions"]
+    if primitive_id in {
+        "ssl.view.uniform_perturbation",
+        "ssl.view.gaussian_perturbation",
+        "ssl.view.signed_uniform_perturbation",
+    }:
+        properties["epsilon"] = {"type": "number", "exclusiveMinimum": 0.0, "maximum": 10.0}
+    if primitive_id in {
+        "relation.intent_aware_bipartite",
+        "embedding.intent_chunks",
+        "relation_decomposition.latent_intent_graphs",
+        "relation_decomposition.iterative_intent_refinement",
+        "message.intent_routed",
+    }:
+        properties["intent_count"] = {"type": "integer", "minimum": 2, "maximum": 128}
+    if primitive_id in {
+        "relation_decomposition.iterative_intent_refinement",
+        "message.intent_routed",
+    }:
+        properties["routing_iterations"] = {"type": "integer", "minimum": 1, "maximum": 32}
+    if "hyperbolic" in primitive_id:
+        properties["curvature"] = {"type": "number", "exclusiveMinimum": 0.0, "maximum": 100.0}
+    if primitive_id in {"encoder.post_training_graph_ode", "efficiency.one_step_euler_ode"}:
+        properties.update(
+            {
+                "integration_steps": {"type": "integer", "minimum": 1, "maximum": 64},
+                "step_size": {"type": "number", "exclusiveMinimum": 0.0, "maximum": 10.0},
+            }
+        )
+    if primitive_id == "ssl.view.parallel_graph_filter":
+        properties.update(
+            {
+                "filter_order": {"type": "integer", "minimum": 1, "maximum": 64},
+                "normalization": {"enum": ["SYMMETRIC", "RANDOM_WALK", "GENERALIZED_GRAM"]},
+            }
+        )
+    if primitive_id == "ssl.objective.cross_layer_info_nce":
+        properties.update(
+            {
+                "source_layer": {"type": "integer", "minimum": 0, "maximum": 64},
+                "target_layer": {"type": "integer", "minimum": 0, "maximum": 64},
+            }
+        )
+    if primitive_id == "objective.unified_supervised_graph_contrastive":
+        properties.update(
+            {
+                "positive_pair_source": {"const": "TRAIN_INTERACTIONS"},
+                "representation_normalization": {"const": "L2"},
+                "denominator_scope": {
+                    "enum": [
+                        "IN_BATCH_SAME_TYPE_USER_PLUS_ITEM",
+                        "FULL_SAME_TYPE_USER_PLUS_ITEM",
+                    ]
+                },
+                "separate_recommendation_loss": {"const": False},
+                "graph_augmentation": {"const": False},
+            }
+        )
+        required.extend(
+            [
+                "positive_pair_source",
+                "representation_normalization",
+                "denominator_scope",
+                "separate_recommendation_loss",
+                "graph_augmentation",
+            ]
+        )
+    if primitive_id == "efficiency.linear_cross_attention":
+        properties.update(
+            {
+                "feature_map": {"enum": ["ELU_PLUS_ONE", "EXPONENTIAL"]},
+                "projection_dimension": {"type": "integer", "minimum": 4, "maximum": 4096},
+            }
+        )
+    if primitive_id == "training.parallel_joint_update":
+        properties["update_mode"] = {"const": "PARALLEL_JOINT"}
+        required.append("update_mode")
+    if primitive_id == "robustness.asymmetric_directional_correction":
+        properties.update(
+            {
+                "popularity_direction_source": {
+                    "const": "PRETRAINED_ITEM_EMBEDDING"
+                },
+                "preference_direction_source": {
+                    "enum": ["USER_HISTORY", "ORTHOGONAL_RESIDUAL"]
+                },
+                "positive_correction": {
+                    "enum": ["PREFERENCE_ALIGNED", "UNCHANGED"]
+                },
+                "negative_correction": {
+                    "enum": ["POPULARITY_OPPOSING", "UNCHANGED"]
+                },
+                "freeze_base_representation": {"const": True},
+                "history_fraction": {
+                    "type": "number",
+                    "exclusiveMinimum": 0.0,
+                    "maximum": 1.0,
+                },
+            }
+        )
+        required.extend(
+            [
+                "popularity_direction_source",
+                "preference_direction_source",
+                "positive_correction",
+                "negative_correction",
+                "freeze_base_representation",
+            ]
+        )
     if "topk" in primitive_id or "top_k" in primitive_id:
         properties["top_k"] = {"type": "integer", "minimum": 1}
     if slot in {"PRIMARY_OBJECTIVE", "SELF_SUPERVISION", "GEOMETRY_REGULARIZATION", "DENOISING_LONG_TAIL"}:
         properties["weight"] = {"type": "number", "exclusiveMinimum": 0.0}
-    if any(token in primitive_id for token in ("contrastive", "uniformity", "softmax", "info_nce")):
+    if primitive_id == "ssl.objective.neighborhood_aggregate" or any(
+        token in primitive_id
+        for token in ("contrastive", "uniformity", "softmax", "info_nce")
+    ):
         properties["temperature"] = {"type": "number", "exclusiveMinimum": 0.0}
     if "margin" in primitive_id:
         properties["margin"] = {"type": "number", "minimum": 0.0}

@@ -2327,12 +2327,17 @@ class RealCanaryOrchestratorV1(ThreeArmPreCanaryOrchestratorV1):
             completed_round_index=round_index,
             aggregate={
                 "calibration_error": 0.1,
-                "mechanism_axis_gaps": (
+                "measured_axes": ("architecture",),
+                "uncovered_axes": (
+                    "geometry",
+                    "message_transform",
                     "objective",
                     "propagation",
+                    "sampling",
                     "self_supervision",
-                    "geometry",
                 ),
+                "causal_followup_axes": ("architecture",),
+                "axis_scores": {"architecture": -1.0},
                 "producer_useful_rates": {
                     role: 0.5 for role in DISCOVERY_PRODUCERS
                 },
