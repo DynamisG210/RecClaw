@@ -88,18 +88,19 @@ def test_fixed_policy_four_consumers_and_scoped_restore(monkeypatch, interrupt):
                          runtime._search_ranking_inputs, composition.campaign.post_round_state_transition)
 
 
-def test_fixed_mode_is_part_of_resume_identity(tmp_path):
+def test_fixed_mode_is_part_of_resume_identity(tmp_path, monkeypatch):
     baseline = ResearchBaselineSourceV1.from_identity(
         source_ref="fixture", source_sha256="a" * 64,
         comparator_ref="parent", comparator_digest="b" * 64,
         frozen_ndcg_at_10=0.2, protocol_digest="c" * 64, seed=54201,
     )
-    adaptive = standalone.StandaloneResearchConfig(
+    fixed = standalone.StandaloneResearchConfig(
         repo_root=tmp_path, run_root=tmp_path / "run", api_config_source=tmp_path / "api.toml",
         campaign_id="fixture", baseline_source=baseline,
         frozen_profile_ref={"profile_ref": "fixture"},
     )
-    fixed = replace(adaptive, search_policy_mode="fixed")
+    assert fixed.search_policy_mode == "fixed"
+    adaptive = replace(fixed, search_policy_mode="adaptive")
     old_manifest = {"execution": standalone._execution_identity(adaptive)}
     new_manifest = {"execution": standalone._execution_identity(fixed)}
     assert "search_policy_mode" not in old_manifest["execution"]
@@ -110,6 +111,34 @@ def test_fixed_mode_is_part_of_resume_identity(tmp_path):
     assert not standalone._resume_execution_identity_compatible(new_manifest, adaptive)
     with pytest.raises(standalone.StandaloneCampaignError, match="search_policy_mode"):
         replace(adaptive, search_policy_mode="invalid")
+
+    from recclaw_core.research_line import original_matched
+
+    monkeypatch.setattr(original_matched, "build_original_matched_264_controller_interface",
+                        lambda *args, **kwargs: SimpleNamespace(as_standalone_interface=lambda: "original"))
+    monkeypatch.setattr(original_matched, "compose_standalone_campaign",
+                        lambda config, **kwargs: (config, kwargs))
+    original_config, kwargs = original_matched.compose_original_matched_264_campaign(
+        SimpleNamespace(shared=fixed), resume=True,
+    )
+    assert original_config.search_policy_mode == "adaptive"
+    assert kwargs["controller_interface"] == "original" and kwargs["resume"] is True
+    assert fixed.search_policy_mode == "fixed"
+
+
+def test_cli_defaults_to_fixed_and_accepts_explicit_adaptive():
+    import runpy
+
+    script = Path(__file__).resolve().parents[3] / "scripts/run_research_line_standalone.py"
+    parser = runpy.run_path(str(script))["build_parser"]()
+    arguments = [
+        "--run-root", "fixture", "--api-config", "fixture.toml", "--campaign-id", "fixture",
+        "--round-count", "1", "--baseline-ref", "fixture", "--baseline-digest", "a" * 64,
+        "--baseline-ndcg-at-10", "0.2", "--baseline-protocol-digest", "b" * 64,
+        "--source-ref", "fixture", "--source-digest", "c" * 64,
+    ]
+    assert parser.parse_args(arguments).search_policy_mode == "fixed"
+    assert parser.parse_args(arguments + ["--search-policy-mode", "adaptive"]).search_policy_mode == "adaptive"
 
 
 @pytest.mark.parametrize("mode", ["fixed", "adaptive"])

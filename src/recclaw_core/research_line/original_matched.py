@@ -1352,7 +1352,8 @@ def compose_original_matched_264_campaign(
         provider_call=provider_call,
     )
     return compose_standalone_campaign(
-        config.shared,
+        # A owns its Original controller, not B's fixed-policy intervention.
+        replace(config.shared, search_policy_mode="adaptive"),
         resume=resume,
         provider_call=provider_call,
         launch=launch,

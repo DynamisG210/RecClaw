@@ -252,8 +252,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-config", type=Path, required=True)
     parser.add_argument("--campaign-id", required=True)
     parser.add_argument(
-        "--search-policy-mode", choices=("adaptive", "fixed"), default="adaptive",
-        help="fixed explicit policy retains scientific memory; one campaign per process",
+        "--search-policy-mode", choices=("fixed", "adaptive"), default="fixed",
+        help="default: fixed explicit policy with scientific memory; adaptive is opt-in; one campaign per process",
     )
     parser.add_argument(
         "--round-count",

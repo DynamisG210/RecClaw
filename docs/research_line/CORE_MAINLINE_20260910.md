@@ -15,17 +15,21 @@ MultiVAE adapter update. Existing AutoSpace generators, critics, assembly rules,
 mechanism catalogs, task data and model routing are not changed or imported.
 Do not replace a task's adapter/entrypoint with the entire shared source tree.
 
-For a **new** B campaign, set `StandaloneResearchConfig(search_policy_mode="fixed",
-...)` and use the normal `compose_standalone_campaign(...).run(...)`; the native
-CLI equivalent is `--search-policy-mode fixed` with all existing required launch
-arguments. The default remains `adaptive` so pulling this branch does not silently
-change existing studies. Mode is part of the execution manifest and cannot be
+For a **new** B campaign, fixed explicit search policy is now the default in both
+`StandaloneResearchConfig(...)` and the native CLI: no policy flag is needed.
+Use the normal `compose_standalone_campaign(...).run(...)`. The previous adaptive
+behavior is explicitly selected with `search_policy_mode="adaptive"` or
+`--search-policy-mode adaptive`, including when resuming historical adaptive runs.
+This default supersedes the opt-in fixed mode in `c9d93fa4`, per the user's
+subsequent direction. Mode is part of the execution manifest and cannot be
 silently switched on checkpoint resume, including when source-drift recovery is
 enabled. Custom controllers calling `campaign.run_round()` directly must instead
 wrap their complete execution scope in
 `with fixed_search_policy(composition):` from
 `recclaw_core.research_line.fixed_search_policy`, and record the fixed mode in
 their frozen launch configuration. Do not install the old experiment hook too.
+The historical `Original-Matched-264` A entry retains its own Original controller;
+changing B's default does not apply the B intervention to that control arm.
 
 The portable implementation retains the measured condition's four consumers:
 initial policy/token fractions in research prompts; initial acquisition policy;
@@ -69,7 +73,7 @@ Historical broker suites currently fail before transport because their old schem
 fixtures allow extra object properties under the already-existing strict schema
 contract. No production validation was weakened to make those fixtures pass.
 
-On Linux Python 3.10.20 the following completed with **26 passed, 4 subtests
+On Linux Python 3.10.20 the following completed with **27 passed, 4 subtests
 passed**; the CLI `--help` import and `git diff --check` also passed. No paid API
 call or model training was run for this publication.
 

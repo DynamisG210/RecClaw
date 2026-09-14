@@ -795,7 +795,7 @@ class StandaloneResearchConfig:
     gpu_reservation_evidence_provider: GpuReservationEvidenceProvider | None = None
     require_gpu_reservation_evidence: bool = False
     research_mode: str = "portfolio"
-    search_policy_mode: str = "adaptive"
+    search_policy_mode: str = "fixed"
     round_count: int = 1
     attempt_scheduler: bool = False
     max_attempts_per_round: int | None = None
