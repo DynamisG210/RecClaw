@@ -4841,6 +4841,13 @@ class ResearchCampaign:
         summaries: list[Mapping[str, Any]] = []
         for revisions in grouped.values():
             final = revisions[-1]
+            # Repair failures may omit the unchanged candidate/spec mechanism.
+            mechanism_context = {
+                key: revision[key]
+                for revision in revisions
+                for key in ("core_mechanism_contrast", "next_discriminative_task")
+                if revision.get(key) is not None
+            }
             summaries.append(
                 canonical_value(
                     {
@@ -4860,6 +4867,7 @@ class ResearchCampaign:
                         ),
                         "primitive_ids": final.get("primitive_ids"),
                         "spec_digest": final.get("spec_digest"),
+                        **mechanism_context,
                         "producer_role": final.get("producer_role"),
                         "candidate_root": final.get("candidate_root"),
                         "repair_attempt": final.get("repair_attempt"),

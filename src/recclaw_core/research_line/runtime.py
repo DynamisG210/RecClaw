@@ -10549,7 +10549,11 @@ def _lineage_parent_mechanism_program(
 def _verified_candidate_source_files(
     root: Path, source_tree_digest: str, allowed_files: Sequence[str],
 ) -> list[Mapping[str, str]]:
-    manifest = snapshot_candidate_tree(root)
+    # Qualification/import bytecode is not part of the executed source bundle.
+    manifest = tuple(
+        row for row in snapshot_candidate_tree(root)
+        if not ("__pycache__" in Path(row["path"]).parts and Path(row["path"]).suffix == ".pyc")
+    )
     expected_paths = tuple(sorted(str(path) for path in allowed_files))
     if tuple(row["path"] for row in manifest) != expected_paths:
         raise ValueError("lineage parent source file set differs from policy")

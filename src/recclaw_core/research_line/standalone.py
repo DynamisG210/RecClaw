@@ -795,6 +795,7 @@ class StandaloneResearchConfig:
     gpu_reservation_evidence_provider: GpuReservationEvidenceProvider | None = None
     require_gpu_reservation_evidence: bool = False
     research_mode: str = "portfolio"
+    search_policy_mode: str = "adaptive"
     round_count: int = 1
     attempt_scheduler: bool = False
     max_attempts_per_round: int | None = None
@@ -863,6 +864,8 @@ class StandaloneResearchConfig:
             )
         if self.research_mode not in {"portfolio", "director_sequential"}:
             raise StandaloneCampaignError("research_mode must be portfolio or director_sequential")
+        if self.search_policy_mode not in {"adaptive", "fixed"}:
+            raise StandaloneCampaignError("search_policy_mode must be adaptive or fixed")
         object.__setattr__(
             self,
             "dataset",
@@ -1300,6 +1303,15 @@ class StandaloneResearchComposition:
 
     def run(self, round_count: int | None = None) -> tuple[Any, ...]:
         """Execute at most the explicitly bounded number of Research rounds."""
+
+        if self.config.search_policy_mode == "fixed":
+            from .fixed_search_policy import fixed_search_policy
+
+            with fixed_search_policy(self):
+                return self._run(round_count)
+        return self._run(round_count)
+
+    def _run(self, round_count: int | None) -> tuple[Any, ...]:
 
         count = self.config.round_count if round_count is None else round_count
         count = _bounded_round_count(count)
@@ -2301,6 +2313,8 @@ def _profile_source_identity(
 
 def _execution_identity(config: StandaloneResearchConfig) -> dict[str, Any]:
     identity = {
+        **({"search_policy_mode": config.search_policy_mode}
+           if config.search_policy_mode != "adaptive" else {}),
         **({"research_mode": config.research_mode}
            if config.research_mode != "portfolio" else {}),
         "model_routing": model_routing_manifest(),

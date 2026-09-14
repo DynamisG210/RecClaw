@@ -2656,6 +2656,8 @@ def _validate_api_contract(
 
         fixed_sampler = None
         if sampler_primitives and callable(original_sampler_step):
+            fixed_negative = sampler_outputs[0].detach().clone()
+
             def fixed_sampler(
                 probe_interaction: Any,
                 *_args: Any,
@@ -2663,9 +2665,9 @@ def _validate_api_contract(
             ) -> Any:
                 observed_size = int(probe_interaction[model.USER_ID].shape[0])
                 if observed_size == batch_size:
-                    return supplied_negative.clone()
+                    return fixed_negative.clone()
                 if observed_size == 2 * batch_size:
-                    return torch.cat((supplied_negative, supplied_negative), dim=0)
+                    return torch.cat((fixed_negative, fixed_negative), dim=0)
                 return original_sampler_step(probe_interaction)
 
             setattr(model, "recclaw_sampler_step", fixed_sampler)

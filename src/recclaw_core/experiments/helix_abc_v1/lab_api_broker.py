@@ -1011,6 +1011,11 @@ class LabApiCanaryBrokerV1:
             ) from error
         except LabApiResponseContractError as error:
             latency_ms = int((time.monotonic() - started) * 1000)
+            response_envelope = envelope if isinstance(envelope, Mapping) else {}
+            usage = error.usage or self._best_effort_usage(response_envelope)
+            returned_model = response_envelope.get(
+                "model", error.response_metadata.get("returned_model")
+            )
             error_detail = {"reason_code": error.reason.value}
             error_detail.update(error.response_metadata)
             receipt, outcome = self._persist_failure(
@@ -1023,8 +1028,10 @@ class LabApiCanaryBrokerV1:
                 error_detail=error_detail,
                 http_status=http_status,
                 latency_ms=latency_ms,
-                usage=error.usage,
-                returned_model=error.response_metadata.get("returned_model"),
+                usage=usage,
+                returned_model=(
+                    returned_model if isinstance(returned_model, str) else None
+                ),
             )
             if (
                 error.reason
@@ -1046,13 +1053,15 @@ class LabApiCanaryBrokerV1:
                 outcome=outcome,
                 receipt=receipt,
                 physical_call_count=1,
-                input_tokens=int(error.usage.get("input_tokens", 0)),
-                output_tokens=int(error.usage.get("output_tokens", 0)),
-                billed_tokens=int(error.usage.get("total_tokens", 0)),
+                input_tokens=int(usage.get("input_tokens", 0)),
+                output_tokens=int(usage.get("output_tokens", 0)),
+                billed_tokens=int(usage.get("total_tokens", 0)),
                 wall_time_ms=latency_ms,
             ) from error
         except jsonschema.ValidationError as error:
             latency_ms = int((time.monotonic() - started) * 1000)
+            usage = self._best_effort_usage(envelope or {})
+            returned_model = (envelope or {}).get("model")
             receipt, outcome = self._persist_failure(
                 logical_call_id=logical_call_id,
                 proposal_generation_session_id=(
@@ -1067,12 +1076,19 @@ class LabApiCanaryBrokerV1:
                 },
                 http_status=http_status,
                 latency_ms=latency_ms,
+                usage=usage,
+                returned_model=(
+                    returned_model if isinstance(returned_model, str) else None
+                ),
             )
             raise CanaryBrokerError(
                 "laboratory API payload failed schema validation",
                 outcome=outcome,
                 receipt=receipt,
                 physical_call_count=1,
+                input_tokens=int(usage.get("input_tokens", 0)),
+                output_tokens=int(usage.get("output_tokens", 0)),
+                billed_tokens=int(usage.get("total_tokens", 0)),
                 wall_time_ms=latency_ms,
             ) from error
 

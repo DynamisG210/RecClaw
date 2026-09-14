@@ -252,6 +252,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-config", type=Path, required=True)
     parser.add_argument("--campaign-id", required=True)
     parser.add_argument(
+        "--search-policy-mode", choices=("adaptive", "fixed"), default="adaptive",
+        help="fixed explicit policy retains scientific memory; one campaign per process",
+    )
+    parser.add_argument(
         "--round-count",
         "--rounds",
         dest="round_count",
@@ -840,6 +844,7 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             )
         config = StandaloneResearchConfig(
+            search_policy_mode=args.search_policy_mode,
             repo_root=REPO_ROOT,
             run_root=args.run_root,
             api_config_source=args.api_config,

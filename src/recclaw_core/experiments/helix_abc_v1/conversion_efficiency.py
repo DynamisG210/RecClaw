@@ -2950,6 +2950,81 @@ def _compose_implicated_candidate_symbols(
                 current_model.body[index] = composed_init
                 break
 
+    if (
+        current_init is not None
+        and repaired_init is not None
+        and initializer_name not in selected
+        and not transactional_init
+    ):
+        # A dependency can exist in both constructors yet be unavailable when
+        # an implicated helper first uses it. Preserve a supplied move of the
+        # same assignment before that use; do not adopt the whole constructor.
+        composed_init = next(
+            node for node in current_model.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == initializer_name
+        )
+
+        def constructor_reads(statement: ast.stmt) -> set[str]:
+            called = method_closure(method_dependencies(statement, repaired_methods))
+            return self_loads(statement) | {
+                attribute for name in called & selected
+                for attribute in self_loads(repaired_methods[name])
+            }
+
+        for repaired_index, statement in enumerate(repaired_init.body):
+            if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                continue
+            assigned = self_assignments(statement)
+            if not assigned or not assigned <= required_attributes:
+                continue
+            dump = ast.dump(statement, include_attributes=False)
+            if any(
+                attribute not in current_init_statements_by_attribute
+                or ast.dump(current_init_statements_by_attribute[attribute], include_attributes=False) != dump
+                for attribute in assigned
+            ):
+                continue
+            positions = [
+                index for index, row in enumerate(composed_init.body)
+                if ast.dump(row, include_attributes=False) == dump
+            ]
+            if len(positions) != 1:
+                continue
+            current_index = positions[0]
+            current_use = next(
+                (index for index, row in enumerate(composed_init.body)
+                 if constructor_reads(row) & assigned),
+                len(composed_init.body),
+            )
+            repaired_use = next(
+                (index for index, row in enumerate(repaired_init.body)
+                 if constructor_reads(row) & assigned),
+                len(repaired_init.body),
+            )
+            if current_use < current_index and repaired_index < repaired_use:
+                # Keep the reaching bindings of the moved expression. A paid
+                # revision may also move/change a local prerequisite that this
+                # method-only composition did not retain.
+                names = external_name_loads(statement)
+                attributes = self_loads(statement)
+
+                def prerequisite_bindings(rows: Sequence[ast.stmt]) -> dict[str, str]:
+                    bindings: dict[str, str] = {}
+                    for row in rows:
+                        keys = (module_bound_names(row) & names) | {
+                            f"self.{name}" for name in self_assignments(row) & attributes
+                        }
+                        for key in keys:
+                            bindings[key] = ast.dump(row, include_attributes=False)
+                    return bindings
+
+                if prerequisite_bindings(composed_init.body[:current_use]) != prerequisite_bindings(
+                    repaired_init.body[:repaired_index]
+                ):
+                    continue
+                composed_init.body.insert(current_use, composed_init.body.pop(current_index))
+
     dependency_nodes: list[ast.AST] = list(selected_method_nodes)
     dependency_nodes.extend(
         node

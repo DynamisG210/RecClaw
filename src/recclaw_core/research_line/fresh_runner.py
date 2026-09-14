@@ -694,7 +694,7 @@ class FreshExperimentRunner:
                 "qualified capability has no candidate-local root: "
                 + binding.capability_ref
             )
-        if not root.is_dir() or not (root / "recclaw_ext").is_dir():
+        if not root.is_dir() or not any(root.rglob("*.py")):
             raise FreshRunnerError(
                 "qualified capability candidate-local root is unavailable: "
                 + str(root)

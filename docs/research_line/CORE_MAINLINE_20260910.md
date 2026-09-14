@@ -7,6 +7,81 @@ has been established. It is not merged into `main`.
 
 ## Source and scope
 
+### 2026-09-14: current shared maintenance and fixed explicit search policy
+
+This update is based on `16a7ff22`. It publishes the accepted fixed-policy
+condition and already-delivered generic maintenance, **not** an AutoSpace or
+MultiVAE adapter update. Existing AutoSpace generators, critics, assembly rules,
+mechanism catalogs, task data and model routing are not changed or imported.
+Do not replace a task's adapter/entrypoint with the entire shared source tree.
+
+For a **new** B campaign, set `StandaloneResearchConfig(search_policy_mode="fixed",
+...)` and use the normal `compose_standalone_campaign(...).run(...)`; the native
+CLI equivalent is `--search-policy-mode fixed` with all existing required launch
+arguments. The default remains `adaptive` so pulling this branch does not silently
+change existing studies. Mode is part of the execution manifest and cannot be
+silently switched on checkpoint resume, including when source-drift recovery is
+enabled. Custom controllers calling `campaign.run_round()` directly must instead
+wrap their complete execution scope in
+`with fixed_search_policy(composition):` from
+`recclaw_core.research_line.fixed_search_policy`, and record the fixed mode in
+their frozen launch configuration. Do not install the old experiment hook too.
+
+The portable implementation retains the measured condition's four consumers:
+initial policy/token fractions in research prompts; initial acquisition policy;
+ranking without outcome-task/effect reweighting while retaining executed-identity
+deduplication; and post-round policy reset after the existing state callback.
+Scientific history, measured positive/negative outcomes, source feedback, current
+proposal cooperation and candidate-local repairs remain available to the agent.
+This is **not** a claim that the agent stops learning or selects fixed candidates.
+As in the measured condition, run one campaign per process: the scoped runtime
+hooks must not overlap concurrent campaigns within one Python process. They are
+restored on normal exit or exception. Independent repeat processes remain usable.
+
+Maintenance included:
+
+- Preserve supplied constructor dependency reordering during method-scoped repair,
+  without adopting unrelated edits or moving changed prerequisites.
+- Retain an earlier revision's mechanism and next discriminative task when the
+  final repair failure omits them; preserve final failure and candidate identity.
+- Exclude generated `__pycache__/*.pyc` from verified historical/parent source
+  readout, while still checking source paths and hashes.
+- Accept flat and nested Python candidate roots without dropping the P1 layout.
+- Retain reported usage/model on paid response/schema failures. Comparator-ledger
+  adapters are separate consumers; they must preserve actual versus unknown usage.
+- Use actual sampler output, including its shape, for the existing fixed-sampler
+  contract probe instead of substituting the supplied negative-item tensor.
+
+The fixed-policy choice has bounded development evidence, not proof of universal
+superiority: three paired final best-score differences were approximately
++0.1543%, +0.6161%, +1.0694% relative to their adaptive counterparts. That experiment
+also recorded higher API use and elapsed wrapper time, so this update does not
+claim an efficiency win, significance or a MultiVAE/SOTA result. Maintenance
+checks establish repaired behavior, not an additional measured quality gain.
+Keep previous results and runtime source identities; do not hot-change healthy
+formal runs or share RecClaw-generated AutoSpace artifacts with formal comparators.
+
+Publication validation uses the portable tests `test_core_mainline_delivery.py`,
+`test_initializer_order.py`, and `test_response_failure_usage.py` under
+`tests/experiments/helix_abc_v1/`, plus the existing prepared-identity and
+completed-source-projection tests. These are offline checks, not search reruns.
+Historical broker suites currently fail before transport because their old schema
+fixtures allow extra object properties under the already-existing strict schema
+contract. No production validation was weakened to make those fixtures pass.
+
+On Linux Python 3.10.20 the following completed with **26 passed, 4 subtests
+passed**; the CLI `--help` import and `git diff --check` also passed. No paid API
+call or model training was run for this publication.
+
+```bash
+PYTHONPATH=src python -m pytest -q --tb=short \
+  tests/experiments/helix_abc_v1/test_core_mainline_delivery.py \
+  tests/experiments/helix_abc_v1/test_initializer_order.py \
+  tests/experiments/helix_abc_v1/test_response_failure_usage.py \
+  tests/test_prepared_proposal_identity.py \
+  tests/test_completed_source_projection.py
+```
+
 ### Follow-up: lossless completed-source presentation
 
 After `63d13b68`, this branch also applies the shared projection-only patch
