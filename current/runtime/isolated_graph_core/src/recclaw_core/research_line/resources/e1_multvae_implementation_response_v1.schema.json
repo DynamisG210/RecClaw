@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RecClaw E1 MultVAE Implementation Response V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "proposals"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "recclaw.research-line.fresh-r1-implementation-response.v1"
+    },
+    "proposals": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entrypoint", "files", "implementation_summary"],
+        "properties": {
+          "entrypoint": {
+            "type": "string",
+            "const": "recclaw_ext.models.e1_multvae:FreshCandidateModel"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "content"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "enum": [
+                    "recclaw_ext/__init__.py",
+                    "recclaw_ext/models/__init__.py",
+                    "recclaw_ext/models/e1_multvae.py"
+                  ]
+                },
+                "content": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          "implementation_summary": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

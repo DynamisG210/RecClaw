@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_common.schema.json",
+  "$defs": {
+    "nonemptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonemptyString"
+      }
+    },
+    "stringSet": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonemptyString"
+      }
+    },
+    "genesisAccessAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowlist_mode",
+        "input_file_count",
+        "literature_accessed",
+        "test_artifacts_accessed",
+        "prior_candidates_accessed",
+        "prior_results_accessed",
+        "historical_search_space_semantics_accessed",
+        "tools_enabled",
+        "retrieval_enabled"
+      ],
+      "properties": {
+        "allowlist_mode": {
+          "const": "TRUSTED_CONTRACT_EXACT_SET"
+        },
+        "input_file_count": {
+          "const": 5
+        },
+        "literature_accessed": {
+          "const": false
+        },
+        "test_artifacts_accessed": {
+          "const": false
+        },
+        "prior_candidates_accessed": {
+          "const": false
+        },
+        "prior_results_accessed": {
+          "const": false
+        },
+        "historical_search_space_semantics_accessed": {
+          "const": false
+        },
+        "tools_enabled": {
+          "const": false
+        },
+        "retrieval_enabled": {
+          "const": false
+        }
+      }
+    },
+    "runtimeContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gpu",
+        "candidate_memory_limit_gib",
+        "cpu_threads",
+        "ram_gib",
+        "max_epochs",
+        "fit_timeout_seconds"
+      ],
+      "properties": {
+        "gpu": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "candidate_memory_limit_gib": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "cpu_threads": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ram_gib": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_epochs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fit_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "symbol",
+        "kind"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "symbol": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "kind": {
+          "enum": [
+            "class",
+            "function",
+            "method",
+            "instance_attribute"
+          ]
+        }
+      }
+    },
+    "inputPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "port",
+        "accepted_types",
+        "minimum"
+      ],
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "accepted_types": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "minimum": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "outputPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "port",
+        "type"
+      ],
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "type": {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      }
+    },
+    "conceptualPrimitive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primitive_id",
+        "version",
+        "family_id",
+        "slot_id",
+        "implementation_status",
+        "semantic_role",
+        "baseline_anchors",
+        "input_ports",
+        "output_ports",
+        "parameter_schema",
+        "conceptual_capabilities",
+        "allowed_data_roles",
+        "composition_roles",
+        "legal_mutation_targets",
+        "prohibited_mutation_targets",
+        "implementation_requirements",
+        "required_invariants",
+        "rationale"
+      ],
+      "properties": {
+        "primitive_id": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "version": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "family_id": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "slot_id": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "implementation_status": {
+          "const": "CONCEPTUAL_UNIMPLEMENTED"
+        },
+        "semantic_role": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "baseline_anchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/anchor"
+          }
+        },
+        "input_ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inputPort"
+          }
+        },
+        "output_ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/outputPort"
+          }
+        },
+        "parameter_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "additionalProperties",
+            "properties"
+          ],
+          "properties": {
+            "type": {
+              "const": "object"
+            },
+            "additionalProperties": {
+              "const": false
+            },
+            "properties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object"
+              }
+            },
+            "required": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/nonemptyString"
+              }
+            }
+          }
+        },
+        "conceptual_capabilities": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "allowed_data_roles": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "composition_roles": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "legal_mutation_targets": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "prohibited_mutation_targets": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "implementation_requirements": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "required_invariants": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "rationale": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "family_boundary_justification": {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      }
+    },
+    "sourceLocationRef": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact reference key from frozen source_location_facts; path and kind are supplied by the assembler."
+    }
+  }
+}

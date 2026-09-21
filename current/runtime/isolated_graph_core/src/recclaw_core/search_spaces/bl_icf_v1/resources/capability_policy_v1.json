@@ -1,0 +1,45 @@
+{
+  "artifact_root_template": "artifacts/{run_id}/",
+  "authority": "NONE",
+  "candidate_root_template": "recclaw_ext/generated/{candidate_id}/",
+  "capability_families": [
+    "CONFIG_MUTATION",
+    "LOSS_MUTATION",
+    "SAMPLER_MUTATION",
+    "RELATION_MUTATION",
+    "GRAPH_OPERATOR_MUTATION",
+    "AUXILIARY_OBJECTIVE_MUTATION",
+    "TRAINING_ALGORITHM_MUTATION",
+    "CUSTOM_MODEL_IMPLEMENTATION",
+    "ANALYTIC_REWRITE",
+    "POSTHOC_RERANK",
+    "EFFICIENCY_REWRITE"
+  ],
+  "evidence_class": "DEVELOPMENT_ONLY",
+  "file_roles": [
+    "MODEL",
+    "RELATION_BUILDER",
+    "LOSS",
+    "SAMPLER",
+    "TRAINER",
+    "RERANKER",
+    "CONFIG",
+    "TEST"
+  ],
+  "forbidden_changes": [
+    "RECBOLE_CORE_EDIT",
+    "DATA_SPLIT_CHANGE",
+    "EVALUATOR_CHANGE",
+    "CANDIDATE_UNIVERSE_CHANGE",
+    "BASELINE_RESULT_CHANGE",
+    "FORMAL_CLAIM_CHANGE",
+    "FORMAL_REGISTRY_CHANGE",
+    "ONLINE_DEPENDENCY_INSTALL",
+    "EXTERNAL_DATA_ACCESS",
+    "OTHER_CANDIDATE_WRITE"
+  ],
+  "formal_acceptance": false,
+  "policy_id": "recclaw.bl-icf.capability-policy.v1",
+  "policy_version": "1.0.0",
+  "record_type": "DEVELOPMENT_CAPABILITY_POLICY"
+}

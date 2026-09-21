@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_family.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "family_id",
+    "family_version",
+    "description",
+    "scientific_boundary",
+    "baseline_contract",
+    "mutable_dimensions",
+    "frozen_protocol_dimensions",
+    "allowed_data_roles",
+    "forbidden_data_roles",
+    "output_contract",
+    "type_compatibility",
+    "invariants"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "search_space_family"
+    },
+    "family_id": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "family_version": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "description": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "scientific_boundary": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "baseline_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "baseline_model",
+        "required_anchor_paths"
+      ],
+      "properties": {
+        "task_id": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "baseline_model": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "required_anchor_paths": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        }
+      }
+    },
+    "mutable_dimensions": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "frozen_protocol_dimensions": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "allowed_data_roles": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "forbidden_data_roles": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "output_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type_ref",
+        "candidate_universe_effect",
+        "semantics"
+      ],
+      "properties": {
+        "type_ref": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "candidate_universe_effect": {
+          "const": "PRESERVE"
+        },
+        "semantics": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        }
+      }
+    },
+    "type_compatibility": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provided",
+          "accepted_as"
+        ],
+        "properties": {
+          "provided": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          },
+          "accepted_as": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          }
+        }
+      }
+    },
+    "invariants": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    }
+  }
+}

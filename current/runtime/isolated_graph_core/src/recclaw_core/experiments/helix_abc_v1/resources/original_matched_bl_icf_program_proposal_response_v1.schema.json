@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "proposals": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "implementation_research": {
+            "additionalProperties": false,
+            "properties": {
+              "base_model_config": {
+                "enum": [
+                  "BPR",
+                  "LightGCN"
+                ],
+                "type": "string"
+              },
+              "mechanism_config_json": {
+                "minLength": 2,
+                "type": "string"
+              }
+            },
+            "required": [
+              "base_model_config",
+              "mechanism_config_json"
+            ],
+            "type": "object"
+          },
+          "mechanism_program": {
+            "type": "object"
+          },
+          "original_priority": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "producer_role": {
+            "type": "string"
+          },
+          "resolution_facts": {
+            "additionalProperties": false,
+            "properties": {
+              "capability_diff": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "high_change_dimensions": {
+                "items": {
+                  "enum": [
+                    "COMPOSITE_MECHANISM",
+                    "CORE_OBJECTIVE",
+                    "CORE_RELATION",
+                    "CORE_REPRESENTATION",
+                    "CUSTOM_EXECUTABLE_CAPABILITY",
+                    "INTERACTION_STRUCTURE",
+                    "MODEL_STRUCTURE",
+                    "PROPAGATION_MECHANISM",
+                    "TRAINING_PROCEDURE"
+                  ]
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "requested_current_semantics_digest": {
+                "type": "null"
+              },
+              "required_budget": {
+                "additionalProperties": false,
+                "properties": {
+                  "implementation_token_ceiling": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "qualification_gpu_minutes": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "qualification_wall_minutes": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "implementation_token_ceiling",
+                  "qualification_gpu_minutes",
+                  "qualification_wall_minutes"
+                ],
+                "type": "object"
+              },
+              "required_dependencies": {
+                "items": {
+                  "enum": [
+                    "numpy",
+                    "python-stdlib",
+                    "pytorch",
+                    "recbole-runtime",
+                    "scipy",
+                    "torch"
+                  ]
+                },
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "requested_current_semantics_digest",
+              "capability_diff",
+              "high_change_dimensions",
+              "required_dependencies",
+              "required_budget"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "producer_role",
+          "mechanism_program",
+          "implementation_research",
+          "resolution_facts",
+          "original_priority"
+        ],
+        "type": "object"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array"
+    }
+  },
+  "required": [
+    "proposals"
+  ],
+  "type": "object"
+}

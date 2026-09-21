@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "proposals": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "probe_token": {
+            "const": "M6I_PROVIDER_ISOLATION",
+            "type": "string"
+          }
+        },
+        "required": [
+          "probe_token"
+        ],
+        "type": "object"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "proposals"
+  ],
+  "type": "object"
+}

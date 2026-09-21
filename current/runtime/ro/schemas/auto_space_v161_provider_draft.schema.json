@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_v161_provider_draft.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "search_space_id",
+    "analysis",
+    "family",
+    "space_plan",
+    "primitives"
+  ],
+  "properties": {
+    "schema": {
+      "const": "recclaw.auto-space.provider-draft.source-bound.v1"
+    },
+    "search_space_id": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_symbols_reviewed",
+        "scientific_opportunities",
+        "frozen_boundaries_respected",
+        "coverage_strategy"
+      ],
+      "properties": {
+        "baseline_symbols_reviewed": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "scientific_opportunities": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "frozen_boundaries_respected": {
+          "const": true
+        },
+        "coverage_strategy": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        }
+      }
+    },
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family_id",
+        "description",
+        "scientific_boundary",
+        "type_compatibility",
+        "invariants"
+      ],
+      "properties": {
+        "family_id": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "description": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "scientific_boundary": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "type_compatibility": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "provided",
+              "accepted_as"
+            ],
+            "properties": {
+              "provided": {
+                "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+              },
+              "accepted_as": {
+                "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+              }
+            }
+          }
+        },
+        "invariants": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        }
+      }
+    },
+    "space_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "axes"
+      ],
+      "properties": {
+        "axes": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "slot_id",
+              "mechanism_families"
+            ],
+            "properties": {
+              "slot_id": {
+                "enum": [
+                  "REPRESENTATION_TRANSFORM",
+                  "SCORING_TRANSFORM",
+                  "TRAINING_OBJECTIVE_TRANSFORM",
+                  "MODEL_ARCHITECTURE_TRANSFORM"
+                ]
+              },
+              "mechanism_families": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mechanism_family",
+                    "distinction_rationale",
+                    "expected_effect",
+                    "effect_phase",
+                    "intended_baseline_anchor",
+                    "intended_legal_mutation_target",
+                    "feasibility_rationale"
+                  ],
+                  "properties": {
+                    "mechanism_family": {
+                      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+                    },
+                    "distinction_rationale": {
+                      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+                    },
+                    "expected_effect": {
+                      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+                    },
+                    "effect_phase": {
+                      "enum": [
+                        "TRAIN_ONLY",
+                        "INFERENCE_ONLY",
+                        "TRAIN_AND_INFERENCE"
+                      ]
+                    },
+                    "intended_baseline_anchor": {
+                      "$ref": "auto_space_common.schema.json#/$defs/sourceLocationRef"
+                    },
+                    "intended_legal_mutation_target": {
+                      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+                    },
+                    "feasibility_rationale": {
+                      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "primitives": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "$ref": "auto_space_v161_common.schema.json#/$defs/draftPrimitive"
+      }
+    }
+  }
+}

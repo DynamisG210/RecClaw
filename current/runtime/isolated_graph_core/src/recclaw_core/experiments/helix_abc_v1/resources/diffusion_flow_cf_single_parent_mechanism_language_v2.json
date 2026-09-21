@@ -1,0 +1,85 @@
+{
+  "schema": "recclaw.single-parent-mechanism-language.v2",
+  "language_id": "recclaw.diffusion-flow-cf.diffrec-parent-language.v2",
+  "research_profile_id": "DIFFUSION_FLOW_CF_DIFFREC_PARENT_V2",
+  "compiler_search_space_id": "DIFFUSION_FLOW_CF_MECHANISM_SPACE_V1",
+  "parent_contract": {
+    "name": "DiffRec",
+    "base_model_config": "DiffRec",
+    "role": "ONLY_FROZEN_PARENT_AND_PAIRED_COMPARATOR",
+    "parent_is_construction_anchor": true,
+    "successful_frontier_may_become_active_construction_parent": true,
+    "frozen_root_remains_paired_comparator": true,
+    "unchanged_parent_slots_are_inherited": true,
+    "required_parent_foundation_primitives": [
+      "state.full_interaction_vector",
+      "forward.gaussian_variance_preserving",
+      "dynamics.time_conditioned_mlp",
+      "objective.predict_clean_state",
+      "schedule.linear",
+      "solver.deterministic_reduced_step",
+      "score.recovered_logits"
+    ]
+  },
+  "language_semantics": {
+    "known_affordances_are_implementation_material_not_candidate_menu": true,
+    "parameter_only_tuning_is_not_a_mechanism": true,
+    "ordinary_delta": "One state or generative-dynamics intervention and at most one compatible conditioning or paired-objective support change while the exact DiffRec Gaussian-VP path, schedule, solver, and score remain active.",
+    "frontier_delta": "A different forward path, prior, objective family, or solver is a full mathematical rewrite: use CUSTOM_MODEL and jointly own a matched path, target, inverse, recovery solver, and executable trajectory.",
+    "single_root_search_tree": "DiffRec is the frozen root comparator; after a faithful measured improvement, that descendant may become the active construction parent while the root comparison stays fixed.",
+    "success": "A faithful candidate improves DiffRec on the same data/dev NDCG@10 protocol without a static-score fallback and within the charged field-evaluation budget."
+  },
+  "causal_zones": [
+    {
+      "zone_id": "STATE_GEOMETRY_ON_FROZEN_VP_PATH",
+      "parent_slots": ["STATE_REPRESENTATION"],
+      "research_question": "Can a same-shape train-derived state geometry improve personalization while the exact DiffRec Gaussian-VP path, clean-state objective, and posterior solver remain paired and active?",
+      "known_affordance_ids": [
+        "state.learned_latent_autoencoder",
+        "state.spectral_graph_coordinates",
+        "state.multi_hop_graph_features"
+      ]
+    },
+    {
+      "zone_id": "DYNAMICS_AND_OBJECTIVE",
+      "parent_slots": ["GENERATIVE_DYNAMICS", "DENOISING_FLOW_OBJECTIVE"],
+      "research_question": "Can a different learned x0 field improve ranking under the frozen parent math, or can the explicitly paired VP velocity field and velocity objective do so without changing the Gaussian path or posterior solver?",
+      "known_affordance_ids": [
+        "dynamics.film_conditional_spectral_mlp",
+        "dynamics.cross_attention_multihop_autoencoder",
+        "dynamics.graph_heat_reverse",
+        "dynamics.behavior_guided_velocity",
+        "dynamics.latent_score_network",
+        "objective.flow_matching_velocity"
+      ]
+    },
+    {
+      "zone_id": "CONDITIONING_ON_CHANGED_FIELD",
+      "parent_slots": ["CONDITIONING"],
+      "research_question": "Can one train-derived condition improve a jointly changed x0 field without leaking evaluation interactions or overwhelming the noisy-state path?",
+      "known_affordance_ids": [
+        "condition.user_history_skip",
+        "condition.masked_spectral_history_classifier_free",
+        "condition.multi_hop_graph",
+        "condition.spectral_band",
+        "condition.popularity_calibrated"
+      ]
+    }
+  ],
+  "innovation_extension": {
+    "primary_role": "frontier_architect",
+    "available_to_other_roles_when_scientifically_required": true,
+    "construction_modes": ["ARCHITECTURE_REWRITE", "CUSTOM_MODEL"],
+    "may_cross_multiple_support_zones": true,
+    "may_define_new_typed_custom_components": true,
+    "may_use_unlisted_registry_primitives": true,
+    "known_affordances_limit_innovation": false,
+    "source_ownership_compilation": {
+      "scientific_input": "Ordinary candidates may change state or dynamics with one compatible condition or the explicit VP velocity objective pair; the parent Gaussian-VP path, schedule, posterior solver, and score are compiler-owned.",
+      "CUSTOM_MODEL": "Use the full-source path for a genuinely different diffusion or flow family, jointly implementing its forward path, target, inverse, recovery solver, and sampling trajectory.",
+      "ARCHITECTURE_REWRITE": "High-permission labels do not unlock partial path changes; use CUSTOM_MODEL when the trajectory math itself changes."
+    },
+    "required_scientific_content": ["parent_relative_causal_intervention", "trajectory_activation_witness", "matched_forward_target_inverse_solver_math", "matched_parent_control", "declared_condition_off_ablation", "falsifier", "faithful_candidate_local_implementation_plan", "honest_training_and_field_evaluation_cost"],
+    "forbidden_shortcuts": ["unmatched_forward_or_prior_with_parent_x0_solver", "parameter_only_tuning", "static_score_fallback", "unrelated_baseline_substitution", "dataset_or_split_change", "text_only_mechanism", "silent_fallback_to_parent"]
+  }
+}

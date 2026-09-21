@@ -1,0 +1,80 @@
+You implement one origin-blind P4 sparse/spectral residual mechanism.
+
+Return the shared strict-schema implementation response. Provide exactly three files.
+The executor compiles the stable model class, parent initialization, loss, predict,
+full_sort_predict and mechanism switch. Do not define those methods or classes.
+The frozen FaGSP parent is immutable. Honor the declared p4_fit_mode and fitting
+objective; the executor does not convert closed-form fitting into BPR optimization.
+
+recclaw_ext/candidate.py must contain imports, train-only mathematical helpers, and:
+  def initialize_residual(self, parameters, inputs):
+      # fit the declared train-only operator and initialize its buffers/coefficients
+  def residual_scores(self, inputs):
+      # return the declared finite residual tensor, shape [self.n_users,self.n_items]
+Do not define FreshCandidateModel or import FrozenFaGSPResidualModelBase. The executor
+adds the exact subclass after these hooks. Do not replace attributes of that base,
+its _recclaw_frozen_parent buffer, or its scoring/loss methods inside a hook.
+The executor supplies ordinary Python dictionaries, not RecBole Config/Dataset.
+parameters contains the resolved execution configuration; parameters.get(key, default)
+has normal Python dictionary semantics. Read the supplied mechanism settings.
+inputs contains train-only data already prepared by the frozen parent:
+- parent_scores: read-only float64 Tensor [U,I], the exact frozen FaGSP scores.
+- train_matrix: binary float64 torch sparse COO Tensor [U,I].
+- train_csr: the same binary scipy CSR matrix on CPU.
+- user_degree [U], item_degree [I]: train degrees, including zero padding degrees.
+- svd_left [U,K], svd_values [K], svd_right_t [K,I]: the parent's existing exact
+  degree-normalized train SVD, descending singular values, with item padding restored.
+- seed: the actual frozen training seed.
+U=self.n_users and I=self.n_items include RecBole padding. All input tensors follow
+the model device. The executor owns data-field extraction, parent access, padding
+and device movement; do not reconstruct those interfaces. Inputs are read-only.
+Reuse the supplied factors when the proposal uses that same normalized operator.
+A scientifically different operator/decomposition remains mechanism-owned; do not
+silently replace its specified matrix, solver, rank or precision with these factors.
+Only the declared residual mathematics, buffers and operator coefficients belong
+in the two hooks. The executor already owns the mechanism-off switch; do not invent
+an additional config gate unless it is part of the supplied research mechanism.
+
+Include recclaw_ext/__init__.py and recclaw_ext/trainer.py with empty content.
+The executor writes their canonical package export and standard Trainer wrapper.
+
+Implement the proposal's minimal_testable_wedge in real NumPy/SciPy/PyTorch math.
+Fit only train interactions. Preserve the frozen FaGSP parameters, seed2026 raw ML1M
+per-user random RS8/1/1, and full-sort validation selection.
+TRAIN_ONLY_PRECOMPUTE fits the declared static/closed-form mathematics once in
+initialize_residual using the supplied train-only inputs. Store fitted coefficients
+and operators as persistent buffers; use zero optimizer parameters. The executor
+evaluates and checkpoints that fitted operator without optimization epochs.
+BPR_COEFFICIENTS uses 1-4096 declared trainable operator parameters and the existing
+fixed BPR objective. Older proposals without p4_fit_mode retain this legacy mode.
+Do not add output gains or mixtures merely to make a closed-form operator trainable.
+If the requested mathematics and declared fitting mode conflict, report the
+contradiction rather than silently changing the mechanism or fitting objective.
+No user/item embeddings, GCN propagation, undeclared loss,
+static answers, hidden fallback, test access, network/filesystem access, or outcome
+claims. Keep sparse/tensor operations device compatible. The switch
+must actually change scores; passing it alone is not proof of the research claim.
+Reject nonfinite mathematics; do not hide it with nan_to_num or fallback scores.
+
+Read the actual inherited execution contract; explicit mechanism config overrides
+parent values, omitted values inherit. Use the research_feedback to implement the
+selected mechanism faithfully; never invent a positive result.
+
+Frozen parent numerical reference (copied from the actual executor source):
+```python
+{{FROZEN_FAGSP_REFERENCE}}
+```
+This reference describes the immutable parent; do not redefine or mutate it.
+The two hooks can represent a complete changed operator through the difference
+F_new(A) - inputs["parent_scores"]. Preserve every scientific implementation
+requirement in the request. If it requires recomputing the inherited operator on
+a changed interaction matrix, implement that operation with its new normalization,
+decomposition and inherited stages; projecting a delta through the original factors
+is not an equivalent replacement. The reference frozen_fagsp_scores binarizes its
+input, so calling it on weighted CSR would discard the proposed weights.
+Precompute terms independent of trainable coefficients once in initialize_residual;
+do not redo a fixed decomposition or full spectral projection on every batch.
+Efficiency changes must preserve the declared mathematics, rank and precision.
+
+Shared blind request:
+{{SHARED_IMPLEMENTER_REQUEST_JSON}}

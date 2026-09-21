@@ -1,0 +1,2401 @@
+{
+  "snapshot": "course-20260921",
+  "release_kind": "stage_snapshot_not_final_release",
+  "source_id": "graph/formal_runtime_metric5_v1",
+  "source_package": "runtime_metric5_accepted/package",
+  "source_closure_sha256": "9f25391f9f07ca9202037e24723992a18a3efd8638c4742cb31261abce228ace",
+  "accepted_archive_sha256": "a08827b51575a0da3d1f8d8178198303461257ed5d928a55785cde0e035abad6",
+  "remote_verification": "Every included source file compared by SHA256 with deployed package via read-only SSH on 2026-09-21",
+  "deployment_evidence": "Deployed source identity; not an assertion of completed formal search or effectiveness",
+  "omitted": [
+    "private deployment configs/bindings/closures",
+    "run state and evidence",
+    "dataset/checkpoints/cache",
+    "common literature corpus",
+    "third-party recommender model source",
+    "historical baseline observations",
+    "experimental comparator launchers",
+    "historical calibrated policy checkpoints and private runtime release/lock observations"
+  ],
+  "individually_excluded": [
+    "isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/migrations/001_minimum_sufficient.sql",
+    "isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/migrations/002_training_runtime_release.sql",
+    "isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_target_runtime_gpu41_v31.json",
+    "isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_v22_gpu35_resource_envelope.json",
+    "isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_v23_gpu35_resource_envelope.json",
+    "isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_v24_gpu35_resource_envelope.json",
+    "isolated_graph_core/src/recclaw_core/research_line/standalone.py.pre_amendment_v2",
+    "isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/assets/liger_parent_candidate.py.tmpl",
+    "isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/assets/liger_parent_trainer.py.tmpl",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/broker_process_release_v2.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/broker_process_release_v2_pilot_schema_v2.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/lab_api_broker_release_v1_v13_schema_v4.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/lab_api_broker_release_v1_v14_schema_v5.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/lab_api_broker_release_v1_v24_schema_v6.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/meta_vnext_feature_support_v18.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/meta_vnext_policy_checkpoint_v17.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/meta_vnext_policy_checkpoint_v18.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/meta_vnext_policy_checkpoint_v19.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/meta_vnext_policy_checkpoint_v20.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_v5_model_catalog_snapshot.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v1.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v13.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v14.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v15.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v16.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v17.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v18.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v2.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v4.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v5.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v6.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v7.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v8.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_release_v9.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v13_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v14_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v15_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v16_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v17_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v18_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v2_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v4_lock.json",
+    "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/training_runtime_v8_lock.json"
+  ],
+  "files": [
+    {
+      "path": "runtime/graph_candidate_contract.py",
+      "source_relative_path": "source/graph_candidate_contract.py",
+      "source_sha256": "1110c19a43004cc23f0c6e5d5c307e6beb6c58ea2fcddc9cc04d2663840d323b",
+      "sha256": "1110c19a43004cc23f0c6e5d5c307e6beb6c58ea2fcddc9cc04d2663840d323b",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_candidate_evaluator.py",
+      "source_relative_path": "source/graph_candidate_evaluator.py",
+      "source_sha256": "e75b6e85e8a1bcd41ca863d4c0c0c0b36e2a36b1071778f09908d02fda18a047",
+      "sha256": "e75b6e85e8a1bcd41ca863d4c0c0c0b36e2a36b1071778f09908d02fda18a047",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_checkpoint_verify.py",
+      "source_relative_path": "source/graph_checkpoint_verify.py",
+      "source_sha256": "aff11867a562f30a1de9a1f39398ce3ca690a0cff47ad5a5eb3abd20f96e76dc",
+      "sha256": "aff11867a562f30a1de9a1f39398ce3ca690a0cff47ad5a5eb3abd20f96e76dc",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_confined_entry.py",
+      "source_relative_path": "source/graph_confined_entry.py",
+      "source_sha256": "08221940e245654750c414d1a7c93d7a907a23e8f8aba010f293dcf904314562",
+      "sha256": "08221940e245654750c414d1a7c93d7a907a23e8f8aba010f293dcf904314562",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_final_fit_metric.py",
+      "source_relative_path": "source/graph_final_fit_metric.py",
+      "source_sha256": "f8280e35a90af1908bff99d40b21c2bf8e9dceb4726bfc13e452c4cde51b61db",
+      "sha256": "f8280e35a90af1908bff99d40b21c2bf8e9dceb4726bfc13e452c4cde51b61db",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_fixed_mapping.py",
+      "source_relative_path": "source/graph_fixed_mapping.py",
+      "source_sha256": "c5b7820d9d18715bb1c41263bbb55e2188bb73f45f7f242ab67684abd61840e0",
+      "sha256": "c5b7820d9d18715bb1c41263bbb55e2188bb73f45f7f242ab67684abd61840e0",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_formal_inputs.py",
+      "source_relative_path": "source/graph_formal_inputs.py",
+      "source_sha256": "6b715b190c9cd125e419191afe7ed6fe5bf53a19fb15ed4f997874ef86de2498",
+      "sha256": "6b715b190c9cd125e419191afe7ed6fe5bf53a19fb15ed4f997874ef86de2498",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_metric_contract.py",
+      "source_relative_path": "source/graph_metric_contract.py",
+      "source_sha256": "f6bbcb36b923799f8bdb5a5864e5e5e5c24d54b1c13363a84746b608f702aea6",
+      "sha256": "f6bbcb36b923799f8bdb5a5864e5e5e5c24d54b1c13363a84746b608f702aea6",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_native_adapter.py",
+      "source_relative_path": "source/graph_native_adapter.py",
+      "source_sha256": "9735a64cceaf5f94f93ea44d6a297c8512e9bc248d5f90c7a1e082f8900af1ac",
+      "sha256": "9735a64cceaf5f94f93ea44d6a297c8512e9bc248d5f90c7a1e082f8900af1ac",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_native_inputs.py",
+      "source_relative_path": "source/graph_native_inputs.py",
+      "source_sha256": "01d878a2fb9f5de6147b59bc1ff489de16938524259da6c7257ae84c9a38f57d",
+      "sha256": "01d878a2fb9f5de6147b59bc1ff489de16938524259da6c7257ae84c9a38f57d",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_native_launch.py",
+      "source_relative_path": "source/graph_native_launch.py",
+      "source_sha256": "9940fd81dfa4b10a6271d5e92c1b501f1687ba617a7d747dbba23798d6b28f58",
+      "sha256": "9940fd81dfa4b10a6271d5e92c1b501f1687ba617a7d747dbba23798d6b28f58",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_program.py",
+      "source_relative_path": "source/graph_program.py",
+      "source_sha256": "ab090ee8f094f5f44d31908210cc56e05c81696df223b305b80533d08131a4cd",
+      "sha256": "ab090ee8f094f5f44d31908210cc56e05c81696df223b305b80533d08131a4cd",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_qualification.py",
+      "source_relative_path": "source/graph_qualification.py",
+      "source_sha256": "ba0c2be2360998aea2eab552335f69504f41b8f44ca0df3d50300ffeea89f2e1",
+      "sha256": "ba0c2be2360998aea2eab552335f69504f41b8f44ca0df3d50300ffeea89f2e1",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_qualification_worker.py",
+      "source_relative_path": "source/graph_qualification_worker.py",
+      "source_sha256": "d5867b1a1af9546f8ac7561ff70180dd836c362041350afa687d8f954ad89f45",
+      "sha256": "d5867b1a1af9546f8ac7561ff70180dd836c362041350afa687d8f954ad89f45",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_reference_root.py",
+      "source_relative_path": "source/graph_reference_root.py",
+      "source_sha256": "4d697cee319635be414d88a2902e7a89fd3af6b0c83e2346ab1da80aa73fee55",
+      "sha256": "4d697cee319635be414d88a2902e7a89fd3af6b0c83e2346ab1da80aa73fee55",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_ro_contract.py",
+      "source_relative_path": "source/graph_ro_contract.py",
+      "source_sha256": "b0aa8f450a420050c6ba042e3e8fe4e3a5f5bf401e46c1989483c0079c67acb3",
+      "sha256": "b0aa8f450a420050c6ba042e3e8fe4e3a5f5bf401e46c1989483c0079c67acb3",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_ro_execution.py",
+      "source_relative_path": "source/graph_ro_execution.py",
+      "source_sha256": "26c0f949a8598718b9f9ebf8cd680b9ead6f6d4685142c4e8a8996b06c35792c",
+      "sha256": "26c0f949a8598718b9f9ebf8cd680b9ead6f6d4685142c4e8a8996b06c35792c",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_root_launcher.py",
+      "source_relative_path": "source/graph_root_launcher.py",
+      "source_sha256": "fd06cb31585ccf2babe155945c34bd4d864d3e1e8d27818b7707f1416e7d97f1",
+      "sha256": "fd06cb31585ccf2babe155945c34bd4d864d3e1e8d27818b7707f1416e7d97f1",
+      "changes": []
+    },
+    {
+      "path": "runtime/graph_worker.py",
+      "source_relative_path": "source/graph_worker.py",
+      "source_sha256": "619379439ee71ef460245bf4b530d4f37315427125f80c0692630f72d2ae0e92",
+      "sha256": "619379439ee71ef460245bf4b530d4f37315427125f80c0692630f72d2ae0e92",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/graph_ro_metric.py",
+      "source_relative_path": "source/isolated_graph_core/graph_ro_metric.py",
+      "source_sha256": "45d5d4fcb76784799a4488adc483ea0757942077a78513959aeee2ed79231e91",
+      "sha256": "45d5d4fcb76784799a4488adc483ea0757942077a78513959aeee2ed79231e91",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/__init__.py",
+      "source_sha256": "b9a8140abb5680d4df437884b1b5df4b9c1349ed280d6e20800a684f93670f51",
+      "sha256": "b9a8140abb5680d4df437884b1b5df4b9c1349ed280d6e20800a684f93670f51",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/__init__.py",
+      "source_sha256": "ea72178dc3e241d8412b257df0315569efcba90f55c6c962b49671a7efc53aab",
+      "sha256": "ea72178dc3e241d8412b257df0315569efcba90f55c6c962b49671a7efc53aab",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/__init__.py",
+      "source_sha256": "2a485c34794652b9a9a3eb04c09b1d56b6f0dbcc147872562c2c594bea10fba5",
+      "sha256": "2a485c34794652b9a9a3eb04c09b1d56b6f0dbcc147872562c2c594bea10fba5",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/audit_snapshot.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/audit_snapshot.py",
+      "source_sha256": "25c8d55345b00948559b4d1e5c098bfed4f845928b8a6b9d9cf2f7590ff1d1dd",
+      "sha256": "25c8d55345b00948559b4d1e5c098bfed4f845928b8a6b9d9cf2f7590ff1d1dd",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/broker_failure_closure.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/broker_failure_closure.py",
+      "source_sha256": "e8d573a83a9d451190e147cd607b00a0fe3f3fb3fcf622981449ae30eead11c7",
+      "sha256": "e8d573a83a9d451190e147cd607b00a0fe3f3fb3fcf622981449ae30eead11c7",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/broker_process.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/broker_process.py",
+      "source_sha256": "02f20ab0b2717b6d65df4323d3999ef32c52e5451b67b3198c7f4b3ff6306429",
+      "sha256": "02f20ab0b2717b6d65df4323d3999ef32c52e5451b67b3198c7f4b3ff6306429",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_dataset.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_dataset.py",
+      "source_sha256": "27ff10f4b53058402da60c53cdf344d9fae1d1d8af819bdf7835c444a03fea95",
+      "sha256": "27ff10f4b53058402da60c53cdf344d9fae1d1d8af819bdf7835c444a03fea95",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot.py",
+      "source_sha256": "fd628990e7cd5910692c3c11d1f6bb89b3002faad534aaa6f81717e66e338d41",
+      "sha256": "fd628990e7cd5910692c3c11d1f6bb89b3002faad534aaa6f81717e66e338d41",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v13.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v13.py",
+      "source_sha256": "2534dd27714432d9ba3743bf66aa0be0c4715b2249ba26db759713f73540d1a9",
+      "sha256": "2534dd27714432d9ba3743bf66aa0be0c4715b2249ba26db759713f73540d1a9",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v14.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v14.py",
+      "source_sha256": "1dca808431d42b245a423679a09880632882cc6f9e362940e53c5610d7f49246",
+      "sha256": "1dca808431d42b245a423679a09880632882cc6f9e362940e53c5610d7f49246",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v15.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v15.py",
+      "source_sha256": "9a190293d2f57f12407ed04c8e313108eee45abb5e77b2f5bad81dea0b042d29",
+      "sha256": "9a190293d2f57f12407ed04c8e313108eee45abb5e77b2f5bad81dea0b042d29",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v16.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v16.py",
+      "source_sha256": "e54e9104c6a19ca5ca7e670b1d236dc7e1d8148c08524eb9a29e25d3b1e63665",
+      "sha256": "e54e9104c6a19ca5ca7e670b1d236dc7e1d8148c08524eb9a29e25d3b1e63665",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v22.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v22.py",
+      "source_sha256": "07f9abf11a7f3190b52fb761cf2f49a487abaa56d8427343bb40e7a89f1bdc9a",
+      "sha256": "07f9abf11a7f3190b52fb761cf2f49a487abaa56d8427343bb40e7a89f1bdc9a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v23.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v23.py",
+      "source_sha256": "c10ccd69d8fdb5438715d6462e8b57a9f385187e3397ed29a7b021aec8d119bc",
+      "sha256": "c10ccd69d8fdb5438715d6462e8b57a9f385187e3397ed29a7b021aec8d119bc",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v24.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v24.py",
+      "source_sha256": "ebefab7c103939467d841513a58f908fc87bfa3ebb2a4e8fcb84478d0896df96",
+      "sha256": "ebefab7c103939467d841513a58f908fc87bfa3ebb2a4e8fcb84478d0896df96",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_pilot_v25.py",
+      "source_sha256": "21da40a7a1740537202d9242ffe8130264d808f216f6102096c06055d4537a97",
+      "sha256": "21da40a7a1740537202d9242ffe8130264d808f216f6102096c06055d4537a97",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_runtime.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/campaign_runtime.py",
+      "source_sha256": "58e20bb267130a369e2fd1b3a9b1d27485209d0e241c622c8c76086c1f48e3ae",
+      "sha256": "58e20bb267130a369e2fd1b3a9b1d27485209d0e241c622c8c76086c1f48e3ae",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/canary_broker.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/canary_broker.py",
+      "source_sha256": "1575933c74fcdf64b47dbb6d7e6e0dbbd8b73ed690eec5c644c0db137c9490c4",
+      "sha256": "1c38d51e87724051ef6d246bc635fb7066870056f5d166b87685c0fb1a1aad94",
+      "changes": [
+        "Replace historical personal Windows locator with public placeholder; no algorithm change"
+      ]
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/canonical.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/canonical.py",
+      "source_sha256": "669b6d25c7b984c3958d95649be671d326fd0b506425beba528dbc8a0a848db2",
+      "sha256": "669b6d25c7b984c3958d95649be671d326fd0b506425beba528dbc8a0a848db2",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/capability_admission.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/capability_admission.py",
+      "source_sha256": "66752c16526a5d06a47d009ed97c9fb264a12d70e50ead02a8b1b1a5421748db",
+      "sha256": "66752c16526a5d06a47d009ed97c9fb264a12d70e50ead02a8b1b1a5421748db",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/common_execution_guard.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/common_execution_guard.py",
+      "source_sha256": "9397b6174ce471077a26dc8c8300b7cb34d747ef5df40370f9354d4b6f6ff947",
+      "sha256": "9397b6174ce471077a26dc8c8300b7cb34d747ef5df40370f9354d4b6f6ff947",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/compilation_cache.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/compilation_cache.py",
+      "source_sha256": "021ac1f921fa7dc8cdd24d8549657dc5dd02c1301ca901583ad9ec780d3aebd9",
+      "sha256": "021ac1f921fa7dc8cdd24d8549657dc5dd02c1301ca901583ad9ec780d3aebd9",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/compiled_efficiency_kernels.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/compiled_efficiency_kernels.py",
+      "source_sha256": "4d1242a9cae8c5a3845024c64720ce8badc8c357b266c64b53a223030d7d9ea4",
+      "sha256": "4d1242a9cae8c5a3845024c64720ce8badc8c357b266c64b53a223030d7d9ea4",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/contracts.py",
+      "source_sha256": "999fab7f26ee14755b26c4c1e5db1bfc9a27a4e6c2dfe6bc01f33525096a6eaa",
+      "sha256": "999fab7f26ee14755b26c4c1e5db1bfc9a27a4e6c2dfe6bc01f33525096a6eaa",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/controllers.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/controllers.py",
+      "source_sha256": "76ee39525739a95981882440c63ebca7fe3c01a961cd62236a20b6ff7eb4df09",
+      "sha256": "76ee39525739a95981882440c63ebca7fe3c01a961cd62236a20b6ff7eb4df09",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/conversion_efficiency.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/conversion_efficiency.py",
+      "source_sha256": "96fd375c0271998799d2212fbc1d850ad1c56ffcb0cd32dc5b0b096bdb222afa",
+      "sha256": "96fd375c0271998799d2212fbc1d850ad1c56ffcb0cd32dc5b0b096bdb222afa",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/effect_pilot_analysis.py",
+      "source_sha256": "fc4fd20f782f7e692d4065dc9e4b522a36861d20104ee3406e0b5a1d9bd88fec",
+      "sha256": "fc4fd20f782f7e692d4065dc9e4b522a36861d20104ee3406e0b5a1d9bd88fec",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/epoch_sampler_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/epoch_sampler_scaffold.py",
+      "source_sha256": "b0ba3989eb4dd8e6ecc536a7ae6533ce0c79d0f23180767224aaf3b07485f71d",
+      "sha256": "b0ba3989eb4dd8e6ecc536a7ae6533ce0c79d0f23180767224aaf3b07485f71d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/evidence.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/evidence.py",
+      "source_sha256": "74b94974e62dafda19e9c726b2ffd3f4990f149cbfec3efa54df331b730438f0",
+      "sha256": "74b94974e62dafda19e9c726b2ffd3f4990f149cbfec3efa54df331b730438f0",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/experiment_binding.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/experiment_binding.py",
+      "source_sha256": "21e29b288d3eaaaa71b2621bb3ed831e19d9199ac9f823d70596254b5e5738db",
+      "sha256": "21e29b288d3eaaaa71b2621bb3ed831e19d9199ac9f823d70596254b5e5738db",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fake_runner.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fake_runner.py",
+      "source_sha256": "caf9abeb4da09461dd7b560d60bcc24bd69bc7c73ca51c8656adb3484a727469",
+      "sha256": "caf9abeb4da09461dd7b560d60bcc24bd69bc7c73ca51c8656adb3484a727469",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fresh_f1.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fresh_f1.py",
+      "source_sha256": "aae8deb6e611c7a1ebff2f407721c185c1acaa1a522c81f78471b217ad3b2b75",
+      "sha256": "aae8deb6e611c7a1ebff2f407721c185c1acaa1a522c81f78471b217ad3b2b75",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fresh_r1.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fresh_r1.py",
+      "source_sha256": "1a3de588515a546040e1ef8de1418be69ca6fc9b2fe366b1d90008ca67a4dd6d",
+      "sha256": "1a3de588515a546040e1ef8de1418be69ca6fc9b2fe366b1d90008ca67a4dd6d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fresh_r2.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fresh_r2.py",
+      "source_sha256": "48c8f417ee52268f42407ce6407528196abe3481e112acddd3d0794926d7c503",
+      "sha256": "48c8f417ee52268f42407ce6407528196abe3481e112acddd3d0794926d7c503",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fusion.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fusion.py",
+      "source_sha256": "cf741a615893696c82c3b4bf9170caf2da1b6737ff993e9482a58d1140837fdd",
+      "sha256": "cf741a615893696c82c3b4bf9170caf2da1b6737ff993e9482a58d1140837fdd",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/idea_quality.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/idea_quality.py",
+      "source_sha256": "513fc405fe461061ca866e92f7a72192b491ab742f922339fe0af1329b1b190b",
+      "sha256": "513fc405fe461061ca866e92f7a72192b491ab742f922339fe0af1329b1b190b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/innovation_recbole_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/innovation_recbole_adapter.py",
+      "source_sha256": "f3902a0e7bb21d92002af3671c5df5b585c6c8d57ae5255f7a3c3567ede3575a",
+      "sha256": "f3902a0e7bb21d92002af3671c5df5b585c6c8d57ae5255f7a3c3567ede3575a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/innovation_spine.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/innovation_spine.py",
+      "source_sha256": "58f347e9fad283c0272c91d26c8195b3ded2418b1bcc2291b91a385a1db62166",
+      "sha256": "58f347e9fad283c0272c91d26c8195b3ded2418b1bcc2291b91a385a1db62166",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/integrated_state_core.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/integrated_state_core.py",
+      "source_sha256": "a3d9e45c04542395a94f0fcdb0fd2e609e55c748c703fc55f8f2a6060ae4b945",
+      "sha256": "a3d9e45c04542395a94f0fcdb0fd2e609e55c748c703fc55f8f2a6060ae4b945",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/lab_api_broker.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/lab_api_broker.py",
+      "source_sha256": "2cf55411c09d10a4723b15cf011a372c5c75c265b47034a404816998b3cdedec",
+      "sha256": "2cf55411c09d10a4723b15cf011a372c5c75c265b47034a404816998b3cdedec",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/m6e_conformance.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/m6e_conformance.py",
+      "source_sha256": "8290d4d4f096c0cd85ef9cdfd76a8475debb50541f619bcf54bf97b7a0246e7c",
+      "sha256": "8290d4d4f096c0cd85ef9cdfd76a8475debb50541f619bcf54bf97b7a0246e7c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/m6i_synthetic.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/m6i_synthetic.py",
+      "source_sha256": "ab4d9307a6358bdaafacfad7a6f4184fd884b379359bc808a426a7af8c05ca06",
+      "sha256": "ab4d9307a6358bdaafacfad7a6f4184fd884b379359bc808a426a7af8c05ca06",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/materialization.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/materialization.py",
+      "source_sha256": "0bfc2af7e200300db315db274cc6ec21cae2cae54df4bf293a09276e14a502ca",
+      "sha256": "0bfc2af7e200300db315db274cc6ec21cae2cae54df4bf293a09276e14a502ca",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/mechanism_characterization.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/mechanism_characterization.py",
+      "source_sha256": "7aaa78226eb30600a3a31e94bc9806539ea0c45f566857f66ced970c5803d42a",
+      "sha256": "7aaa78226eb30600a3a31e94bc9806539ea0c45f566857f66ced970c5803d42a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_control.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_control.py",
+      "source_sha256": "ca8abf32cc4f247e38ed53cbc4ba5cd3a4a5dd687bec2c21e23899291b2caa7a",
+      "sha256": "ca8abf32cc4f247e38ed53cbc4ba5cd3a4a5dd687bec2c21e23899291b2caa7a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/__init__.py",
+      "source_sha256": "72d8de77256d1327c2800ae08a78b25259e4922da6ca5500b1e049364e8c2943",
+      "sha256": "72d8de77256d1327c2800ae08a78b25259e4922da6ca5500b1e049364e8c2943",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/contracts.py",
+      "source_sha256": "e515c097e776bf27b89582984d8f1bedc6cc6c9dc658dd219302189ec6ad55ed",
+      "sha256": "e515c097e776bf27b89582984d8f1bedc6cc6c9dc658dd219302189ec6ad55ed",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/evaluation.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/evaluation.py",
+      "source_sha256": "6e3de254e6bbf5942c02526f7f4fff4311fc7d166e60419317fab35a7778b70c",
+      "sha256": "6e3de254e6bbf5942c02526f7f4fff4311fc7d166e60419317fab35a7778b70c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/features.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/features.py",
+      "source_sha256": "6512c926b23b2ddcd5f8ee80a020bfe893c4bc13fcd6994e4145d8ea4672166b",
+      "sha256": "6512c926b23b2ddcd5f8ee80a020bfe893c4bc13fcd6994e4145d8ea4672166b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/integration.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/integration.py",
+      "source_sha256": "b22ce50f45a58710fb281014b968239c2aad03dce97698a04209567b548b5633",
+      "sha256": "b22ce50f45a58710fb281014b968239c2aad03dce97698a04209567b548b5633",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/learning.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/learning.py",
+      "source_sha256": "08c4b9f85f1b7b659359ec7f738b749a8c95653bb18993343675b73c31c3fbdb",
+      "sha256": "08c4b9f85f1b7b659359ec7f738b749a8c95653bb18993343675b73c31c3fbdb",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/routing.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/routing.py",
+      "source_sha256": "7949eda0398050fb8633332e9b22489b9a24c855777d325fd6500027a3d84745",
+      "sha256": "7949eda0398050fb8633332e9b22489b9a24c855777d325fd6500027a3d84745",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/v18_support.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext/v18_support.py",
+      "source_sha256": "934e18f35efff48d3615d2cfe787b941ba02228d4f2d708f081e6f91a2250b12",
+      "sha256": "934e18f35efff48d3615d2cfe787b941ba02228d4f2d708f081e6f91a2250b12",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext_campaign.py",
+      "source_sha256": "f69fd0b4a72261a010a65a30ebfd35b6e321a6b61c8d6321eaff74a19831a01d",
+      "sha256": "f69fd0b4a72261a010a65a30ebfd35b6e321a6b61c8d6321eaff74a19831a01d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext_pilot.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/meta_vnext_pilot.py",
+      "source_sha256": "bd0c6b4d6733611cdf406d9ae27d7cb83ed23b9e3711e7565ae75885632a2b7c",
+      "sha256": "bd0c6b4d6733611cdf406d9ae27d7cb83ed23b9e3711e7565ae75885632a2b7c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/model_configuration.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/model_configuration.py",
+      "source_sha256": "0a4f3a5995890e4188764906861938655f3cccb516016e4dd2a0dd05616f642c",
+      "sha256": "0a4f3a5995890e4188764906861938655f3cccb516016e4dd2a0dd05616f642c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/multiround_soak.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/multiround_soak.py",
+      "source_sha256": "32dcf5d84047d4553609fb4b30cc6eeac9d2cb81000a728a293861fd18901c1b",
+      "sha256": "32dcf5d84047d4553609fb4b30cc6eeac9d2cb81000a728a293861fd18901c1b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/next_fresh_profile.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/next_fresh_profile.py",
+      "source_sha256": "b6114828aeb470f10eba43c61d086cf361a272f3c652a814a15b245769f04495",
+      "sha256": "b6114828aeb470f10eba43c61d086cf361a272f3c652a814a15b245769f04495",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_meta.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_meta.py",
+      "source_sha256": "9620a24b7dd568fc55db188a7f6e4fdabeeaf9be70b2b214ea31d4efc8ccbc92",
+      "sha256": "9620a24b7dd568fc55db188a7f6e4fdabeeaf9be70b2b214ea31d4efc8ccbc92",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_meta_f1.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_meta_f1.py",
+      "source_sha256": "24f62a2f340010c82e3e96d13746c246bcceaa3227bca3135bb0eedfae30f7d0",
+      "sha256": "24f62a2f340010c82e3e96d13746c246bcceaa3227bca3135bb0eedfae30f7d0",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_meta_q3.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_meta_q3.py",
+      "source_sha256": "3e0c619addae76cce626de932f9f6264a78f68ffdfdfe7add2bad689849ba94d",
+      "sha256": "3e0c619addae76cce626de932f9f6264a78f68ffdfdfe7add2bad689849ba94d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_spec.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/open_spec.py",
+      "source_sha256": "9770b55a8256db797ad3bd1f9c005b26531bfded9576acc46c88cff803911137",
+      "sha256": "9770b55a8256db797ad3bd1f9c005b26531bfded9576acc46c88cff803911137",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/original_main.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/original_main.py",
+      "source_sha256": "51f0d7bc6a01474ef5afa08aebc9a863b03e18d3e25ad86f0e8e967d839dbeee",
+      "sha256": "51f0d7bc6a01474ef5afa08aebc9a863b03e18d3e25ad86f0e8e967d839dbeee",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/p4_fagsp_parent.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/p4_fagsp_parent.py",
+      "source_sha256": "c63b39f39c76e084b0df678e56a245d606b23595085ce85c41ffddfd235970b6",
+      "sha256": "c63b39f39c76e084b0df678e56a245d606b23595085ce85c41ffddfd235970b6",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/pilot_analysis.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/pilot_analysis.py",
+      "source_sha256": "de456760753cc1e6de801b57887462031c6d33c98dcf3eb81efe9d21868a6acf",
+      "sha256": "de456760753cc1e6de801b57887462031c6d33c98dcf3eb81efe9d21868a6acf",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/pilot_training.py",
+      "source_sha256": "73cc624da7cb0952ecb262ea627055639d84536681de7220767685f2b04bddf5",
+      "sha256": "73cc624da7cb0952ecb262ea627055639d84536681de7220767685f2b04bddf5",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/precanary_orchestration.py",
+      "source_sha256": "4a2503308952e1d1a5d07b6e7fd675293c79b0eca8a578e47df09ccd7a4a31b1",
+      "sha256": "4a2503308952e1d1a5d07b6e7fd675293c79b0eca8a578e47df09ccd7a4a31b1",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/prefreeze_v2.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/prefreeze_v2.py",
+      "source_sha256": "b7c42b3da60aafdebf09afe235f9c2b7224796c760f897911d1e3952e89e6407",
+      "sha256": "b7c42b3da60aafdebf09afe235f9c2b7224796c760f897911d1e3952e89e6407",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/prefreeze_v5.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/prefreeze_v5.py",
+      "source_sha256": "caa91dec772264729e79bd61d16ff661301c21a21d4be0c98c421c3acedca339",
+      "sha256": "caa91dec772264729e79bd61d16ff661301c21a21d4be0c98c421c3acedca339",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/producer_opportunity.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/producer_opportunity.py",
+      "source_sha256": "3df97f397629ba1c333eb25462947a374b038d50f2c51f06cb268fd2a771053b",
+      "sha256": "3df97f397629ba1c333eb25462947a374b038d50f2c51f06cb268fd2a771053b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/prospective_policy_comparison.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/prospective_policy_comparison.py",
+      "source_sha256": "071c01e6020c2b7ea0a22120c7f91bf4e190cef28a27102e8d0ca429ef582650",
+      "sha256": "071c01e6020c2b7ea0a22120c7f91bf4e190cef28a27102e8d0ca429ef582650",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/provider_model_routing.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/provider_model_routing.py",
+      "source_sha256": "ca530b20a1ba24bf767746fc3156ddec580262a3a6111eb3361e36bedc3da0a9",
+      "sha256": "ca530b20a1ba24bf767746fc3156ddec580262a3a6111eb3361e36bedc3da0a9",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/q5a_deployment.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/q5a_deployment.py",
+      "source_sha256": "a6d736ac71dabdceba35c6c9d76be540e1634c27c3f4443e0dee819ddae88af7",
+      "sha256": "a6d736ac71dabdceba35c6c9d76be540e1634c27c3f4443e0dee819ddae88af7",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/q5a_idea_feasibility.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/q5a_idea_feasibility.py",
+      "source_sha256": "da482ff835b58b5996ca9f1a3ea6ae9a74db0c441c635320ef4ab5bc2010b4b1",
+      "sha256": "da482ff835b58b5996ca9f1a3ea6ae9a74db0c441c635320ef4ab5bc2010b4b1",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/quality_calibration.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/quality_calibration.py",
+      "source_sha256": "a6e665dd3a4fbc04ce9f598d8ccc990383348858504e74bf1cdb44be4382d371",
+      "sha256": "a6e665dd3a4fbc04ce9f598d8ccc990383348858504e74bf1cdb44be4382d371",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/real_canary.py",
+      "source_sha256": "14de38bd294ddd592d156277c811825076c14cb877a47f7f18cb10e7cbf2021d",
+      "sha256": "14de38bd294ddd592d156277c811825076c14cb877a47f7f18cb10e7cbf2021d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/real_pilot.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/real_pilot.py",
+      "source_sha256": "cb32681f8caba8c2dd55ea617528ac1a66ebb7a465a5e10b557de888a55ff97c",
+      "sha256": "cb32681f8caba8c2dd55ea617528ac1a66ebb7a465a5e10b557de888a55ff97c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/realization_identity.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/realization_identity.py",
+      "source_sha256": "50e7175e214620c912627eb03640a74a8599ebd6d83d7a108ac34b3905e15112",
+      "sha256": "50e7175e214620c912627eb03640a74a8599ebd6d83d7a108ac34b3905e15112",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_capability.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_capability.py",
+      "source_sha256": "8709ed266f5d4f9febe66f3742e4cd805b468f9e4f2dc273943a6a103cdc95d1",
+      "sha256": "8709ed266f5d4f9febe66f3742e4cd805b468f9e4f2dc273943a6a103cdc95d1",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_contracts.py",
+      "source_sha256": "2c737cbde1f432c062fa0c43bc20a30118c4dd4c98626a538bcbb02e7afdd4d9",
+      "sha256": "2c737cbde1f432c062fa0c43bc20a30118c4dd4c98626a538bcbb02e7afdd4d9",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_controller.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_controller.py",
+      "source_sha256": "dbabba3ac22387aa686375356c45509f98631be6141b93df925df20b8697b32c",
+      "sha256": "dbabba3ac22387aa686375356c45509f98631be6141b93df925df20b8697b32c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_quality_gate.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_quality_gate.py",
+      "source_sha256": "268ac04d9b9f462f24ec94bf8861341cdae13f45cb979146cd46e806f1f4d592",
+      "sha256": "268ac04d9b9f462f24ec94bf8861341cdae13f45cb979146cd46e806f1f4d592",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_science.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/research_science.py",
+      "source_sha256": "cb19b474407ddb0312f1caf8e586cbe42fa3d2081bdba3111216405e61b79f56",
+      "sha256": "cb19b474407ddb0312f1caf8e586cbe42fa3d2081bdba3111216405e61b79f56",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resource_scheduling.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resource_scheduling.py",
+      "source_sha256": "73087c2ce99d2440e26159965c58cc9d2a3288c996dda22c797d5adf4dcdc304",
+      "sha256": "cc16c67ffe9ebe12b98649759300d10e6b0f2ee02a2c812717e8331b781c54ed",
+      "changes": [
+        "Replace historical private deployment locator with inert public placeholder; no algorithm change"
+      ]
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/__init__.py",
+      "source_sha256": "e506ff2d445200d904850810390b15fa253fc547765070f1f73620fc7c4c67a3",
+      "sha256": "e506ff2d445200d904850810390b15fa253fc547765070f1f73620fc7c4c67a3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/bl_icf_executable_profile_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/bl_icf_executable_profile_v1.json",
+      "source_sha256": "2344a77980678093e7c768e4782a5cee6eafb82b2ffe770e247dab3d44a1ddf9",
+      "sha256": "2344a77980678093e7c768e4782a5cee6eafb82b2ffe770e247dab3d44a1ddf9",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/bl_icf_single_parent_mechanism_language_v2.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/bl_icf_single_parent_mechanism_language_v2.json",
+      "source_sha256": "79ae33d5b4b8e43440f16fb956dd70c4f2620f78a4973bd8ba47e9a26227aaad",
+      "sha256": "79ae33d5b4b8e43440f16fb956dd70c4f2620f78a4973bd8ba47e9a26227aaad",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_anchor_programs_bl_icf_v2r4.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_anchor_programs_bl_icf_v2r4.json",
+      "source_sha256": "6c89e7610424d9ee595ac6f8e836852e28cb8c6a58c95ad066b3baeaf8d558ea",
+      "sha256": "6c89e7610424d9ee595ac6f8e836852e28cb8c6a58c95ad066b3baeaf8d558ea",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_anchor_programs_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_anchor_programs_v1.json",
+      "source_sha256": "738fe5c03b0d53e78faa9b0fb2b23347b5f9e634c3313633291909097015f04a",
+      "sha256": "738fe5c03b0d53e78faa9b0fb2b23347b5f9e634c3313633291909097015f04a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_development_protocol_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_development_protocol_v1.json",
+      "source_sha256": "08107dd741e82415c236106a7bf801fca34f6ebe53373baa30fd5ea4b4e7d7e6",
+      "sha256": "08107dd741e82415c236106a7bf801fca34f6ebe53373baa30fd5ea4b4e7d7e6",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_partition_profile_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_partition_profile_v1.json",
+      "source_sha256": "73da0d05f74e162d89b197d27928d0d64510f3e10f0228b26c6d248d13fb365a",
+      "sha256": "73da0d05f74e162d89b197d27928d0d64510f3e10f0228b26c6d248d13fb365a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_partition_profile_v31.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_partition_profile_v31.json",
+      "source_sha256": "f1e1947c1678350fa0324fba937ceb17c1561d2bfb332a9b263f89e98e60b290",
+      "sha256": "f1e1947c1678350fa0324fba937ceb17c1561d2bfb332a9b263f89e98e60b290",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_proposal_response_v1.schema.json",
+      "source_sha256": "37ff8e0e69ea33da13a0b6e1d45ff1707ab2a18731a58f376a30a39a9190e802",
+      "sha256": "37ff8e0e69ea33da13a0b6e1d45ff1707ab2a18731a58f376a30a39a9190e802",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_proposal_response_v2.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_proposal_response_v2.schema.json",
+      "source_sha256": "5ff197c6b6d7d16a7d7ddf2218880c71edcb73af498f602547842ea3370d5b0c",
+      "sha256": "5ff197c6b6d7d16a7d7ddf2218880c71edcb73af498f602547842ea3370d5b0c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_scientific_profile_ml1m_fullsort_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_scientific_profile_ml1m_fullsort_v1.json",
+      "source_sha256": "99f3a6c1adf81f666c762b350f52114fd0e1ef7969c7e3078c2fe6e2e1e674e6",
+      "sha256": "99f3a6c1adf81f666c762b350f52114fd0e1ef7969c7e3078c2fe6e2e1e674e6",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_scientific_profile_ml1m_validation_v31.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_scientific_profile_ml1m_validation_v31.json",
+      "source_sha256": "3d619020b53f76b9ade67c9aacae7399249508d0a171ce95800907da79600977",
+      "sha256": "3d619020b53f76b9ade67c9aacae7399249508d0a171ce95800907da79600977",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_training_profile_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_training_profile_v1.json",
+      "source_sha256": "80b04b61bf4f528a71cf41ad562baf5daae503ef310ed15104fe0f96d3e3fcc3",
+      "sha256": "80b04b61bf4f528a71cf41ad562baf5daae503ef310ed15104fe0f96d3e3fcc3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_training_profile_v31.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/campaign_training_profile_v31.json",
+      "source_sha256": "b5621fbcaaeeac742cf6705e7c7372a816f077d25f6b73512922e4c023fcb75d",
+      "sha256": "b5621fbcaaeeac742cf6705e7c7372a816f077d25f6b73512922e4c023fcb75d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/canary_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/canary_proposal_response_v1.schema.json",
+      "source_sha256": "b4ba37c9370360607652232daf444990eb4d8206bd1f50cbe9794ea3b43b56e4",
+      "sha256": "b4ba37c9370360607652232daf444990eb4d8206bd1f50cbe9794ea3b43b56e4",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/common_execution_guard_policy_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/common_execution_guard_policy_v1.json",
+      "source_sha256": "732f03181cfbeb6ce2abb2c58b0a8eb78f2fbd7d2a45966faa663c12cd09fbf0",
+      "sha256": "732f03181cfbeb6ce2abb2c58b0a8eb78f2fbd7d2a45966faa663c12cd09fbf0",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/common_execution_guard_release_projection_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/common_execution_guard_release_projection_v1.json",
+      "source_sha256": "32b44e86cf2efc1ae2500664786fbb9c22f4cc1cd9128323b651388412511c78",
+      "sha256": "32b44e86cf2efc1ae2500664786fbb9c22f4cc1cd9128323b651388412511c78",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/development_protocol_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/development_protocol_v1.json",
+      "source_sha256": "b781c855a7aaa45c63b399f2be4bf06c036b1e1579bfe499123ef594e96d94fb",
+      "sha256": "b781c855a7aaa45c63b399f2be4bf06c036b1e1579bfe499123ef594e96d94fb",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/diffusion_flow_cf_single_parent_mechanism_language_v2.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/diffusion_flow_cf_single_parent_mechanism_language_v2.json",
+      "source_sha256": "c5614a9f9ad176e9ede21eb1e861ba9627d2ddf23e1169704ed8c95aa4337c8a",
+      "sha256": "c5614a9f9ad176e9ede21eb1e861ba9627d2ddf23e1169704ed8c95aa4337c8a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/executable_mechanism_catalog_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/executable_mechanism_catalog_v1.json",
+      "source_sha256": "09aacb27038621a3576bd5c3ff4e214f587900066850280c032afb65fd842794",
+      "sha256": "09aacb27038621a3576bd5c3ff4e214f587900066850280c032afb65fd842794",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/executable_operator_catalog_v2.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/executable_operator_catalog_v2.json",
+      "source_sha256": "99edddd1cc54d7551b62c5d4c68580b3c39c1401f3338290afdcaee57d82ecf7",
+      "sha256": "99edddd1cc54d7551b62c5d4c68580b3c39c1401f3338290afdcaee57d82ecf7",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/f1_resource_compatible_realization_v1/recclaw_ext/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/f1_resource_compatible_realization_v1/recclaw_ext/__init__.py",
+      "source_sha256": "98d4d52184b7b073e1dea9c681e853a367439972b2d3375026750fd969d7ee02",
+      "sha256": "98d4d52184b7b073e1dea9c681e853a367439972b2d3375026750fd969d7ee02",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/f1_resource_compatible_realization_v1/recclaw_ext/candidate.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/f1_resource_compatible_realization_v1/recclaw_ext/candidate.py",
+      "source_sha256": "2e525d672ee48679617ed9b554fc2b58520a6a4c07f90aa9982a45b57469a12d",
+      "sha256": "2e525d672ee48679617ed9b554fc2b58520a6a4c07f90aa9982a45b57469a12d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_call_schedule_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_call_schedule_v1.json",
+      "source_sha256": "8128db3dafefb94fb8dc32116da91390400b6c570c8389c8f7d1489923e2c081",
+      "sha256": "8128db3dafefb94fb8dc32116da91390400b6c570c8389c8f7d1489923e2c081",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_failure_policy_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_failure_policy_v1.json",
+      "source_sha256": "15f0976b34294e26723fa232f9ae5f273ac1a9d8c25c2def47cca3f38140ce6a",
+      "sha256": "15f0976b34294e26723fa232f9ae5f273ac1a9d8c25c2def47cca3f38140ce6a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_proposal_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_proposal_prompt_v1.txt",
+      "source_sha256": "ee3b9dc9ad8ce86c43c3b9b87a5380f335370a2f403c04b594e313212d0e6e21",
+      "sha256": "ee3b9dc9ad8ce86c43c3b9b87a5380f335370a2f403c04b594e313212d0e6e21",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_proposal_response_v1.schema.json",
+      "source_sha256": "d328eefa658a78471ac81fcfff441fccad07ccb89cabb620c7f7cf7a6c617456",
+      "sha256": "d328eefa658a78471ac81fcfff441fccad07ccb89cabb620c7f7cf7a6c617456",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_proposal_response_v4_provider.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_proposal_response_v4_provider.schema.json",
+      "source_sha256": "1a03214b9e9b27036d0350398c3e8ab17fd6158c638aa75ad5354b041c3c7e5b",
+      "sha256": "1a03214b9e9b27036d0350398c3e8ab17fd6158c638aa75ad5354b041c3c7e5b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_schema_probe_payload_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_schema_probe_payload_v1.json",
+      "source_sha256": "25afd4d1fe428f410b994c5a72a3a741519461659fc44b545567b70d27e8711b",
+      "sha256": "25afd4d1fe428f410b994c5a72a3a741519461659fc44b545567b70d27e8711b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_tool_policy_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_tool_policy_v1.json",
+      "source_sha256": "6d965a8c7261c63deb9fa1fc560794e4d0b061f9da5afd981df9ea6133d32dcc",
+      "sha256": "6d965a8c7261c63deb9fa1fc560794e4d0b061f9da5afd981df9ea6133d32dcc",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_v4_duplicate_arrays_negative_fixture.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_v4_duplicate_arrays_negative_fixture.json",
+      "source_sha256": "ff4a98243e0846189623061e3bbb8765450af386047ab2af23263867fc611ea8",
+      "sha256": "ff4a98243e0846189623061e3bbb8765450af386047ab2af23263867fc611ea8",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_v4_valid_fixture.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_open_spec_v4_valid_fixture.json",
+      "source_sha256": "05cc80fa34c99145955dc41075b4f3cb9c33013f034cfcbafc1778ec4b742064",
+      "sha256": "05cc80fa34c99145955dc41075b4f3cb9c33013f034cfcbafc1778ec4b742064",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r1_implementation_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r1_implementation_response_v1.schema.json",
+      "source_sha256": "3b7d9332820285addb680eed6e69cce73fd0702d4897ad1a48f51ba2fce33792",
+      "sha256": "3b7d9332820285addb680eed6e69cce73fd0702d4897ad1a48f51ba2fce33792",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r1_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r1_implementer_prompt_v1.txt",
+      "source_sha256": "47ef1955112a6639b03634ea547c5a828b59f3e6e01c35cbd8c4de65492d4479",
+      "sha256": "47ef1955112a6639b03634ea547c5a828b59f3e6e01c35cbd8c4de65492d4479",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r1_proposal_schema_delta_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r1_proposal_schema_delta_v1.json",
+      "source_sha256": "0c9573bb002e23065571db1f419321b4da06962d454dc57b16f3a86d6305847c",
+      "sha256": "0c9573bb002e23065571db1f419321b4da06962d454dc57b16f3a86d6305847c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r2_producer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r2_producer_prompt_v1.txt",
+      "source_sha256": "bd46315e16503e58cc1bae833d5a07a9cf1d8c2be96cdde2bd059fb4a54aea27",
+      "sha256": "bd46315e16503e58cc1bae833d5a07a9cf1d8c2be96cdde2bd059fb4a54aea27",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r2_proposal_schema_delta_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/fresh_r2_proposal_schema_delta_v1.json",
+      "source_sha256": "c8dfd01cdc142ce84a5ddc45f596d70eb7a8fcca42513801a8ab5132398def67",
+      "sha256": "c8dfd01cdc142ce84a5ddc45f596d70eb7a8fcca42513801a8ab5132398def67",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/idea_quality_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/idea_quality_implementer_prompt_v1.txt",
+      "source_sha256": "855cdacb1daf1ce1c1bc8301a864c3d69782ea5d9d919672b5e36b1c01f99fcd",
+      "sha256": "855cdacb1daf1ce1c1bc8301a864c3d69782ea5d9d919672b5e36b1c01f99fcd",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/idea_quality_producer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/idea_quality_producer_prompt_v1.txt",
+      "source_sha256": "4ba54938e5449c5d98283182a56f3803dcf0a10ac59e5d2c6542cf61e94b727f",
+      "sha256": "4ba54938e5449c5d98283182a56f3803dcf0a10ac59e5d2c6542cf61e94b727f",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/m6i_provider_probe_response_v1_failed.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/m6i_provider_probe_response_v1_failed.schema.json",
+      "source_sha256": "356b7ffa399f363ff5fc111e2533f0f6d96fc7823b824147d54f05e1829c10fc",
+      "sha256": "356b7ffa399f363ff5fc111e2533f0f6d96fc7823b824147d54f05e1829c10fc",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/m6i_provider_probe_response_v2.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/m6i_provider_probe_response_v2.schema.json",
+      "source_sha256": "aaea42070f023331c029ca7fe5cb808db147c5426f50fd816264008fe279baad",
+      "sha256": "aaea42070f023331c029ca7fe5cb808db147c5426f50fd816264008fe279baad",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/m6i_transition_matrix_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/m6i_transition_matrix_v1.json",
+      "source_sha256": "00437d342de14fcaadc4f80e4f3bf5a108acd5b0feddaee618c5942b19a6f7b2",
+      "sha256": "00437d342de14fcaadc4f80e4f3bf5a108acd5b0feddaee618c5942b19a6f7b2",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/original_matched_bl_icf_program_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/original_matched_bl_icf_program_proposal_response_v1.schema.json",
+      "source_sha256": "663a82e5f8b262d301d694b1b6786eabe0ebdad694fd1a0feab5f47edf999f88",
+      "sha256": "663a82e5f8b262d301d694b1b6786eabe0ebdad694fd1a0feab5f47edf999f88",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_proposal_response_v1.schema.json",
+      "source_sha256": "e043b49e10b6e3bd67a1da40a18bfcab0cfb987c37d1b27222b1ecc207c167b4",
+      "sha256": "e043b49e10b6e3bd67a1da40a18bfcab0cfb987c37d1b27222b1ecc207c167b4",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_proposal_response_v2.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_proposal_response_v2.schema.json",
+      "source_sha256": "0eb6efbc010fe2834001e5d26d66f5dac39ef61e08065ba40b46a93c8cb60044",
+      "sha256": "0eb6efbc010fe2834001e5d26d66f5dac39ef61e08065ba40b46a93c8cb60044",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_proposal_response_v3.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_proposal_response_v3.schema.json",
+      "source_sha256": "8615600338e771bf1f53b6f2cfe793400162d8af62d7b4e9620a50d9b83a42cd",
+      "sha256": "8615600338e771bf1f53b6f2cfe793400162d8af62d7b4e9620a50d9b83a42cd",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_training_profile_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/pilot_training_profile_v1.json",
+      "source_sha256": "66d5d8751d03d7b3cf8a970a9cbec013f37a9b593123d1359a74653c95fc756d",
+      "sha256": "66d5d8751d03d7b3cf8a970a9cbec013f37a9b593123d1359a74653c95fc756d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/q5_conversion_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/q5_conversion_implementer_prompt_v1.txt",
+      "source_sha256": "d5954c4895cbdf46601054dfd8b798c9d38d0852433de56efa5a9efd3549f3c0",
+      "sha256": "d5954c4895cbdf46601054dfd8b798c9d38d0852433de56efa5a9efd3549f3c0",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/q5_conversion_implementer_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/q5_conversion_implementer_response_v1.schema.json",
+      "source_sha256": "7229275cec59ffdee227a87587f6a03c6664390fbe840555ae313df3a76c0adf",
+      "sha256": "7229275cec59ffdee227a87587f6a03c6664390fbe840555ae313df3a76c0adf",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/quality_calibration_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/quality_calibration_implementer_prompt_v1.txt",
+      "source_sha256": "834b2accb82552a86569a42676d97ae4f24a00fef4020739115e1d013c98aa00",
+      "sha256": "834b2accb82552a86569a42676d97ae4f24a00fef4020739115e1d013c98aa00",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/quality_calibration_producer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/quality_calibration_producer_prompt_v1.txt",
+      "source_sha256": "caedf2d7f211c1ecc994c095a904b23ccb49bb4af849c7a0ac22a9e963fb173b",
+      "sha256": "caedf2d7f211c1ecc994c095a904b23ccb49bb4af849c7a0ac22a9e963fb173b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_bl_icf_program_proposal_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_bl_icf_program_proposal_prompt_v1.txt",
+      "source_sha256": "352429b65348fa3832674ebef62455543af55d8659ffcbd287ffbe8c0cb4a9f2",
+      "sha256": "352429b65348fa3832674ebef62455543af55d8659ffcbd287ffbe8c0cb4a9f2",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_bl_icf_program_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_bl_icf_program_proposal_response_v1.schema.json",
+      "source_sha256": "c28fca38aa01fc41ad9372711debad411f0975cb2654ccd87244cfd574556f00",
+      "sha256": "c28fca38aa01fc41ad9372711debad411f0975cb2654ccd87244cfd574556f00",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_bl_icf_proposal_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_bl_icf_proposal_prompt_v1.txt",
+      "source_sha256": "e8cbeb14dc5c8d27171d8dcee4a18421abe20e3cae3868e2abff6eec41d93660",
+      "sha256": "e8cbeb14dc5c8d27171d8dcee4a18421abe20e3cae3868e2abff6eec41d93660",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_declarative_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_declarative_implementer_prompt_v1.txt",
+      "source_sha256": "774e04bb277ee757b98f5bc277568f3661bfa14b57ed367e5c97763192b71b9d",
+      "sha256": "774e04bb277ee757b98f5bc277568f3661bfa14b57ed367e5c97763192b71b9d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_bl_icf_appendix_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_bl_icf_appendix_v1.txt",
+      "source_sha256": "baf677860a663b44e8b63a3bb8b1a1af06cb1395d2badae90e8768ed4b521eaa",
+      "sha256": "baf677860a663b44e8b63a3bb8b1a1af06cb1395d2badae90e8768ed4b521eaa",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_diffusion_flow_cf_appendix_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_diffusion_flow_cf_appendix_v1.txt",
+      "source_sha256": "eeb67132756d99b6c4e17a2c49af254b1f757d32a4bb906d3f29d1780caa3738",
+      "sha256": "eeb67132756d99b6c4e17a2c49af254b1f757d32a4bb906d3f29d1780caa3738",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_prompt_v1.txt",
+      "source_sha256": "3114a1d2e0392828224093321b7f952d1b27b757b82ef461f5ba22176975d576",
+      "sha256": "3114a1d2e0392828224093321b7f952d1b27b757b82ef461f5ba22176975d576",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_semantic_id_generative_appendix_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_semantic_id_generative_appendix_v1.txt",
+      "source_sha256": "4b8df338a053d574b37edb562839b26346e666a276ef3e438024c4b7f948725f",
+      "sha256": "4b8df338a053d574b37edb562839b26346e666a276ef3e438024c4b7f948725f",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_sequential_scaling_appendix_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_implementer_sequential_scaling_appendix_v1.txt",
+      "source_sha256": "bd836d141c4cd4383a9638017bd7169a366eaaecb8dde01df6b07b1fa7d55153",
+      "sha256": "bd836d141c4cd4383a9638017bd7169a366eaaecb8dde01df6b07b1fa7d55153",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_open_spec_proposal_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_open_spec_proposal_prompt_v1.txt",
+      "source_sha256": "bbf5210f598d9b1c1785d95a787f13d3258f8aae94c7f1ca0d4459ea75c93340",
+      "sha256": "bbf5210f598d9b1c1785d95a787f13d3258f8aae94c7f1ca0d4459ea75c93340",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_open_spec_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_open_spec_proposal_response_v1.schema.json",
+      "source_sha256": "67496250910db14abe4bdc5126bf5229dbee4f814426569bbf8ab6d38c2a8e79",
+      "sha256": "67496250910db14abe4bdc5126bf5229dbee4f814426569bbf8ab6d38c2a8e79",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_implementer_prompt_v1.txt",
+      "source_sha256": "f39609dde89adbb6bde3e7acf497076cb7b21ffd77f1ed1be91f7022d8f5753d",
+      "sha256": "f39609dde89adbb6bde3e7acf497076cb7b21ffd77f1ed1be91f7022d8f5753d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_implementer_prompt_v2.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_implementer_prompt_v2.txt",
+      "source_sha256": "a3a88c4d141b109fabcf16925480955dc75efb30b81029d490a6af19fa2550db",
+      "sha256": "a3a88c4d141b109fabcf16925480955dc75efb30b81029d490a6af19fa2550db",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_proposal_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_proposal_prompt_v1.txt",
+      "source_sha256": "a00e5740003b8e8ad3ec1fa203ffebaaf5ee87d476146c6afb2330528b2cec5c",
+      "sha256": "a00e5740003b8e8ad3ec1fa203ffebaaf5ee87d476146c6afb2330528b2cec5c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/research_line_p4_sparse_spectral_proposal_response_v1.schema.json",
+      "source_sha256": "2c1e0ead0fe5bc7d9f803e2a7739d6c1b86afd2b9e2a95074ffd3b6905369133",
+      "sha256": "2c1e0ead0fe5bc7d9f803e2a7739d6c1b86afd2b9e2a95074ffd3b6905369133",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/round_test_feedback_protocol_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/round_test_feedback_protocol_v1.json",
+      "source_sha256": "60b31856305a79f08e0726273fed5d2af4380575fc3d181fa8de4554b24a269c",
+      "sha256": "60b31856305a79f08e0726273fed5d2af4380575fc3d181fa8de4554b24a269c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/runtime_release_contract_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/runtime_release_contract_v1.json",
+      "source_sha256": "0a616ee205f494a161e7b10424181f37247347de8c5d714328dfa2f3f1ffb41d",
+      "sha256": "0a616ee205f494a161e7b10424181f37247347de8c5d714328dfa2f3f1ffb41d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/semantic_id_generative_single_parent_mechanism_language_v2.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/semantic_id_generative_single_parent_mechanism_language_v2.json",
+      "source_sha256": "ef34161e816a7ab09f223693d43fa84efad20081f908bd42e27b98a727660e0a",
+      "sha256": "ef34161e816a7ab09f223693d43fa84efad20081f908bd42e27b98a727660e0a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/sequential_scaling_single_parent_mechanism_language_v2.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/resources/sequential_scaling_single_parent_mechanism_language_v2.json",
+      "source_sha256": "529c3417eb682cd0bdf90153fd31cfd0feb2cc35aa8ae695e9a85084706f05e8",
+      "sha256": "529c3417eb682cd0bdf90153fd31cfd0feb2cc35aa8ae695e9a85084706f05e8",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/runtime_contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/runtime_contracts.py",
+      "source_sha256": "0413367679b5a1d8e79825b09e8d5991503e32b6b06d5543565680626ebb5b30",
+      "sha256": "0413367679b5a1d8e79825b09e8d5991503e32b6b06d5543565680626ebb5b30",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/runtime_handlers.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/runtime_handlers.py",
+      "source_sha256": "ae579beffc65b6df2cb88e7fbafb131ce1655f517654505e375083ec78c6343f",
+      "sha256": "ae579beffc65b6df2cb88e7fbafb131ce1655f517654505e375083ec78c6343f",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/runtime_release.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/runtime_release.py",
+      "source_sha256": "358aa6d39a019869ac6d42d7909b804f0d87ebb0ed6b8a49d9c208233948cac7",
+      "sha256": "358aa6d39a019869ac6d42d7909b804f0d87ebb0ed6b8a49d9c208233948cac7",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/scientific_attribution_gate.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/scientific_attribution_gate.py",
+      "source_sha256": "1061b87b20ed509661ed36700f0359b138dbffff877a57b7992ef79dc701d1e5",
+      "sha256": "1061b87b20ed509661ed36700f0359b138dbffff877a57b7992ef79dc701d1e5",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/scientific_episode.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/scientific_episode.py",
+      "source_sha256": "deacb841f3e358702ad433383ae96c2a56a9c04ecc807b3c3ee4ce287fb64290",
+      "sha256": "deacb841f3e358702ad433383ae96c2a56a9c04ecc807b3c3ee4ce287fb64290",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/scientific_episode_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/scientific_episode_adapter.py",
+      "source_sha256": "b91f852737f18d258af63b09ff516fc433258d1ebfa531e201cb8b4261d15e96",
+      "sha256": "b91f852737f18d258af63b09ff516fc433258d1ebfa531e201cb8b4261d15e96",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/search_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/search_adapter.py",
+      "source_sha256": "f2ca475011ee4ba16b4bd7373dc01dc8f09085356419c04afd65a7797fcb9a2a",
+      "sha256": "f2ca475011ee4ba16b4bd7373dc01dc8f09085356419c04afd65a7797fcb9a2a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/state_store.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/state_store.py",
+      "source_sha256": "701977c8badf9600f997c595eb3140c47d01f74d4dd389935a2913074438f36a",
+      "sha256": "701977c8badf9600f997c595eb3140c47d01f74d4dd389935a2913074438f36a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/store_audit.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/store_audit.py",
+      "source_sha256": "a077fe7bb4f6960d4299da74a2eab4b287be296ef30ba15e0c3627331ba66a2a",
+      "sha256": "a077fe7bb4f6960d4299da74a2eab4b287be296ef30ba15e0c3627331ba66a2a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/trainer_lifecycle_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/trainer_lifecycle_scaffold.py",
+      "source_sha256": "1755538ce89edf7cc66c142ffe3dceac2feefca06e0afead7b8cd4344efd622f",
+      "sha256": "1755538ce89edf7cc66c142ffe3dceac2feefca06e0afead7b8cd4344efd622f",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_execution_guard.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_execution_guard.py",
+      "source_sha256": "8af2bb8cbfc537e59682f78f62cbaa367c75a60763d166063416d7b5fdd9fca8",
+      "sha256": "8af2bb8cbfc537e59682f78f62cbaa367c75a60763d166063416d7b5fdd9fca8",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_filesystem.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_filesystem.py",
+      "source_sha256": "0ddab91c24145f675a785ed30616cbb0f43bc3835e3203258725b1073ddd971d",
+      "sha256": "0ddab91c24145f675a785ed30616cbb0f43bc3835e3203258725b1073ddd971d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_materialization.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_materialization.py",
+      "source_sha256": "247d855c6dfd23734360bca079b4cdb8467621464aeb2b720a2e26700e1adca6",
+      "sha256": "247d855c6dfd23734360bca079b4cdb8467621464aeb2b720a2e26700e1adca6",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_runtime_contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_runtime_contracts.py",
+      "source_sha256": "b8245640148a7d34dad8d65236d36ee057adf8c0357a156e4dc5ab72beef2bad",
+      "sha256": "b8245640148a7d34dad8d65236d36ee057adf8c0357a156e4dc5ab72beef2bad",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_runtime_release.py",
+      "source_sha256": "543aecb5ed1faaa46bc4e4be8b65b711b3203a58b337ae507ed0363cb8e50cbd",
+      "sha256": "543aecb5ed1faaa46bc4e4be8b65b711b3203a58b337ae507ed0363cb8e50cbd",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_state_store.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/training_state_store.py",
+      "source_sha256": "e51e41d6f2745b323c03b37b9b5277b61ce388e5e99e8739aa6faac93d8ad293",
+      "sha256": "e51e41d6f2745b323c03b37b9b5277b61ce388e5e99e8739aa6faac93d8ad293",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/v4_response_contract.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/v4_response_contract.py",
+      "source_sha256": "caa20a24cfea3e1ca45be3a5fb785a5e761ee6197b1c16bf87b491e261b08f9c",
+      "sha256": "caa20a24cfea3e1ca45be3a5fb785a5e761ee6197b1c16bf87b491e261b08f9c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/vnext_contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/vnext_contracts.py",
+      "source_sha256": "b43518b4c318353f3e17821ab13d9b90ca5caf229705a5acea0e6045d5c01cd6",
+      "sha256": "b43518b4c318353f3e17821ab13d9b90ca5caf229705a5acea0e6045d5c01cd6",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/vnext_orchestration.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/vnext_orchestration.py",
+      "source_sha256": "abc2155921ddddcecd99c32b742986ac3a0aeb27c11e615f704abf65ad8048e6",
+      "sha256": "abc2155921ddddcecd99c32b742986ac3a0aeb27c11e615f704abf65ad8048e6",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/wave2_integration.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/wave2_integration.py",
+      "source_sha256": "d88b044d6997ea9c85b08a22e8ddc75a502ed85dcd386b09b4da510b98894cca",
+      "sha256": "d88b044d6997ea9c85b08a22e8ddc75a502ed85dcd386b09b4da510b98894cca",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/__init__.py",
+      "source_sha256": "ff59b2b5a62de5d9df017038e16caa1307e86c1033c94f2e3976c5ef159f4e47",
+      "sha256": "ff59b2b5a62de5d9df017038e16caa1307e86c1033c94f2e3976c5ef159f4e47",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/baseline_calibration.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/baseline_calibration.py",
+      "source_sha256": "ffd67859b12b0d245a6dc2b0af224b1af1257f8b538681d10066a9206f62fcbf",
+      "sha256": "ffd67859b12b0d245a6dc2b0af224b1af1257f8b538681d10066a9206f62fcbf",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/composition.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/composition.py",
+      "source_sha256": "31f5032a79d5df3ae491463ee14ebbe80d894d7f2364492bbee261a185a8b59f",
+      "sha256": "31f5032a79d5df3ae491463ee14ebbe80d894d7f2364492bbee261a185a8b59f",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/contracts.py",
+      "source_sha256": "71a68ffebb8cd15aa16679cedef1d7917c1fa62ae8dccc9fa8cd166543eca4ce",
+      "sha256": "71a68ffebb8cd15aa16679cedef1d7917c1fa62ae8dccc9fa8cd166543eca4ce",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/formal_experiment.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/formal_experiment.py",
+      "source_sha256": "f96b013489183bc570d7cd05bf27bf15fac2d69c939332dda74df350013d94ff",
+      "sha256": "f96b013489183bc570d7cd05bf27bf15fac2d69c939332dda74df350013d94ff",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/frontier_allocation.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/frontier_allocation.py",
+      "source_sha256": "dd5927d6803b731a9fb1b36e264bf68d6b6394cc3055ebaea4475da1b62461fe",
+      "sha256": "dd5927d6803b731a9fb1b36e264bf68d6b6394cc3055ebaea4475da1b62461fe",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/fusion.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/fusion.py",
+      "source_sha256": "a053fd0f5f22f07f223b2268f39996e5d043ea89755b38a8dd79c25e801476f3",
+      "sha256": "a053fd0f5f22f07f223b2268f39996e5d043ea89755b38a8dd79c25e801476f3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/guard_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/guard_adapter.py",
+      "source_sha256": "42b7c564eaa4f8a995f79404acb52b807dd2a70ab96e8504ae6ff8b1a1c17067",
+      "sha256": "42b7c564eaa4f8a995f79404acb52b807dd2a70ab96e8504ae6ff8b1a1c17067",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/ledger.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/ledger.py",
+      "source_sha256": "b54d3d6feeb34d551eb180a2eb2a0f648ecf1a6a57fa1a0d30ce36e49ec4cd11",
+      "sha256": "b54d3d6feeb34d551eb180a2eb2a0f648ecf1a6a57fa1a0d30ce36e49ec4cd11",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/matched_budget.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/matched_budget.py",
+      "source_sha256": "b5d11ec843fda2368cad792efd8c628283e0b4b5ff3f6c3d93bd35421d3cb698",
+      "sha256": "b5d11ec843fda2368cad792efd8c628283e0b4b5ff3f6c3d93bd35421d3cb698",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/outer_panel.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/outer_panel.py",
+      "source_sha256": "fbc5e6ad4c7e6f54e32d3ce2d73c9d1b1a303306f3344bc6a678a8565b216b70",
+      "sha256": "fbc5e6ad4c7e6f54e32d3ce2d73c9d1b1a303306f3344bc6a678a8565b216b70",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/ports.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/ports.py",
+      "source_sha256": "d99aa5b3e51a4efa9353df644c4c7773ff981a6dfa6dfd96c3544bb6fe415143",
+      "sha256": "d99aa5b3e51a4efa9353df644c4c7773ff981a6dfa6dfd96c3544bb6fe415143",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/scientific_attribution.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/scientific_attribution.py",
+      "source_sha256": "7a858a3bfe8dacc9541752179483a39f3134428f30533076231e934b134af74d",
+      "sha256": "7a858a3bfe8dacc9541752179483a39f3134428f30533076231e934b134af74d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/helix/standalone_bridge.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/helix/standalone_bridge.py",
+      "source_sha256": "eca8bed35be8dbdb654d4eabab4c3ce0f45035f7538a20c4b096b59f07dffade",
+      "sha256": "eca8bed35be8dbdb654d4eabab4c3ce0f45035f7538a20c4b096b59f07dffade",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/__init__.py",
+      "source_sha256": "7012c1079f7b419981bca6ce5383a3a44f52e7752c1469a5c435f4844fc0fee8",
+      "sha256": "7012c1079f7b419981bca6ce5383a3a44f52e7752c1469a5c435f4844fc0fee8",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/canonical.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/canonical.py",
+      "source_sha256": "099cf9392ae57f981b47dbfb530c67786bc6a69501b0505870818a919ca1cb4e",
+      "sha256": "099cf9392ae57f981b47dbfb530c67786bc6a69501b0505870818a919ca1cb4e",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/catalog.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/catalog.py",
+      "source_sha256": "73d66891252119b0cfcae18762084fae9e7085e79c876c17e070069d55b5f80e",
+      "sha256": "73d66891252119b0cfcae18762084fae9e7085e79c876c17e070069d55b5f80e",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/contracts.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/contracts.py",
+      "source_sha256": "fe0358346f46d69011c846ead0369ae81ba3de87a1f8f19b216f5f315d3558c2",
+      "sha256": "fe0358346f46d69011c846ead0369ae81ba3de87a1f8f19b216f5f315d3558c2",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/declarative_provider.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/declarative_provider.py",
+      "source_sha256": "c8774d49b8f11a63d2bf5d2cc09439aed800db78a4642220befcc96d6ef140f3",
+      "sha256": "c8774d49b8f11a63d2bf5d2cc09439aed800db78a4642220befcc96d6ef140f3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/kernel.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/kernel.py",
+      "source_sha256": "7c4258fd9767fe10ef35f4b8624375ab0c5f6cf9ec39d38f14934b9e59862de3",
+      "sha256": "7c4258fd9767fe10ef35f4b8624375ab0c5f6cf9ec39d38f14934b9e59862de3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/resources/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/resources/__init__.py",
+      "source_sha256": "e9efdcc0500c5ce3aa3377c019e4125fef34779313d41bdc10c6fba94b1d7ab3",
+      "sha256": "e9efdcc0500c5ce3aa3377c019e4125fef34779313d41bdc10c6fba94b1d7ab3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/resources/candidate_execution_binding_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/resources/candidate_execution_binding_v1.schema.json",
+      "source_sha256": "e2ce7bcb63eb712fec34a36b80fe9d2148bd2121ef5b7799f8f8353ff8364265",
+      "sha256": "e2ce7bcb63eb712fec34a36b80fe9d2148bd2121ef5b7799f8f8353ff8364265",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/resources/mechanism_program_envelope_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/resources/mechanism_program_envelope_v1.schema.json",
+      "source_sha256": "c36ac5883a550d7488f532541082494688f5492b3549c1eb808e6e42bdd431e0",
+      "sha256": "c36ac5883a550d7488f532541082494688f5492b3549c1eb808e6e42bdd431e0",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/mechanism_space/spectral_selection.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/mechanism_space/spectral_selection.py",
+      "source_sha256": "b20b6b95f4d8f3068de351b12508353af9050607502c7621d3caa88ad8b1b641",
+      "sha256": "b20b6b95f4d8f3068de351b12508353af9050607502c7621d3caa88ad8b1b641",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/__init__.py",
+      "source_sha256": "0219cb10d2218cc451638594bc3213bb5767743a0f7f1eaee1034c516339ddac",
+      "sha256": "0219cb10d2218cc451638594bc3213bb5767743a0f7f1eaee1034c516339ddac",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/bl_icf_objective_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/bl_icf_objective_scaffold.py",
+      "source_sha256": "2c34332ef9b520132db784b6c9caf92a4647c3d3a99886b2c8f6e75424b8f19c",
+      "sha256": "2c34332ef9b520132db784b6c9caf92a4647c3d3a99886b2c8f6e75424b8f19c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/bl_icf_realization.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/bl_icf_realization.py",
+      "source_sha256": "f6cfe562eace0fd9ef2420bd0cc922e9fd896011e3fb9513440b5382bb6217a3",
+      "sha256": "f6cfe562eace0fd9ef2420bd0cc922e9fd896011e3fb9513440b5382bb6217a3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/bl_icf_score_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/bl_icf_score_scaffold.py",
+      "source_sha256": "bbb065f03f79afba7b537c50f7eb4e2a1be8a89761caf6b3ca7b891ddc26562b",
+      "sha256": "bbb065f03f79afba7b537c50f7eb4e2a1be8a89761caf6b3ca7b891ddc26562b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/bl_icf_search_space_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/bl_icf_search_space_adapter.py",
+      "source_sha256": "5a2f516ff4bc5b6869f40ac3cc680458b408c3ab6cbdd0f60b9965e9c017c54a",
+      "sha256": "5a2f516ff4bc5b6869f40ac3cc680458b408c3ab6cbdd0f60b9965e9c017c54a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/bootstrap.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/bootstrap.py",
+      "source_sha256": "3837f259298f9d324c90d3f8cffd77e21b9b99d4df9641b33a9855323281b37e",
+      "sha256": "3837f259298f9d324c90d3f8cffd77e21b9b99d4df9641b33a9855323281b37e",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/campaign.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/campaign.py",
+      "source_sha256": "18931915f4df965b782227f09ca926c9a03691f9589911659d7f740b32c673b1",
+      "sha256": "18931915f4df965b782227f09ca926c9a03691f9589911659d7f740b32c673b1",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/declarative_provider_runtime.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/declarative_provider_runtime.py",
+      "source_sha256": "81370cdc3771931c627d3f2d7d99579c506bff50fc2b4d227636f288d42f1a00",
+      "sha256": "81370cdc3771931c627d3f2d7d99579c506bff50fc2b4d227636f288d42f1a00",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/declarative_qualification.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/declarative_qualification.py",
+      "source_sha256": "d68be6ba607d0b79f9d0e124afe185ead5e2ca40ea53f4725b63380b361dc7dc",
+      "sha256": "d68be6ba607d0b79f9d0e124afe185ead5e2ca40ea53f4725b63380b361dc7dc",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/declarative_search_space_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/declarative_search_space_adapter.py",
+      "source_sha256": "dbb6b5eb238433917e31f9fcdf4456c17f9cb50a10f9eb324d7c051630721e71",
+      "sha256": "dbb6b5eb238433917e31f9fcdf4456c17f9cb50a10f9eb324d7c051630721e71",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/e1_multvae_search_space_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/e1_multvae_search_space_adapter.py",
+      "source_sha256": "b4e84125be08b02968bc819f11a61fe32123cb36d31f5a259b1c0d1610696236",
+      "sha256": "b4e84125be08b02968bc819f11a61fe32123cb36d31f5a259b1c0d1610696236",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/e1_native_bridge.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/e1_native_bridge.py",
+      "source_sha256": "616457664d26b0464a441435b448c242b53512ea097056b19968074815afea8c",
+      "sha256": "616457664d26b0464a441435b448c242b53512ea097056b19968074815afea8c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/effective_experiment.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/effective_experiment.py",
+      "source_sha256": "1289a343652fe9ce3e1021d8c64118c428866baeb288158f15ebec73e552c99d",
+      "sha256": "1289a343652fe9ce3e1021d8c64118c428866baeb288158f15ebec73e552c99d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/execution.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/execution.py",
+      "source_sha256": "1b3766e574c59cda53bae7c8ce7c19cf272c1ea8946c6ab4f28cca890e7fcdff",
+      "sha256": "1b3766e574c59cda53bae7c8ce7c19cf272c1ea8946c6ab4f28cca890e7fcdff",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/fresh_runner.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/fresh_runner.py",
+      "source_sha256": "30b474060367b832c9586603ff609114a9701a5b44f9b70af0693e8d7b77997e",
+      "sha256": "30b474060367b832c9586603ff609114a9701a5b44f9b70af0693e8d7b77997e",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/frozen_family_profile.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/frozen_family_profile.py",
+      "source_sha256": "af4c4fcc74ad8482d13501e376a5b4b43d9a60419c8f9ee3871e9d1363780451",
+      "sha256": "af4c4fcc74ad8482d13501e376a5b4b43d9a60419c8f9ee3871e9d1363780451",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/gpu_reservation_provider.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/gpu_reservation_provider.py",
+      "source_sha256": "8613c0839b84cd076bef55532aeabfaeac9d5dc36561078b59d0f454866be927",
+      "sha256": "8613c0839b84cd076bef55532aeabfaeac9d5dc36561078b59d0f454866be927",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/interfaces.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/interfaces.py",
+      "source_sha256": "02b7c28c8d6669ac0521ac0749968f4926a5eb2ad2c4d492a1b4d0923a53df69",
+      "sha256": "02b7c28c8d6669ac0521ac0749968f4926a5eb2ad2c4d492a1b4d0923a53df69",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/interpreter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/interpreter.py",
+      "source_sha256": "82c6896d4358a6aaab1bbef8656ac975be19a6a0a9061489873302c5402fda67",
+      "sha256": "82c6896d4358a6aaab1bbef8656ac975be19a6a0a9061489873302c5402fda67",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/lineage_identity.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/lineage_identity.py",
+      "source_sha256": "391f8fc10dbf68a6bcd23b03dca3392ce55a1f4090606f0ea3e821bc993d754d",
+      "sha256": "391f8fc10dbf68a6bcd23b03dca3392ce55a1f4090606f0ea3e821bc993d754d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/original_arm.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/original_arm.py",
+      "source_sha256": "30e7c4fb72caac5d58a83ab53969dbbe528d4ccf6425ccb30fd2630bd5375d64",
+      "sha256": "30e7c4fb72caac5d58a83ab53969dbbe528d4ccf6425ccb30fd2630bd5375d64",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/original_matched.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/original_matched.py",
+      "source_sha256": "65bcf2cb2aa3f12c26105093eea2b9c53998bb8e93049ec641e1e44fc2c77602",
+      "sha256": "65bcf2cb2aa3f12c26105093eea2b9c53998bb8e93049ec641e1e44fc2c77602",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/p4_implementation.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/p4_implementation.py",
+      "source_sha256": "1b96c41f7fb83baf20c40889db26f98e5ebe27b4b9de43279dfcbda1b6269357",
+      "sha256": "1b96c41f7fb83baf20c40889db26f98e5ebe27b4b9de43279dfcbda1b6269357",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/p4_runtime.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/p4_runtime.py",
+      "source_sha256": "bb59f232ab18f048a2268bc35c6099293d64894efb5e3682ac234d73615ced56",
+      "sha256": "bb59f232ab18f048a2268bc35c6099293d64894efb5e3682ac234d73615ced56",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/p4_sparse_spectral_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/p4_sparse_spectral_adapter.py",
+      "source_sha256": "608df1532fa0f168fc35adfb10fde5872aebab9a39cc3056534643ee6c7ef823",
+      "sha256": "608df1532fa0f168fc35adfb10fde5872aebab9a39cc3056534643ee6c7ef823",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/p4_trainer.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/p4_trainer.py",
+      "source_sha256": "7c5729440efda2dcdc2928517a9f964a04f9f5cdd541509bca6f2e1f5ed8e7cf",
+      "sha256": "7c5729440efda2dcdc2928517a9f964a04f9f5cdd541509bca6f2e1f5ed8e7cf",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/paired.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/paired.py",
+      "source_sha256": "62946308311ac649f0ded3c43f27556f7862cb5002ccb1e8f1f1b3f0d2ff904e",
+      "sha256": "62946308311ac649f0ded3c43f27556f7862cb5002ccb1e8f1f1b3f0d2ff904e",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/paired_execution.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/paired_execution.py",
+      "source_sha256": "49e7d6236701a6e6bc89ac967f0e412818a1a2b838a8e3d610a7d8eac04c5e1c",
+      "sha256": "49e7d6236701a6e6bc89ac967f0e412818a1a2b838a8e3d610a7d8eac04c5e1c",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/paired_runtime.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/paired_runtime.py",
+      "source_sha256": "66ad994d75335ffb1af646895648c188a6b5e3bc97ff281d3762ee8701589ee7",
+      "sha256": "66ad994d75335ffb1af646895648c188a6b5e3bc97ff281d3762ee8701589ee7",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/portfolio.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/portfolio.py",
+      "source_sha256": "768929b384f3824e6774762be16fe2d8278333da34b8240d1d650ec26308271e",
+      "sha256": "768929b384f3824e6774762be16fe2d8278333da34b8240d1d650ec26308271e",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/portfolio_profile_builder.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/portfolio_profile_builder.py",
+      "source_sha256": "a5e8305a244a9e566463d330fb6de372e2f39753149aabf439b334c30822c6d2",
+      "sha256": "a5e8305a244a9e566463d330fb6de372e2f39753149aabf439b334c30822c6d2",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/producers.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/producers.py",
+      "source_sha256": "0a0d903532a07a6380a3f6df49622e4548ef67b160600e174db636d582c7abad",
+      "sha256": "0a0d903532a07a6380a3f6df49622e4548ef67b160600e174db636d582c7abad",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/profile_source.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/profile_source.py",
+      "source_sha256": "9eff853d31a6a3d3dec5eeaf16a3fb472cebe7554df14eff76ca3fd399ac18d9",
+      "sha256": "9eff853d31a6a3d3dec5eeaf16a3fb472cebe7554df14eff76ca3fd399ac18d9",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/provider.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/provider.py",
+      "source_sha256": "7df435f575f1bb71e891a18e13cbde49b94081c03f9ceddec48dfac2c82bc4d8",
+      "sha256": "7df435f575f1bb71e891a18e13cbde49b94081c03f9ceddec48dfac2c82bc4d8",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/replay.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/replay.py",
+      "source_sha256": "7f16e6b68850d2106b9c6d323cc27cf2de7eee15c3a0ff1fa7a3bb9c7ef1c779",
+      "sha256": "7f16e6b68850d2106b9c6d323cc27cf2de7eee15c3a0ff1fa7a3bb9c7ef1c779",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_director_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_director_prompt_v1.txt",
+      "source_sha256": "a6e4efd013ab896ba2b7273396033f1260e9f0a122fff06de67fd19b0a3db490",
+      "sha256": "a6e4efd013ab896ba2b7273396033f1260e9f0a122fff06de67fd19b0a3db490",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_implementation_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_implementation_response_v1.schema.json",
+      "source_sha256": "8f1783df54d2763f66333424653083a2e73afe0698209184ced5b2341b4314c0",
+      "sha256": "8f1783df54d2763f66333424653083a2e73afe0698209184ced5b2341b4314c0",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_implementer_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_implementer_prompt_v1.txt",
+      "source_sha256": "21fc2ac58e2476ecb4217221feadf77ad1c3c43aab774c73594fb9375ba944a7",
+      "sha256": "21fc2ac58e2476ecb4217221feadf77ad1c3c43aab774c73594fb9375ba944a7",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_native_language_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_native_language_v1.json",
+      "source_sha256": "5255e575500c7dd3bbcd9247521c49ccc7e9a461048328e7517d8321fc5a58f4",
+      "sha256": "5255e575500c7dd3bbcd9247521c49ccc7e9a461048328e7517d8321fc5a58f4",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_proposal_prompt_v1.txt",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_proposal_prompt_v1.txt",
+      "source_sha256": "9f52cbc7ed1eaf40d300cafe1aab81c008f7e7a4d9283b6860090b84b99ac6a8",
+      "sha256": "9f52cbc7ed1eaf40d300cafe1aab81c008f7e7a4d9283b6860090b84b99ac6a8",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_proposal_response_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/resources/e1_multvae_proposal_response_v1.schema.json",
+      "source_sha256": "254dbf2f4e6303685f16ab1a663d06cda69309028613f06a9689c248bc1b8e4f",
+      "sha256": "254dbf2f4e6303685f16ab1a663d06cda69309028613f06a9689c248bc1b8e4f",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/resources/e1_search_manifest.v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/resources/e1_search_manifest.v1.json",
+      "source_sha256": "662f65d9ca5eb813cd2f7e705d11228fd828ab439215044023f879411b94b3bf",
+      "sha256": "662f65d9ca5eb813cd2f7e705d11228fd828ab439215044023f879411b94b3bf",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/runtime.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/runtime.py",
+      "source_sha256": "4ca61aff49055af376144fe48cb83085a01745b5556982f03ed4343040a98a06",
+      "sha256": "4ca61aff49055af376144fe48cb83085a01745b5556982f03ed4343040a98a06",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/search_space_adapter.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/search_space_adapter.py",
+      "source_sha256": "e5e551feb4d429ad2246b40dc3135108298cac5509b0dd8a58d47acc98078bf0",
+      "sha256": "e5e551feb4d429ad2246b40dc3135108298cac5509b0dd8a58d47acc98078bf0",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/single_parent_profile.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/single_parent_profile.py",
+      "source_sha256": "547b37cefb222a0614220580dad647e5089526ba23762ca76fb4ffa697b53d0a",
+      "sha256": "547b37cefb222a0614220580dad647e5089526ba23762ca76fb4ffa697b53d0a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/single_parent_search.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/single_parent_search.py",
+      "source_sha256": "2ff24d5a307d1d67430fdbc2941865d3bfc56acd62fce47c6cd930ba2dcf82a2",
+      "sha256": "2ff24d5a307d1d67430fdbc2941865d3bfc56acd62fce47c6cd930ba2dcf82a2",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/single_round.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/single_round.py",
+      "source_sha256": "54f4b0946299460596cd8decd985c07406dd42fda48e5d177c6064ff3a7d5fdb",
+      "sha256": "54f4b0946299460596cd8decd985c07406dd42fda48e5d177c6064ff3a7d5fdb",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/research_line/standalone.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/research_line/standalone.py",
+      "source_sha256": "a2fbdd2382301ff32bd391fb914e08917da60b539cbfb0d32ae9ac7c6d8fb7bf",
+      "sha256": "8419fb62f0c9c76703abb997cd4b3b2c34779772f7eaba70975180ba50a0a769",
+      "changes": [
+        "Replace historical private deployment locator with inert public placeholder; no algorithm change"
+      ]
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/__init__.py",
+      "source_sha256": "b7ffc9c8cb09d49636a557d60cda6264784e958a941b05b46a1bfe53b554f763",
+      "sha256": "b7ffc9c8cb09d49636a557d60cda6264784e958a941b05b46a1bfe53b554f763",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/__init__.py",
+      "source_sha256": "1305ffb10abe4992f4e2b7c464074f5a3cfd101946b076d48166fba52105cf6a",
+      "sha256": "1305ffb10abe4992f4e2b7c464074f5a3cfd101946b076d48166fba52105cf6a",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/provider.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/provider.py",
+      "source_sha256": "c327bcafa5d464a38c6675902998fc7707f720335186b311f797c892d7d3eee6",
+      "sha256": "c327bcafa5d464a38c6675902998fc7707f720335186b311f797c892d7d3eee6",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/__init__.py",
+      "source_sha256": "89ddf412d36264d3bdae18127704f70faa728b5a3f510ad1390036da4eaec355",
+      "sha256": "89ddf412d36264d3bdae18127704f70faa728b5a3f510ad1390036da4eaec355",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/capability_policy_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/capability_policy_v1.json",
+      "source_sha256": "6c0272509a0a5b02c045f56091fef72b359bc8e7648084ae17ab74990517ce53",
+      "sha256": "6c0272509a0a5b02c045f56091fef72b359bc8e7648084ae17ab74990517ce53",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/closure_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/closure_v1.json",
+      "source_sha256": "f55f079c49e46fbbef439385f180ab480c6295f5864978879deb7c25ae6ad97b",
+      "sha256": "f55f079c49e46fbbef439385f180ab480c6295f5864978879deb7c25ae6ad97b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/family_contract_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/family_contract_v1.json",
+      "source_sha256": "98028472caab8f11d371164942859459fc3a7271d3ee4a6cd0e5c233e2790d38",
+      "sha256": "98028472caab8f11d371164942859459fc3a7271d3ee4a6cd0e5c233e2790d38",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/mechanism_grammar_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/mechanism_grammar_v1.json",
+      "source_sha256": "8f339fa51718ff4eb43bd8616060ac1c4ec71d8dcdd3b1495fcacce15428f07b",
+      "sha256": "8f339fa51718ff4eb43bd8616060ac1c4ec71d8dcdd3b1495fcacce15428f07b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/mechanism_program_v1.schema.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/mechanism_program_v1.schema.json",
+      "source_sha256": "640f8a5c83d247fc12ea10ee00015ad6d94922aaecce9cddc7cd50e59a90b0e1",
+      "sha256": "640f8a5c83d247fc12ea10ee00015ad6d94922aaecce9cddc7cd50e59a90b0e1",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/primitive_registry_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/primitive_registry_v1.json",
+      "source_sha256": "caf61b06c301d6a860955807036df6830ac6369541ef18f3f657e733c97b3cbb",
+      "sha256": "caf61b06c301d6a860955807036df6830ac6369541ef18f3f657e733c97b3cbb",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/search_space_manifest_v1.json",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/bl_icf_v1/resources/search_space_manifest_v1.json",
+      "source_sha256": "b43d69234aef2cbd280a14d69af0e72d11194263a731b23d29f994e381084e22",
+      "sha256": "b43d69234aef2cbd280a14d69af0e72d11194263a731b23d29f994e381084e22",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/__init__.py",
+      "source_sha256": "87b1570bf179c7922421ec12c6e53c938dee0f713cc303f050210619008ff13f",
+      "sha256": "87b1570bf179c7922421ec12c6e53c938dee0f713cc303f050210619008ff13f",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/mechanism_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/mechanism_scaffold.py",
+      "source_sha256": "ff86f592ed71aefb80dd90483f53edaf3defcae316d4d3aa3392e4f13af91b35",
+      "sha256": "ff86f592ed71aefb80dd90483f53edaf3defcae316d4d3aa3392e4f13af91b35",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/provider.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/provider.py",
+      "source_sha256": "60b0d1c47bbfb78bdad325e8fe63f521b7734926626f4ec8483e8b9f7dd0f099",
+      "sha256": "60b0d1c47bbfb78bdad325e8fe63f521b7734926626f4ec8483e8b9f7dd0f099",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/ready.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/ready.py",
+      "source_sha256": "d97f248036f10623088b7b39e7fdfaac3e0b68f8e384e797e65a2f0437ce0e39",
+      "sha256": "d97f248036f10623088b7b39e7fdfaac3e0b68f8e384e797e65a2f0437ce0e39",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/__init__.py",
+      "source_sha256": "86982393ae3691aba42355fb06fe2ad777c2018e6f7c3612469cb888779ce1fb",
+      "sha256": "86982393ae3691aba42355fb06fe2ad777c2018e6f7c3612469cb888779ce1fb",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/primitive_bindings.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/primitive_bindings.py",
+      "source_sha256": "76b95a8dea169c74a67c62486fbf6d32f70d5545a58ec1a945e078fb92196df7",
+      "sha256": "76b95a8dea169c74a67c62486fbf6d32f70d5545a58ec1a945e078fb92196df7",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/product_quantizer_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/product_quantizer_scaffold.py",
+      "source_sha256": "3ec4f2300d35e3b168f7737c33e6e570e1bba19dcb744c1418117da3015e738d",
+      "sha256": "3ec4f2300d35e3b168f7737c33e6e570e1bba19dcb744c1418117da3015e738d",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/provider.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/provider.py",
+      "source_sha256": "9379d80837c66b11801e6c202275341a09c1369892de78d27aa8d563dea0cda3",
+      "sha256": "9379d80837c66b11801e6c202275341a09c1369892de78d27aa8d563dea0cda3",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/ready.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/ready.py",
+      "source_sha256": "db0e406e0ec37ea9d263fa426dde7c7057ef3d87688fbbfbe06720ed3d0a7677",
+      "sha256": "db0e406e0ec37ea9d263fa426dde7c7057ef3d87688fbbfbe06720ed3d0a7677",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/semantic_decode_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/semantic_decode_scaffold.py",
+      "source_sha256": "ef83682e57d786867a46e183f9930d1cbb08218d5115304577d7f51c843a7bae",
+      "sha256": "ef83682e57d786867a46e183f9930d1cbb08218d5115304577d7f51c843a7bae",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/sid_codec_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/sid_codec_scaffold.py",
+      "source_sha256": "b3f3f33d2bc4255e2b93a04b61d203d8d88f95bce9c8e9b840cf72afce158916",
+      "sha256": "b3f3f33d2bc4255e2b93a04b61d203d8d88f95bce9c8e9b840cf72afce158916",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/__init__.py",
+      "source_sha256": "d71e4f76458f85451a37e119df882f1d71640e480dc25f63726fc474d8de2277",
+      "sha256": "d71e4f76458f85451a37e119df882f1d71640e480dc25f63726fc474d8de2277",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/mechanism_scaffold.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/mechanism_scaffold.py",
+      "source_sha256": "96f19152b4b7bb9a7334a2984e670f7c42d34865a10897e9115407e8f67faa39",
+      "sha256": "96f19152b4b7bb9a7334a2984e670f7c42d34865a10897e9115407e8f67faa39",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/provider.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/provider.py",
+      "source_sha256": "f5bb398d7b61272c098e0a72bf83596fe2f02129c5dfaf19475f214661c57244",
+      "sha256": "f5bb398d7b61272c098e0a72bf83596fe2f02129c5dfaf19475f214661c57244",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/ready.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/ready.py",
+      "source_sha256": "71c2360f8c22d535806e21c992ac34c1cb753e5883587d9eb9f80982d37e6da1",
+      "sha256": "71c2360f8c22d535806e21c992ac34c1cb753e5883587d9eb9f80982d37e6da1",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_evidence_guard/__init__.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_evidence_guard/__init__.py",
+      "source_sha256": "8ab2452609b1a132363fd41537a81e00a7ea37bbefcc4cce2eb6a2d9e8934e8b",
+      "sha256": "8ab2452609b1a132363fd41537a81e00a7ea37bbefcc4cce2eb6a2d9e8934e8b",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_evidence_guard/core_v1.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_evidence_guard/core_v1.py",
+      "source_sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+      "sha256": "d47df73feec97a01f2528cbf110b62c473d16414fcfc94ffefaaad3ff0a7c1af",
+      "changes": []
+    },
+    {
+      "path": "runtime/isolated_graph_core/src/recclaw_runtime_binding.py",
+      "source_relative_path": "source/isolated_graph_core/src/recclaw_runtime_binding.py",
+      "source_sha256": "d5d4295fb10c863beb326c8c16fa369aea86cda958a2f638f6320ecc4c37a322",
+      "sha256": "d5d4295fb10c863beb326c8c16fa369aea86cda958a2f638f6320ecc4c37a322",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/auto_search_space.py",
+      "source_relative_path": "source/ro/auto_search_space.py",
+      "source_sha256": "11651c76e167515ce86abeb93d4bdf389fe186583fc45820db2d72588475524d",
+      "sha256": "11651c76e167515ce86abeb93d4bdf389fe186583fc45820db2d72588475524d",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/graph_assembler_engine.py",
+      "source_relative_path": "source/ro/graph_assembler_engine.py",
+      "source_sha256": "2142fba4fe0a28a68d2d8debb6fc03a470a6bcfeedf7efd86a2a9ae2c7a4e765",
+      "sha256": "2142fba4fe0a28a68d2d8debb6fc03a470a6bcfeedf7efd86a2a9ae2c7a4e765",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/graph_autospace.py",
+      "source_relative_path": "source/ro/graph_autospace.py",
+      "source_sha256": "9f634452f1aba0fed51f85728f26e32caf2197dd6fade6c010a2c2689e85a262",
+      "sha256": "9f634452f1aba0fed51f85728f26e32caf2197dd6fade6c010a2c2689e85a262",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/graph_native_methods.py",
+      "source_relative_path": "source/ro/graph_native_methods.py",
+      "source_sha256": "33ca85b9dad8f4b98c1fb57cd7b4ce5e7133003a9fe6845e40d5ce8c898c6142",
+      "sha256": "33ca85b9dad8f4b98c1fb57cd7b4ce5e7133003a9fe6845e40d5ce8c898c6142",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/graph_ro_generation.py",
+      "source_relative_path": "source/ro/graph_ro_generation.py",
+      "source_sha256": "9b654aa990dad8069efd69c6f32a951e99d11f50315cc4e8b5a109f0f0d82a91",
+      "sha256": "9b654aa990dad8069efd69c6f32a951e99d11f50315cc4e8b5a109f0f0d82a91",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/graph_search_adapter.py",
+      "source_relative_path": "source/ro/graph_search_adapter.py",
+      "source_sha256": "2e8d3227ccd72b7468e2f0ac2f789e4ae4a63493a05ca8855c72f649a2e082f3",
+      "sha256": "2e8d3227ccd72b7468e2f0ac2f789e4ae4a63493a05ca8855c72f649a2e082f3",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/policy/learning_components.py",
+      "source_relative_path": "source/ro/policy/learning_components.py",
+      "source_sha256": "e24d47346d1e2c2faa1bdb708f8c5554a4047026c037ea6688c9ba10f9200e09",
+      "sha256": "e24d47346d1e2c2faa1bdb708f8c5554a4047026c037ea6688c9ba10f9200e09",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/policy/no_cross_round_measurement.py",
+      "source_relative_path": "source/ro/policy/no_cross_round_measurement.py",
+      "source_sha256": "b0bb80ad77fd444ce7a2f2f0167ee301f6aa68834b87c4325534eb5e054ca908",
+      "sha256": "b0bb80ad77fd444ce7a2f2f0167ee301f6aa68834b87c4325534eb5e054ca908",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/resources/critic_instructions.txt",
+      "source_relative_path": "source/ro/resources/critic_instructions.txt",
+      "source_sha256": "8a26aa3f2eb59bfc47928e780beccaed1878b44ab171a9269b27026c0311c6aa",
+      "sha256": "8a26aa3f2eb59bfc47928e780beccaed1878b44ab171a9269b27026c0311c6aa",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/resources/genesis_instructions.txt",
+      "source_relative_path": "source/ro/resources/genesis_instructions.txt",
+      "source_sha256": "1406a61413ab770d1808719caa0053bef1bfebd59b503f872b7c3687502732c6",
+      "sha256": "1406a61413ab770d1808719caa0053bef1bfebd59b503f872b7c3687502732c6",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/resources/graph_implementation.schema.json",
+      "source_relative_path": "source/ro/resources/graph_implementation.schema.json",
+      "source_sha256": "82db39b76eb89976397a4be6a9a8148b6a340e2ebc247c36491020dd42c0ced0",
+      "sha256": "82db39b76eb89976397a4be6a9a8148b6a340e2ebc247c36491020dd42c0ced0",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/resources/graph_implementer.txt",
+      "source_relative_path": "source/ro/resources/graph_implementer.txt",
+      "source_sha256": "2e25f0653062dd732000bb8677c1d9873e7a91c04cb85b27054fa62cf9d9118f",
+      "sha256": "2e25f0653062dd732000bb8677c1d9873e7a91c04cb85b27054fa62cf9d9118f",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/resources/graph_producer.txt",
+      "source_relative_path": "source/ro/resources/graph_producer.txt",
+      "source_sha256": "f0469c86b8e5894a227531f493340a7cddc8d4413a82b58267ec2f1be6d815b6",
+      "sha256": "f0469c86b8e5894a227531f493340a7cddc8d4413a82b58267ec2f1be6d815b6",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/resources/graph_proposal.schema.json",
+      "source_relative_path": "source/ro/resources/graph_proposal.schema.json",
+      "source_sha256": "f038b0250844571c389c0387068f4d33705fee67f2af01750a017369d1c91c95",
+      "sha256": "f038b0250844571c389c0387068f4d33705fee67f2af01750a017369d1c91c95",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/ro_main_provider.py",
+      "source_relative_path": "source/ro/ro_main_provider.py",
+      "source_sha256": "89c5e540890866a93f0b630b46533d7d97b6ad72a9ad1cf1478f697add7bf04e",
+      "sha256": "89c5e540890866a93f0b630b46533d7d97b6ad72a9ad1cf1478f697add7bf04e",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/run_graph_ro_main.py",
+      "source_relative_path": "source/ro/run_graph_ro_main.py",
+      "source_sha256": "6e6fba2383311e278df27b2bfdfb1e8c832946f2368fcf7e76ad0b4086586de1",
+      "sha256": "6e6fba2383311e278df27b2bfdfb1e8c832946f2368fcf7e76ad0b4086586de1",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/run_native_json.py",
+      "source_relative_path": "source/ro/run_native_json.py",
+      "source_sha256": "ca4521dac3346945930c80e1879e33db7878f56df8871a6e7e9efc3a3de8a7c6",
+      "sha256": "ca4521dac3346945930c80e1879e33db7878f56df8871a6e7e9efc3a3de8a7c6",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_capability_policy.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_capability_policy.schema.json",
+      "source_sha256": "a9ce9ed0c467e07d8db9338146d91c842d1cfc1fe1fee8530becacf71478c7b8",
+      "sha256": "a9ce9ed0c467e07d8db9338146d91c842d1cfc1fe1fee8530becacf71478c7b8",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_common.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_common.schema.json",
+      "source_sha256": "7d5b5b8181dcd38bfd788481a6e187edaf5800c850a7d4254de6ba693387add3",
+      "sha256": "7d5b5b8181dcd38bfd788481a6e187edaf5800c850a7d4254de6ba693387add3",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_family.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_family.schema.json",
+      "source_sha256": "3881a4cb0f3ef56e3261b3185167d3507dfcf5f2198ce11938563c15e3764c27",
+      "sha256": "3881a4cb0f3ef56e3261b3185167d3507dfcf5f2198ce11938563c15e3764c27",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_grammar.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_grammar.schema.json",
+      "source_sha256": "424e5b324e7f9f85e4f59768dc1d330534c56c83c8e97e53b46df72bbb169f15",
+      "sha256": "424e5b324e7f9f85e4f59768dc1d330534c56c83c8e97e53b46df72bbb169f15",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_v161_common.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_v161_common.schema.json",
+      "source_sha256": "5b890da5fb73d3f1da4f35a55dd84ae2231f1ec16969d80c302a7800972618ad",
+      "sha256": "5b890da5fb73d3f1da4f35a55dd84ae2231f1ec16969d80c302a7800972618ad",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_v161_critic_merge.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_v161_critic_merge.schema.json",
+      "source_sha256": "c34db9f6ab8bec5a710c35162ac8824b7c374666badf19e6d047b6042371b953",
+      "sha256": "c34db9f6ab8bec5a710c35162ac8824b7c374666badf19e6d047b6042371b953",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_v161_generator_response.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_v161_generator_response.schema.json",
+      "source_sha256": "89f4b9c6686c7bc3079c147a7e9634b39fe944e50d10a50dcb7520ed2ec5b9b3",
+      "sha256": "89f4b9c6686c7bc3079c147a7e9634b39fe944e50d10a50dcb7520ed2ec5b9b3",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_v161_grammar.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_v161_grammar.schema.json",
+      "source_sha256": "007beb0a6b5a60721e05c2d2365c4d40cb1952b3f49b6c6cb071ece39b78b358",
+      "sha256": "007beb0a6b5a60721e05c2d2365c4d40cb1952b3f49b6c6cb071ece39b78b358",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_v161_primitive_registry.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_v161_primitive_registry.schema.json",
+      "source_sha256": "c62969495ae4c0065e8c6bdb8a86d57466d172a7e8a43a3b43c7303e5d0006f6",
+      "sha256": "c62969495ae4c0065e8c6bdb8a86d57466d172a7e8a43a3b43c7303e5d0006f6",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_v161_provider_draft.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_v161_provider_draft.schema.json",
+      "source_sha256": "7a923bf01d7a28e1566a1459c1930910704107ae06c7500bee0b2328c5cac21c",
+      "sha256": "7a923bf01d7a28e1566a1459c1930910704107ae06c7500bee0b2328c5cac21c",
+      "changes": []
+    },
+    {
+      "path": "runtime/ro/schemas/auto_space_v161_quality_report.schema.json",
+      "source_relative_path": "source/ro/schemas/auto_space_v161_quality_report.schema.json",
+      "source_sha256": "11a8459b5dfefb6289a6698b93dcf4ffc7159014d57c9e4a3c302e2ec65900e7",
+      "sha256": "11a8459b5dfefb6289a6698b93dcf4ffc7159014d57c9e4a3c302e2ec65900e7",
+      "changes": []
+    },
+    {
+      "path": "variants/morec/auto_space_v161.py",
+      "source_id": "morec/native_rr",
+      "source_relative_path": "source/native_rr/auto_space_v161.py",
+      "source_sha256": "a8420df112caf2c1765965bcc569a25c0f443df0b26b8d34f84054696f134ea3",
+      "sha256": "a8420df112caf2c1765965bcc569a25c0f443df0b26b8d34f84054696f134ea3",
+      "changes": [],
+      "ro01_original_binding_sha256": "a8420df112caf2c1765965bcc569a25c0f443df0b26b8d34f84054696f134ea3",
+      "matches_ro01_original_binding": true
+    },
+    {
+      "path": "variants/morec/morec_axis_contract.py",
+      "source_id": "morec/native_rr",
+      "source_relative_path": "source/native_rr/morec_axis_contract.py",
+      "source_sha256": "e2b0cdc9612654924aac1bbb824ead5b731f26a9f638f807584eb780d28a1b1b",
+      "sha256": "e2b0cdc9612654924aac1bbb824ead5b731f26a9f638f807584eb780d28a1b1b",
+      "changes": [],
+      "ro01_original_binding_sha256": "e2b0cdc9612654924aac1bbb824ead5b731f26a9f638f807584eb780d28a1b1b",
+      "matches_ro01_original_binding": true
+    },
+    {
+      "path": "variants/morec/morec_ro_autospace.py",
+      "source_id": "morec/native_rr",
+      "source_relative_path": "source/native_rr/morec_ro_autospace.py",
+      "source_sha256": "a474945ff4a17c3ccbd907e42ef74f901deb27daa8a702ac3095148f0ae90061",
+      "sha256": "a474945ff4a17c3ccbd907e42ef74f901deb27daa8a702ac3095148f0ae90061",
+      "changes": [],
+      "ro01_original_binding_sha256": "a474945ff4a17c3ccbd907e42ef74f901deb27daa8a702ac3095148f0ae90061",
+      "matches_ro01_original_binding": true
+    },
+    {
+      "path": "variants/morec/morec_ro_execution.py",
+      "source_id": "morec/native_rr",
+      "source_relative_path": "source/native_rr/morec_ro_execution.py",
+      "source_sha256": "febdc52fc1f0a0792c16fc79058320b974e61ab87e635b458bf70c94dfeebd4e",
+      "sha256": "febdc52fc1f0a0792c16fc79058320b974e61ab87e635b458bf70c94dfeebd4e",
+      "changes": [],
+      "ro01_original_binding_sha256": "febdc52fc1f0a0792c16fc79058320b974e61ab87e635b458bf70c94dfeebd4e",
+      "matches_ro01_original_binding": true
+    },
+    {
+      "path": "variants/morec/morec_formal_identity.py",
+      "source_id": "morec/native_rr",
+      "source_relative_path": "source/native_rr/morec_formal_identity.py",
+      "source_sha256": "f19e5f3d8610e4230679d7ebf87b56d24cc03cfdf72fe74beca6ab01eb43f5c3",
+      "sha256": "f19e5f3d8610e4230679d7ebf87b56d24cc03cfdf72fe74beca6ab01eb43f5c3",
+      "changes": [],
+      "ro01_original_binding_sha256": "f19e5f3d8610e4230679d7ebf87b56d24cc03cfdf72fe74beca6ab01eb43f5c3",
+      "matches_ro01_original_binding": true
+    },
+    {
+      "path": "variants/morec/core/recclaw_core/research_line/campaign.py",
+      "source_id": "morec/development-20260917/main_binding/core",
+      "source_relative_path": "src/recclaw_core/research_line/campaign.py",
+      "source_sha256": "e0cb928f33d50780e4aa39f911f2188a7215f8816ec963fa988ea9b296b93286",
+      "sha256": "e0cb928f33d50780e4aa39f911f2188a7215f8816ec963fa988ea9b296b93286",
+      "changes": []
+    }
+  ],
+  "morec_comparison": {
+    "source_id": "morec/development-20260917/main_binding/core",
+    "compared_files": 309,
+    "identical_files": 308,
+    "different_files": [
+      "recclaw_core/research_line/campaign.py"
+    ],
+    "meaning": "Read-only observed source comparison, not a migration or a claim that every frozen run uses either entire tree"
+  }
+}

@@ -1,0 +1,23 @@
+P4 Sparse-Spectral scientific boundary:
+- The only executable parent is p4-parent:fagsp:fixed-ml1m.
+- The parent is a static interaction-matrix spectral operator, not LightGCN, BPR, embedding propagation, or message passing.
+- The frozen FaGSP parent normalizes the train interaction matrix, applies exact singular-spectrum actions for I-(I-G)^k, combines item- and user-Gram frequency cascades, performs quantile interaction reweighting, and adds a hierarchical low-pass term.
+- Its fixed ML-1M parameters are pri_factor1=256, pri_factor2=128, alpha1=0.3, alpha2=0.5, order1=12, order2=14, and q=0.7.
+- Search observes only seed-2026 validation NDCG@10. Test access is forbidden until a candidate is frozen for final confirmation.
+
+Propose one genuine mechanism change to that parent within the static sparse/spectral interaction-operator family. Eligible changes include a new spectral action, basis construction, frequency cascade, sparse-linear residual, train-interaction reweighting rule, or a small learned coefficient/gate over frozen operator outputs. A learned component may optimize only declared spectral/operator coefficients; it must not introduce user/item embedding tables or turn the candidate into a GCN.
+
+Forbidden mechanisms: LightGCN or BPR as parent or substrate, graph message passing, trainable user/item embeddings, negative-sampling innovation, pairwise-loss innovation, sequential state, semantic IDs, diffusion/flow, parameter-only tuning, configuration-only changes, wrappers around unchanged FaGSP, and any change to Search, Router, Runner, Evaluator, dataset, split, or RecBole core.
+
+Use closest_parent exactly p4-parent:fagsp:fixed-ml1m. In execution_contract use capability_family beginning with P4_, model FreshCandidateModel, base_model_config P4SparseSpectral, and config_json {}. FreshCandidateModel is only the fixed candidate-package ABI name; it does not imply a BL model family. Use realization_mode PARENT_PRESERVING. compatibility_requirements must contain exactly the four P4 compatibility strings allowed by the schema.
+
+Qualification is the existing miniature construction/behavior check, separate from the fixed full-data training run. The adapter binds its budget to the core qualification limits. Describe any full training cost estimate honestly in resource_hypothesis; do not relabel training time as qualification time. A proposal with no observed failure is a prospective FRONTIER_HYPOTHESIS, including proposals from lineage_refiner and falsification_designer.
+
+Use mechanism_config_json for only explicit research configuration deltas. Every supplied key overrides its actual parent value; omitted keys inherit. Do not repeat or guess unchanged settings. The executor owns the seed, split, evaluator, native training budget, and package ABI.
+
+Declare p4_fit_mode in mechanism_config_json: TRAIN_ONLY_PRECOMPUTE for a static or closed-form operator fitted once from the train matrix, or BPR_COEFFICIENTS only when the mechanism explicitly calls for BPR optimization of spectral/operator coefficients. Describe the fitted quantities and their train-only target in the scientific proposal. Closed-form fitting does not require extra output gains or optimizer parameters. BPR_COEFFICIENTS is the legacy execution mode when this field is absent from an older proposal.
+
+For each new mechanism, also declare these research choices in mechanism_config_json:
+- p4_fit_input_mode: FULL_TRAIN for fitting on the unchanged train input, or MASKED_TRAIN when the hypothesis explicitly reconstructs withheld train edges from an input with those edges removed. MASKED_TRAIN requires p4_mask_fraction in (0,1); FULL_TRAIN omits it. The executor uses the frozen seed to choose ceil(fraction * observed_train_edges) edges without replacement, then constructs coherent fitting matrices, factors and parent target-reference on that view. This internal training fit does not change final train/dev evaluation or the frozen parent. State which objective consumes those inputs.
+- p4_zero_action: COEFFICIENTS_ZERO only when zeroing your actual action coefficients must recover parent on the enabled scoring path; otherwise NOT_DECLARED. Do not invent a linear gate to satisfy a check.
+The executor owns the versioned two-stage fitting/scoring ABI, actual coefficient registration and dependent static cache rebuilding. The fitting function gets only the declared fitting view; the scoring function gets full training inputs plus fitted state. Preserve this distinction rather than using all train edges in a claimed masked reconstruction.

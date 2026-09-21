@@ -1,0 +1,663 @@
+{
+  "$defs": {
+    "anchor": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "class",
+            "function",
+            "method"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "symbol": {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      },
+      "required": [
+        "path",
+        "symbol",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "conceptualPrimitive": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_data_roles": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "baseline_anchors": {
+          "items": {
+            "$ref": "#/$defs/anchor"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "composition_roles": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "conceptual_capabilities": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "family_boundary_justification": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "family_id": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "implementation_requirements": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "implementation_status": {
+          "const": "CONCEPTUAL_UNIMPLEMENTED"
+        },
+        "input_ports": {
+          "items": {
+            "$ref": "#/$defs/inputPort"
+          },
+          "type": "array"
+        },
+        "legal_mutation_targets": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "output_ports": {
+          "items": {
+            "$ref": "#/$defs/outputPort"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "parameter_schema": {
+          "additionalProperties": false,
+          "properties": {
+            "additionalProperties": {
+              "const": false
+            },
+            "properties": {
+              "additionalProperties": {
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "required": {
+              "items": {
+                "$ref": "#/$defs/nonemptyString"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "type": {
+              "const": "object"
+            }
+          },
+          "required": [
+            "type",
+            "additionalProperties",
+            "properties"
+          ],
+          "type": "object"
+        },
+        "primitive_id": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "prohibited_mutation_targets": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "rationale": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "required_invariants": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "semantic_role": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "slot_id": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "version": {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      },
+      "required": [
+        "primitive_id",
+        "version",
+        "family_id",
+        "slot_id",
+        "implementation_status",
+        "semantic_role",
+        "baseline_anchors",
+        "input_ports",
+        "output_ports",
+        "parameter_schema",
+        "conceptual_capabilities",
+        "allowed_data_roles",
+        "composition_roles",
+        "legal_mutation_targets",
+        "prohibited_mutation_targets",
+        "implementation_requirements",
+        "required_invariants",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "genesisAccessAudit": {
+      "additionalProperties": false,
+      "properties": {
+        "allowlist_mode": {
+          "const": "TRUSTED_CONTRACT_EXACT_SET"
+        },
+        "historical_search_space_semantics_accessed": {
+          "const": false
+        },
+        "input_file_count": {
+          "const": 5
+        },
+        "literature_accessed": {
+          "const": false
+        },
+        "prior_candidates_accessed": {
+          "const": false
+        },
+        "prior_results_accessed": {
+          "const": false
+        },
+        "retrieval_enabled": {
+          "const": false
+        },
+        "test_artifacts_accessed": {
+          "const": false
+        },
+        "tools_enabled": {
+          "const": false
+        }
+      },
+      "required": [
+        "allowlist_mode",
+        "input_file_count",
+        "literature_accessed",
+        "test_artifacts_accessed",
+        "prior_candidates_accessed",
+        "prior_results_accessed",
+        "historical_search_space_semantics_accessed",
+        "tools_enabled",
+        "retrieval_enabled"
+      ],
+      "type": "object"
+    },
+    "inputPort": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_types": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "minimum": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "port": {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      },
+      "required": [
+        "port",
+        "accepted_types",
+        "minimum"
+      ],
+      "type": "object"
+    },
+    "nonemptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "outputPort": {
+      "additionalProperties": false,
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "type": {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      },
+      "required": [
+        "port",
+        "type"
+      ],
+      "type": "object"
+    },
+    "runtimeContract": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_memory_limit_gib": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "cpu_threads": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fit_timeout_seconds": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "gpu": {
+          "$ref": "#/$defs/nonemptyString"
+        },
+        "max_epochs": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "ram_gib": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "gpu",
+        "candidate_memory_limit_gib",
+        "cpu_threads",
+        "ram_gib",
+        "max_epochs",
+        "fit_timeout_seconds"
+      ],
+      "type": "object"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "stringArray": {
+      "items": {
+        "$ref": "#/$defs/nonemptyString"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "stringSet": {
+      "items": {
+        "$ref": "#/$defs/nonemptyString"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "proposals": {
+      "items": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "properties": {
+                  "conceptual_primitive_ids": {
+                    "minItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "conceptual_custom_components": {
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "causal_chain": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "closest_parent": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "compatibility_requirements": {
+            "items": {
+              "enum": [
+                "general collaborative filtering",
+                "offline top-n evaluation",
+                "train-only fitting",
+                "full-sort development NDCG@10",
+                "test access denied"
+              ],
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "competing_explanation": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "conceptual_custom_components": {
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/conceptualPrimitive"
+                },
+                {
+                  "properties": {
+                    "family_id": {
+                      "type": "string"
+                    },
+                    "slot_id": {
+                      "enum": []
+                    }
+                  }
+                }
+              ]
+            },
+            "maxItems": 0,
+            "type": "array"
+          },
+          "conceptual_operator_id": {
+            "enum": [
+              "compose",
+              "select"
+            ],
+            "type": "string"
+          },
+          "conceptual_primitive_ids": {
+            "description": "Frozen conceptual primitive IDs selected before implementation.",
+            "items": {
+              "enum": [],
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "conceptual_replacement_primitive_id": {
+            "enum": [
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conceptual_target_primitive_id": {
+            "enum": [
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "current_profile_expressibility_claim": {
+            "enum": [
+              "NOT_EXPRESSIBLE"
+            ],
+            "type": "string"
+          },
+          "discriminative_predictions": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "execution_contract": {
+            "additionalProperties": false,
+            "properties": {
+              "base_model_config": {
+                "const": "GraphCandidate",
+                "type": "string"
+              },
+              "capability_family": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "config_json": {
+                "const": "{}",
+                "type": "string",
+                "description": "Fixed common worker config; mechanism constants belong in candidate.py."
+              },
+              "model": {
+                "const": "GraphCandidate",
+                "type": "string"
+              }
+            },
+            "required": [
+              "capability_family",
+              "model",
+              "base_model_config",
+              "config_json"
+            ],
+            "type": "object"
+          },
+          "expected_evidence": {
+            "description": "Prospective evidence and claim-ceiling checks only; never report an observed outcome.",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "falsifier": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "high_change_justification": {
+            "description": "Explain the high-change boundary and the claim ceiling for this proposal.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "hypothesis": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "idea_mode": {
+            "enum": [
+              "DIAGNOSIS_DRIVEN",
+              "FRONTIER_HYPOTHESIS"
+            ],
+            "type": "string"
+          },
+          "implementation_requirements": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "matched_control_requirement": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mechanism_change": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mechanism_off_definition": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minimal_testable_wedge": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "observed_failure_mode": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "producer_role": {
+            "enum": [
+              "mechanism_composer",
+              "lineage_refiner",
+              "falsification_designer",
+              "frontier_architect"
+            ],
+            "type": "string"
+          },
+          "realization_mode": {
+            "enum": [
+              "PARENT_PRESERVING",
+              "NON_NESTED"
+            ],
+            "type": "string"
+          },
+          "research_question": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resolution_facts": {
+            "additionalProperties": false,
+            "properties": {
+              "capability_diff": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "high_change_dimensions": {
+                "items": {
+                  "enum": [
+                    "COMPOSITE_MECHANISM",
+                    "CORE_OBJECTIVE",
+                    "CORE_RELATION",
+                    "CORE_REPRESENTATION",
+                    "CUSTOM_EXECUTABLE_CAPABILITY",
+                    "INTERACTION_STRUCTURE",
+                    "MODEL_STRUCTURE",
+                    "PROPAGATION_MECHANISM",
+                    "TRAINING_PROCEDURE"
+                  ],
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "requested_current_semantics_digest": {
+                "type": "null"
+              },
+              "required_budget": {
+                "additionalProperties": false,
+                "properties": {
+                  "implementation_token_ceiling": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "qualification_gpu_minutes": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "qualification_wall_minutes": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "implementation_token_ceiling",
+                  "qualification_gpu_minutes",
+                  "qualification_wall_minutes"
+                ],
+                "type": "object"
+              },
+              "required_dependencies": {
+                "items": {
+                  "enum": [
+                    "numpy",
+                    "python-stdlib",
+                    "pytorch",
+                    "scipy",
+                    "torch"
+                  ],
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "requested_current_semantics_digest",
+              "capability_diff",
+              "high_change_dimensions",
+              "required_dependencies",
+              "required_budget"
+            ],
+            "type": "object"
+          },
+          "resource_hypothesis": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "producer_role",
+          "idea_mode",
+          "research_question",
+          "observed_failure_mode",
+          "hypothesis",
+          "closest_parent",
+          "minimal_testable_wedge",
+          "causal_chain",
+          "mechanism_change",
+          "competing_explanation",
+          "discriminative_predictions",
+          "mechanism_off_definition",
+          "matched_control_requirement",
+          "implementation_requirements",
+          "execution_contract",
+          "expected_evidence",
+          "falsifier",
+          "compatibility_requirements",
+          "resource_hypothesis",
+          "realization_mode",
+          "high_change_justification",
+          "current_profile_expressibility_claim",
+          "resolution_facts",
+          "conceptual_primitive_ids",
+          "conceptual_operator_id",
+          "conceptual_target_primitive_id",
+          "conceptual_replacement_primitive_id",
+          "conceptual_custom_components"
+        ],
+        "type": "object"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema": {
+      "enum": [
+        "recclaw.research-line.fresh-open-spec-proposal-response.v1"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "proposals"
+  ],
+  "title": "RecClaw Fresh OpenSpec Proposal Response V1",
+  "type": "object"
+}

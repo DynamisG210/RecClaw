@@ -1,0 +1,39 @@
+{
+  "proposals": [
+    {
+      "compatibility_requirements": [
+        "qualification-only schema sentinel"
+      ],
+      "competing_explanation": "Qualification-only schema sentinel; no competing scientific explanation.",
+      "current_profile_expressibility_claim": "NOT_EXPRESSIBLE",
+      "expected_evidence": [
+        "qualification-only schema sentinel"
+      ],
+      "falsifier": "Qualification-only schema sentinel; no scientific falsifier.",
+      "high_change_justification": "Qualification-only schema sentinel; this payload is never projected, resolved, implemented, qualified, admitted, or counted.",
+      "hypothesis": "Qualification-only schema sentinel; no research hypothesis.",
+      "implementation_requirements": [
+        "qualification-only schema sentinel"
+      ],
+      "matched_control_requirement": "Qualification-only schema sentinel; no scientific control.",
+      "mechanism_change": "Qualification-only schema sentinel; no mechanism change.",
+      "producer_role": "mechanism_composer",
+      "resolution_facts": {
+        "capability_diff": [
+          "qualification-only schema sentinel"
+        ],
+        "high_change_dimensions": [
+          "CUSTOM_EXECUTABLE_CAPABILITY"
+        ],
+        "requested_current_semantics_digest": null,
+        "required_budget": {
+          "implementation_token_ceiling": 1,
+          "qualification_gpu_minutes": 1,
+          "qualification_wall_minutes": 1
+        },
+        "required_dependencies": []
+      }
+    }
+  ],
+  "schema": "recclaw.research-line.fresh-open-spec-proposal-response.v1"
+}
