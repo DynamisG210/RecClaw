@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_capability_policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "policy_id",
+    "policy_version",
+    "legal_capability_families",
+    "allowed_mutation_targets",
+    "frozen_mutation_targets",
+    "allowed_data_roles",
+    "forbidden_data_roles",
+    "allowed_dependencies",
+    "network_access",
+    "conceptual_admission",
+    "executable_admission"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "search_space_capability_policy"
+    },
+    "policy_id": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "policy_version": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "legal_capability_families": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "allowed_mutation_targets": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "frozen_mutation_targets": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "allowed_data_roles": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "forbidden_data_roles": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "allowed_dependencies": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "network_access": {
+      "const": false
+    },
+    "conceptual_admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requires_baseline_anchor",
+        "requires_mutation_boundary_conformance",
+        "requires_grammar_conformance",
+        "requires_trusted_contract_conformance",
+        "executable_claims_forbidden"
+      ],
+      "properties": {
+        "requires_baseline_anchor": {
+          "const": true
+        },
+        "requires_mutation_boundary_conformance": {
+          "const": true
+        },
+        "requires_grammar_conformance": {
+          "const": true
+        },
+        "requires_trusted_contract_conformance": {
+          "const": true
+        },
+        "executable_claims_forbidden": {
+          "const": true
+        }
+      }
+    },
+    "executable_admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requires_implementation",
+        "requires_qualification_receipt",
+        "requires_qualified_registry_admission",
+        "initial_registry_count"
+      ],
+      "properties": {
+        "requires_implementation": {
+          "const": true
+        },
+        "requires_qualification_receipt": {
+          "const": true
+        },
+        "requires_qualified_registry_admission": {
+          "const": true
+        },
+        "initial_registry_count": {
+          "const": 0
+        }
+      }
+    }
+  }
+}

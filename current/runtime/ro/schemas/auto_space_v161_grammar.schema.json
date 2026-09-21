@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_v161_grammar.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "grammar_id",
+    "grammar_version",
+    "operators",
+    "primitive_ids",
+    "composition_policy"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "search_space_grammar"
+    },
+    "grammar_id": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "grammar_version": {
+      "const": "1.6.1"
+    },
+    "operators": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "$ref": "auto_space_grammar.schema.json#/properties/operators/items"
+      }
+    },
+    "primitive_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+      }
+    },
+    "composition_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_primitives_per_candidate",
+        "cross_family_composition",
+        "incompatible_primitive_sets",
+        "incompatible_composition_role_pairs",
+        "max_mutation_targets",
+        "custom_synthesis",
+        "composition_order",
+        "effective_width_guard"
+      ],
+      "properties": {
+        "max_primitives_per_candidate": {
+          "const": 3
+        },
+        "cross_family_composition": {
+          "const": "DENY"
+        },
+        "incompatible_primitive_sets": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+            }
+          }
+        },
+        "incompatible_composition_role_pairs": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "max_mutation_targets": {
+          "const": 1
+        },
+        "custom_synthesis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "operator_id",
+            "max_components",
+            "allowed_slots"
+          ],
+          "properties": {
+            "enabled": {
+              "const": false
+            },
+            "operator_id": {
+              "type": "null"
+            },
+            "max_components": {
+              "const": 0
+            },
+            "allowed_slots": {
+              "type": "array",
+              "maxItems": 0
+            }
+          }
+        },
+        "composition_order": {
+          "const": [
+            "REPRESENTATION_TRANSFORM",
+            "SCORING_TRANSFORM",
+            "TRAINING_OBJECTIVE_TRANSFORM",
+            "MODEL_ARCHITECTURE_TRANSFORM"
+          ]
+        },
+        "effective_width_guard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minimum_legal_candidate_count",
+            "minimum_retention_ratio",
+            "unconstrained",
+            "observed",
+            "retention_ratio",
+            "status"
+          ],
+          "properties": {
+            "minimum_legal_candidate_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minimum_retention_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "unconstrained": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "observed": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "retention_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "BELOW_TARGET"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "schema": "recclaw.m6i.transition-matrix.v1",
+  "proposal_paths": [
+    {
+      "name": "ORIGINAL_CONTROLLER",
+      "canonical_source": "ORIGINAL_CONTROLLER_PATH",
+      "requires_route": false,
+      "requires_task": false
+    },
+    {
+      "name": "NORMAL_RESEARCH_ROUTE",
+      "canonical_source": "NORMAL_ROUTED_PROPOSAL",
+      "requires_route": true,
+      "requires_task": false
+    },
+    {
+      "name": "VALIDATION_TASK",
+      "canonical_source": "ACTIVE_BOUND_TASK",
+      "requires_route": false,
+      "requires_task": true
+    },
+    {
+      "name": "MATCHED_CONTROL_TASK",
+      "canonical_source": "ACTIVE_BOUND_TASK",
+      "requires_route": false,
+      "requires_task": true
+    },
+    {
+      "name": "ABLATION_TASK",
+      "canonical_source": "ACTIVE_BOUND_TASK",
+      "requires_route": false,
+      "requires_task": true
+    },
+    {
+      "name": "REPAIR_TASK",
+      "canonical_source": "ACTIVE_BOUND_TASK",
+      "requires_route": false,
+      "requires_task": true
+    },
+    {
+      "name": "ALL_PRE_CANDIDATES_BLOCKED",
+      "canonical_source": "NORMAL_ROUTED_PROPOSAL",
+      "requires_route": true,
+      "requires_task": false
+    },
+    {
+      "name": "EMPTY_OR_INVALID_SLATE",
+      "canonical_source": "NO_PROPOSAL_TERMINAL",
+      "requires_route": false,
+      "requires_task": false
+    },
+    {
+      "name": "PROVIDER_FAILURE_BEFORE_PROPOSAL",
+      "canonical_source": "NO_PROPOSAL_TERMINAL",
+      "requires_route": false,
+      "requires_task": false
+    }
+  ],
+  "result_paths": [
+    {
+      "name": "SUCCESSFUL_ADMITTED_RESULT",
+      "observation_path": "ADMITTED_OBSERVATION",
+      "execution_started": true
+    },
+    {
+      "name": "REQUIRES_CONFIRMATION_PRELIMINARY_RESULT",
+      "observation_path": "ADMITTED_OBSERVATION",
+      "execution_started": true
+    },
+    {
+      "name": "DIAGNOSTIC_ONLY",
+      "observation_path": "DIAGNOSTIC_OR_ENGINEERING_ONLY",
+      "execution_started": true
+    },
+    {
+      "name": "NOT_ADMISSIBLE",
+      "observation_path": "WITHHELD_OBSERVATION",
+      "execution_started": true
+    },
+    {
+      "name": "PROTOCOL_BRANCH",
+      "observation_path": "DIAGNOSTIC_OR_ENGINEERING_ONLY",
+      "execution_started": true
+    },
+    {
+      "name": "QUARANTINE_OR_INCONCLUSIVE",
+      "observation_path": "DIAGNOSTIC_OR_ENGINEERING_ONLY",
+      "execution_started": true
+    },
+    {
+      "name": "COMMON_EXECUTION_FAILURE",
+      "observation_path": "DIAGNOSTIC_OR_ENGINEERING_ONLY",
+      "execution_started": true
+    },
+    {
+      "name": "RESOURCE_CEILING_REJECTION",
+      "observation_path": "DIAGNOSTIC_OR_ENGINEERING_ONLY",
+      "execution_started": true
+    },
+    {
+      "name": "TRAINING_FAILURE",
+      "observation_path": "DIAGNOSTIC_OR_ENGINEERING_ONLY",
+      "execution_started": true
+    },
+    {
+      "name": "NO_EXECUTION",
+      "observation_path": "NO_OBSERVATION",
+      "execution_started": false
+    }
+  ],
+  "meta_paths": [
+    {
+      "name": "ROUTE_PLUS_ADMITTED_OBSERVATION",
+      "proposal_source": "NORMAL_ROUTED_PROPOSAL",
+      "observation_path": "ADMITTED_OBSERVATION"
+    },
+    {
+      "name": "ROUTE_PLUS_WITHHELD_OBSERVATION",
+      "proposal_source": "NORMAL_ROUTED_PROPOSAL",
+      "observation_path": "WITHHELD_OBSERVATION"
+    },
+    {
+      "name": "ROUTE_PLUS_NO_EXECUTION",
+      "proposal_source": "NORMAL_ROUTED_PROPOSAL",
+      "observation_path": "NO_OBSERVATION"
+    },
+    {
+      "name": "TASK_PLUS_ADMITTED_OBSERVATION",
+      "proposal_source": "ACTIVE_BOUND_TASK",
+      "observation_path": "ADMITTED_OBSERVATION"
+    },
+    {
+      "name": "TASK_PLUS_WITHHELD_OR_NO_OBSERVATION",
+      "proposal_source": "ACTIVE_BOUND_TASK",
+      "observation_path": "WITHHELD_OBSERVATION"
+    },
+    {
+      "name": "TASK_PLUS_EXECUTION_FAILURE",
+      "proposal_source": "ACTIVE_BOUND_TASK",
+      "observation_path": "DIAGNOSTIC_OR_ENGINEERING_ONLY"
+    },
+    {
+      "name": "NO_ROUTE_NO_TASK_TYPED_TERMINAL",
+      "proposal_source": "NO_PROPOSAL_TERMINAL",
+      "observation_path": "NO_OBSERVATION"
+    }
+  ],
+  "asserted_state_dimensions": [
+    "controller_state",
+    "meta_state",
+    "search_memory",
+    "lineage",
+    "task_queue",
+    "observed_frontier",
+    "search_eligible_frontier",
+    "confirmed_frontier",
+    "resource_ledger",
+    "round_state",
+    "triplet_barrier"
+  ]
+}

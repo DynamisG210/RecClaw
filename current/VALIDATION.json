@@ -1,0 +1,59 @@
+{
+  "checked_at_utc": "2026-09-21T10:58:25.632698+00:00",
+  "source_origin_sha256": "PASS; 357 graph inputs hash-matched remotely, then 34 private historical artifacts excluded; final graph subset 323 files, three locator substitutions",
+  "morec_source": "PASS; five adapter modules match RO01 original execution binding; variant campaign captured",
+  "offline_demo": {
+    "command": "python -B current/examples/offline_walkthrough.py",
+    "environment": "Linux/WSL Python 3.12 with requirements-inspection.txt",
+    "result": "PASS",
+    "provider_calls": 0,
+    "training_jobs": 0
+  },
+  "earlier_attempts": [
+    {
+      "environment": "Windows Python 3.13",
+      "result": "Import blocked by Linux-only fcntl"
+    },
+    {
+      "environment": "Linux with unpinned jsonschema",
+      "result": "Existing exact-version contract rejected dependency; corrected to 4.26.0"
+    }
+  ],
+  "not_verified": [
+    "Complete external task deployment",
+    "GPU execution",
+    "Scientific effectiveness",
+    "All historical environments"
+  ],
+  "structural_check": {
+    "command": "python -B current/tools/verify_snapshot.py",
+    "result": "PASS",
+    "source_files": 329,
+    "python_files": 231,
+    "json_files": 75,
+    "document_links": 36
+  },
+  "publication_review": {
+    "private_artifacts": "34 historical runtime/policy artifacts excluded after review",
+    "secret_patterns": "No matching key, credential URL or private user path in publication source",
+    "scope": "New publication files only; old repository history unchanged"
+  },
+  "staged_source_hashes": "PASS; all 329 Git index blobs match publication hashes",
+  "diff_check": {
+    "result": "Inherited source whitespace retained",
+    "exit_code": 2,
+    "detail": "CRLF source bytes retained with cr-at-eol Git attribute; initial default whitespace check flagged CRLF; no algorithm/source formatting changes",
+    "remaining_findings": [
+      "current/runtime/isolated_graph_core/src/recclaw_core/experiments/__init__.py:7: new blank line at EOF.",
+      "current/runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/canonical.py:84: new blank line at EOF.",
+      "current/runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/evidence.py:46: new blank line at EOF.",
+      "current/runtime/isolated_graph_core/src/recclaw_core/experiments/helix_abc_v1/fusion.py:52: new blank line at EOF.",
+      "current/runtime/isolated_graph_core/src/recclaw_core/research_line/declarative_qualification.py:60: new blank line at EOF.",
+      "current/runtime/isolated_graph_core/src/recclaw_core/search_spaces/diffusion_flow_cf_v1/__init__.py:6: new blank line at EOF.",
+      "current/runtime/isolated_graph_core/src/recclaw_core/search_spaces/semantic_id_generative_v1/__init__.py:6: new blank line at EOF.",
+      "current/runtime/isolated_graph_core/src/recclaw_core/search_spaces/sequential_scaling_v1/__init__.py:6: new blank line at EOF.",
+      "current/runtime/ro/graph_native_methods.py:567: new blank line at EOF."
+    ],
+    "reason_retained": "Nine extra blank EOF lines originate in exact source bytes; preserving traceable code rather than reformatting it."
+  }
+}

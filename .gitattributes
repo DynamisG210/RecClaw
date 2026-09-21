@@ -1,0 +1,3 @@
+# Preserve source bytes used by the course snapshot manifest.
+current/runtime/** -text whitespace=cr-at-eol
+current/variants/** -text whitespace=cr-at-eol

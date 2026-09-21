@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "proposals": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "backbone": {
+            "enum": [
+              "LATENT_FACTOR",
+              "LIGHT_GRAPH_PROPAGATION",
+              "MESSAGE_TRANSFORM_GRAPH"
+            ],
+            "type": "string"
+          },
+          "candidate_label": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expected_signal": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "failure_mode": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "hypothesis": {
+            "maxLength": 320,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mechanism_axis": {
+            "enum": [
+              "architecture",
+              "geometry",
+              "objective",
+              "propagation",
+              "sampling",
+              "self_supervision"
+            ],
+            "type": "string"
+          },
+          "objective": {
+            "enum": [
+              "PAIRWISE_RANKING",
+              "CONTRASTIVE_AUXILIARY",
+              "GEOMETRY_REGULARIZATION",
+              "CONSTRAINT_WEIGHTED"
+            ],
+            "type": "string"
+          },
+          "proposal_intent": {
+            "enum": [
+              "DISCOVERY",
+              "FALSIFICATION"
+            ],
+            "type": "string"
+          },
+          "sampler": {
+            "enum": [
+              "UNIFORM",
+              "SAMPLED_UNOBSERVED"
+            ],
+            "type": "string"
+          },
+          "utility_features": {
+            "additionalProperties": false,
+            "properties": {
+              "blocker_risk": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "cost": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "frontier_potential": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "information_gain": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "runnable_probability": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "useful_signal": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "runnable_probability",
+              "useful_signal",
+              "frontier_potential",
+              "information_gain",
+              "cost",
+              "blocker_risk"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "candidate_label",
+          "proposal_intent",
+          "mechanism_axis",
+          "backbone",
+          "objective",
+          "sampler",
+          "hypothesis",
+          "expected_signal",
+          "failure_mode",
+          "utility_features"
+        ],
+        "type": "object"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "proposals"
+  ],
+  "title": "RecClaw M5 Canary Proposal Response V1",
+  "type": "object"
+}

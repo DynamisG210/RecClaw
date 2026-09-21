@@ -1,0 +1,6 @@
+# Exact versions required by the retained BL-ICF import-time contract.
+jsonschema==4.26.0
+rfc8785==0.1.4
+# Only needed for schema resolution / configuration reading in the offline demo.
+referencing
+PyYAML

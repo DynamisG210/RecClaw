@@ -1,0 +1,181 @@
+{
+  "cross_family_composition": "DENY_UNLESS_REGISTERED_BRIDGE",
+  "grammar_id": "recclaw.bl-icf.mechanism-grammar.v1",
+  "grammar_version": "1.0.0",
+  "operators": [
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "add_component",
+      "requires_replacement": false,
+      "requires_target": false
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "remove_component",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "replace_component",
+      "requires_replacement": true,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "split_component",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "fuse_components",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "share_parameters",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "RELATION_MUTATION"
+      ],
+      "operator_id": "decouple_relations",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "route_by_user_or_item",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "gate_component",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "RELATION_MUTATION"
+      ],
+      "operator_id": "reweight_relation",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "GRAPH_OPERATOR_MUTATION"
+      ],
+      "operator_id": "normalize_signal",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "EFFICIENCY_REWRITE"
+      ],
+      "operator_id": "precompute_operator",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "EFFICIENCY_REWRITE",
+        "RELATION_MUTATION"
+      ],
+      "operator_id": "sparsify_relation",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "ANALYTIC_REWRITE"
+      ],
+      "operator_id": "approximate_fixed_point",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "ANALYTIC_REWRITE"
+      ],
+      "operator_id": "compile_propagation_to_constraint",
+      "requires_replacement": true,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "ANALYTIC_REWRITE"
+      ],
+      "operator_id": "derive_closed_form",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "EFFICIENCY_REWRITE"
+      ],
+      "operator_id": "distill_teacher",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "EFFICIENCY_REWRITE"
+      ],
+      "operator_id": "prune_path",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "EFFICIENCY_REWRITE"
+      ],
+      "operator_id": "freeze_path",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "TRAINING_ALGORITHM_MUTATION"
+      ],
+      "operator_id": "alternate_optimization",
+      "requires_replacement": false,
+      "requires_target": true
+    },
+    {
+      "capabilities": [
+        "CUSTOM_MODEL_IMPLEMENTATION"
+      ],
+      "operator_id": "synthesize_custom_model",
+      "requires_replacement": false,
+      "requires_target": false
+    }
+  ],
+  "ordinary_candidate_limits": {
+    "core_changes": 1,
+    "support_changes": 1
+  },
+  "record_type": "COMPOSITIONAL_MECHANISM_GRAMMAR"
+}

@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_grammar.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "grammar_id",
+    "grammar_version",
+    "operators",
+    "primitive_ids",
+    "composition_policy"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "search_space_grammar"
+    },
+    "grammar_id": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "grammar_version": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "operators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operator_id",
+          "kind",
+          "min_arity",
+          "max_arity",
+          "requires_target",
+          "requires_replacement",
+          "required_capabilities",
+          "allowed_composition_roles",
+          "port_compatibility"
+        ],
+        "properties": {
+          "operator_id": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          },
+          "kind": {
+            "enum": [
+              "SELECT",
+              "COMPOSE",
+              "ARCHITECTURE_REWRITE",
+              "CUSTOM_SYNTHESIS"
+            ]
+          },
+          "min_arity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_arity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "requires_target": {
+            "type": "boolean"
+          },
+          "requires_replacement": {
+            "type": "boolean"
+          },
+          "required_capabilities": {
+            "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+          },
+          "allowed_composition_roles": {
+            "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+          },
+          "port_compatibility": {
+            "enum": [
+              "REQUIRED",
+              "NOT_REQUIRED"
+            ]
+          }
+        }
+      }
+    },
+    "primitive_ids": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+    },
+    "composition_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_primitives_per_candidate",
+        "cross_family_composition",
+        "incompatible_primitive_sets",
+        "incompatible_composition_role_pairs",
+        "max_mutation_targets",
+        "custom_synthesis"
+      ],
+      "properties": {
+        "max_primitives_per_candidate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cross_family_composition": {
+          "const": "DENY"
+        },
+        "incompatible_primitive_sets": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+            }
+          }
+        },
+        "incompatible_composition_role_pairs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+            }
+          }
+        },
+        "max_mutation_targets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "custom_synthesis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "operator_id",
+            "max_components",
+            "allowed_slots"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "operator_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
+            },
+            "max_components": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "allowed_slots": {
+              "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+            }
+          }
+        }
+      }
+    }
+  }
+}
