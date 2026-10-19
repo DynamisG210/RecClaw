@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recrsi"
+version = "1.0.0"
+description = "Mechanism-guided discovery of recommendation algorithms"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = ["jsonschema[format-nongpl]==4.26.0", "rfc8785==0.1.4", "numpy==1.26.4", "PyYAML>=6", "httpx>=0.27,<1"]
+
+[project.optional-dependencies]
+train = ["torch==2.10.0", "recbole @ git+https://github.com/RUCAIBox/RecBole.git@7b02be5ec80a88310f2d04a27a82adfcbb5dc211", "scipy==1.15.3", "pandas>=2,<3", "kmeans-pytorch==0.3"]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+recrsi = "recrsi.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+
+[tool.setuptools.package-data]
+recrsi = ["native/**/*"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["**/__pycache__/*", "**/*.pyc", "**/*.pyo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

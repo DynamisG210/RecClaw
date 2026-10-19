@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_v161_quality_report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "search_space_version",
+    "axis_reports",
+    "proposal_pool_primitive_count",
+    "critic_accepted_primitive_count",
+    "critic_rejected_primitive_count",
+    "critic_pruning_applied",
+    "primitive_count",
+    "distinct_novelty_signature_count",
+    "unconstrained_candidate_counts",
+    "legal_candidate_counts",
+    "effective_width_guard",
+    "choice_word_matches"
+  ],
+  "properties": {
+    "schema": {
+      "const": "recclaw.auto-space.v161-quality-report.v1"
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "search_space_version": {
+      "const": "v1.6.1-e1-source-bound-v1"
+    },
+    "axis_reports": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slot_id",
+          "primitive_count",
+          "distinct_mechanism_family_count",
+          "meaningful_effect_count",
+          "status"
+        ],
+        "properties": {
+          "slot_id": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          },
+          "primitive_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "distinct_mechanism_family_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "meaningful_effect_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "BELOW_TARGET"
+            ]
+          }
+        }
+      }
+    },
+    "primitive_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18
+    },
+    "distinct_novelty_signature_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18
+    },
+    "legal_candidate_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "singles",
+        "pairs",
+        "triples",
+        "total"
+      ],
+      "properties": {
+        "singles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pairs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "triples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "effective_width_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_legal_candidate_count",
+        "minimum_retention_ratio",
+        "unconstrained",
+        "observed",
+        "retention_ratio",
+        "status"
+      ],
+      "properties": {
+        "minimum_legal_candidate_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minimum_retention_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "unconstrained": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observed": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retention_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "BELOW_TARGET"
+          ]
+        }
+      }
+    },
+    "unconstrained_candidate_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "singles",
+        "pairs",
+        "triples",
+        "total"
+      ],
+      "properties": {
+        "singles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pairs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "triples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "proposal_pool_primitive_count": {
+      "const": 12
+    },
+    "critic_accepted_primitive_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18
+    },
+    "critic_rejected_primitive_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 11
+    },
+    "critic_pruning_applied": {
+      "type": "boolean"
+    },
+    "choice_word_matches": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "Lexical diagnostic only; scientific completeness is reviewed by Critic."
+    }
+  }
+}

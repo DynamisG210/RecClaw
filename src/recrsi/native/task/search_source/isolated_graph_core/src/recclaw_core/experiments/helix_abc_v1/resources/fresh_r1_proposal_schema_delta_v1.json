@@ -1,0 +1,20 @@
+{
+  "base_schema_sha256": "1a03214b9e9b27036d0350398c3e8ab17fd6158c638aa75ad5354b041c3c7e5b",
+  "compatibility_requirement_tokens": [
+    "frozen dataset and split",
+    "full-sort NDCG@10",
+    "general collaborative filtering",
+    "offline top-n evaluation",
+    "pairwise input",
+    "train-only fitting"
+  ],
+  "required_dependency_tokens": [
+    "numpy",
+    "python-stdlib",
+    "pytorch",
+    "recbole-runtime",
+    "scipy",
+    "torch"
+  ],
+  "schema": "recclaw.research-line.fresh-r1-proposal-schema-delta.v1"
+}

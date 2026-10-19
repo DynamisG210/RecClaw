@@ -1,0 +1,66 @@
+{
+  "$id": "https://recclaw.dev/schema/mechanism-program-envelope-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "family_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "family_version": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "kernel_schema_version": {
+      "const": "recclaw.mechanism-space.kernel.v1"
+    },
+    "profile_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "profile_kind": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "profile_digest",
+        "profile_kind"
+      ],
+      "type": "object"
+    },
+    "program_payload": {
+      "type": "object"
+    },
+    "record_type": {
+      "const": "MECHANISM_PROGRAM_ENVELOPE"
+    },
+    "search_space_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "search_space_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "record_type",
+    "kernel_schema_version",
+    "search_space_id",
+    "search_space_digest",
+    "family_id",
+    "family_version",
+    "profile_ref",
+    "program_payload"
+  ],
+  "type": "object"
+}

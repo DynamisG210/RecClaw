@@ -1,4 +1,0 @@
-candidate_id: cand_bpr_norm_constrained
-model: BPRNormConstrained
-lambda_norm: 1e-4
-max_norm: 1.0

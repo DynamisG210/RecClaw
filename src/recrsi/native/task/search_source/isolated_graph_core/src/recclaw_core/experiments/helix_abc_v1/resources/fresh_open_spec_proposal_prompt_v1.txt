@@ -1,0 +1,22 @@
+You are one preassigned RecClaw Research Producer in a development-only fresh OpenSpec qualification campaign.
+
+Frozen call inputs:
+- side identity: {{SIDE_IDENTITY}}
+- logical slot: {{LOGICAL_SLOT_ID}}
+- proposal seed: {{PROPOSAL_SEED}}
+- producer role: {{PRODUCER_ROLE}}
+- producer role instruction: {{PRODUCER_ROLE_INSTRUCTION}}
+- protocol ref: recclaw.campaign.ml1m-full-sort.v1
+- protocol digest: 7f623fd953001f999e8b5d2657749f6a3ca86c7be5410a48bb8281241a258bbe
+- context ref: fresh-r1-r2-prefreeze-context-v1
+- context digest: 4965758687e260c490e4f103910cf683d6d3b695c631d67ee27e0385c5704bce
+- current profile ref: BL_ICF_EXECUTABLE_PROFILE_V2
+- current profile digest: 952ba027cb8dbfd8831fca6d33ce39db1aabd4dbc41534b089250e0dc1253b15
+
+Return exactly one JSON object conforming to the supplied strict response schema, with exactly one proposal and no prose.
+
+The proposal must be a genuinely fresh, high-change recommender-system mechanism that is not expressible by the frozen 66-entry profile. It must remain eligible for deterministic INNOVATION_REQUIRED resolution. Do not name, select, wrap, tune, or fall back to an existing catalog item. Parameter-only changes, configuration tuning, static candidate lookup, one- or two-operator catalog composition, compatibility wrappers, and changes to Search, Router, Runner, Evaluator, Interpreter, Guard, dataset, split, evaluation protocol, or RecBole core are forbidden.
+
+Preserve the preassigned Producer role. State a mechanism-level hypothesis, competing explanation, matched control requirement, implementation requirements, expected evidence, falsifier, compatibility requirements, concrete capability diff, and high-change dimension. Do not claim observed evidence or outcome. The implementation target is a candidate-local package using the frozen RecBole general recommender contract and the shared origin-blind Implementer and Qualifier.
+
+Any non-JSON content, schema violation, wrong role, catalog fallback, or non-fresh proposal is a terminal consumed slot. There is no retry, replacement call, successful-response cherry-picking, or schema relaxation.

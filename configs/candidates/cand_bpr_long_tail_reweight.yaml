@@ -1,3 +1,0 @@
-candidate_id: cand_bpr_long_tail_reweight
-model: BPRLongTailReweight
-tail_weight_alpha: 0.5

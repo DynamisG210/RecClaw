@@ -1,0 +1,13 @@
+{
+  "content_not_json_action": "TERMINAL_CONSUME_PREASSIGNED_SLOT",
+  "failed_slot_candidate_status": "NO_CANDIDATE",
+  "failed_slot_quality_evidence": "MISSING_NOT_NEGATIVE",
+  "no_retry": true,
+  "replacement_call": "FORBIDDEN",
+  "response_contract_failure_action": "TERMINAL_CONSUME_PREASSIGNED_SLOT",
+  "retry_count": 0,
+  "schema_relaxation": "FORBIDDEN",
+  "successful_response_selection": "FORBIDDEN",
+  "valid_response_usage": "ALL_VALID_PREASSIGNED_SLOTS_IN_CALL_ORDER",
+  "zero_token_infrastructure_failure": "MISSING_NOT_CANDIDATE_QUALITY"
+}
