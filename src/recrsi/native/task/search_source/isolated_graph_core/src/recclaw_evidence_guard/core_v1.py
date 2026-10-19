@@ -1,4 +1,4 @@
-"""Development-only evidence guard for RecClaw exploration clients.
+"""Development-only evidence guard for RecRSI exploration clients.
 
 This module is intentionally not an authority plane.  It helps a Candidate
 Producer or Router detect protocol-changing proposals and classify historical

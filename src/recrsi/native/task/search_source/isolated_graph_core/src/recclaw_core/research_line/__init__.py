@@ -1,4 +1,4 @@
-"""Unified production spine for the RecClaw Research Line."""
+"""Unified production spine for the RecRSI Research Line."""
 
 from .bl_icf_realization import (
     CompilerBoundMechanismV1,

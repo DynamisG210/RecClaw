@@ -138,7 +138,7 @@ def derive_enriched_proposal_schema() -> dict[str, Any]:
         raise IdeaQualityError(f"enriched schema duplicates existing fields: {overlap}")
     properties.update(additions)
     proposal["required"] = list(proposal["required"]) + list(additions)
-    schema["title"] = "RecClaw Q1 Enriched OpenSpec Proposal Response"
+    schema["title"] = "RecRSI Q1 Enriched OpenSpec Proposal Response"
     jsonschema.validators.validator_for(schema).check_schema(schema)
     return canonical_value(schema)
 
