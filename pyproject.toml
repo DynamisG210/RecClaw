@@ -15,8 +15,8 @@ train = ["torch==2.10.0", "recbole @ git+https://github.com/RUCAIBox/RecBole.git
 test = ["pytest>=8,<10"]
 
 [project.urls]
-Repository = "https://github.com/DynamisG210/recrsi"
-Issues = "https://github.com/DynamisG210/recrsi/issues"
+Repository = "https://github.com/DynamisG210/RecRSI"
+Issues = "https://github.com/DynamisG210/RecRSI/issues"
 
 [project.scripts]
 recrsi = "recrsi.cli:main"

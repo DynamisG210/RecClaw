@@ -25,8 +25,8 @@ The `recbole-graph-fixed100-v1` adapter remains available for pairwise graph mod
 Production execution requires Linux x86-64, Python 3.10–3.12, a CUDA-capable PyTorch environment, an NVIDIA GPU with capacity for the 9 GiB worker allocation, and four assigned CPU cores. The native worker boundary uses Linux namespaces, Landlock and an unprivileged worker identity. The operator must provision the required `sudo -n` launcher access, readable runtime/data paths and NVIDIA driver-library directory. Generated programs run inside that boundary.
 
 ```bash
-git clone https://github.com/DynamisG210/recrsi.git
-cd recrsi
+git clone https://github.com/DynamisG210/RecRSI.git
+cd RecRSI
 python3.10 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
