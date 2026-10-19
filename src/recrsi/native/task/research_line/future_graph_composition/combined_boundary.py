@@ -61,7 +61,10 @@ def combined_scope(api_ledger, directory):
 
     def build(adapter, **kwargs):
         wrapped = base(adapter, **kwargs)
-        install_producer(wrapped._producer, template, namespace)
+        from abi_guidance import GUIDANCE, SEQUENTIAL_GUIDANCE
+        binding = json.loads(Path(adapter.config['binding']).read_bytes())
+        guidance = SEQUENTIAL_GUIDANCE if binding.get('adapter') == 'recbole-sequential-fixed100-v1' else GUIDANCE
+        install_producer(wrapped._producer, template.replace('{{TASK_MODEL_ABI}}', guidance), namespace)
         return wrapped
 
     # DISCOVER replaces the rendered prefix, so changing only the template

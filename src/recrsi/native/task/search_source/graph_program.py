@@ -28,6 +28,20 @@ def primary_score(result, binding):
 
 
 def common_task_text(binding):
+    if binding.get('adapter') == 'recbole-sequential-fixed100-v1':
+        return (
+            f"Improve the supplied original {binding['line']} sequential recommender on {binding['dataset']}. "
+            "The complete candidate.py exposes FreshCandidateModel(config, train_dataset), "
+            "calculate_loss(Interaction), predict and full_sort_predict. Use RecBole SequentialRecommender "
+            "with item_id_list and item_length; chronological prefixes predict the next item with CE loss. "
+            "Only TRAIN prefix/target examples enter the model constructor and optimizer. "
+            "At validation, score the supplied prefix, never the target or future events. "
+            "The trusted worker owns ID mapping, Adam, early stopping, checkpoint selection, "
+            "fixed one-positive plus99-negative ranking and deterministic item-ID tie breaking. "
+            "Do not access DEV labels or held-out TEST from candidate code. "
+            f"Primary metric: {binding['evaluation']['primary_metric']}. "
+            "Preserve native mechanism generation, source selection and feedback; do not import old winners."
+        )
     return (
         f"Improve the supplied original {binding['line']} graph recommender on {binding['dataset']}. "
         "All six systems receive the same original model code and these raw task facts. "

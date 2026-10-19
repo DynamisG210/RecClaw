@@ -4,7 +4,8 @@ VERSION = 'graph.fixed100.ndcg5.hr5.se-style.v1'
 
 def require_binding(binding):
     evaluation = binding['evaluation']
-    if binding.get('metric_binding_version') != VERSION:
+    expected = 'sequential.fixed100.ndcg5.hr5.v1' if binding.get('adapter') == 'recbole-sequential-fixed100-v1' else VERSION
+    if binding.get('metric_binding_version') != expected:
         raise ValueError('Explicit prospective @5 graph binding required')
     if (evaluation['primary_metric'] != 'NDCG@5' or evaluation['topk'] != [5, 10]
             or 'Hit' not in evaluation['metrics'] or 'NDCG' not in evaluation['metrics']

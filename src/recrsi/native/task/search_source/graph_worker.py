@@ -24,10 +24,43 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, indent=2, allow_nan=False), encoding="utf-8")
 
 
+def inspect_sequences(binding):
+    """Require chronological TRAIN prefixes and one next-item DEV target per user."""
+    import csv
+    maximum = binding['model_config']['MAX_ITEM_LIST_LENGTH']
+    if type(maximum) is not int or maximum < 1:
+        raise ValueError('MAX_ITEM_LIST_LENGTH must be a positive integer')
+    histories = {}
+    dev_users = set()
+    for role in ('train', 'dev'):
+        with open(binding['data_files'][role]['path'], encoding='utf-8', newline='') as stream:
+            rows = csv.DictReader(stream, delimiter='\t')
+            if set(rows.fieldnames or []) != {'user_id:token', 'item_id_list:token_seq', 'item_id:token'}:
+                raise ValueError('Sequential input requires user_id, item_id_list and item_id columns')
+            for row in rows:
+                user, target = row['user_id:token'], row['item_id:token']
+                prefix = row['item_id_list:token_seq'].split()
+                if not user or not target or not prefix or len(prefix) > maximum:
+                    raise ValueError('Sequential input requires nonempty bounded prefixes and IDs')
+                if role == 'train':
+                    if user in histories and prefix != histories[user][-maximum:]:
+                        raise ValueError('TRAIN rows must be consecutive chronological prefixes per user')
+                    histories[user] = histories.get(user, prefix) + [target]
+                else:
+                    if user in dev_users or user not in histories or prefix != histories[user][-maximum:]:
+                        raise ValueError('DEV requires one TRAIN-derived prefix per user')
+                    if target in histories[user]:
+                        raise ValueError('Fixed100 DEV target must be unseen in TRAIN')
+                    dev_users.add(user)
+    if not histories or not dev_users:
+        raise ValueError('Sequential TRAIN and DEV must be nonempty')
+    return histories
+
+
 def inspect_binding(binding, *, execute=False):
     if execute and binding["status"] != "FROZEN":
         raise ValueError("Owner must freeze the new task binding before execution")
-    if binding.get("adapter") == "recbole-graph-fixed100-v1":
+    if binding.get("adapter") in ("recbole-graph-fixed100-v1", "recbole-sequential-fixed100-v1"):
         for key in ("task_id", "dataset", "line"):
             value = binding.get(key)
             if not isinstance(value, str) or not value or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in value):
@@ -59,8 +92,16 @@ def inspect_binding(binding, *, execute=False):
     # Prevent model hyperparameters from overriding trusted scientific inputs.
     allowed = {"embedding_size", "n_layers", "alpha", "beta", "gamma", "reg_weight",
                "hidden_size_list", "message_dropout"}
+    if binding.get("adapter") == "recbole-sequential-fixed100-v1":
+        allowed = {"n_layers", "n_heads", "hidden_size", "inner_size", "hidden_dropout_prob",
+                   "attn_dropout_prob", "hidden_act", "layer_norm_eps", "initializer_range",
+                   "loss_type", "MAX_ITEM_LIST_LENGTH"}
+        if binding["model_config"].get("loss_type") != "CE":
+            raise ValueError("Sequential adapter requires the frozen CE training loss")
     if not set(binding["model_config"]).issubset(allowed):
         raise ValueError("Unexpected model config field outside model-only parameters")
+    if binding.get("adapter") == "recbole-sequential-fixed100-v1":
+        inspect_sequences(binding)
     return {"task_id": binding["task_id"], "status": binding["status"],
             "epochs": recipe["epochs"], "patience": recipe["patience"],
             "primary_metric": binding["evaluation"]["primary_metric"]}
@@ -70,7 +111,7 @@ def config_values(binding, output, seed, device):
     """All training/evaluation choices come from this task, never old E1 defaults."""
     output = Path(output)
     t, e = binding["training"], binding["evaluation"]
-    return dict(binding["model_config"],
+    values = dict(binding["model_config"],
         data_path=str(output / "data"), benchmark_filename=["train", "dev", "dev"],
         load_col={"inter": ["user_id", "item_id"], "user": ["user_id"], "item": ["item_id"]},
         USER_ID_FIELD="user_id", ITEM_ID_FIELD="item_id", NEG_PREFIX="neg_",
@@ -90,6 +131,13 @@ def config_values(binding, output, seed, device):
         seed=seed, reproducibility=True, shuffle=True, worker=0,
         use_gpu=device == "cuda", gpu_id="0", device=device, show_progress=False,
         enable_amp=False, enable_scaler=False, log_wandb=False)
+    if binding.get("adapter") == "recbole-sequential-fixed100-v1":
+        values.update(LIST_SUFFIX="_list", ITEM_LIST_LENGTH_FIELD="item_length",
+                      seq_separator=" ", alias_of_item_id=["item_id_list"],
+                      train_neg_sample_args=None)
+        values["load_col"]["inter"] = ["user_id", "item_id_list", "item_id"]
+        values["eval_args"]["order"] = "TO"
+    return values
 
 
 def load_model(source):
@@ -169,6 +217,10 @@ def execute(binding, source, output, seed, device, role, binding_sha):
     for item in binding["data_files"].values():
         shutil.copyfile(item["path"], data / Path(item["path"]).name)
     model_class = load_model(source)
+    if binding.get('adapter') == 'recbole-sequential-fixed100-v1':
+        from recbole.utils import ModelType, InputType
+        if model_class.type != ModelType.SEQUENTIAL:
+            raise ValueError('Sequential adapter requires SequentialRecommender with POINTWISE inputs')
     values = config_values(binding, output, seed, device)
     # Do not let RecBole's sys.argv parser override a frozen configuration.
     previous_argv = sys.argv
@@ -177,6 +229,8 @@ def execute(binding, source, output, seed, device, role, binding_sha):
         config = Config(model=model_class, dataset=binding["dataset"], config_dict=values)
     finally:
         sys.argv = previous_argv
+    if binding.get('adapter') == 'recbole-sequential-fixed100-v1' and config['MODEL_INPUT_TYPE'] != InputType.POINTWISE:
+        raise ValueError('Sequential CE adapter requires POINTWISE inputs')
     assert config["epochs"] == values["epochs"] and config["stopping_step"] == values["stopping_step"]
     assert config["valid_metric"] == values["valid_metric"]
     if device == "cuda" and not torch.cuda.is_available():
@@ -197,6 +251,17 @@ def execute(binding, source, output, seed, device, role, binding_sha):
         raise ValueError("Effective catalog mapping differs from the frozen task")
     if role == "candidate" and expected_mapping is None:
         raise ValueError("Candidate runs require the root's frozen catalog mapping")
+    if binding.get("adapter") == "recbole-sequential-fixed100-v1":
+        from sampled_eval import load_pool
+        pool_users, candidates = load_pool(binding["dev_candidate_pool"])
+        histories = inspect_sequences(binding)
+        item_ids = {token: i for i, token in enumerate(mapping['item_id'])}
+        for uid, row in zip(pool_users, candidates):
+            if not 0 < int(uid) < len(mapping['user_id']) or int(row.max()) >= len(mapping['item_id']):
+                raise ValueError('Sequential candidate pool has out-of-catalog IDs')
+            seen = {item_ids[token] for token in histories[mapping['user_id'][int(uid)]]}
+            if seen.intersection(map(int, row)):
+                raise ValueError('Sequential candidate pool must exclude all TRAIN history and targets')
     write_json(output / "ID_MAPPING.json", mapping)
     init_seed(seed, True)
     model = model_class(config, train._dataset).to(config["device"])
@@ -255,7 +320,7 @@ def execute(binding, source, output, seed, device, role, binding_sha):
     # Exact checkpoint integrity is checked separately from CUDA sparse-kernel
     # accumulation order; the deterministic probe never re-evaluates dev/test.
     from graph_checkpoint_verify import verify_checkpoint
-    probe = Interaction({model.USER_ID: train._dataset.inter_feat[model.USER_ID][:2]})
+    probe = train._dataset.inter_feat[:2]
     checkpoint_verification = verify_checkpoint(model_class, config, train._dataset,
                                                 model, saved, probe)
     result = dict(status="SUCCESS", task_id=binding["task_id"], role=role, metrics=dict(metrics),

@@ -27,6 +27,10 @@ def run(binding, source, output, seed, device, score_contract=None):
             raise ValueError('Qualification input changed: '+name)
         shutil.copyfile(asset['path'],data/Path(asset['path']).name)
     model_class=load_model(source)
+    if binding.get('adapter') == 'recbole-sequential-fixed100-v1':
+        from recbole.utils import ModelType, InputType
+        if model_class.type != ModelType.SEQUENTIAL:
+            raise ValueError('Sequential adapter requires SequentialRecommender with POINTWISE inputs')
     values=config_values(binding,output,seed,device)
     # Qualification has no dev loader or validation score. RecBole's mandatory
     # three-way API receives TRAIN aliases, discarded immediately below.
@@ -36,6 +40,8 @@ def run(binding, source, output, seed, device, score_contract=None):
         sys.argv=[sys.argv[0]]
         config=Config(model=model_class,dataset=binding['dataset'],config_dict=values)
     finally: sys.argv=saved_argv
+    if binding.get('adapter') == 'recbole-sequential-fixed100-v1' and config['MODEL_INPUT_TYPE'] != InputType.POINTWISE:
+        raise ValueError('Sequential CE adapter requires POINTWISE inputs')
     init_seed(seed,True)
     dataset=create_dataset(config)
     from graph_fixed_mapping import apply_root_mapping

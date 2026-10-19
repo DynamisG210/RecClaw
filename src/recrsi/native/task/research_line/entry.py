@@ -76,7 +76,7 @@ def setup(m,repeat=1,active_launch=None):
             comparison_arm=m['comparison_arm'], comparison_protocol=m['comparison_protocol'], generation_arm=m['generation_arm'],
             paired_repeat=inputs['launch']['repeat'],comparator_version=context.INPUT_VERSION,
             root_refit=False,paid_history_reused=False))
-        with outer_scope(H/'future_graph_composition',Path(inputs['evaluator']['output'])/'repair_evidence'), requirements.task_proposal_requirements(adapter),context.graph_root_context(adapter):
+        with outer_scope(H/'future_graph_composition',Path(inputs['evaluator']['output'])/'repair_evidence',inputs['binding']), requirements.task_proposal_requirements(adapter),context.graph_root_context(adapter):
             from open_mechanism import open_mechanisms
             from fresh_counterproposal import fresh_counterproposal_scope
             import graph_ro_generation

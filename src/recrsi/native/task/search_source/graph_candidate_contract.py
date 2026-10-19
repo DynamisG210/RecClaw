@@ -40,8 +40,12 @@ def qualify_source(source):
                 raise ValueError('Candidate must be a self-contained model module')
             for module in modules:
                 if module=='recbole.model.abstract_recommender' and isinstance(node,ast.ImportFrom):
-                    if any(alias.name!='GeneralRecommender' for alias in node.names):
-                        raise ValueError('Only GeneralRecommender may be imported here')
+                    if any(alias.name not in ('GeneralRecommender', 'SequentialRecommender') for alias in node.names):
+                        raise ValueError('Only recommendation model base classes may be imported here')
+                elif module in ('recbole.model.layers', 'recbole.model.loss') and isinstance(node,ast.ImportFrom):
+                    allowed = {'recbole.model.layers': {'TransformerEncoder'}, 'recbole.model.loss': {'BPRLoss'}}
+                    if any(alias.name not in allowed[module] for alias in node.names):
+                        raise ValueError('Only the declared model computation components may be imported')
                 elif module=='recbole.utils' and isinstance(node,ast.ImportFrom):
                     if any(alias.name!='InputType' for alias in node.names):
                         raise ValueError('Only InputType may be imported from recbole.utils')

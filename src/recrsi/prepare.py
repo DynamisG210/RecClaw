@@ -8,7 +8,7 @@ import subprocess
 import sys
 from .config import load_config, validate_inputs
 
-VERSION = "recrsi-native-1.1"
+VERSION = "recrsi-native-1.2"
 
 def read(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))

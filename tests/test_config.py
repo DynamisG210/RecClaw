@@ -11,7 +11,7 @@ def dump(path, value):
 
 @pytest.fixture
 def task(tmp_path):
-    root = initialize(tmp_path / "project")
+    root = initialize(tmp_path / "project", adapter=ADAPTER)
     inputs = root / "inputs"
     inputs.mkdir()
     for key in TASK_PATHS:
@@ -112,7 +112,7 @@ def test_rejects_configuration_and_evidence_mismatch(task, change, message):
 
 
 def test_init_never_overwrites_existing_directory(tmp_path):
-    root = initialize(tmp_path / "project")
+    root = initialize(tmp_path / "project", adapter=ADAPTER)
     before = (root / "task.json").read_bytes()
     with pytest.raises(FileExistsError):
         initialize(root)

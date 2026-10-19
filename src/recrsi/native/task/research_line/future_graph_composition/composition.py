@@ -59,7 +59,7 @@ def fresh_allocation_scope(evidence):
 
 
 @contextmanager
-def outer_scope(directory, evidence):
+def outer_scope(directory, evidence, binding=None):
     import branch_search
     from independent_discovery import independent_scope
     from action_aware_branch import action_aware_scope
@@ -68,7 +68,7 @@ def outer_scope(directory, evidence):
     from abi_guidance import abi_scope
     # Factory must be changed before branch_scope builds the concrete adapter.
     namespace(directory)
-    with action_aware_scope(branch_search), fresh_allocation_scope(evidence), abi_scope(), \
+    with action_aware_scope(branch_search), fresh_allocation_scope(evidence), abi_scope(binding), \
             independent_scope(), pilot_scope(), \
             route_new_evaluators(Path(directory) / 'evaluator_entry.py'):
         yield
@@ -123,6 +123,6 @@ def bind_execute(execute, directory, api_ledger, evidence, *, outer=True):
     if not outer:
         return native
     def run(inputs, resources):
-        with outer_scope(directory, evidence):
+        with outer_scope(directory, evidence, inputs["binding"]):
             return native(inputs, resources)
     return run
