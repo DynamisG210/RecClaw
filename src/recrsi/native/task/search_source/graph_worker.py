@@ -27,10 +27,20 @@ def write_json(path, value):
 def inspect_binding(binding, *, execute=False):
     if execute and binding["status"] != "FROZEN":
         raise ValueError("Owner must freeze the new task binding before execution")
-    if binding["line"] not in ("ngcf", "lightgcnpp"):
-        raise ValueError("Unknown independent graph line")
-    if binding["task_id"] != "NGCF_EL_NATIVE_SEARCH_20261013" or binding["dataset"] != "electronics":
-        raise ValueError("Expected frozen main-protocol transfer identity")
+    if binding.get("adapter") == "recbole-graph-fixed100-v1":
+        for key in ("task_id", "dataset", "line"):
+            value = binding.get(key)
+            if not isinstance(value, str) or not value or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in value):
+                raise ValueError("Custom graph task requires a safe explicit " + key)
+        if binding["task_id"] == "NGCF_EL_NATIVE_SEARCH_20261013":
+            raise ValueError("Custom tasks must use their own identity, not the historical experiment ID")
+    else:
+        if binding.get("adapter") is not None:
+            raise ValueError("Unsupported task adapter")
+        if binding["line"] not in ("ngcf", "lightgcnpp"):
+            raise ValueError("Unknown independent graph line")
+        if binding["task_id"] != "NGCF_EL_NATIVE_SEARCH_20261013" or binding["dataset"] != "electronics":
+            raise ValueError("Declare recbole-graph-fixed100-v1 for a custom task")
     if set(binding["data_files"]) != {"train", "dev", "user", "item"}:
         raise ValueError("Only the four original search files are permitted")
     for role, item in binding["data_files"].items():

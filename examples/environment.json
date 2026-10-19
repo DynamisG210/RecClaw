@@ -1,0 +1,14 @@
+{
+  "worker_python": "/path/to/worker_python",
+  "recbole_root": "/path/to/recbole_root",
+  "driver_root": "/path/to/driver_root",
+  "api_config": "/path/to/api_config",
+  "resource_slots": "/path/to/resource_slots",
+  "cpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "gpu_uuid": "GPU-REPLACE-WITH-ASSIGNED-DEVICE-UUID"
+}

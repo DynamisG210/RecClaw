@@ -35,21 +35,21 @@ class GraphSearchAdapter(GraphNativeMethods):
     compatibility_requirements=REQUIREMENTS
 
     def __init__(self,config,launch,facts,conceptual_space,*,qualify=None):
-        self.config=config;self.launch=launch;self.facts=dict(facts,dataset='ml-1m');self.task_id=facts['task_id']
+        self.config=config;self.launch=launch;self.facts=dict(facts,dataset=json.loads(Path(config['binding']).read_bytes())['dataset']);self.task_id=facts['task_id']
         self.conceptual_space=conceptual_space
         self.parent=Path(config['parent_source']).read_bytes().decode('utf-8')
         self.parent_id=self.task_id+':original-root'
         self.qualify=qualify
 
     def task_context(self):
-        return dict(task=self.facts,primary_metric='NDCG@5',candidate_universe='FULL_SORT',test_access='DENIED',
+        return dict(task=self.facts,primary_metric='NDCG@5',candidate_universe='FIXED_100_UNIFORM',test_access='DENIED',
             allowed_program_files=['candidate.py'],entrypoint='candidate:FreshCandidateModel',
             construction=CONSTRUCTION,parent_id=self.parent_id,conceptual_search_space=self.conceptual_space.provider_projection())
 
     def provider_context(self,context):
         result=dict(context);knowledge=dict(result.get('knowledge_base',{}));knowledge['search_space']=self.task_context();result['knowledge_base']=knowledge
         result['frozen_goal']={**dict(result.get('frozen_goal',{})),'metric':'NDCG@5','direction':'maximize'}
-        result['budget']={**dict(result.get('budget',{})),'dataset':'ml-1m','candidate_universe':'FULL_SORT','heldout_access':'DENIED'}
+        result['budget']={**dict(result.get('budget',{})),'dataset':self.facts['dataset'],'candidate_universe':'FIXED_100_UNIFORM','heldout_access':'DENIED'}
         return result
 
     def adapt_initial_context(self,context):

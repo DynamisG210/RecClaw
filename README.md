@@ -1,4 +1,4 @@
-# RecRSI
+# RecClaw / RecRSI
 
 **Mechanism-Guided Discovery of Recommendation Algorithms**
 
@@ -14,7 +14,9 @@ The final research path is:
 
 This repository contains executable source, runtime prompts/schemas, installation metadata, focused tests and a task configuration example. Experiment logs, paid responses, credentials, datasets, checkpoints, paper drafts and coordination documents are external inputs or generated outputs.
 
-The packaged end-to-end adapter is the finalized **NGCF / Electronics, fixed-100-candidate** research path. Its original protocol identifiers and seeds are retained. The shared mechanism and research components are included; other paper environments require their own task adapters and are not exposed as interchangeable command-line presets.
+The repository supplies the RecRSI main method in the RecClaw project. Users supply their task assets and host environment. The `recclaw` and `recrsi` commands are aliases.
+
+The supplied adapter is **`recbole-graph-fixed100-v1`**: a single-file pairwise RecBole model, user/item interactions and fixed-100 validation. Your dataset, initial model and training recipe can be supplied through a frozen binding. The historical NGCF/Electronics configuration remains supported via `examples/legacy-task.json`. Sequential, multimodal or other evaluation environments need a corresponding adapter; changing a JSON name does not implement one.
 
 ## Install
 
@@ -32,21 +34,52 @@ The training extra pins PyTorch, NumPy, SciPy and the RecBole source revision us
 
 ## Prepare and run
 
-Copy `examples/task.json` to a location outside Git and replace its paths. Relative configuration paths resolve against that configuration file. Supply the existing frozen task bundle:
-
-- `binding`: task identity, training recipe, evaluation contract, hashed train/dev/user/item files, catalog mapping and fixed candidate pool.
-- `facts` and `literature`: the common task facts and literature cards used by the research context.
-- `root_source`, `root_binding`, `root_calibration`, `root_gpu_ledger`, `root_mapping`: the original model and its completed, paired-seed baseline measurement, actual cost ledger and ID mapping. `prepare` checks source, data, seed and baseline identities; it does not manufacture or rerun a baseline.
-- `worker_python`, `recbole_root`, `driver_root`, `resource_slots`, `cpus`, `gpu_uuid`: the actual runtime and shared host allocation. The initial GPU UUID identifies the task environment; each physical stage selects an available host GPU through the shared capacity allocator and records its actual UUID. All runs on a host must use the same canonical resource-lock directory.
-- `api_config`: a private HTTPS endpoint configuration supporting the frozen model identities `gpt-5.6-terra` and `gpt-5.6-luna`, using the Responses and chat-completions interfaces. Its format is `base_url: https://YOUR_ENDPOINT/v1` and `api_key: YOUR_KEY`, on separate lines. Keep it outside the repository and worker-readable data roots. All nonembedding calls use this explicit endpoint2 route.
+Create your project outside the source checkout:
 
 ```bash
-recrsi prepare --config /path/to/task.json --output /path/to/new-run
-recrsi inspect /path/to/new-run
-recrsi run /path/to/new-run
+recclaw init --output /path/to/my-research
+# Edit task.json and environment.json; supply your task assets.
+recclaw check --config /path/to/my-research/task.json
+recclaw prepare --config /path/to/my-research/task.json --output /path/to/new-run
+recclaw inspect /path/to/new-run
+recclaw run /path/to/new-run
 # After reconciling an interruption, retain the original directory:
-recrsi run /path/to/new-run --resume
+recclaw run /path/to/new-run --resume
 ```
+
+`init` creates templates without overwriting an existing directory. `check` verifies input hashes, baseline identity and protocol consistency without API calls, GPU claims, user-code execution or worker launches. It does not probe host isolation privileges or provider availability. `prepare` also checks worker dependencies; `inspect` assembles the actual controller without execution.
+
+**Task configuration** (`examples/task.json`) defines the adapter, run ID, repeat and scientific inputs. Paths resolve relative to this file:
+
+- `binding`: your frozen task identity, model/training parameters, evaluation protocol, data hashes, ID mapping and fixed candidate pool. Custom bindings explicitly declare `adapter: "recbole-graph-fixed100-v1"` and use their own `task_id`, `dataset`, and model `line` names (letters, digits, underscores or hyphens).
+- `root_source`: a complete `candidate.py` exposing `FreshCandidateModel(config, train_dataset)`, `calculate_loss(pairwise Interaction)`, `predict` and `full_sort_predict`. Only TRAIN interactions enter the model. The trusted worker owns optimization, evaluation and checkpoint selection.
+- `root_binding`, `root_calibration`, `root_gpu_ledger`, `root_mapping`: the exact baseline binding, completed paired-seed baseline result, actual cost ledger and ID mapping from your environment. Preparation neither fabricates nor refits a baseline.
+- `facts`, `literature`: TRAIN-only task context and literature cards. Facts must match the source, data, mapping, model/training/evaluation settings and actual baseline metrics. No held-out TEST observations belong in research context.
+
+**Environment configuration** (`examples/environment.json`) is referenced by `environment` in the task config. Paths resolve relative to this separate environment file, which can serve multiple tasks:
+
+- `worker_python`, `recbole_root`: your training interpreter and installed RecBole location. Virtualenv symlinks retain their selected environment.
+- `driver_root`, `resource_slots`, `cpus`, `gpu_uuid`: NVIDIA libraries and host allocation. Assign four distinct CPU cores. All runs sharing a host must use the same canonical resource-lock directory. Physical stages select available GPUs through the allocator and record the actual UUID.
+- `api_config`: a private file outside Git and worker-readable roots, with `base_url: https://YOUR_ENDPOINT/v1` and `api_key: YOUR_KEY` on separate lines. The endpoint must support the frozen `gpt-5.6-terra` and `gpt-5.6-luna` model identities through Responses and chat-completions. There is no implicit provider fallback.
+
+Paths support `${VARIABLE}` and `~`; undefined variables fail before preparation. For example, `"api_config": "${RECRSI_PRIVATE}/endpoint2.api-config"`. Unknown fields fail instead of being ignored. `TASK.json` records task and environment configuration digests independently; resume uses the prepared configuration.
+
+### Environment input contract
+
+The graph adapter accepts four tab-separated RecBole files named `<dataset>.train.inter`, `<dataset>.dev.inter`, `<dataset>.user`, and `<dataset>.item`. Interaction columns are `user_id:token` and `item_id:token`; side files contain the corresponding ID column. In the binding, `data_files` maps `train`, `dev`, `user`, `item` to `{ "path": "...", "sha256": "..." }`. Asset paths resolve against the binding file.
+
+The binding also supplies:
+
+- `status: "FROZEN"`, `root_source_sha256`, `catalog_mapping_sha256`, and `model_config`. Model-only fields are `embedding_size`, `n_layers`, `alpha`, `beta`, `gamma`, `reg_weight`, `hidden_size_list`, `message_dropout`.
+- `training`: `epochs`, `patience`, `eval_step`, `batch_size`, `learning_rate`, `weight_decay`, fixed before both baseline and search.
+- `metric_binding_version: "graph.fixed100.ndcg5.hr5.se-style.v1"` and `evaluation`: `primary_metric: "NDCG@5"`, `secondary_metric: "Hit@5"`, `metrics` including `NDCG` and `Hit`, `topk: [5, 10]`, `batch_size`, `candidate_universe: "FIXED_100_UNIFORM"`, `seed: 72026`.
+- `dev_candidate_pool`: path and byte SHA256 of an NPZ containing `users` and `[number_of_users, 100]` `candidates`. Use mapped IDs, one DEV positive and 99 fixed negatives per user, with no padding or seen TRAIN positives.
+
+Mapping JSON has `user_id` and `item_id` token arrays including padding at index zero. Its identity is SHA256 of `json.dumps(mapping, sort_keys=True).encode()`, not the formatted file bytes. The baseline envelope is `{ "status": "SUCCESS", "result": ... }` containing the native worker result, including the exact baseline binding digest; preserve its actual resource ledger.
+
+Task facts include `task_id`, a `task` description, `root_source_sha256`, `data_sha256`, `catalog_mapping_sha256`, `original_model_config`, `training`, `evaluation`, `selected_root_metrics`, `root_reference_cost`, and `simulation_context`. The latter uses the adapter's existing `CONTEXT_RULE` in `native/task/research_line/graph_native_inputs.py`, which defines TRAIN-only fact availability. Literature is an object with a nonempty `documents` array. The packaged worker is the executable environment reference. `check` validates consistency, not scientific quality or authenticity of externally supplied measurements.
+
+The main method profile retains model routing, paired seed schedules (`41000 + repeat` for search and `51000 + repeat` for training, repeats 1-3), budget and evaluation protocol. These are method inputs, not host settings. A different protocol requires an explicit implementation/version. Custom tasks use `USER_RESEARCH` and `USER_CONFIGURED_SOFTWARE_RUN` metadata and do not inherit the paper's accepted results.
 
 `prepare` copies the released runtime into a new directory and binds its source hashes, interpreter, installed dependency identities and task inputs. `inspect` assembles the actual entry under a read-only audit boundary: no provider request, worker launch or resource claim. `run` performs MechSpace generation, research selection, source qualification, training, evaluation and feedback under the common native ledgers. A completed run is read idempotently; unresolved dispatches remain subject to native reconciliation, even with `--resume`.
 
@@ -60,6 +93,6 @@ Outputs are under `new-run/task/research_line/runs/<run_id>/`: MechSpace artifac
 python -m pytest tests -q
 ```
 
-The CPU integration fixture performs real optimization, fixed-100 scoring and exact checkpoint reload on synthetic data. Other checks cover immutable program selection, actual-parent contrasts and read-only inspection. Installation and the native controller/worker bootstrap are checked separately on Linux. These checks establish software behavior; they are not recommendation-quality measurements. A new paid-provider/CUDA research campaign is not part of the packaging test.
+The CPU integration fixtures perform real optimization, fixed-100 scoring and exact checkpoint reload on both the legacy identity and a custom dataset/model identity. Configuration tests cover relative path bases, environment variables, mismatched baseline/data/protocol identities and unknown fields. Other checks cover immutable program selection, actual-parent contrasts and read-only inspection. Installation and the native controller/worker bootstrap are checked separately on Linux. These checks establish software behavior; they are not recommendation-quality measurements. A new paid-provider/CUDA research campaign is not part of the packaging test.
 
 Scientific claims must use the accepted common-protocol evidence for each environment. Mechanism prose and static source differences are hypotheses or observations, not component-wise causal proof. Shared-host timings are not exclusive GPU timings, and the accelerated evaluator's validated metric agreement does not imply universal bitwise score equality. This repository makes no universal-best or cross-version pooled superiority claim.

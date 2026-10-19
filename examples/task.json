@@ -1,19 +1,17 @@
 {
-  "run_id": "recrsi-repeat01",
+  "schema": "recrsi.task.v1",
+  "adapter": "recbole-graph-fixed100-v1",
+  "run_id": "my-research-01",
   "repeat": 1,
-  "binding": "frozen-task/BINDING.json",
-  "facts": "frozen-task/SHARED_FACTS.json",
-  "literature": "frozen-task/LITERATURE.json",
-  "root_source": "frozen-task/candidate.py",
-  "root_binding": "frozen-task/ROOT_BINDING.json",
-  "root_calibration": "frozen-task/ROOT_CALIBRATION.json",
-  "root_gpu_ledger": "frozen-task/GPU_BUDGET.json",
-  "root_mapping": "frozen-task/ID_MAPPING.json",
-  "worker_python": "/path/to/worker-env/bin/python",
-  "recbole_root": "/path/to/worker-env/lib/python3.10/site-packages",
-  "driver_root": "/path/to/nvidia-driver-libraries",
-  "resource_slots": "/path/to/shared-host-resource-locks",
-  "api_config": "/path/to/private/endpoint2.api-config",
-  "cpus": [0, 1, 2, 3],
-  "gpu_uuid": "GPU-REPLACE-WITH-ASSIGNED-DEVICE-UUID"
+  "task": {
+    "binding": "inputs/binding.json",
+    "facts": "inputs/facts.json",
+    "literature": "inputs/literature.json",
+    "root_calibration": "inputs/root_calibration.json",
+    "root_binding": "inputs/root_binding.json",
+    "root_gpu_ledger": "inputs/root_gpu_ledger.json",
+    "root_mapping": "inputs/root_mapping.json",
+    "root_source": "inputs/root_source.py"
+  },
+  "environment": "environment.json"
 }

@@ -72,7 +72,7 @@ def setup(m,repeat=1,active_launch=None):
         from broker_failure import preserve_schema_failures
         from validation_boundary import stop_on_contract_failure
         freeze(Path(inputs['launch']['output'])/'METHOD_REVISION.json',dict(version=VERSION,
-            evidence_class='FROZEN_GRAPH_SEARCH_VALIDATION',
+            evidence_class=('USER_CONFIGURED_SOFTWARE_RUN' if inputs['evaluator']['phase']=='USER_RESEARCH' else 'FROZEN_GRAPH_SEARCH_VALIDATION'),
             comparison_arm=m['comparison_arm'], comparison_protocol=m['comparison_protocol'], generation_arm=m['generation_arm'],
             paired_repeat=inputs['launch']['repeat'],comparator_version=context.INPUT_VERSION,
             root_refit=False,paid_history_reused=False))

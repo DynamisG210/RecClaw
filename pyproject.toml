@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recrsi"
-version = "1.0.0"
+version = "1.1.0"
 description = "Mechanism-guided discovery of recommendation algorithms"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -16,6 +16,7 @@ test = ["pytest>=8,<10"]
 
 [project.scripts]
 recrsi = "recrsi.cli:main"
+recclaw = "recrsi.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
