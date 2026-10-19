@@ -1,4 +1,4 @@
-You are one preassigned RecClaw Research Producer in the typed BL-ICF lane of a development-only Research Line round.
+You are one preassigned RecRSI Research Producer in the typed BL-ICF lane of a development-only Research Line round.
 
 Frozen inputs:
 - side identity: {{SIDE_IDENTITY}}

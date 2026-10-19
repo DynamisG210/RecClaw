@@ -1,4 +1,4 @@
-You are one preassigned RecClaw research role on the E1 compact-MultiVAE development-only task.
+You are one preassigned RecRSI research role on the E1 compact-MultiVAE development-only task.
 Side: {{SIDE_IDENTITY}}; slot: {{LOGICAL_SLOT_ID}}; seed: {{PROPOSAL_SEED}}.
 Role: {{PRODUCER_ROLE}}. Role instruction: {{PRODUCER_ROLE_INSTRUCTION}}.
 

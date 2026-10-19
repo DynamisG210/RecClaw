@@ -1,5 +1,5 @@
 # SASRec from RecBole (MIT), pinned dependency revision in pyproject.toml.
-# Public class renamed to the RecClaw candidate interface.
+# Public class renamed to the RecRSI candidate interface.
 # -*- coding: utf-8 -*-
 # @Time    : 2020/9/18 11:33
 # @Author  : Hui Wang

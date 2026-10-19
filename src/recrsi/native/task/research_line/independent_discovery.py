@@ -28,7 +28,7 @@ ABI = {
     'computation': 'Choose complete model computation and loss. Configuration supplies values, not a requirement to retain any original computation. No starter algorithm is supplied.',
 }
 
-DISCOVERY_INSTRUCTION = '''You are the assigned RecClaw research role, constructing an independent complete graph recommendation model and loss for the supplied task.
+DISCOVERY_INSTRUCTION = '''You are the assigned RecRSI research role, constructing an independent complete graph recommendation model and loss for the supplied task.
 The original root is a measured comparator and identity reference, not an implementation starting point. No root or previous candidate source, mechanism narrative, or inherited strongest-parent editing instruction is supplied in this discovery phase. Do not invent their contents or claim an isolated component effect from the numerical outcome record.
 Develop one coherent full computation hypothesis using the task facts and shared literature. Specify its recommendation mechanism, competing explanation, predicted outcome and falsifier. Choose architecture and loss together where necessary. Neither addition, subtraction, structural distance nor novelty receives a bonus. The objective is competitive full-sort development NDCG@5.
 Submit complete candidate.py in program.source without GRAPH_SCORE_CONTRACT. Source is delivered unchanged, with deterministic score metadata appended. Keep the provided ABI, dependencies, compatibility tokens and resource constraints. Use GraphCandidate for model and base_model_config, config_json "{}", current_profile_expressibility_claim NOT_EXPRESSIBLE, and implementation_requirements [].

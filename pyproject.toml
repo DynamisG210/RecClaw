@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recrsi"
-version = "1.2.0"
+version = "1.2.1"
 description = "Mechanism-guided discovery of recommendation algorithms"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -14,9 +14,12 @@ dependencies = ["jsonschema[format-nongpl]==4.26.0", "rfc8785==0.1.4", "numpy==1
 train = ["torch==2.10.0", "recbole @ git+https://github.com/RUCAIBox/RecBole.git@7b02be5ec80a88310f2d04a27a82adfcbb5dc211", "scipy==1.15.3", "pandas>=2,<3", "kmeans-pytorch==0.3"]
 test = ["pytest>=8,<10"]
 
+[project.urls]
+Repository = "https://github.com/DynamisG210/recrsi"
+Issues = "https://github.com/DynamisG210/recrsi/issues"
+
 [project.scripts]
 recrsi = "recrsi.cli:main"
-recclaw = "recrsi.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

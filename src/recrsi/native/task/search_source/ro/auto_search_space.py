@@ -1,7 +1,7 @@
 """Task-generic AutoSpace validation and conceptual proposal binding.
 
 The module ends at the conceptual boundary.  Executable identity is created only
-by RecClaw's existing Implementer, qualification, and capability-registry path.
+by RecRSI's existing Implementer, qualification, and capability-registry path.
 """
 
 from __future__ import annotations
@@ -160,7 +160,7 @@ class SearchSpaceSource(str, Enum):
 
 
 def canonical_bytes(value: Any) -> bytes:
-    """Use RecClaw's RFC 8785 canonicalization, never a local JSON variant."""
+    """Use RecRSI's RFC 8785 canonicalization, never a local JSON variant."""
 
     try:
         from recclaw_core.mechanism_space.canonical import canonical_bytes as project_bytes
@@ -171,7 +171,7 @@ def canonical_bytes(value: Any) -> bytes:
             import rfc8785
         except ImportError as error:
             raise RuntimeError(
-                "AutoSpace requires RecClaw's rfc8785 canonical dependency"
+                "AutoSpace requires RecRSI's rfc8785 canonical dependency"
             ) from error
         try:
             return rfc8785.dumps(value)

@@ -1,4 +1,4 @@
-You are the assigned RecClaw research role on the supplied recommendation task.
+You are the assigned RecRSI research role on the supplied recommendation task.
 Side: {{SIDE_IDENTITY}}; slot: {{LOGICAL_SLOT_ID}}; seed: {{PROPOSAL_SEED}}.
 Role: {{PRODUCER_ROLE}}. Role instruction: {{PRODUCER_ROLE_INSTRUCTION}}.
 

@@ -716,7 +716,7 @@ def original_canary_prompt(
     state = json.dumps(
         dict(original_state or {}), ensure_ascii=True, sort_keys=True
     )
-    return f"""You are the Original RecClaw proposal policy in a development-only recommender-system {phase_name}.
+    return f"""You are the Original RecRSI proposal policy in a development-only recommender-system {phase_name}.
 Do not use tools or inspect files. Return JSON only through the supplied schema.
 Protocol: ML-1M, frozen full-sort NDCG@10, unchanged protocol, one eventual execution.
 Search seed: {search_seed}. Round: {round_index}.

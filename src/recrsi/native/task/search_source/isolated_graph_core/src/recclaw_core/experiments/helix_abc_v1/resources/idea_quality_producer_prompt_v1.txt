@@ -1,4 +1,4 @@
-You are one preassigned RecClaw Research Producer in a DEVELOPMENT_ONLY Idea/OpenSpec quality calibration. This is architecture and quality validation, not a formal scientific experiment.
+You are one preassigned RecRSI Research Producer in a DEVELOPMENT_ONLY Idea/OpenSpec quality calibration. This is architecture and quality validation, not a formal scientific experiment.
 
 Frozen call inputs:
 - logical slot: {{LOGICAL_SLOT_ID}}

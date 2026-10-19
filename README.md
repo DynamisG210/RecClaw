@@ -1,4 +1,4 @@
-# RecClaw / RecRSI
+# RecRSI
 
 **Mechanism-Guided Discovery of Recommendation Algorithms**
 
@@ -14,17 +14,19 @@ The final research path is:
 
 This repository contains executable source, runtime prompts/schemas, installation metadata, focused tests and a task configuration example. Experiment logs, paid responses, credentials, datasets, checkpoints, paper drafts and coordination documents are external inputs or generated outputs.
 
-The repository supplies the RecRSI main method in the RecClaw project. Users supply their task assets and host environment. The `recclaw` and `recrsi` commands are aliases.
+The repository supplies the RecRSI main method. Users supply their task assets and host environment. The package and command are both named `recrsi`.
 
 The default template is **SASRec on Amazon CDs and Vinyl (CDS)**, using `recbole-sequential-fixed100-v1`. It supplies the complete SASRec starting model from the pinned RecBole revision (with its MIT license) and an editable training recipe. Users provide their frozen CDS split, candidate pool and measured baseline. This is a software profile, not a claim to reproduce a historical paper experiment from a dataset name alone.
 
-The `recbole-graph-fixed100-v1` adapter remains available for pairwise graph models; choose it with `recclaw init --adapter recbole-graph-fixed100-v1 --output /path/to/project`. The historical NGCF/Electronics configuration remains supported via `examples/legacy-task.json`. Other environments require their corresponding execution adapter.
+The `recbole-graph-fixed100-v1` adapter remains available for pairwise graph models; choose it with `recrsi init --adapter recbole-graph-fixed100-v1 --output /path/to/project`. The historical NGCF/Electronics configuration remains supported via `examples/legacy-task.json`. Other environments require their corresponding execution adapter.
 
 ## Install
 
 Production execution requires Linux x86-64, Python 3.10–3.12, a CUDA-capable PyTorch environment, an NVIDIA GPU with capacity for the 9 GiB worker allocation, and four assigned CPU cores. The native worker boundary uses Linux namespaces, Landlock and an unprivileged worker identity. The operator must provision the required `sudo -n` launcher access, readable runtime/data paths and NVIDIA driver-library directory. Generated programs run inside that boundary.
 
 ```bash
+git clone https://github.com/DynamisG210/recrsi.git
+cd recrsi
 python3.10 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -39,14 +41,14 @@ The training extra pins PyTorch, NumPy, SciPy and the RecBole source revision us
 Create your project outside the source checkout:
 
 ```bash
-recclaw init --output /path/to/my-research
+recrsi init --output /path/to/my-research
 # Edit task.json and environment.json; supply your task assets.
-recclaw check --config /path/to/my-research/task.json
-recclaw prepare --config /path/to/my-research/task.json --output /path/to/new-run
-recclaw inspect /path/to/new-run
-recclaw run /path/to/new-run
+recrsi check --config /path/to/my-research/task.json
+recrsi prepare --config /path/to/my-research/task.json --output /path/to/new-run
+recrsi inspect /path/to/new-run
+recrsi run /path/to/new-run
 # After reconciling an interruption, retain the original directory:
-recclaw run /path/to/new-run --resume
+recrsi run /path/to/new-run --resume
 ```
 
 `init` defaults to SASRec/CDS and creates `task.json`, `environment.json`, `inputs/root_source.py` and `inputs/binding.json` without overwriting an existing directory. Fill the asset paths and byte hashes in the binding; placeholders intentionally do not pass validation. Supply the actual baseline, mapping, facts and literature inputs described below. `check` verifies input hashes, baseline identity and protocol consistency without API calls, GPU claims, user-code execution or worker launches. It does not probe host isolation privileges or provider availability. `prepare` also checks worker dependencies; `inspect` assembles the actual controller without execution.
@@ -109,3 +111,5 @@ python -m pytest tests -q
 The CPU integration fixtures perform real optimization, fixed-100 scoring and exact checkpoint reload for legacy graph, custom graph and SASRec sequence inputs. They also check preparation and read-only controller assembly. Configuration tests cover relative path bases, environment variables, mismatched baseline/data/protocol identities and unknown fields. Other checks cover immutable program selection, actual-parent contrasts and read-only inspection. Installation and the native controller/worker bootstrap are checked separately on Linux. These checks establish software behavior; they are not recommendation-quality measurements. A new paid-provider/CUDA research campaign is not part of the packaging test.
 
 Scientific claims must use the accepted common-protocol evidence for each environment. Mechanism prose and static source differences are hypotheses or observations, not component-wise causal proof. Shared-host timings are not exclusive GPU timings, and the accelerated evaluator's validated metric agreement does not imply universal bitwise score equality. This repository makes no universal-best or cross-version pooled superiority claim.
+
+The public project name is **RecRSI** (`recrsi`). Internal legacy `recclaw_*` imports, schema IDs and evidence references retain their established identities for compatibility; they are not separate methods. Existing prepared runs retain their original source and prompt hashes. Use a new run directory for this release.

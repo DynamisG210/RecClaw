@@ -1,4 +1,4 @@
-"""RecClaw's clean-slate research core.
+"""RecRSI's clean-slate research core.
 
 The top-level package deliberately exposes no legacy runtime or recommender
 dependencies.  Stage-specific APIs live below :mod:`recclaw_core.stage1a`.

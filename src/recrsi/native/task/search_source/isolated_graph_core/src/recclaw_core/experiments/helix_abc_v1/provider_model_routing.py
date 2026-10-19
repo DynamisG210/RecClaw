@@ -1,4 +1,4 @@
-"""Station model-ID routing for the shared RecClaw research substrate."""
+"""Station model-ID routing for the shared RecRSI research substrate."""
 
 from __future__ import annotations
 
