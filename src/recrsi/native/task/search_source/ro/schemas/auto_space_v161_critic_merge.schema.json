@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_v161_critic_merge.schema.json",
+  "$defs": {
+    "axisFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot_id",
+        "status",
+        "findings"
+      ],
+      "properties": {
+        "slot_id": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "findings": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "findings",
+        "rejected_primitive_ids",
+        "rejection_reasons",
+        "axis_findings"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "findings": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        },
+        "rejected_primitive_ids": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        },
+        "rejection_reasons": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        },
+        "axis_findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/axisFinding"
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "accepted_primitive_ids",
+    "rejected_primitives",
+    "audits"
+  ],
+  "properties": {
+    "schema": {
+      "const": "recclaw.auto-space.critic-merge.v1.6.1"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "accepted_primitive_ids": {
+      "$ref": "auto_space_common.schema.json#/$defs/stringArray",
+      "minItems": 0,
+      "maxItems": 12
+    },
+    "rejected_primitives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "primitive_id",
+          "reasons"
+        ],
+        "properties": {
+          "primitive_id": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          },
+          "reasons": {
+            "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+          }
+        }
+      },
+      "minItems": 0,
+      "maxItems": 12
+    },
+    "audits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverage",
+        "redundancy",
+        "runtime_reachability",
+        "effect_strength",
+        "composability"
+      ],
+      "properties": {
+        "coverage": {
+          "$ref": "#/$defs/audit"
+        },
+        "redundancy": {
+          "$ref": "#/$defs/audit"
+        },
+        "runtime_reachability": {
+          "$ref": "#/$defs/audit"
+        },
+        "effect_strength": {
+          "$ref": "#/$defs/audit"
+        },
+        "composability": {
+          "$ref": "#/$defs/audit"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "accepted_primitive_ids": {
+            "minItems": 1,
+            "maxItems": 12
+          },
+          "rejected_primitives": {
+            "minItems": 0,
+            "maxItems": 11
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "backend_class": "GPU41_RTX3080TI_NATIVE_LINUX_CU128_SOURCE_V13_V31_GPU2",
+  "data_loading_digest": "d432f8718e8e87885be6b7a6eccd3d70b4e4da435b1a5d77312920900e8dd8bc",
+  "pip_freeze_digest": "b4630fc79fc7ef4fb00247b98656bd28919648bb87fba2a9abf594ff0edc32d4",
+  "python_executable_sha256": "dc3f1b0946f2d238b4aa14a20ac21f99220ab4871b3953e596b677455f927a0d",
+  "python_package_versions": {
+    "numpy": "1.26.4",
+    "recbole": "1.2.1",
+    "rfc8785": "0.1.4",
+    "scipy": "1.15.3",
+    "torch": "2.10.0"
+  },
+  "python_version": "3.10.20",
+  "target_runtime_receipt_resource": "campaign_target_runtime_gpu41_v31.json",
+  "torch_cuda_environment_digest": "52ebe9572dcd1fb8dea0a3ed4ad746d085b5d0fd65d239232badf867f2dbc3ea"
+}

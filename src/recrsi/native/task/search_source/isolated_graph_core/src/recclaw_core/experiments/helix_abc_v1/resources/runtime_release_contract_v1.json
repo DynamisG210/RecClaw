@@ -1,0 +1,36 @@
+{
+  "allowed_artifact_schema": "recclaw.m1-runtime-artifact.v1",
+  "allowed_entrypoint": "recclaw_core.experiments.helix_abc_v1.runtime_handlers:run_non_training_smoke",
+  "confinement": {
+    "ambient_credentials": "NOT_EXPOSED_TO_HANDLER_INTERFACE",
+    "ambient_home": "NOT_EXPOSED_TO_HANDLER_INTERFACE",
+    "candidate_executable_code": "FORBIDDEN",
+    "generated_file_kinds": [
+      "CANONICAL_JSON"
+    ],
+    "network": "NOT_EXPOSED_TO_HANDLER_INTERFACE",
+    "private_root_pattern": "arm-runtime/<opaque_arm_instance_id>",
+    "sibling_arm_roots": "NOT_IN_HANDLER_INPUT"
+  },
+  "environment_lock": "requirements-search-space.txt",
+  "environment_lock_sha256": "1d9d6da93d40c89c7103ad8ecb1ee2aa6a45d894ade98ec03a30741c946f0bc4",
+  "execution_config_contract": {
+    "evaluation_purpose": "NON_OUTCOME_BEARING_INTERFACE_SMOKE",
+    "max_common_validation_count": 1,
+    "max_ordinary_runner_starts": 1,
+    "optimizer_steps": 0,
+    "training_backend": "FORBIDDEN"
+  },
+  "python_abi": "CPython-3.12",
+  "recbole_commit": "7b02be5ec80a88310f2d04a27a82adfcbb5dc211",
+  "recbole_tree": "ca6386c4121ce2aae478ced7e136894ac1d7c218",
+  "recbole_usage": "IDENTITY_BOUND_NOT_IMPORTED_BY_M1_FAKE_RUNNER",
+  "release_id": "RuntimeReleaseContractV1",
+  "release_version": "1.0.0",
+  "runner_abi": "recclaw.fake-non-training-runner.v1",
+  "task_authorization": {
+    "path": "RecClaw_Codex_Autonomous_M1_M8_Master_Goal.md",
+    "scope": "M1",
+    "sha256": "78e262aaac33606428b82a26b76bef29ee25d494255327c9d497cf69a9c40f10"
+  }
+}

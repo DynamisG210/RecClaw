@@ -1,0 +1,471 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_v161_common.schema.json",
+  "$defs": {
+    "effectPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_anchor",
+        "mutation_target",
+        "operation_kind",
+        "changed_quantity",
+        "scientific_effect"
+      ],
+      "properties": {
+        "baseline_anchor": {
+          "$ref": "auto_space_common.schema.json#/$defs/anchor"
+        },
+        "mutation_target": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "operation_kind": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "changed_quantity": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "scientific_effect": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        }
+      }
+    },
+    "runtimeReachability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_anchor",
+        "mutation_target",
+        "execution_route",
+        "statically_reachable"
+      ],
+      "properties": {
+        "baseline_anchor": {
+          "$ref": "auto_space_common.schema.json#/$defs/anchor"
+        },
+        "mutation_target": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "execution_route": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "statically_reachable": {
+          "const": true,
+          "description": "The selected baseline runtime entry exists and is allowed. This does not establish that a future generated mechanism executes."
+        }
+      }
+    },
+    "boundedParameterSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "additionalProperties",
+        "properties",
+        "required"
+      ],
+      "properties": {
+        "type": {
+          "const": "object"
+        },
+        "additionalProperties": {
+          "const": false
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "const"
+            ],
+            "properties": {
+              "const": {}
+            }
+          }
+        },
+        "required": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        }
+      }
+    },
+    "draftPrimitive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primitive_id",
+        "slot_id",
+        "semantic_role",
+        "mechanism_family",
+        "input_ports",
+        "output_ports",
+        "legal_mutation_targets",
+        "allowed_data_roles",
+        "parameter_schema",
+        "implementation_requirements",
+        "required_invariants",
+        "effect_path",
+        "effect_phase",
+        "expected_effect_strength",
+        "runtime_reachability",
+        "compatibility_tags",
+        "incompatibility_tags",
+        "low_impact_risk",
+        "rationale",
+        "score_parameterization"
+      ],
+      "properties": {
+        "primitive_id": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "slot_id": {
+          "enum": [
+            "REPRESENTATION_TRANSFORM",
+            "SCORING_TRANSFORM",
+            "TRAINING_OBJECTIVE_TRANSFORM",
+            "MODEL_ARCHITECTURE_TRANSFORM"
+          ]
+        },
+        "semantic_role": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "mechanism_family": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "input_ports": {
+          "type": "array",
+          "items": {
+            "$ref": "auto_space_common.schema.json#/$defs/inputPort"
+          }
+        },
+        "output_ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "auto_space_common.schema.json#/$defs/outputPort"
+          }
+        },
+        "legal_mutation_targets": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "allowed_data_roles": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "parameter_schema": {
+          "$ref": "#/$defs/boundedParameterSchema"
+        },
+        "implementation_requirements": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "required_invariants": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "effect_path": {
+          "$ref": "#/$defs/draftEffectPath"
+        },
+        "effect_phase": {
+          "enum": [
+            "TRAIN_ONLY",
+            "INFERENCE_ONLY",
+            "TRAIN_AND_INFERENCE"
+          ]
+        },
+        "expected_effect_strength": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ]
+        },
+        "runtime_reachability": {
+          "$ref": "#/$defs/draftRuntimeReachability"
+        },
+        "compatibility_tags": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        },
+        "incompatibility_tags": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        },
+        "low_impact_risk": {
+          "type": "boolean"
+        },
+        "rationale": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "score_parameterization": {
+          "type": "string",
+          "enum": [
+            "LEARNED",
+            "FIXED",
+            "NOT_SCORING"
+          ],
+          "description": "Task semantic declaration: whether the selected scoring transform introduces learned score parameters; not proof of effectiveness."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "slot_id": {
+                "const": "SCORING_TRANSFORM"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "score_parameterization": {
+                "enum": [
+                  "LEARNED",
+                  "FIXED"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "score_parameterization": {
+                "const": "NOT_SCORING"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "finalPrimitive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primitive_id",
+        "version",
+        "family_id",
+        "slot_id",
+        "implementation_status",
+        "semantic_role",
+        "mechanism_family",
+        "conceptual_capabilities",
+        "composition_roles",
+        "baseline_anchors",
+        "input_ports",
+        "output_ports",
+        "legal_mutation_targets",
+        "prohibited_mutation_targets",
+        "allowed_data_roles",
+        "parameter_schema",
+        "implementation_requirements",
+        "required_invariants",
+        "effect_path",
+        "effect_phase",
+        "expected_effect_strength",
+        "runtime_reachability",
+        "compatibility_tags",
+        "incompatibility_tags",
+        "novelty_signature",
+        "low_impact_risk",
+        "rationale",
+        "score_parameterization"
+      ],
+      "properties": {
+        "primitive_id": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "version": {
+          "const": "1.6.1"
+        },
+        "family_id": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "slot_id": {
+          "enum": [
+            "REPRESENTATION_TRANSFORM",
+            "SCORING_TRANSFORM",
+            "TRAINING_OBJECTIVE_TRANSFORM",
+            "MODEL_ARCHITECTURE_TRANSFORM"
+          ]
+        },
+        "implementation_status": {
+          "const": "CONCEPTUAL_UNIMPLEMENTED"
+        },
+        "semantic_role": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "mechanism_family": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "conceptual_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          }
+        },
+        "composition_roles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          }
+        },
+        "baseline_anchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "auto_space_common.schema.json#/$defs/anchor"
+          }
+        },
+        "input_ports": {
+          "type": "array",
+          "items": {
+            "$ref": "auto_space_common.schema.json#/$defs/inputPort"
+          }
+        },
+        "output_ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "auto_space_common.schema.json#/$defs/outputPort"
+          }
+        },
+        "legal_mutation_targets": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "prohibited_mutation_targets": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "allowed_data_roles": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "parameter_schema": {
+          "$ref": "#/$defs/boundedParameterSchema"
+        },
+        "implementation_requirements": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "required_invariants": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringSet"
+        },
+        "effect_path": {
+          "$ref": "#/$defs/effectPath"
+        },
+        "effect_phase": {
+          "enum": [
+            "TRAIN_ONLY",
+            "INFERENCE_ONLY",
+            "TRAIN_AND_INFERENCE"
+          ]
+        },
+        "expected_effect_strength": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ]
+        },
+        "runtime_reachability": {
+          "$ref": "#/$defs/runtimeReachability"
+        },
+        "compatibility_tags": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        },
+        "incompatibility_tags": {
+          "$ref": "auto_space_common.schema.json#/$defs/stringArray"
+        },
+        "novelty_signature": {
+          "$ref": "auto_space_common.schema.json#/$defs/sha256"
+        },
+        "low_impact_risk": {
+          "type": "boolean"
+        },
+        "rationale": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "score_parameterization": {
+          "type": "string",
+          "enum": [
+            "LEARNED",
+            "FIXED",
+            "NOT_SCORING"
+          ],
+          "description": "Task semantic declaration: whether the selected scoring transform introduces learned score parameters; not proof of effectiveness."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "slot_id": {
+                "const": "SCORING_TRANSFORM"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "score_parameterization": {
+                "enum": [
+                  "LEARNED",
+                  "FIXED"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "score_parameterization": {
+                "const": "NOT_SCORING"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "draftEffectPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_anchor",
+        "mutation_target",
+        "operation_kind",
+        "changed_quantity",
+        "scientific_effect"
+      ],
+      "properties": {
+        "baseline_anchor": {
+          "$ref": "auto_space_common.schema.json#/$defs/sourceLocationRef"
+        },
+        "mutation_target": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "operation_kind": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "changed_quantity": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "scientific_effect": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        }
+      }
+    },
+    "draftRuntimeReachability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_anchor",
+        "mutation_target",
+        "execution_route"
+      ],
+      "properties": {
+        "baseline_anchor": {
+          "$ref": "auto_space_common.schema.json#/$defs/sourceLocationRef"
+        },
+        "mutation_target": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        },
+        "execution_route": {
+          "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "dataset": "ml-1m",
+  "evaluation_candidate_universe": "full",
+  "gpu_meter": {
+    "device_fraction": 1.0,
+    "gpu_class": "NVIDIA_RTX_4070_LAPTOP",
+    "monetary_cost_available": false,
+    "normalized_rate_microunits_per_device_hour": 1000000
+  },
+  "max_epochs": 3,
+  "ordinary_execution_seed": 2026,
+  "profile_id": "BL_ICF_PILOT_TRAINING_PROFILE_V1",
+  "profile_version": "1.0.0",
+  "runner_abi": "recclaw.package-owned-pilot-training-runner.v1",
+  "supported_mappings": [
+    {
+      "model": "SGL",
+      "required_primitives": [
+        "ssl.objective.info_nce",
+        "ssl.view.edge_dropout"
+      ]
+    },
+    {
+      "model": "NGCF",
+      "required_primitives": [
+        "encoder.explicit_message_passing",
+        "message.linear_transform"
+      ]
+    },
+    {
+      "model": "LightGCN",
+      "required_primitives": [
+        "encoder.explicit_message_passing",
+        "message.identity",
+        "propagation.symmetric_normalization"
+      ]
+    },
+    {
+      "forbidden_primitives": [
+        "objective.alignment_uniformity",
+        "regularizer.alignment",
+        "regularizer.uniformity"
+      ],
+      "model": "BPR",
+      "required_primitives": [
+        "encoder.none_mf",
+        "objective.bpr"
+      ]
+    }
+  ],
+  "unsupported_policy": "REMOVE_BEFORE_TERMINAL_SELECTION",
+  "wall_time_ceiling_ms_per_execution": 900000
+}

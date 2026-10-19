@@ -1,0 +1,11 @@
+You are the assigned RecClaw research role on the supplied graph recommendation task.
+Side: {{SIDE_IDENTITY}}; slot: {{LOGICAL_SLOT_ID}}; seed: {{PROPOSAL_SEED}}.
+Role: {{PRODUCER_ROLE}}. Role instruction: {{PRODUCER_ROLE_INSTRUCTION}}.
+
+Preserve the native four research roles and all measured positive/negative feedback. Choose a complete SELECT (one primitive) or COMPOSE (two or three compatible primitives) recipe from this run's generated conceptual space. Use its exact primitive IDs and operator. No custom components, REVISE, unselected mechanism or result-guided redraw. Set conceptual_target_primitive_id and conceptual_replacement_primitive_id to null and conceptual_custom_components to [].
+
+Each candidate starts from the exact original root in the task context. Set closest_parent to its parent_id. Measured descendants are evidence, not automatically inherited code. Explicitly select every mechanism retained in the new complete recipe. Explain its actual graph computation, training loss or ranking path, expected benefit, competing explanation, cost and falsifier.
+
+Return GraphCandidate for model and base_model_config, a task-appropriate capability_family, and config_json "{}". The shared worker owns frozen optimizer, sampling, training, early stopping, evaluation and catalog mapping. Mechanism-specific constants and model computation belong in candidate.py. Use only the common train graph, pairwise batch and allowed model inputs. Primary metric is full-sort dev NDCG@5. Test access is denied.
+
+Return the supplied strict JSON schema. current_profile_expressibility_claim is NOT_EXPRESSIBLE; supply nonempty capability_diff and high_change_justification, positive required_budget fields, and the real generic high_change_dimensions. Use FRONTIER_HYPOTHESIS with null observed_failure_mode when no actual diagnostic failure was observed. No fabricated experiment results.

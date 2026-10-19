@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_v161_primitive_registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_type",
+    "registry_id",
+    "registry_version",
+    "axis_count",
+    "primitive_count",
+    "axes"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "search_space_primitive_registry"
+    },
+    "registry_id": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "registry_version": {
+      "const": "1.6.1"
+    },
+    "axis_count": {
+      "const": 4
+    },
+    "primitive_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18
+    },
+    "axes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slot_id",
+          "allow_multiple",
+          "primitives"
+        ],
+        "properties": {
+          "slot_id": {
+            "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+          },
+          "allow_multiple": {
+            "const": false
+          },
+          "primitives": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 3,
+            "items": {
+              "$ref": "auto_space_v161_common.schema.json#/$defs/finalPrimitive"
+            }
+          }
+        }
+      }
+    }
+  }
+}

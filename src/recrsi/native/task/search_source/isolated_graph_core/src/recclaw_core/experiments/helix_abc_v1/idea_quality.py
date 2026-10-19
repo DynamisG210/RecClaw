@@ -1,0 +1,1827 @@
+"""Q1 DEVELOPMENT_ONLY Idea/OpenSpec quality calibration contracts.
+
+The module adds one enriched projection to the existing OpenSpec path and a
+small, outcome-blind A/B contract.  Runtime orchestration is intentionally
+kept separate from these offline contracts.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import math
+import re
+import time
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import jsonschema
+
+from .canonical import (
+    bytes_sha256,
+    canonical_json_bytes,
+    canonical_value,
+    sha256_digest,
+)
+from .fresh_r1 import (
+    AVAILABLE_DEPENDENCIES,
+    BUDGET_LIMITS,
+    MODEL,
+    PROTOCOL_REQUIREMENTS,
+    ROLE_INSTRUCTIONS,
+    _materialize_and_qualify,
+    _shared_policy,
+    _write_new_json,
+    bounded_provider_call,
+    render_implementation_prompt,
+)
+from .fresh_r2 import (
+    _r2_bindings,
+    _r2_environment,
+    build_active_r2_profile,
+    build_r1_registry,
+    derive_fresh_r2_proposal_schema,
+    load_registered_r1_artifacts,
+    public_active_profile_catalog,
+)
+from .innovation_spine import build_shared_implementer_request
+from .open_spec import project_open_producer_draft, resolve_capability
+from .quality_calibration import _structural_calibration_unit_check
+from .resource_scheduling import (
+    PROBE_EPOCHS,
+    PROBE_TIMEOUT_SECONDS,
+    Q0R_V2_PREFIX_CONTRACT_SHA256,
+    structural_features,
+)
+from .research_contracts import RouterFeatureEvidenceV1, SearchUtilityFeaturesV1
+from .v4_response_contract import validate_v4_response_contract
+from .vnext_contracts import (
+    CapabilityResolutionResultV1,
+    OpenResearchSpecV1,
+    QualificationStatusV1,
+    RealizationModeV1,
+)
+
+
+Q1_MODEL = MODEL
+Q1_PROPOSAL_TOKEN_CEILING = 16_000
+Q1_IMPLEMENTATION_TOKEN_CEILING = 20_000
+Q1_CANDIDATE_SLOTS = ("diagnosis", "frontier")
+Q1_SLOT_MODES = {
+    "diagnosis": "DIAGNOSIS_DRIVEN",
+    "frontier": "FRONTIER_HYPOTHESIS",
+}
+Q1_BRANCH = "feat/research-line-idea-openspec-quality"
+Q1_BASE_COMMIT = "278391ab47c78508af211978045ad5573d6fc135"
+Q1_BASE_PARENT = "5372da07829c92d73b530855fded95de4f57059b"
+Q1_BASE_TREE = "4ef40aa98ddb3ddd1020c2a8ffc7b0dee0752edf"
+Q0R2_CANONICAL_SHA256 = (
+    "3db80f559e474687f70cdc7aa0eeb0487c4b12fb7053444cfcc35a5d1252f4be"
+)
+Q0R2_PHYSICAL_SHA256 = (
+    "f8ec201e6a98dd9fb9eea4b95f680ea6eb3f5939235d14e4ddf86f7cca362c56"
+)
+Q1_RUN_IDENTITY = "q1-idea-openspec-quality-v1-interface-fix1"
+Q1_CONTEXT_REF = "recclaw-q1-accepted-research-context-v1"
+Q1_PROPOSAL_SEEDS = {"diagnosis": 55011, "frontier": 55012}
+Q1_QUALIFICATION_SEED = 55101
+Q1_SLOT_ROLES = {
+    "diagnosis": "falsification_designer",
+    "frontier": "frontier_architect",
+}
+Q1_CONDITIONAL_SENTINEL_PROMPT = (
+    "Return exactly one JSON object matching the supplied schema. Use schema "
+    "recclaw.q1-provider-contract-sentinel.v1 and exactly one proposals item "
+    "with sentinel_mode A and sentinel_observation PRESENT. This is a synthetic "
+    "transport-contract sentinel; do not add prose or any other fields."
+)
+
+
+class IdeaQualityError(RuntimeError):
+    """Raised when the Q1 fairness or pre-outcome contract is violated."""
+
+
+def derive_enriched_proposal_schema() -> dict[str, Any]:
+    """Extend the current real Provider schema with only Q1 scientific fields."""
+
+    schema = copy.deepcopy(derive_fresh_r2_proposal_schema())
+    proposal = schema["properties"]["proposals"]["items"]
+    properties = proposal["properties"]
+    additions = {
+        "idea_mode": {
+            "enum": ["DIAGNOSIS_DRIVEN", "FRONTIER_HYPOTHESIS"],
+            "type": "string",
+        },
+        "research_question": {"minLength": 1, "type": "string"},
+        "observed_failure_mode": {"type": ["string", "null"]},
+        "closest_parent": {"minLength": 1, "type": "string"},
+        "minimal_testable_wedge": {"minLength": 1, "type": "string"},
+        "causal_chain": {
+            "items": {"minLength": 1, "type": "string"},
+            "minItems": 1,
+            "type": "array",
+        },
+        "discriminative_predictions": {
+            "items": {"minLength": 1, "type": "string"},
+            "minItems": 1,
+            "type": "array",
+        },
+        "mechanism_off_definition": {"minLength": 1, "type": "string"},
+        "resource_hypothesis": {"minLength": 1, "type": "string"},
+        "realization_mode": {
+            "enum": ["PARENT_PRESERVING", "NON_NESTED"],
+            "type": "string",
+        },
+    }
+    overlap = set(properties) & set(additions)
+    if overlap:
+        raise IdeaQualityError(f"enriched schema duplicates existing fields: {overlap}")
+    properties.update(additions)
+    proposal["required"] = list(proposal["required"]) + list(additions)
+    schema["title"] = "RecClaw Q1 Enriched OpenSpec Proposal Response"
+    jsonschema.validators.validator_for(schema).check_schema(schema)
+    return canonical_value(schema)
+
+
+def derive_q1_conditional_contract_sentinel_schema() -> dict[str, Any]:
+    """Return a tiny non-research schema isolating Q1 conditional composition."""
+
+    schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Q1 Provider Conditional Contract Sentinel",
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "schema": {
+                "type": "string",
+                "enum": ["recclaw.q1-provider-contract-sentinel.v1"],
+            },
+            "proposals": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "sentinel_mode": {
+                            "type": "string",
+                            "enum": ["A", "B"],
+                        },
+                        "sentinel_observation": {
+                            "type": ["string", "null"],
+                        },
+                    },
+                    "required": ["sentinel_mode", "sentinel_observation"],
+                    "allOf": [
+                        {
+                            "if": {
+                                "properties": {
+                                    "sentinel_mode": {"const": "A"}
+                                },
+                                "required": ["sentinel_mode"],
+                            },
+                            "then": {
+                                "properties": {
+                                    "sentinel_observation": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                    }
+                                }
+                            },
+                        },
+                        {
+                            "if": {
+                                "properties": {
+                                    "sentinel_mode": {"const": "B"}
+                                },
+                                "required": ["sentinel_mode"],
+                            },
+                            "then": {
+                                "properties": {
+                                    "sentinel_observation": {
+                                        "enum": [None, "NOT_OBSERVED"]
+                                    }
+                                }
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+        "required": ["schema", "proposals"],
+    }
+    jsonschema.validators.validator_for(schema).check_schema(schema)
+    return canonical_value(schema)
+
+
+def q1_provider_contract_static_matrix() -> dict[str, Any]:
+    """Describe the bounded structural hypotheses behind the observed HTTP 400."""
+
+    baseline = derive_fresh_r2_proposal_schema()
+    enriched = derive_enriched_proposal_schema()
+    sentinel = derive_q1_conditional_contract_sentinel_schema()
+    baseline_proposal = baseline["properties"]["proposals"]["items"]
+    enriched_proposal = enriched["properties"]["proposals"]["items"]
+    sentinel_proposal = sentinel["properties"]["proposals"]["items"]
+    return canonical_value(
+        {
+            "schema": "recclaw.research-line.q1-provider-contract-matrix.v1",
+            "observed": {
+                "baseline_http_statuses": [200, 200],
+                "enriched_http_statuses": [400, 400],
+                "provider_error_body_persisted": False,
+            },
+            "invariants": {
+                "model": Q1_MODEL,
+                "tools": [],
+                "token_ceiling": Q1_PROPOSAL_TOKEN_CEILING,
+                "strict": True,
+                "temperature": 0.0,
+                "response_format": "json_schema",
+            },
+            "schemas": {
+                "baseline": {
+                    "canonical_bytes": len(canonical_json_bytes(baseline)),
+                    "proposal_properties": len(baseline_proposal["properties"]),
+                    "proposal_required": len(baseline_proposal["required"]),
+                    "conditional_composition": False,
+                },
+                "enriched": {
+                    "canonical_bytes": len(canonical_json_bytes(enriched)),
+                    "proposal_properties": len(enriched_proposal["properties"]),
+                    "proposal_required": len(enriched_proposal["required"]),
+                    "conditional_composition": "allOf" in enriched_proposal,
+                    "unique_keywords": [],
+                    "cross_field_semantics_enforced_by": (
+                        "project_open_producer_draft"
+                    ),
+                },
+                "sentinel": {
+                    "canonical_bytes": len(canonical_json_bytes(sentinel)),
+                    "proposal_properties": len(sentinel_proposal["properties"]),
+                    "proposal_required": len(sentinel_proposal["required"]),
+                    "conditional_composition": True,
+                    "research_semantics": False,
+                },
+            },
+            "hypotheses": [
+                {
+                    "id": "H_CONDITIONAL_COMPOSITION_UNSUPPORTED",
+                    "prediction": "the tiny conditional sentinel returns HTTP 400",
+                    "single_probe_budget": 1,
+                },
+                {
+                    "id": "H_SCHEMA_SIZE_OR_PROPERTY_COUNT",
+                    "prediction": "the tiny conditional sentinel is accepted",
+                    "single_probe_budget": 0,
+                },
+            ],
+            "decision_rule": (
+                "HTTP_400 confirms the conditional-composition boundary independent "
+                "of schema size/property count; HTTP_200 leaves the root cause unresolved"
+            ),
+            "research_candidate_generation_allowed": False,
+            "held_out_reads": 0,
+        }
+    )
+
+
+def build_q1_ab_contract() -> dict[str, Any]:
+    """Freeze the smallest symmetric baseline-vs-enriched comparison."""
+
+    return canonical_value(
+        {
+            "schema": "recclaw.research-line.q1-idea-quality-ab-contract.v1",
+            "development_only": True,
+            "model": Q1_MODEL,
+            "tools": [],
+            "proposal_token_ceiling": Q1_PROPOSAL_TOKEN_CEILING,
+            "proposal_token_ceiling_calibration": {
+                "current": Q1_PROPOSAL_TOKEN_CEILING,
+                "derivation": (
+                    "2x fresh maximum proposal input tokens (7917) = 15834, "
+                    "rounded upward to the next thousand"
+                ),
+                "historical_right_censored": 12_000,
+                "outcome_blind": True,
+                "same_for_all_arms_and_slots": True,
+            },
+            "implementation_token_ceiling": Q1_IMPLEMENTATION_TOKEN_CEILING,
+            "candidate_slots": list(Q1_CANDIDATE_SLOTS),
+            "slot_modes": Q1_SLOT_MODES,
+            "candidate_count_per_arm": len(Q1_CANDIDATE_SLOTS),
+            "selection_budget_per_arm": 1,
+            "inputs_symmetric_except_contract_enrichment": True,
+            "origin_blind": True,
+            "selection_frozen_before_implementation_or_qualification": True,
+            "selection_features": [
+                "discriminative_value",
+                "mechanism_off_executability",
+                "parent_clarity",
+                "q0r2_resource_feasibility",
+                "scientific_testability",
+            ],
+            "forbidden_selection_features": [
+                "implementation_success",
+                "ndcg_or_other_effect_metric",
+                "qualification_result",
+            ],
+            "selection_rule": (
+                "highest total pre-outcome score, then diagnosis before frontier, "
+                "then lexical spec digest"
+            ),
+            "held_out_reads": 0,
+            "permanent_mode_ratio": None,
+        }
+    )
+
+
+def _contract_instruction(arm: str, slot: str) -> str:
+    resolution_contract = (
+        "For current_profile_expressibility_claim EXPRESSIBLE, set "
+        "resolution_facts.requested_current_semantics_digest to one exact "
+        "semantics_digest from the active profile catalog and leave "
+        "capability_diff and high_change_dimensions empty. For NOT_EXPRESSIBLE, "
+        "set requested_current_semantics_digest to null and provide non-empty "
+        "capability_diff and high_change_dimensions. "
+    )
+    if arm == "baseline":
+        return resolution_contract + (
+            "Use only the current OpenSpec fields in the supplied response schema. "
+            "For the diagnosis slot, bind the hypothesis to the accepted context gap. "
+            "For the frontier slot, pose one open structural recommender hypothesis."
+        )
+    if arm == "enriched":
+        return resolution_contract + (
+            "Use the enriched OpenSpec fields. Set idea_mode to "
+            f"{Q1_SLOT_MODES[slot]}. State research_question, closest_parent, "
+            "minimal_testable_wedge, causal_chain, a prediction that distinguishes the "
+            "named competing explanation, mechanism_off_definition, resource_hypothesis, "
+            "and realization_mode. DIAGNOSIS_DRIVEN must cite a real accepted failure or "
+            "gap from context; FRONTIER_HYPOTHESIS must use null or NOT_OBSERVED and must "
+            "not invent a failure. Parent-preserving is preferred only when truthful."
+        )
+    raise IdeaQualityError(f"unknown Q1 contract arm: {arm}")
+
+
+def render_q1_producer_prompt(
+    template: str,
+    *,
+    arm: str,
+    slot: str,
+    role: str,
+    seed: int,
+    context: Mapping[str, Any],
+    profile_catalog: Sequence[Mapping[str, str]],
+    protocol_ref: str,
+    protocol_digest: str,
+    context_ref: str,
+    context_digest: str,
+    profile_ref: str,
+    profile_digest: str,
+) -> str:
+    """Render paired prompts without revealing comparison origin or outcomes."""
+
+    if slot not in Q1_CANDIDATE_SLOTS:
+        raise IdeaQualityError(f"unknown Q1 slot: {slot}")
+    replacements = {
+        "{{LOGICAL_SLOT_ID}}": slot,
+        "{{PROPOSAL_SEED}}": str(seed),
+        "{{PRODUCER_ROLE}}": role,
+        "{{ROLE_INSTRUCTION}}": ROLE_INSTRUCTIONS[role],
+        "{{POOL_MECHANISM_SIGNATURES}}": json.dumps([], separators=(",", ":")),
+        "{{CONTRACT_INSTRUCTION}}": _contract_instruction(arm, slot),
+        "{{RESEARCH_CONTEXT_JSON}}": json.dumps(
+            context, sort_keys=True, separators=(",", ":")
+        ),
+        "{{PROFILE_CATALOG_JSON}}": json.dumps(
+            profile_catalog, sort_keys=True, separators=(",", ":")
+        ),
+        "{{PROTOCOL_REF}}": protocol_ref,
+        "{{PROTOCOL_DIGEST}}": protocol_digest,
+        "{{CONTEXT_REF}}": context_ref,
+        "{{CONTEXT_DIGEST}}": context_digest,
+        "{{PROFILE_REF}}": profile_ref,
+        "{{PROFILE_DIGEST}}": profile_digest,
+    }
+    rendered = template
+    for token, value in replacements.items():
+        rendered = rendered.replace(token, value)
+    if re.search(r"\{\{[A-Z][A-Z0-9_]*\}\}", rendered):
+        raise IdeaQualityError("Q1 Producer prompt has unresolved placeholder")
+    forbidden = (
+        "side_a",
+        "side_b",
+        "expected winner",
+        "implementation success",
+        "candidate_ndcg",
+        "observed_ndcg",
+        "qualification result",
+    )
+    if any(token in rendered.lower() for token in forbidden):
+        raise IdeaQualityError("Q1 Producer prompt leaked origin or outcome")
+    return rendered
+
+
+def score_preoutcome_testability(
+    spec: OpenResearchSpecV1,
+    *,
+    q0r2_resource_feasible: bool,
+    outcome_features: Mapping[str, Any] | None = None,
+    structural_context: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Score only scientific clarity and resource feasibility before outcomes."""
+
+    if outcome_features:
+        raise ValueError("outcome or implementation features are forbidden in Q1 selection")
+    if structural_context is None:
+        features = {
+            "scientific_testability": int(bool(spec.falsifier and spec.expected_evidence)),
+            "parent_clarity": int(bool(spec.closest_parent or spec.matched_control_requirement)),
+            "discriminative_value": int(
+                bool(spec.discriminative_predictions or spec.competing_explanation)
+            ),
+            "mechanism_off_executability": int(
+                bool(spec.mechanism_off_definition or spec.matched_control_requirement)
+            ),
+            "q0r2_resource_feasibility": int(q0r2_resource_feasible),
+        }
+    else:
+        def text_score(value: Any, keywords: tuple[str, ...] = ()) -> float:
+            text = str(value or "").strip().lower()
+            if not text:
+                return 0.0
+            length_score = min(1.0, len(text) / 240.0)
+            keyword_score = sum(token in text for token in keywords) / max(1, len(keywords))
+            return round(0.5 * length_score + 0.5 * keyword_score, 6)
+
+        parent_text = str(spec.closest_parent or "").lower()
+        parent_catalog = structural_context.get("parent_catalog", ())
+        catalog_refs = {
+            str(value).lower()
+            for item in parent_catalog
+            if isinstance(item, Mapping)
+            for value in (
+                item.get("parent_id"),
+                item.get("profile_ref"),
+                item.get("ref"),
+                item.get("semantics_digest"),
+            )
+            if value
+        }
+        executable_parent = 1.0 if any(ref and ref in parent_text for ref in catalog_refs) else (
+            0.25 if parent_text else 0.0
+        )
+        signature_texts = []
+        parent_signature_sets = []
+        operator_signature_sets = []
+        for item in structural_context.get("pool_signatures", ()):
+            if isinstance(item, Mapping):
+                parent_signature_sets.append(
+                    set(re.findall(r"[a-z0-9]+", str(item.get("closest_parent", "")).lower()))
+                )
+                operator_signature_sets.append(
+                    set(
+                        re.findall(
+                            r"[a-z0-9]+",
+                            " ".join(
+                                str(item.get(field) or "")
+                                for field in ("causal_operator", "mechanism_change")
+                            ).lower(),
+                        )
+                    )
+                )
+                signature_texts.append(
+                    " ".join(
+                        str(item.get(field) or "")
+                        for field in ("closest_parent", "mechanism_change", "causal_operator")
+                    ).lower()
+                )
+            else:
+                signature_texts.append(str(item).lower())
+        parent_tokens = set(re.findall(r"[a-z0-9]+", parent_text))
+        operator_text = " ".join(str(value or "") for value in spec.causal_chain)
+        operator_tokens = set(re.findall(r"[a-z0-9]+", operator_text.lower()))
+
+        def _max_overlap(tokens: set[str], prior: Sequence[set[str]]) -> float:
+            if not tokens or not prior:
+                return 0.0
+            return max(
+                len(tokens & candidate) / max(1, len(tokens | candidate))
+                for candidate in prior
+            )
+
+        parent_family_novelty = round(
+            1.0 - _max_overlap(parent_tokens, parent_signature_sets), 6
+        )
+        causal_operator_novelty = round(
+            1.0 - _max_overlap(operator_tokens, operator_signature_sets), 6
+        )
+        mechanism_text = " ".join(
+            str(value or "")
+            for value in (spec.mechanism_change, spec.causal_chain, spec.minimal_testable_wedge)
+        ).lower()
+        overlap = max(
+            (
+                len(set(mechanism_text.split()) & set(signature.split()))
+                / max(1, len(set(mechanism_text.split())))
+                for signature in signature_texts
+            ),
+            default=0.0,
+        )
+        realization_mode = getattr(spec.realization_mode, "value", spec.realization_mode)
+        idea_mode = getattr(spec.idea_mode, "value", spec.idea_mode)
+        expected_mode = structural_context.get("mode") or idea_mode
+        expected_realization = (
+            "PARENT_PRESERVING"
+            if expected_mode == "DIAGNOSIS_DRIVEN"
+            else "NON_NESTED"
+        )
+        features = {
+            "executable_parent": round(executable_parent, 6),
+            "parent_preserving": float(realization_mode == "PARENT_PRESERVING"),
+            "causal_component_count": round(min(1.0, len(spec.causal_chain) / 3.0), 6),
+            "role_mode_fit": float(realization_mode == expected_realization),
+            "wedge_specificity": text_score(
+                spec.minimal_testable_wedge,
+                ("tensor", "loss", "score", "off"),
+            ),
+            "resource_margin": 0.0,
+            "mechanism_off_executability": text_score(
+                spec.mechanism_off_definition,
+                ("disable", "parent", "equivalent"),
+            ),
+            "pool_mechanism_novelty": round(1.0 - overlap, 6),
+            "parent_family_novelty": parent_family_novelty,
+            "causal_operator_novelty": causal_operator_novelty,
+            "qualifier_risk": 0.0,
+            "stage_feasibility": 0.0,
+            "scientific_falsifiability": text_score(
+                spec.falsifier,
+                ("reject", "compare", "control"),
+            ),
+        }
+        budget_text = " ".join(
+            (
+                str(spec.resource_hypothesis or ""),
+                str(structural_context.get("required_budget") or ""),
+            )
+        )
+        text_margin = text_score(budget_text, ("memory", "gpu", "time"))
+        budget = structural_context.get("required_budget")
+        limits = {
+            "implementation_token_ceiling": 20_000.0,
+            "implementation_tokens": 20_000.0,
+            "token_ceiling": 20_000.0,
+            "qualification_gpu_minutes": 10.0,
+            "gpu_minutes": 10.0,
+            "qualification_wall_minutes": 30.0,
+            "wall_minutes": 30.0,
+        }
+        ratios = []
+        if isinstance(budget, Mapping):
+            for key, limit in limits.items():
+                value = budget.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    ratios.append(max(0.0, float(value)) / limit)
+        numeric_margin = max(0.0, 1.0 - max(ratios, default=0.0))
+        features["resource_margin"] = round(
+            0.5 * text_margin + 0.5 * numeric_margin,
+            6,
+        ) * (1.0 if q0r2_resource_feasible else 0.25)
+        resource_profile = structural_context.get("resource_profile")
+        resource_prediction = (
+            resource_profile.get("prediction")
+            if isinstance(resource_profile, Mapping)
+            else None
+        )
+        if isinstance(resource_prediction, Mapping):
+            probability_value = resource_prediction.get("completion_probability", 0.0)
+            probability = (
+                float(probability_value)
+                if isinstance(probability_value, (int, float))
+                and not isinstance(probability_value, bool)
+                and math.isfinite(float(probability_value))
+                else 0.0
+            )
+            interval = resource_prediction.get("prediction_interval_seconds")
+            budget_value = (
+                resource_profile.get("full_run_budget_after_probes_seconds", 0.0)
+                if isinstance(resource_profile, Mapping)
+                else 0.0
+            )
+            budget_seconds = (
+                float(budget_value)
+                if isinstance(budget_value, (int, float))
+                and not isinstance(budget_value, bool)
+                and math.isfinite(float(budget_value))
+                else 0.0
+            )
+            upper_seconds = (
+                float(interval[1])
+                if isinstance(interval, (list, tuple))
+                and len(interval) == 2
+                and isinstance(interval[1], (int, float))
+                else float("inf")
+            )
+            peak_memory = resource_prediction.get("peak_memory_prediction_mib")
+            memory_ceiling = resource_prediction.get(
+                "peak_memory_candidate_ceiling_mib"
+            )
+            time_margin = (
+                max(0.0, min(1.0, 1.0 - upper_seconds / budget_seconds))
+                if budget_seconds > 0 and math.isfinite(upper_seconds)
+                else 0.0
+            )
+            memory_margin = (
+                max(
+                    0.0,
+                    min(
+                        1.0,
+                        1.0 - float(peak_memory) / float(memory_ceiling),
+                    ),
+                )
+                if isinstance(peak_memory, (int, float))
+                and not isinstance(peak_memory, bool)
+                and math.isfinite(float(peak_memory))
+                and isinstance(memory_ceiling, (int, float))
+                and not isinstance(memory_ceiling, bool)
+                and math.isfinite(float(memory_ceiling))
+                and float(memory_ceiling) > 0.0
+                else 0.0
+            )
+            profile_margin = min(
+                max(0.0, min(1.0, probability)),
+                time_margin,
+                memory_margin,
+            )
+            features["resource_margin"] = round(
+                0.5 * float(features["resource_margin"])
+                + 0.5 * profile_margin,
+                6,
+            )
+
+        failure_summary = structural_context.get("failure_summary", {})
+        taxonomy = (
+            failure_summary.get("qualifier_failure_taxonomy", {})
+            if isinstance(failure_summary, Mapping)
+            else {}
+        )
+        failure_count = sum(
+            float(value)
+            for value in taxonomy.values()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        )
+        denominator = (
+            float(failure_summary.get("implementer_success_count", 0))
+            if isinstance(failure_summary, Mapping)
+            else 0.0
+        )
+        observed_failure_rate = min(0.95, failure_count / denominator) if denominator else 0.5
+        mechanism_off_score = features["mechanism_off_executability"]
+        qualifier_risk_margin = 1.0 - observed_failure_rate * (1.0 - mechanism_off_score)
+        if realization_mode == "PARENT_PRESERVING" and mechanism_off_score < 0.5:
+            qualifier_risk_margin *= 0.75
+        features["qualifier_risk"] = round(max(0.0, min(1.0, qualifier_risk_margin)), 6)
+        stage_labels = (
+            failure_summary.get("stage_labels", {})
+            if isinstance(failure_summary, Mapping)
+            else {}
+        )
+        stage_rates = []
+        for stage_name in ("QUALIFY", "RESOURCE_ADMITTED", "FULL_EPISODE"):
+            row = stage_labels.get(stage_name, {}) if isinstance(stage_labels, Mapping) else {}
+            if isinstance(row, Mapping) and float(row.get("denominator", 0) or 0) > 0:
+                stage_rates.append(
+                    max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(row.get("success", 0) or 0)
+                            / float(row["denominator"]),
+                        ),
+                    )
+                )
+        features["stage_feasibility"] = round(
+            sum(stage_rates) / len(stage_rates) if stage_rates else 0.0,
+            6,
+        )
+    return canonical_value(
+        {
+            "features": features,
+            "total": sum(features.values()),
+            "outcome_fields_consumed": [],
+            "spec_digest": spec.digest,
+            "score_digest": sha256_digest(features),
+        }
+    )
+
+
+_RESOURCE_PROFILE_FORBIDDEN_KEYS = frozenset(
+    {
+        "candidate_minus_bpr",
+        "candidate_ndcg_at_10",
+        "metrics",
+        "ndcg@10",
+        "test_feedback",
+        "test_metric",
+    }
+)
+
+
+def _assert_resource_profile_outcome_blind(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            normalized = str(key).lower()
+            if normalized in _RESOURCE_PROFILE_FORBIDDEN_KEYS:
+                raise IdeaQualityError(
+                    f"resource profile contains forbidden outcome field: {key}"
+                )
+            _assert_resource_profile_outcome_blind(child)
+    elif isinstance(value, (tuple, list)):
+        for child in value:
+            _assert_resource_profile_outcome_blind(child)
+
+
+def _qualification_admission_view(
+    qualification: Any,
+) -> tuple[str, str | None, bool]:
+    receipt = getattr(qualification, "receipt", None)
+    observations = getattr(qualification, "stage_observations", {})
+    if isinstance(qualification, Mapping):
+        receipt = qualification.get("receipt", receipt)
+        observations = qualification.get("stage_observations", observations)
+    if isinstance(receipt, Mapping):
+        status = receipt.get("status", "FAIL")
+        digest = receipt.get("digest")
+    else:
+        status = getattr(receipt, "status", "FAIL")
+        digest = getattr(receipt, "digest", None)
+    status_value = getattr(status, "value", status)
+    process = (
+        observations.get("DISPOSABLE_PROCESS", {})
+        if isinstance(observations, Mapping)
+        else {}
+    )
+    return str(status_value), digest if isinstance(digest, str) else None, bool(
+        isinstance(process, Mapping)
+        and process.get("process_isolated") is True
+        and process.get("status") == "RESULT"
+        and process.get("exit_code") == 0
+    )
+
+
+def _resolution_admission_view(resolution: Any) -> tuple[bool, str | None]:
+    def value(name: str, default: Any = False) -> Any:
+        if isinstance(resolution, Mapping):
+            return resolution.get(name, default)
+        return getattr(resolution, name, default)
+
+    ready = all(
+        bool(value(field))
+        for field in ("protocol_compatible", "dependency_compatible", "budget_compatible")
+    )
+    digest = value("digest")
+    return ready, digest if isinstance(digest, str) else None
+
+
+def _bounded_unit(value: Any) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return 0.0
+    converted = float(value)
+    if not math.isfinite(converted):
+        return 0.0
+    return max(0.0, min(1.0, converted))
+
+
+def _finite_nonnegative(
+    value: Any,
+    *,
+    upper: float | None = None,
+) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    converted = float(value)
+    if not math.isfinite(converted) or converted < 0.0:
+        return None
+    if upper is not None and converted > upper:
+        return None
+    return converted
+
+
+def _finite_interval(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    lower = _finite_nonnegative(value[0])
+    upper = _finite_nonnegative(value[1])
+    if lower is None or upper is None or lower > upper:
+        return None
+    return lower, upper
+
+
+def _prediction_interval_fits_resource_budget(
+    *,
+    prediction: Mapping[str, Any],
+    interval: tuple[float, float],
+    point_seconds: float,
+    budget_seconds: float,
+) -> bool:
+    """Apply the resource scheduler's explicit worker-ceiling semantics."""
+
+    worker_ceiling_seconds = _finite_nonnegative(
+        prediction.get("worker_ceiling_seconds")
+    )
+    native_budget_required_seconds = _finite_nonnegative(
+        prediction.get("execution_budget_required_seconds",
+                       prediction.get("native_early_stop_budget_required_seconds"))
+    )
+    if worker_ceiling_seconds is None or native_budget_required_seconds is None:
+        return False
+    effective_execution_limit = min(worker_ceiling_seconds, budget_seconds)
+    native_window_fits = bool(
+        effective_execution_limit > 0.0
+        and native_budget_required_seconds >= point_seconds
+        and native_budget_required_seconds <= effective_execution_limit
+    )
+    if interval[1] <= budget_seconds:
+        return native_window_fits
+    if prediction.get("prediction_interval_exceeds_worker_ceiling") is not True:
+        return False
+    return native_window_fits
+
+
+def admit_research_innovation_candidate(
+    *,
+    spec: OpenResearchSpecV1,
+    resolution: Any,
+    qualification: Any,
+    resource_profile: Mapping[str, Any],
+    structural_context: Mapping[str, Any] | None = None,
+    semantic_duplicate: bool = False,
+) -> dict[str, Any]:
+    """Return the pre-outcome Innovation admission and Router feature seam.
+
+    The function consumes only the OpenSpec, resolver facts, disposable
+    qualification receipt, and the resource-only profile.  A one-epoch smoke
+    or any profile without the fixed-batch prediction interval/memory fields
+    is never converted into a non-zero runnable probability.
+    """
+
+    if not isinstance(spec, OpenResearchSpecV1):
+        raise IdeaQualityError("spec must be OpenResearchSpecV1")
+    if not isinstance(resource_profile, Mapping):
+        raise IdeaQualityError("resource_profile must be a mapping")
+    _assert_resource_profile_outcome_blind(resource_profile)
+    if resource_profile.get("outcome_fields_consumed") != []:
+        raise IdeaQualityError("resource profile must consume no outcome fields")
+    if resource_profile.get("effect_fields_consumed") != []:
+        raise IdeaQualityError("resource profile must consume no effect fields")
+    if resource_profile.get("held_out_reads") != 0:
+        raise IdeaQualityError("resource profile crossed the held-out boundary")
+
+    qualification_status, qualification_digest, qualification_isolated = (
+        _qualification_admission_view(qualification)
+    )
+    resolution_ready, resolution_digest = _resolution_admission_view(resolution)
+    prediction = resource_profile.get("prediction")
+    probability = None
+    point_seconds = None
+    budget_seconds = _finite_nonnegative(
+        resource_profile.get("full_run_budget_after_probes_seconds")
+    )
+    interval_values: tuple[float, float] | None = None
+    profile_interval_values = _finite_interval(
+        resource_profile.get("prediction_interval_seconds")
+    )
+    peak_memory = None
+    memory_ceiling = None
+    top_level_probability = None
+    if isinstance(prediction, Mapping):
+        probability = _finite_nonnegative(
+            prediction.get("completion_probability"),
+            upper=1.0,
+        )
+        top_level_probability = _finite_nonnegative(
+            resource_profile.get("completion_probability"),
+            upper=1.0,
+        )
+        interval_values = _finite_interval(
+            prediction.get("prediction_interval_seconds")
+        )
+        peak_memory = _finite_nonnegative(
+            prediction.get("peak_memory_prediction_mib")
+        )
+        memory_ceiling = _finite_nonnegative(
+            prediction.get("peak_memory_candidate_ceiling_mib")
+        )
+        point_seconds = _finite_nonnegative(
+            prediction.get("estimated_total_wall_time_seconds")
+        )
+    process = resource_profile.get("probe_process")
+    prediction_contract = bool(
+        isinstance(prediction, Mapping)
+        and isinstance(prediction.get("model"), str)
+        and bool(prediction["model"].strip())
+        and probability is not None
+        and top_level_probability is not None
+        and math.isclose(probability, top_level_probability, abs_tol=1e-9)
+        and interval_values is not None
+        and profile_interval_values == interval_values
+        and point_seconds is not None
+        and budget_seconds is not None
+        and budget_seconds > 0.0
+        and interval_values[0] <= point_seconds <= interval_values[1]
+        and _prediction_interval_fits_resource_budget(
+            prediction=prediction,
+            interval=interval_values,
+            point_seconds=point_seconds,
+            budget_seconds=budget_seconds,
+        )
+        and peak_memory is not None
+        and memory_ceiling is not None
+        and memory_ceiling > 0.0
+        and peak_memory < memory_ceiling
+        and isinstance(process, Mapping)
+        and process.get("process_isolated") is True
+        and process.get("status") == "RESULT"
+        and process.get("exit_code") == 0
+    )
+    resource_admitted = (
+        resource_profile.get("status") == "RESOURCE_ADMITTED"
+        and prediction_contract
+    )
+    if not qualification_isolated:
+        resource_admitted = False
+    if qualification_status != QualificationStatusV1.PASS.value:
+        resource_admitted = False
+    if not resolution_ready or semantic_duplicate:
+        resource_admitted = False
+
+    efficiency_comparison = None
+    repair_context = (
+        structural_context.get("implementation_efficiency_repair_context")
+        if isinstance(structural_context, Mapping)
+        else None
+    )
+    repair_spec_digest = (
+        structural_context.get("implementation_efficiency_repair_spec_digest")
+        if isinstance(structural_context, Mapping)
+        else None
+    )
+    if (
+        isinstance(repair_context, Mapping)
+        and repair_context.get("schema")
+        == "recclaw.research-line.implementation-efficiency-repair-context.v1"
+        and repair_context.get("reason_code")
+        == "MEASURED_WORKER_RESOURCE_CEILING"
+        and repair_context.get("next_attempt_scope")
+        == "IMPLEMENTATION_EFFICIENCY_ONLY"
+        and isinstance(repair_spec_digest, str)
+        and repair_spec_digest == spec.digest
+        and isinstance(prediction, Mapping)
+    ):
+        prior_train_ms = _finite_nonnegative(
+            repair_context.get("mean_train_epoch_wall_time_ms")
+        )
+        prior_eval_ms = _finite_nonnegative(
+            repair_context.get("mean_eval_epoch_wall_time_ms")
+        )
+        current_epoch_ms = _finite_nonnegative(
+            prediction.get("estimated_epoch_wall_time_ms")
+        )
+        if (
+            prior_train_ms is not None
+            and prior_eval_ms is not None
+            and current_epoch_ms is not None
+        ):
+            prior_epoch_ms = prior_train_ms + prior_eval_ms
+            expected_semantic_digest = structural_context.get(
+                "implementation_efficiency_repair_semantic_digest"
+            )
+            current_semantic_digest = structural_context.get(
+                "candidate_semantic_digest"
+            )
+            mechanism_preserved = bool(
+                isinstance(expected_semantic_digest, str)
+                and expected_semantic_digest
+                and current_semantic_digest == expected_semantic_digest
+            )
+            efficiency_comparison = canonical_value(
+                {
+                    "schema": (
+                        "recclaw.research-line.implementation-efficiency-"
+                        "comparison.v1"
+                    ),
+                    "current_probe_epoch_wall_time_ms": current_epoch_ms,
+                    "prior_measured_epoch_wall_time_ms": prior_epoch_ms,
+                    "improved": current_epoch_ms < prior_epoch_ms,
+                    "mechanism_preserved": mechanism_preserved,
+                    "mechanism_effect_update_allowed": False,
+                    "repair_spec_digest": repair_spec_digest,
+                    "current_spec_digest": spec.digest,
+                }
+            )
+            if (
+                efficiency_comparison["improved"] is not True
+                or efficiency_comparison["mechanism_preserved"] is not True
+            ):
+                resource_admitted = False
+
+    scoring_context = dict(structural_context or {})
+    scoring_context["resource_profile"] = resource_profile
+    preoutcome_score = score_preoutcome_testability(
+        spec,
+        q0r2_resource_feasible=resource_admitted,
+        structural_context=scoring_context,
+    )
+    score_features = preoutcome_score["features"]
+    if prediction_contract and resource_admitted:
+        assert probability is not None
+        assert point_seconds is not None
+        assert budget_seconds is not None
+        runnable_probability = probability
+    else:
+        runnable_probability = 0.0
+        point_seconds = 0.0
+        budget_seconds = 0.0
+    estimated_cost = (
+        _bounded_unit(point_seconds / budget_seconds)
+        if budget_seconds > 0
+        else 1.0
+        if point_seconds > 0
+        else 0.0
+    )
+    useful_signal = sum(
+        _bounded_unit(score_features.get(name))
+        for name in ("scientific_falsifiability", "mechanism_off_executability", "wedge_specificity")
+    ) / 3.0
+    frontier_potential = sum(
+        _bounded_unit(score_features.get(name))
+        for name in ("executable_parent", "parent_preserving", "role_mode_fit")
+    ) / 3.0
+    information_gain = sum(
+        _bounded_unit(score_features.get(name))
+        for name in (
+            "scientific_falsifiability",
+            "mechanism_off_executability",
+            "causal_component_count",
+            "pool_mechanism_novelty",
+        )
+    ) / 4.0
+    if semantic_duplicate:
+        blocker_risk = 1.0
+    else:
+        blocker_risk = 1.0 - runnable_probability
+    utility = SearchUtilityFeaturesV1(
+        runnable_probability=round(runnable_probability, 6),
+        useful_signal=round(useful_signal, 6),
+        frontier_potential=round(frontier_potential, 6),
+        information_gain=round(information_gain, 6),
+        cost=round(estimated_cost, 6),
+        blocker_risk=round(_bounded_unit(blocker_risk), 6),
+    )
+    execution_contract = spec.execution_contract
+    executable_parent = spec.closest_parent
+    if not executable_parent and isinstance(execution_contract, Mapping):
+        executable_parent = execution_contract.get("base_model_config")
+    feature_evidence = RouterFeatureEvidenceV1(
+        compile_valid=qualification_status == QualificationStatusV1.PASS.value,
+        handler_available=resolution_ready,
+        materializer_available=resolution_ready,
+        blocker_rate=round(_bounded_unit(blocker_risk), 6),
+        semantic_duplicate=bool(semantic_duplicate),
+        parent_available=bool(executable_parent),
+        mechanism_depth=len(spec.causal_chain),
+        estimated_cost=round(estimated_cost, 6),
+        llm_diagnostic=utility,
+    )
+    if qualification_status != QualificationStatusV1.PASS.value:
+        status = "QUALIFICATION_BLOCKED"
+    elif not qualification_isolated:
+        status = "QUALIFICATION_PROCESS_NOT_ISOLATED"
+    elif not resolution_ready:
+        status = "RESOLUTION_BLOCKED"
+    elif resource_profile.get("status") != "RESOURCE_ADMITTED":
+        status = str(resource_profile.get("status") or "RESOURCE_PROFILE_INVALID")
+    elif not prediction_contract:
+        status = "RESOURCE_PROFILE_INVALID"
+    elif (
+        isinstance(efficiency_comparison, Mapping)
+        and efficiency_comparison.get("mechanism_preserved") is not True
+    ):
+        status = "RESOURCE_DEFERRED_IMPLEMENTATION_EFFICIENCY_MECHANISM_DRIFT"
+    elif (
+        isinstance(efficiency_comparison, Mapping)
+        and efficiency_comparison.get("improved") is not True
+    ):
+        status = "RESOURCE_DEFERRED_IMPLEMENTATION_EFFICIENCY_NOT_IMPROVED"
+    elif semantic_duplicate:
+        status = "SEMANTIC_DUPLICATE"
+    else:
+        status = "RESOURCE_ADMITTED"
+    admitted = status == "RESOURCE_ADMITTED" and utility.runnable_probability > 0.0
+    return canonical_value(
+        {
+            "admitted": admitted,
+            "candidate_ref": resource_profile.get("candidate_ref"),
+            "candidate_package_digest": resource_profile.get(
+                "candidate_package_digest"
+            ),
+            "effect_fields_consumed": [],
+            "feature_evidence": feature_evidence.to_dict(),
+            "held_out_reads": 0,
+            "mechanism_effect_updates": 0,
+            "outcome_fields_consumed": [],
+            "preoutcome_score": preoutcome_score,
+            "qualification": {
+                "disposable_process": qualification_isolated,
+                "receipt_digest": qualification_digest,
+                "status": qualification_status,
+            },
+            "resolution": {
+                "digest": resolution_digest,
+                "ready": resolution_ready,
+            },
+            "resource_profile_digest": resource_profile.get("profile_digest"),
+            "implementation_efficiency_comparison": efficiency_comparison,
+            "schema": "recclaw.research-line.innovation-quality-admission.v1",
+            "status": status,
+            "spec_digest": spec.digest,
+            "utility_features": utility.to_dict(),
+            "runnable_probability": utility.runnable_probability,
+        }
+    )
+
+
+def build_research_context(repo_root: Path) -> dict[str, Any]:
+    """Project accepted evidence without held-out data or effect authority."""
+
+    q0r2_path = (
+        repo_root
+        / "docs/research_line/vnext/Q0R2_RESOURCE_ADMISSION_CANONICAL_RECEIPT.json"
+    )
+    if bytes_sha256(q0r2_path.read_bytes()) != Q0R2_CANONICAL_SHA256:
+        raise IdeaQualityError("accepted Q0R2 receipt byte drift")
+    q0r2 = json.loads(q0r2_path.read_text(encoding="utf-8"))
+    if (
+        q0r2.get("status") != "PASS"
+        or q0r2.get("held_out_reads") != 0
+        or q0r2.get("effect_untouched", {}).get("mechanism_effect_updates") != 0
+        or q0r2.get("evaluation", {}).get("q1_allowed") is not True
+    ):
+        raise IdeaQualityError("accepted Q0R2 context contract drift")
+    results = q0r2["fresh_results"]
+    return canonical_value(
+        {
+            "schema": "recclaw.research-line.q1-accepted-context.v1",
+            "evidence_class": "DEVELOPMENT_ONLY",
+            "accepted_q0r2_receipt_sha256": Q0R2_CANONICAL_SHA256,
+            "accepted_q0r2_physical_sha256": Q0R2_PHYSICAL_SHA256,
+            "observed_research_gap": (
+                "Accepted frontier and known-good packages were qualified but resource-"
+                "deferred without mechanism-effect updates; earlier fresh realizations "
+                "also lacked an explicit isolatable wedge and executable mechanism-off."
+            ),
+            "resource_observations": {
+                "matched_control": {
+                    "exit_status": results["matched_bpr_control"]["exit_status"],
+                    "deadline_seconds": results["matched_bpr_control"][
+                        "deadline_seconds"
+                    ],
+                },
+                "parent_equivalent": {
+                    "exit_status": results["parent_equivalent_null"]["exit_status"],
+                    "deadline_seconds": results["parent_equivalent_null"][
+                        "deadline_seconds"
+                    ],
+                },
+                "frontier": {
+                    "exit_status": results["frontier_candidate"]["exit_status"],
+                    "resource_disposition": results["frontier_candidate"][
+                        "missingness"
+                    ]["resource_disposition"],
+                },
+                "known_good": {
+                    "exit_status": results["known_good_reference"]["exit_status"],
+                    "resource_disposition": results["known_good_reference"][
+                        "missingness"
+                    ]["resource_disposition"],
+                },
+            },
+            "allowed_dependencies": list(AVAILABLE_DEPENDENCIES),
+            "budget_limits": BUDGET_LIMITS,
+            "protocol_requirements": list(PROTOCOL_REQUIREMENTS),
+            "effect_fields_consumed": [],
+            "mechanism_effect_updates": 0,
+            "held_out_reads": 0,
+        }
+    )
+
+
+def _provider_usage(groups: Sequence[Sequence[Mapping[str, Any]]]) -> dict[str, int]:
+    attempts = [attempt for group in groups for attempt in group]
+    successes = [row for row in attempts if row.get("status") == "SUCCESS"]
+    return {
+        "physical_calls": len(attempts),
+        "successful_calls": len(successes),
+        "retries": max(0, len(attempts) - len(groups)),
+        "input_tokens": sum(int(row.get("input_tokens", 0)) for row in successes),
+        "output_tokens": sum(int(row.get("output_tokens", 0)) for row in successes),
+        "billed_tokens": sum(int(row.get("billed_tokens", 0)) for row in successes),
+        "provider_wall_time_ms": sum(
+            int(row.get("latency_ms", 0)) for row in attempts
+        ),
+    }
+
+
+def _q1_unit_check(spec: OpenResearchSpecV1):
+    def factory(evidence: dict[str, Any]):
+        base = _structural_calibration_unit_check(evidence)
+
+        def check(model: Any, config: Any, dataset: Any) -> None:
+            base(model, config, dataset)
+            if spec.realization_mode is None:
+                evidence["realization_conformance"] = "LEGACY_BASELINE_NOT_DECLARED"
+                return
+            if spec.realization_mode is RealizationModeV1.NON_NESTED:
+                evidence["realization_conformance"] = "PASS_NON_NESTED_DIRECT"
+                evidence["mechanism_off_execution"] = "MATCHED_PARENT_PACKAGE_REQUIRED"
+                return
+            import torch
+
+            from recbole.data.interaction import Interaction
+            from recbole.model.general_recommender.bpr import BPR
+
+            switch = getattr(model, "set_mechanism_enabled", None)
+            if not callable(switch):
+                raise AssertionError(
+                    "PARENT_PRESERVING realization lacks set_mechanism_enabled"
+                )
+            baseline = BPR(config, dataset).to(config["device"])
+            with torch.no_grad():
+                baseline.user_embedding.weight.copy_(model.user_embedding.weight)
+                baseline.item_embedding.weight.copy_(model.item_embedding.weight)
+            pair = Interaction(
+                {
+                    model.USER_ID: torch.tensor([1, 2], device=config["device"]),
+                    model.ITEM_ID: torch.tensor([1, 2], device=config["device"]),
+                    model.NEG_ITEM_ID: torch.tensor([2, 3], device=config["device"]),
+                }
+            )
+            users = Interaction(
+                {model.USER_ID: torch.tensor([1, 2], device=config["device"])}
+            )
+            switch(False)
+            model.eval()
+            baseline.eval()
+            with torch.no_grad():
+                predict_delta = float(
+                    torch.max(
+                        torch.abs(model.predict(pair) - baseline.predict(pair))
+                    ).item()
+                )
+                full_sort_delta = float(
+                    torch.max(
+                        torch.abs(
+                            model.full_sort_predict(users)
+                            - baseline.full_sort_predict(users)
+                        )
+                    ).item()
+                )
+            model.train()
+            baseline.train()
+            candidate_loss = model.calculate_loss(pair)
+            baseline_loss = baseline.calculate_loss(pair)
+            candidate_values = (
+                candidate_loss if isinstance(candidate_loss, tuple) else (candidate_loss,)
+            )
+            baseline_values = (
+                baseline_loss if isinstance(baseline_loss, tuple) else (baseline_loss,)
+            )
+            loss_delta = float(
+                torch.abs(
+                    sum(value.reshape(()) for value in candidate_values).detach()
+                    - sum(value.reshape(()) for value in baseline_values).detach()
+                ).item()
+            )
+            switch(True)
+            if max(predict_delta, full_sort_delta, loss_delta) > 1e-7:
+                raise AssertionError(
+                    "PARENT_PRESERVING mechanism-off does not recover parent behavior"
+                )
+            evidence.update(
+                {
+                    "realization_conformance": "PASS_PARENT_PRESERVING",
+                    "mechanism_off_execution": "PASS",
+                    "mechanism_off_predict_max_abs_delta": predict_delta,
+                    "mechanism_off_full_sort_max_abs_delta": full_sort_delta,
+                    "mechanism_off_loss_abs_delta": loss_delta,
+                }
+            )
+
+        return check
+
+    return factory
+
+
+def project_q1_resource_admission(
+    *,
+    spec: OpenResearchSpecV1,
+    resolution: Any,
+    qualification_status: str,
+    candidate_package_digest: str,
+    source_path: Path,
+) -> dict[str, Any]:
+    """Admit one qualified package to a Q0R2-style resource-only probe plan."""
+
+    source = structural_features(source_path)
+    eligible = (
+        qualification_status == "PASS"
+        and resolution.protocol_compatible
+        and resolution.dependency_compatible
+        and resolution.budget_compatible
+    )
+    schedule = []
+    if eligible:
+        schedule.append(
+            {
+                "ordinal": 1,
+                "action": "Q0R2_FIXED_BATCH_PREFIX_RESOURCE_PROBE",
+                "candidate_package_digest": candidate_package_digest,
+                "epochs": PROBE_EPOCHS,
+                "deadline_seconds": PROBE_TIMEOUT_SECONDS,
+                "prefix_contract_sha256": Q0R_V2_PREFIX_CONTRACT_SHA256,
+                "effect_update_allowed": False,
+            }
+        )
+    return canonical_value(
+        {
+            "schema": "recclaw.research-line.q1-resource-only-admission.v1",
+            "status": "RESOURCE_PROBE_ADMITTED" if schedule else "RESOURCE_DEFERRED",
+            "resource_hypothesis": spec.resource_hypothesis,
+            "source_features": source,
+            "schedule": schedule,
+            "outcome_fields_consumed": [],
+            "effect_fields_consumed": [],
+            "mechanism_effect_updates": 0,
+            "resource_censor_updates_effect": False,
+            "held_out_reads": 0,
+        }
+    )
+
+
+def run_idea_quality(
+    repo_root: Path,
+    *,
+    run_root: Path,
+    stop_after_pool: bool = False,
+    provider_run_identity: str = Q1_RUN_IDENTITY,
+    proposal_seeds: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
+    """Execute the one-shot real Q1 Producer-to-resource-plan chain."""
+
+    repo_root = repo_root.resolve()
+    run_root = run_root.resolve()
+    if run_root.exists():
+        raise IdeaQualityError(f"Q1 root already exists: {run_root}")
+    effective_proposal_seeds = dict(proposal_seeds or Q1_PROPOSAL_SEEDS)
+    if set(effective_proposal_seeds) != set(Q1_CANDIDATE_SLOTS) or any(
+        not isinstance(value, int) or isinstance(value, bool)
+        for value in effective_proposal_seeds.values()
+    ):
+        raise IdeaQualityError("proposal seeds must exactly cover the frozen Q1 slots")
+    if not provider_run_identity or any(
+        character.isspace() for character in provider_run_identity
+    ):
+        raise IdeaQualityError("provider_run_identity must be whitespace-free")
+    started_ns = time.monotonic_ns()
+    context = build_research_context(repo_root)
+    artifacts, _r1_receipt = load_registered_r1_artifacts(repo_root)
+    registry = build_r1_registry(artifacts)
+    _current, _manifest, _next, _build, active = build_active_r2_profile(registry)
+    catalog = public_active_profile_catalog(active, artifacts, seed=55000)
+    ab_contract = build_q1_ab_contract()
+    context_digest = sha256_digest(context)
+    bindings = canonical_value(
+        {
+            **_r2_bindings(active),
+            "context_ref": Q1_CONTEXT_REF,
+            "context_digest": context_digest,
+        }
+    )
+    environment = _r2_environment(active)
+    resources = Path(__file__).resolve().parent / "resources"
+    producer_template_path = resources / "idea_quality_producer_prompt_v1.txt"
+    implementer_template_path = resources / "idea_quality_implementer_prompt_v1.txt"
+    implementation_schema_path = resources / "fresh_r1_implementation_response_v1.schema.json"
+    tool_policy_path = resources / "fresh_open_spec_tool_policy_v1.json"
+    baseline_schema = derive_fresh_r2_proposal_schema()
+    enriched_schema = derive_enriched_proposal_schema()
+
+    run_root.mkdir(parents=True)
+    _write_new_json(run_root / "AB_CONTRACT_BEFORE_PROVIDER.json", ab_contract)
+    _write_new_json(run_root / "RESEARCH_CONTEXT.json", context)
+    schema_paths = {
+        "baseline": run_root / "contracts/baseline.schema.json",
+        "enriched": run_root / "contracts/enriched.schema.json",
+    }
+    _write_new_json(schema_paths["baseline"], baseline_schema)
+    _write_new_json(schema_paths["enriched"], enriched_schema)
+
+    pools: dict[str, list[dict[str, Any]]] = {"baseline": [], "enriched": []}
+    live: dict[tuple[str, str], tuple[OpenResearchSpecV1, Any]] = {}
+    proposal_attempt_groups: list[Sequence[Mapping[str, Any]]] = []
+    template = producer_template_path.read_text(encoding="utf-8")
+    for arm in ("baseline", "enriched"):
+        schema = baseline_schema if arm == "baseline" else enriched_schema
+        for slot in Q1_CANDIDATE_SLOTS:
+            prompt = render_q1_producer_prompt(
+                template,
+                arm=arm,
+                slot=slot,
+                role=Q1_SLOT_ROLES[slot],
+                seed=effective_proposal_seeds[slot],
+                context=context,
+                profile_catalog=catalog,
+                protocol_ref=active.protocol_ref,
+                protocol_digest=active.protocol_digest,
+                context_ref=Q1_CONTEXT_REF,
+                context_digest=context_digest,
+                profile_ref=active.profile_ref,
+                profile_digest=active.profile_digest,
+            )
+            call = bounded_provider_call(
+                call_root=run_root / "provider/proposals" / arm / slot,
+                schema_path=schema_paths[arm],
+                logical_call_id=f"{provider_run_identity}:{arm}:{slot}:proposal",
+                session_id=f"{provider_run_identity}:{slot}:paired-proposal-session",
+                prompt=prompt,
+                token_ceiling=Q1_PROPOSAL_TOKEN_CEILING,
+                maximum_physical_attempts=1,
+            )
+            proposal_attempt_groups.append(call.attempts)
+            if call.call is None:
+                pools[arm].append(
+                    {
+                        "slot": slot,
+                        "stage": "PROPOSAL_PROVIDER_FAILURE",
+                        "failure": call.failure,
+                        "provider_attempts": call.attempts,
+                    }
+                )
+                continue
+            validate_v4_response_contract(call.call.response, provider_schema=schema)
+            draft = call.call.response["proposals"][0]
+            if draft["producer_role"] != Q1_SLOT_ROLES[slot]:
+                raise IdeaQualityError("Provider changed paired Producer role")
+            if arm == "enriched" and draft["idea_mode"] != Q1_SLOT_MODES[slot]:
+                raise IdeaQualityError("Provider changed frozen enriched idea mode")
+            spec, facts = project_open_producer_draft(
+                draft,
+                bindings=bindings,
+                strict_resolution_contract=True,
+            )
+            resolution = resolve_capability(
+                spec, resolution_facts=facts, environment=environment
+            )
+            if resolution.resolution is CapabilityResolutionResultV1.INVALID_SPEC:
+                pools[arm].append(
+                    canonical_value(
+                        {
+                            "slot": slot,
+                            "producer_role": Q1_SLOT_ROLES[slot],
+                            "proposal_seed": effective_proposal_seeds[slot],
+                            "provider_attempts": call.attempts,
+                            "proposal_response_digest": call.call.response_digest,
+                            "research_spec": spec.canonical_dict(),
+                            "resolution_facts": facts,
+                            "resolution": resolution.canonical_dict(),
+                            "manual_candidate_patches": 0,
+                            "stage": "INVALID_SPEC",
+                        }
+                    )
+                )
+                continue
+            feasible = resolution.resolution in {
+                CapabilityResolutionResultV1.SEARCH_READY,
+                CapabilityResolutionResultV1.INNOVATION_REQUIRED,
+            }
+            score = score_preoutcome_testability(
+                spec, q0r2_resource_feasible=feasible
+            )
+            record = canonical_value(
+                {
+                    "slot": slot,
+                    "producer_role": Q1_SLOT_ROLES[slot],
+                    "proposal_seed": effective_proposal_seeds[slot],
+                    "provider_attempts": call.attempts,
+                    "proposal_response_digest": call.call.response_digest,
+                    "research_spec": spec.canonical_dict(),
+                    "resolution_facts": facts,
+                    "resolution": resolution.canonical_dict(),
+                    "preoutcome_score": score,
+                    "manual_candidate_patches": 0,
+                    "stage": "OPENSPEC_FROZEN",
+                }
+            )
+            pools[arm].append(record)
+            live[(arm, slot)] = (spec, resolution)
+
+    if any(len(rows) != len(Q1_CANDIDATE_SLOTS) for rows in pools.values()) or any(
+        row.get("stage") != "OPENSPEC_FROZEN"
+        for rows in pools.values()
+        for row in rows
+    ):
+        raise IdeaQualityError("Q1 candidate pool did not freeze completely")
+    selected: dict[str, dict[str, Any]] = {}
+    for arm, rows in pools.items():
+        selected[arm] = sorted(
+            rows,
+            key=lambda row: (
+                -int(row["preoutcome_score"]["total"]),
+                Q1_CANDIDATE_SLOTS.index(str(row["slot"])),
+                str(row["research_spec"]["schema"]),
+                sha256_digest(row["research_spec"]),
+            ),
+        )[0]
+    frozen_selection = canonical_value(
+        {
+            "schema": "recclaw.research-line.q1-frozen-selection.v1",
+            "candidate_pools": pools,
+            "selected": {
+                arm: {
+                    "slot": row["slot"],
+                    "spec_digest": sha256_digest(row["research_spec"]),
+                    "score": row["preoutcome_score"],
+                }
+                for arm, row in selected.items()
+            },
+            "selection_rule": ab_contract["selection_rule"],
+            "implementation_or_qualification_outcomes_present_when_written": 0,
+            "outcome_fields_consumed": [],
+            "held_out_reads": 0,
+        }
+    )
+    frozen_selection_digest = _write_new_json(
+        run_root / "FROZEN_SELECTION_BEFORE_IMPLEMENTATION.json", frozen_selection
+    )
+
+    if stop_after_pool:
+        proposal_usage = _provider_usage(proposal_attempt_groups)
+        receipt = canonical_value(
+            {
+                "schema": "recclaw.research-line.q4-provider-resolver-pool.v1",
+                "status": "POOL_FROZEN_BEFORE_IMPLEMENTATION",
+                "provider_run_identity": provider_run_identity,
+                "proposal_seeds": effective_proposal_seeds,
+                "candidate_count": sum(len(rows) for rows in pools.values()),
+                "candidate_pools": pools,
+                "frozen_pool_ref": str(
+                    run_root / "FROZEN_SELECTION_BEFORE_IMPLEMENTATION.json"
+                ),
+                "frozen_pool_sha256": frozen_selection_digest,
+                "proposal_provider_usage": proposal_usage,
+                "implementation_provider_calls": 0,
+                "implementation_or_qualification_outcomes_present_when_written": 0,
+                "outcome_fields_consumed": [],
+                "retries": proposal_usage["retries"],
+                "held_out_reads": 0,
+                "development_only": True,
+                "scientific_effect_claim": False,
+            }
+        )
+        _write_new_json(run_root / "PROVIDER_RESOLVER_RECEIPT.json", receipt)
+        return receipt
+
+    implementer_template = implementer_template_path.read_text(encoding="utf-8")
+    policy = _shared_policy(
+        bytes_sha256(implementer_template_path.read_bytes()),
+        bytes_sha256(tool_policy_path.read_bytes()),
+    )
+    implementation_attempt_groups: list[Sequence[Mapping[str, Any]]] = []
+    selected_results: dict[str, dict[str, Any]] = {}
+    for arm in ("baseline", "enriched"):
+        slot = str(selected[arm]["slot"])
+        spec, resolution = live[(arm, slot)]
+        request = build_shared_implementer_request(spec, policy=policy)
+        prompt = render_implementation_prompt(implementer_template, request)
+        call = bounded_provider_call(
+            call_root=run_root / "provider/implementations" / arm,
+            schema_path=implementation_schema_path,
+            logical_call_id=f"{Q1_RUN_IDENTITY}:{slot}:implementation",
+            session_id=f"{Q1_RUN_IDENTITY}:paired-origin-blind-implementation-session",
+            prompt=prompt,
+            token_ceiling=Q1_IMPLEMENTATION_TOKEN_CEILING,
+            maximum_physical_attempts=1,
+        )
+        implementation_attempt_groups.append(call.attempts)
+        if call.call is None:
+            selected_results[arm] = {
+                "stage": "IMPLEMENTATION_PROVIDER_FAILURE",
+                "failure": call.failure,
+                "implementation_provider_attempts": call.attempts,
+            }
+            continue
+        materialized, qualification, behavior = _materialize_and_qualify(
+            repo_root=repo_root,
+            side_root=run_root / "selected" / arm,
+            slot_id=slot,
+            seed=Q1_QUALIFICATION_SEED,
+            spec=spec,
+            implementation=call.call.response["proposals"][0],
+            implementation_prompt_digest=bytes_sha256(
+                implementer_template_path.read_bytes()
+            ),
+            tool_policy_digest=bytes_sha256(tool_policy_path.read_bytes()),
+            run_identity=Q1_RUN_IDENTITY,
+            unit_check_factory=_q1_unit_check(spec),
+        )
+        candidate_root = (
+            run_root
+            / "selected"
+            / arm
+            / "candidates"
+            / slot
+            / str(materialized.shared_request["blind_candidate_id"])
+        )
+        source_path = candidate_root / "recclaw_ext/candidate.py"
+        qualification_payload = {
+            **qualification.to_dict(),
+            "behavioral_evidence": behavior,
+        }
+        _write_new_json(
+            run_root / "selected" / arm / "qualification.json",
+            qualification_payload,
+        )
+        _write_new_json(
+            run_root / "selected" / arm / "candidate_package.json",
+            materialized.to_dict(),
+        )
+        resource_admission = project_q1_resource_admission(
+            spec=spec,
+            resolution=resolution,
+            qualification_status=qualification.receipt.status.value,
+            candidate_package_digest=materialized.package.digest,
+            source_path=source_path,
+        )
+        _write_new_json(
+            run_root / "selected" / arm / "resource_admission.json",
+            resource_admission,
+        )
+        selected_results[arm] = canonical_value(
+            {
+                "slot": slot,
+                "spec_ref": spec.spec_id,
+                "spec_digest": spec.digest,
+                "resolution": resolution.resolution.value,
+                "resolution_digest": resolution.digest,
+                "implementation_provider_attempts": call.attempts,
+                "fresh_provider_implementation": True,
+                "candidate_root": str(candidate_root),
+                "candidate_package_digest": materialized.package.digest,
+                "candidate_source_tree_digest": materialized.package.source_tree_digest,
+                "entrypoint": materialized.package.executable_entrypoint,
+                "qualification_status": qualification.receipt.status.value,
+                "qualification_receipt_digest": qualification.receipt.digest,
+                "behavioral_evidence": behavior,
+                "resource_admission": resource_admission,
+                "manual_candidate_patches": 0,
+                "effect_update_count": 0,
+                "stage": (
+                    "RESOURCE_PLAN_ADMITTED"
+                    if resource_admission["schedule"]
+                    else "RESOURCE_DEFERRED"
+                ),
+            }
+        )
+
+    proposal_usage = _provider_usage(proposal_attempt_groups)
+    implementation_usage = _provider_usage(implementation_attempt_groups)
+    enriched_modes = sorted(
+        row["research_spec"]["idea_mode"] for row in pools["enriched"]
+    )
+    enriched_selected = selected_results.get("enriched", {})
+    gates = {
+        "function_real_and_runnable": all(
+            row.get("qualification_status") == QualificationStatusV1.PASS.value
+            for row in selected_results.values()
+        ),
+        "end_to_end_result_chain_real_and_valid": all(
+            bool(row.get("resource_admission", {}).get("schedule"))
+            for row in selected_results.values()
+        ),
+        "serves_open_algorithm_research_target": (
+            enriched_modes
+            == ["DIAGNOSIS_DRIVEN", "FRONTIER_HYPOTHESIS"]
+            and bool(enriched_selected.get("behavioral_evidence"))
+        ),
+        "no_fixed_66_tuning_static_wrapper_fallback_mock_or_smoke_substitution": all(
+            row.get("fresh_provider_implementation") is True
+            and row.get("manual_candidate_patches") == 0
+            and row.get("behavioral_evidence", {}).get("probe_status", "").startswith(
+                "PASS"
+            )
+            for row in selected_results.values()
+        ),
+    }
+    retry_count = proposal_usage["retries"] + implementation_usage["retries"]
+    status = "PASS_DEVELOPMENT_ONLY" if all(gates.values()) else "HARD_BLOCK"
+    receipt = canonical_value(
+        {
+            "schema": "recclaw.research-line.q1-idea-openspec-quality-canonical-receipt.v1",
+            "status": status,
+            "development_only": True,
+            "input_identity": {
+                "accepted_q0r2_commit": Q1_BASE_COMMIT,
+                "accepted_q0r2_parent": Q1_BASE_PARENT,
+                "accepted_q0r2_tree": Q1_BASE_TREE,
+                "accepted_q0r2_receipt_sha256": Q0R2_CANONICAL_SHA256,
+                "branch": Q1_BRANCH,
+                "source_files": {
+                    path.relative_to(repo_root).as_posix(): bytes_sha256(path.read_bytes())
+                    for path in (
+                        Path(__file__),
+                        Path(__file__).with_name("open_spec.py"),
+                        producer_template_path,
+                        implementer_template_path,
+                    )
+                },
+            },
+            "provider_schema_realization": {
+                "baseline_schema_sha256": sha256_digest(baseline_schema),
+                "enriched_schema_sha256": sha256_digest(enriched_schema),
+                "provider_conditional_keywords": [],
+                "cross_field_semantic_validator": "project_open_producer_draft",
+                "semantic_quality_gate_relaxed": False,
+            },
+            "ab_contract": ab_contract,
+            "research_context_digest": context_digest,
+            "frozen_selection_sha256": frozen_selection_digest,
+            "selected_results": selected_results,
+            "proposal_provider_usage": proposal_usage,
+            "implementation_provider_usage": implementation_usage,
+            "retry_count": retry_count,
+            "manual_candidate_patches": 0,
+            "preoutcome_interface_fix": {
+                "count": 1,
+                "failure_phase": "PROMPT_RENDER_BEFORE_ANY_PROVIDER_CALL",
+                "failure_type": "FALSE_POSITIVE_PLACEHOLDER_DETECTION",
+                "fix": (
+                    "match only unresolved uppercase template tokens instead of "
+                    "rejecting double braces inside real research/profile context"
+                ),
+                "abandoned_root": (
+                    "/tmp/recclaw_q1_idea_quality_278391a_20260802_01/run"
+                ),
+                "candidate_or_selection_changed": False,
+                "provider_calls_before_fix": 0,
+                "mechanism_negative_evidence": False,
+            },
+            "held_out_reads": 0,
+            "resource_censored_count": 0,
+            "resource_censored_mechanism_effect_updates": 0,
+            "effect_update_count": 0,
+            "architecture_quality_signal": {
+                "baseline_current_schema_candidate_count": len(pools["baseline"]),
+                "enriched_candidate_count": len(pools["enriched"]),
+                "enriched_modes": enriched_modes,
+                "enriched_selected_has_explicit_wedge": bool(
+                    selected["enriched"]["research_spec"].get(
+                        "minimal_testable_wedge"
+                    )
+                ),
+                "enriched_selected_has_executable_mechanism_off": (
+                    enriched_selected.get("behavioral_evidence", {}).get(
+                        "mechanism_off_execution"
+                    )
+                    in {"PASS", "MATCHED_PARENT_PACKAGE_REQUIRED"}
+                ),
+                "scientific_effect": "NOT_ADJUDICATED",
+            },
+            "evaluation": {
+                "gates": gates,
+                "formal_scientific_experiment": False,
+                "scientific_effect_claim": False,
+                "formal_acceptance_self_approved": False,
+                "q2_continuation_allowed": status == "PASS_DEVELOPMENT_ONLY",
+            },
+            "scientific_effect_claim": False,
+            "wall_time_ms": max(1, (time.monotonic_ns() - started_ns) // 1_000_000),
+        }
+    )
+    receipt_digest = _write_new_json(run_root / "Q1_CANONICAL_RECEIPT.json", receipt)
+    return canonical_value(
+        {
+            "status": status,
+            "canonical_receipt_sha256": receipt_digest,
+            "selected_enriched_package_digest": enriched_selected.get(
+                "candidate_package_digest"
+            ),
+            "selected_enriched_resource_plan_nonempty": bool(
+                enriched_selected.get("resource_admission", {}).get("schedule")
+            ),
+            "held_out_reads": 0,
+            "effect_update_count": 0,
+        }
+    )

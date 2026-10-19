@@ -1,0 +1,310 @@
+"""Independent graph task worker. Launch inside the existing owner boundary.
+
+No Provider, scheduler, heldout evaluator or generic search controller lives here.
+Without --execute this verifies the proposed binding only. Candidate execution
+requires the existing external isolation, resource meter and timeout launcher.
+"""
+import argparse
+import hashlib
+import importlib.util
+import json
+import math
+import os
+from pathlib import Path
+import shutil
+import sys
+import time
+
+
+def digest(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def write_json(path, value):
+    Path(path).write_text(json.dumps(value, indent=2, allow_nan=False), encoding="utf-8")
+
+
+def inspect_binding(binding, *, execute=False):
+    if execute and binding["status"] != "FROZEN":
+        raise ValueError("Owner must freeze the new task binding before execution")
+    if binding["line"] not in ("ngcf", "lightgcnpp"):
+        raise ValueError("Unknown independent graph line")
+    if binding["task_id"] != "NGCF_EL_NATIVE_SEARCH_20261013" or binding["dataset"] != "electronics":
+        raise ValueError("Expected frozen main-protocol transfer identity")
+    if set(binding["data_files"]) != {"train", "dev", "user", "item"}:
+        raise ValueError("Only the four original search files are permitted")
+    for role, item in binding["data_files"].items():
+        expected = {"train": binding["dataset"]+".train.inter", "dev": binding["dataset"]+".dev.inter",
+                    "user": binding["dataset"]+".user", "item": binding["dataset"]+".item"}[role]
+        if Path(item["path"]).name != expected or digest(item["path"]) != item["sha256"]:
+            raise ValueError("Search asset identity mismatch: " + role)
+    recipe = binding["training"]
+    if recipe["epochs"] < 1 or recipe["patience"] < 1 or recipe["eval_step"] < 1:
+        raise ValueError("Explicit positive training horizon and stopping settings required")
+    metric, cutoff = binding["evaluation"]["primary_metric"].split("@")
+    if metric not in binding["evaluation"]["metrics"] or int(cutoff) not in binding["evaluation"]["topk"]:
+        raise ValueError("Primary metric must be part of the fixed full-sort evaluator")
+    if binding["evaluation"]["candidate_universe"] != "FIXED_100_UNIFORM":
+        raise ValueError("Graph task uses full-sort evaluation")
+    # Prevent model hyperparameters from overriding trusted scientific inputs.
+    allowed = {"embedding_size", "n_layers", "alpha", "beta", "gamma", "reg_weight",
+               "hidden_size_list", "message_dropout"}
+    if not set(binding["model_config"]).issubset(allowed):
+        raise ValueError("Unexpected model config field outside model-only parameters")
+    return {"task_id": binding["task_id"], "status": binding["status"],
+            "epochs": recipe["epochs"], "patience": recipe["patience"],
+            "primary_metric": binding["evaluation"]["primary_metric"]}
+
+
+def config_values(binding, output, seed, device):
+    """All training/evaluation choices come from this task, never old E1 defaults."""
+    output = Path(output)
+    t, e = binding["training"], binding["evaluation"]
+    return dict(binding["model_config"],
+        data_path=str(output / "data"), benchmark_filename=["train", "dev", "dev"],
+        load_col={"inter": ["user_id", "item_id"], "user": ["user_id"], "item": ["item_id"]},
+        USER_ID_FIELD="user_id", ITEM_ID_FIELD="item_id", NEG_PREFIX="neg_",
+        field_separator="\t", user_inter_num_interval="[0,inf)", item_inter_num_interval="[0,inf)",
+        filter_inter_by_user_or_item=False, rm_dup_inter=None,
+        epochs=t["epochs"], stopping_step=t["patience"], eval_step=t["eval_step"],
+        train_batch_size=t["batch_size"], eval_batch_size=e["batch_size"],
+        learner="adam", learning_rate=t["learning_rate"], weight_decay=t["weight_decay"],
+        train_neg_sample_args={"distribution": "uniform", "sample_num": 1,
+                               "alpha": 1.0, "dynamic": False, "candidate_num": 0},
+        eval_args={"split": {"RS": [0.8, 0.1, 0.1]}, "group_by": "user", "order": "RO", "mode": "full"},
+        metrics=e["metrics"], topk=e["topk"], valid_metric=e["primary_metric"], valid_metric_bigger=True,
+        metric_decimal_place=8, checkpoint_dir=str(output / "checkpoints"),
+        dataset_save_path=str(output / "unused_dataset_cache.pth"),
+        dataloaders_save_path=str(output / "unused_dataloader_cache.pth"),
+        save_dataset=False, save_dataloaders=False,
+        seed=seed, reproducibility=True, shuffle=True, worker=0,
+        use_gpu=device == "cuda", gpu_id="0", device=device, show_progress=False,
+        enable_amp=False, enable_scaler=False, log_wandb=False)
+
+
+def load_model(source):
+    spec = importlib.util.spec_from_file_location("graph_candidate", source)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # RecBole pickles Config.model_class in checkpoints
+    spec.loader.exec_module(module)
+    return module.FreshCandidateModel
+
+
+def clear_cache(model):
+    model.restore_user_e = model.restore_item_e = None
+
+
+class GraphMemoryPeak:
+    """CUDA allocator peaks, including setup, every epoch and checkpoint reload."""
+    def __init__(self, torch, output, source, binding_sha, seed):
+        self.torch, self.output = torch, output
+        self.allocated = self.reserved = 0
+        self.seconds = 0.0
+        self.events = 0
+        self.complete = False
+        boundary = Path(os.environ["SE_E2_OS_RECEIPT"])
+        self.identity = dict(namespace_pid=os.getpid(), namespace_ppid=os.getppid(),
+            gpu_uuid=os.environ["CUDA_VISIBLE_DEVICES"], logical_device=0,
+            source_sha256=digest(source), binding_sha256=binding_sha, train_seed=seed,
+            os_boundary_path=str(boundary), os_boundary_sha256=digest(boundary),
+            worker_source_sha256=digest(Path(__file__)),
+            process_mapping_basis="Join exact native control_job command, GPU_WORKER_EVENTS worker_pid/GPU UUID and physical OS boundary; namespace PID is not assumed to be the NVML host PID.")
+        self.begin()
+
+    def begin(self):
+        started = time.monotonic()
+        self.torch.cuda.reset_peak_memory_stats(0)
+        self.seconds += time.monotonic() - started
+
+    def end(self, phase, epoch=None, complete=False):
+        started = time.monotonic()
+        cuda = self.torch.cuda
+        event = dict(phase=phase, epoch=epoch, utc_ns=time.time_ns(),
+            max_allocated_bytes=cuda.max_memory_allocated(0),
+            max_reserved_bytes=cuda.max_memory_reserved(0),
+            allocated_bytes=cuda.memory_allocated(0), reserved_bytes=cuda.memory_reserved(0))
+        self.allocated = max(self.allocated, event["max_allocated_bytes"])
+        self.reserved = max(self.reserved, event["max_reserved_bytes"])
+        self.events += 1
+        self.complete = complete
+        with (self.output / "GPU_MEMORY_PHASES.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(event) + "\n")
+        self.seconds += time.monotonic() - started
+        write_json(self.output / "GPU_MEMORY_PEAK.json", self.summary())
+
+    def summary(self):
+        return dict(schema="graph.full-fit-cuda-allocator-peak.v1", identity=self.identity,
+            status="COMPLETE" if self.complete else "IN_PROGRESS", phase_events=self.events,
+            max_allocated_bytes=self.allocated, max_reserved_bytes=self.reserved,
+            telemetry_seconds_excluding_summary_write=self.seconds,
+            timing_basis="Native active/GPU/wall costs include telemetry; epoch timers exclude end-of-phase observation. Do not claim isolated throughput equivalence.",
+            allocator_allowed_bytes=9 * 1024 ** 3,
+            unmeasured="Non-PyTorch CUDA/context memory and NVML host-process total; no automatic reservation reduction.")
+
+
+def execute(binding, source, output, seed, device, role, binding_sha):
+    """One worker attempt only; restart/retry and cumulative budgets belong to main."""
+    import torch
+    from recbole.config import Config
+    from recbole.data import create_dataset, data_preparation
+    from recbole.data.interaction import Interaction
+    from recbole.trainer import Trainer
+    from recbole.utils import init_seed
+
+    output.mkdir(parents=True, exist_ok=False)  # never overwrite/replay old attempt
+    started = time.monotonic()
+    os.chdir(output)  # RecBole event/log files stay in this new writable attempt
+    data = output / "data" / binding["dataset"]
+    data.mkdir(parents=True)
+    for item in binding["data_files"].values():
+        shutil.copyfile(item["path"], data / Path(item["path"]).name)
+    model_class = load_model(source)
+    values = config_values(binding, output, seed, device)
+    # Do not let RecBole's sys.argv parser override a frozen configuration.
+    previous_argv = sys.argv
+    try:
+        sys.argv = [previous_argv[0]]
+        config = Config(model=model_class, dataset=binding["dataset"], config_dict=values)
+    finally:
+        sys.argv = previous_argv
+    assert config["epochs"] == values["epochs"] and config["stopping_step"] == values["stopping_step"]
+    assert config["valid_metric"] == values["valid_metric"]
+    if device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("Requested assigned CUDA worker is unavailable; no CPU fallback")
+    memory = GraphMemoryPeak(torch, output, source, binding_sha, seed) if device == "cuda" else None
+    init_seed(seed, True)
+    dataset = create_dataset(config)
+    # Runtime-only batching: match BERT user batching, retain full-sort universe.
+    values["eval_batch_size"] = 64 * dataset.item_num
+    config["eval_batch_size"] = values["eval_batch_size"]
+    train, valid, unused_dev_alias = data_preparation(config, dataset)
+    # The third loader is a required RecBole API alias of dev, never a test set.
+    del unused_dev_alias
+    mapping = {field: list(map(str, dataset.field2id_token[field])) for field in ("user_id", "item_id")}
+    mapping_sha = hashlib.sha256(json.dumps(mapping, sort_keys=True).encode()).hexdigest()
+    expected_mapping = binding.get("catalog_mapping_sha256")
+    if expected_mapping is not None and mapping_sha != expected_mapping:
+        raise ValueError("Effective catalog mapping differs from the frozen task")
+    if role == "candidate" and expected_mapping is None:
+        raise ValueError("Candidate runs require the root's frozen catalog mapping")
+    write_json(output / "ID_MAPPING.json", mapping)
+    init_seed(seed, True)
+    model = model_class(config, train._dataset).to(config["device"])
+    write_json(output / "BOUNDARY.json", dict(task_id=binding["task_id"], role=role,
+        binding_sha256=binding_sha, source_sha256=digest(source), train_seed=seed,
+        mapped_users=dataset.user_num, mapped_items=dataset.item_num,
+        catalog_mapping_sha256=mapping_sha, train_interactions=len(train._dataset),
+        dev_interactions=len(valid._dataset), data_files=binding["data_files"],
+        actual_config=values, actual_embedding_shapes={n:list(m.weight.shape) for n,m in model.named_modules() if isinstance(m, torch.nn.Embedding)}, torch_version=torch.__version__, device=str(config["device"]),
+        heldout_accessed=False, graph_input="train._dataset only"))
+
+    if memory is not None: memory.end("setup")
+
+    class CurveTrainer(Trainer):
+        # Observation only: retain native optimizer, epoch, stopping and evaluator.
+        def _train_epoch(self, train_data, epoch_idx, *args, **kwargs):
+            self.graph_epoch = epoch_idx
+            if memory is not None: memory.begin()
+            t0 = time.monotonic()
+            from acceleration_prototype import TransposeCache
+            with TransposeCache(csr=True):
+                loss = super()._train_epoch(train_data, epoch_idx, *args, **kwargs)
+            self.graph_train_seconds = time.monotonic() - t0
+            self.graph_loss = loss
+            if memory is not None: memory.end("training", epoch_idx)
+            return loss
+
+        def _valid_epoch(self, valid_data, *args, **kwargs):
+            if memory is not None: memory.begin()
+            t0 = time.monotonic()
+            from sampled_eval import evaluate_dev
+            metrics = evaluate_dev(self.model, config, valid_data, binding['dev_candidate_pool'])
+            score = metrics[binding['evaluation']['primary_metric'].lower()]
+            row = dict(epoch=self.graph_epoch, loss=self.graph_loss, score=score, metrics=metrics,
+                       train_seconds=self.graph_train_seconds, validation_seconds=time.monotonic()-t0,
+                       elapsed_seconds=time.monotonic()-started)
+            with (output / "LEARNING_CURVE.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(row, allow_nan=False) + "\n")
+            if memory is not None: memory.end("validation", self.graph_epoch)
+            return score, metrics
+
+    trainer = CurveTrainer(config, model)
+    if memory is not None: memory.end("trainer_init")
+    best_score, metrics = trainer.fit(train, valid, saved=True, show_progress=False)
+    epochs_completed = getattr(trainer, "graph_epoch", -1) + 1
+    stop_reason = ("EARLY_STOP" if trainer.cur_step > config["stopping_step"]
+                   else "EPOCH_LIMIT" if epochs_completed == config["epochs"]
+                   else "INCOMPLETE_OR_FIXTURE")
+    if not math.isfinite(float(best_score)) or not all(math.isfinite(float(v)) for v in metrics.values()):
+        raise ValueError("Nonfinite validation result")
+    if memory is not None:
+        memory.end("fit_tail")
+        memory.begin()
+    checkpoint = Path(trainer.saved_model_file)
+    saved = torch.load(checkpoint, map_location=config["device"], weights_only=False)
+    # Exact checkpoint integrity is checked separately from CUDA sparse-kernel
+    # accumulation order; the deterministic probe never re-evaluates dev/test.
+    from graph_checkpoint_verify import verify_checkpoint
+    probe = Interaction({model.USER_ID: train._dataset.inter_feat[model.USER_ID][:2]})
+    checkpoint_verification = verify_checkpoint(model_class, config, train._dataset,
+                                                model, saved, probe)
+    result = dict(status="SUCCESS", task_id=binding["task_id"], role=role, metrics=dict(metrics),
+        primary_metric=binding["evaluation"]["primary_metric"], best_score=float(best_score),
+        checkpoint=str(checkpoint), checkpoint_sha256=digest(checkpoint), best_epoch=int(saved["epoch"]),
+        source_sha256=digest(source), binding_sha256=binding_sha, train_seed=seed,
+        catalog_mapping_sha256=mapping_sha, checkpoint_reload_verified=True,
+        checkpoint_verification=checkpoint_verification,
+        epochs_completed=epochs_completed, max_epochs=config["epochs"],
+        early_stop_counter=trainer.cur_step, patience=config["stopping_step"],
+        stop_reason=stop_reason, evaluation_seed=binding["evaluation"].get("seed"),
+        wall_seconds=time.monotonic()-started, test_accessed=False,
+        evidence_class="ROOT_CALIBRATION" if role == "root" else "CANDIDATE_VALIDATION",
+        genuine_admission="OWNED_BY_EXTERNAL_COMMON_LEDGER")
+    if memory is not None:
+        memory.end("checkpoint_reload", complete=True)
+        result["gpu_memory_peak"] = memory.summary()
+    write_json(output / "RESULT.json", result)
+    trainer.tensorboard.close()
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binding", required=True, type=Path)
+    parser.add_argument("--candidate", required=True, type=Path)
+    parser.add_argument("--expected-source-sha", required=True)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--train-seed", required=True, type=int)
+    parser.add_argument("--device", choices=["cpu", "cuda"], required=True)
+    parser.add_argument("--role", choices=["root", "candidate"], required=True)
+    parser.add_argument("--execute", action="store_true")
+    args = parser.parse_args()
+    binding = json.loads(args.binding.read_bytes())
+    source, output = args.candidate.resolve(strict=True), args.output.resolve()
+    if digest(source) != args.expected_source_sha:
+        raise ValueError("Candidate source identity mismatch")
+    if args.role == "root" and args.expected_source_sha != binding["root_source_sha256"]:
+        raise ValueError("Root differs from its frozen original baseline")
+    inspection = inspect_binding(binding, execute=args.execute)
+    if not args.execute:
+        print(json.dumps(dict(inspection, executed=False)))
+        return
+    if output.exists():
+        raise FileExistsError("Use a fresh attempt path; existing evidence is preserved")
+    sys.path.insert(0, str(Path(binding["recbole_root"]).resolve(strict=True)))
+    started = time.monotonic()
+    try:
+        result = execute(binding, source, output, args.train_seed, args.device, args.role, digest(args.binding))
+    except Exception as error:
+        # Keep failure evidence, never turn infrastructure failure into score=0.
+        # The external ledger owns classification, physical cost and continuation.
+        if output.is_dir() and not (output / "RESULT.json").exists():
+            write_json(output / "FAILURE.json", dict(status="ERROR", error=repr(error),
+                task_id=binding["task_id"], role=args.role, train_seed=args.train_seed,
+                wall_seconds=time.monotonic()-started, test_accessed=False))
+        raise
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()

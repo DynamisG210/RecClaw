@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recclaw.local/auto-space/v1/auto_space_v161_generator_response.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "search_space_id",
+    "analysis",
+    "family",
+    "primitive_registry",
+    "grammar",
+    "capability_policy"
+  ],
+  "properties": {
+    "schema": {
+      "const": "recclaw.auto-space.generator-response.v1.6.1"
+    },
+    "search_space_id": {
+      "$ref": "auto_space_common.schema.json#/$defs/nonemptyString"
+    },
+    "analysis": {
+      "type": "object"
+    },
+    "family": {
+      "$ref": "auto_space_family.schema.json"
+    },
+    "primitive_registry": {
+      "$ref": "auto_space_v161_primitive_registry.schema.json"
+    },
+    "grammar": {
+      "$ref": "auto_space_v161_grammar.schema.json"
+    },
+    "capability_policy": {
+      "$ref": "auto_space_capability_policy.schema.json"
+    }
+  }
+}
