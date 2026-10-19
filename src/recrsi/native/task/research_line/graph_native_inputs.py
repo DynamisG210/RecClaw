@@ -37,7 +37,7 @@ def read_inputs(path,method):
             or identity['search_seed']!=launch['search_seed']
             or launch['training_seed']!=evaluator['train_seed'] or binding['evaluation']['seed']!=72026):
         raise ValueError('Graph method/task/train/search/evaluation identity mismatch')
-    if evaluator['phase']=='FORMAL_MAIN':
+    if evaluator['phase'] in ('FORMAL_MAIN', 'USER_RESEARCH'):
         repeat=launch['repeat']
         if type(repeat) is not int or not 1<=repeat<=3 or launch['search_seed']!=41000+repeat or evaluator['train_seed']!=51000+repeat:
             raise ValueError('Formal graph MAIN retains original three paired seeds')

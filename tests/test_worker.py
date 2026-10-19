@@ -12,7 +12,8 @@ import sys
 import pytest
 
 
-def test_native_worker_train_evaluate_reload(tmp_path, monkeypatch):
+@pytest.mark.parametrize("custom", [False, True])
+def test_native_worker_train_evaluate_reload(tmp_path, monkeypatch, custom):
     pytest.importorskip('torch')
     import numpy as np
     import recrsi
@@ -33,9 +34,10 @@ def test_native_worker_train_evaluate_reload(tmp_path, monkeypatch):
     dev='user_id:token\titem_id:token\n'+''.join(f'u{u}\ti{10+u}\n' for u in range(1,5))
     texts={'train':train,'dev':dev,'user':'user_id:token\n'+''.join(f'u{u}\n' for u in range(1,5)),
            'item':'item_id:token\n'+''.join(f'i{i}\n' for i in range(1,121))}
+    dataset = 'my_catalog' if custom else 'electronics'
     files={}
     for role,text in texts.items():
-        p=data/('electronics.'+({'train':'train.inter','dev':'dev.inter'}.get(role,role)))
+        p=data/(dataset+'.'+({'train':'train.inter','dev':'dev.inter'}.get(role,role)))
         p.write_text(text);files[role]={'path':str(p),'sha256':worker.digest(p)}
     model=tmp_path/'model.py'
     model.write_text('''import torch
@@ -65,9 +67,19 @@ class FreshCandidateModel(GeneralRecommender):
         training=dict(epochs=2,patience=1,eval_step=1,batch_size=16,learning_rate=.01,weight_decay=0.),
         evaluation=dict(primary_metric='NDCG@5',metrics=['NDCG','Hit','Recall','MRR','Precision'],topk=[5,10],batch_size=4096,candidate_universe='FIXED_100_UNIFORM',seed=1),
         dev_candidate_pool=dict(path=str(pool),sha256=worker.digest(pool)))
+    if custom:
+        binding.update(adapter='recbole-graph-fixed100-v1', task_id='my-task-v1', dataset=dataset, line='my_pairwise_model')
+    if custom:
+        mapping = {"user_id": ["[PAD]"] + [f"u{u}" for u in range(1,5)],
+                   "item_id": ["[PAD]"] + [f"i{i}" for i in range(1,121)]}
+        binding.update(catalog_mapping_sha256=hashlib.sha256(json.dumps(mapping,sort_keys=True).encode()).hexdigest(),
+                       metric_binding_version="graph.fixed100.ndcg5.hr5.se-style.v1")
+        binding["evaluation"].update(seed=72026, secondary_metric="Hit@5")
+    binding_path = tmp_path / "baseline-binding.json"
+    binding_path.write_text(json.dumps(binding))
     worker.inspect_binding(binding,execute=True)
     monkeypatch.chdir(tmp_path)
-    result=worker.execute(binding,model,tmp_path/'attempt',123,'cpu','root',hashlib.sha256(json.dumps(binding,sort_keys=True).encode()).hexdigest())
+    result=worker.execute(binding,model,tmp_path/'attempt',51001,'cpu','root',worker.digest(binding_path))
     assert result['status']=='SUCCESS'
     assert result['epochs_completed']==2
     assert result['checkpoint_verification']['exact'] is True
@@ -76,3 +88,46 @@ class FreshCandidateModel(GeneralRecommender):
     assert len((tmp_path/'attempt/LEARNING_CURVE.jsonl').read_text().splitlines())==2
     assert (tmp_path/'attempt/TRAIN_SIGNAL.jsonl').is_file()
     assert worker.digest(Path(result['checkpoint']))==result['checkpoint_sha256']
+
+    if custom:
+        # Assemble a user task from this actual CPU measurement. The dummy
+        # host paths/CPU ledger below are inspection fixtures, never run inputs.
+        from recrsi.config import initialize, check_config, native_module
+        from recrsi.prepare import prepare
+        import subprocess
+        project = initialize(tmp_path / "project")
+        cfg = json.loads((project / "task.json").read_text())
+        runtime = json.loads((project / "environment.json").read_text())
+        ctx = native_module("_worker_test_context", "task/research_line/graph_native_inputs.py")
+        assets = {"binding":binding_path, "root_binding":binding_path,
+                  "root_source":model, "root_mapping":tmp_path/"attempt/ID_MAPPING.json"}
+        records = dict(root_calibration={"status":"SUCCESS", "result":result},
+            root_gpu_ledger={"software_fixture_cpu_only":True},
+            facts=dict(task_id=binding["task_id"], task="Synthetic custom task integration fixture",
+                root_source_sha256=worker.digest(model), data_sha256={k:v["sha256"] for k,v in files.items()},
+                catalog_mapping_sha256=result["catalog_mapping_sha256"], simulation_context=ctx.CONTEXT_RULE,
+                original_model_config=binding["model_config"], training=binding["training"], evaluation=binding["evaluation"],
+                selected_root_metrics=result["metrics"], root_reference_cost={"scope":"CPU software fixture"}),
+            literature={"documents":[{"title":"Synthetic fixture"}]})
+        for key, value in records.items():
+            assets[key] = project / (key + ".json")
+            assets[key].write_text(json.dumps(value))
+        cfg["task"] = {k:str(v) for k,v in assets.items()}
+        (project / "task.json").write_text(json.dumps(cfg))
+        private_api = project / "private.api-config"
+        private_api.write_text("base_url: https://example.invalid/v1\napi_key: fixture-not-a-key\n")
+        import recbole
+        runtime.update(worker_python=sys.executable, recbole_root=str(Path(recbole.__file__).parent.parent),
+                       driver_root=str(project), resource_slots=str(project), api_config=str(private_api))
+        (project / "environment.json").write_text(json.dumps(runtime))
+        assert check_config(project / "task.json")["task_id"] == "my-task-v1"
+        prepared = prepare(project / "task.json", tmp_path / "prepared")
+        manifest = json.loads((prepared / "TASK.json").read_text())
+        assert manifest["evidence_class"] == "USER_CONFIGURED_SOFTWARE_RUN"
+        inspected = subprocess.run([sys.executable,"-m","recrsi","inspect",str(prepared)],
+                                   text=True, capture_output=True)
+        assert inspected.returncode == 0, inspected.stderr
+        report = json.loads(inspected.stdout)
+        assert report["identity"]["environment"] == "my-task-v1"
+        assert report["identity"]["phase"] == "USER_RESEARCH"
+        assert report["evidence_class"] == "USER_CONFIGURED_SOFTWARE_RUN"

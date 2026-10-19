@@ -6,8 +6,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from .config import load_config, validate_inputs
 
-VERSION = "recrsi-native-1.0"
+VERSION = "recrsi-native-1.1"
 
 def read(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -44,32 +45,15 @@ def prepare(config_path, destination):
     if sys.platform != "linux":
         raise RuntimeError("The native execution boundary requires Linux")
     config_path = Path(config_path).resolve(strict=True)
-    settings = read(config_path)
-    def input_path(name):
-        p = Path(settings[name]).expanduser()
-        p = config_path.parent/p if not p.is_absolute() else p
-        if name == "worker_python":
-            # Resolving a venv symlink discards the selected installed packages.
-            if not p.is_file():
-                raise FileNotFoundError(p)
-            return str(p.absolute())
-        return str(p.resolve(strict=True))
-    inputs = {name: input_path(name) for name in (
+    settings = load_config(config_path)
+    original_binding = validate_inputs(settings)
+    inputs = {name: settings[name] for name in (
         "binding", "facts", "literature", "root_calibration", "root_binding",
         "root_gpu_ledger", "root_mapping", "root_source", "worker_python",
         "recbole_root", "driver_root", "api_config", "resource_slots")}
     repeat = settings["repeat"]
-    if type(repeat) is not int or repeat not in (1, 2, 3):
-        raise ValueError("The supplied common protocol has repeats 1, 2, 3")
-    original_binding = read(inputs["binding"])
     facts = read(inputs["facts"])
-    if sha(inputs["root_source"]) != original_binding["root_source_sha256"]:
-        raise ValueError("Original model source differs from task binding")
-    root_result = read(inputs["root_calibration"])
-    if root_result["status"] != "SUCCESS" or root_result["result"]["train_seed"] != 51000+repeat:
-        raise ValueError("An actual paired-seed root calibration is required")
-    if root_result["result"]["source_sha256"] != sha(inputs["root_source"]):
-        raise ValueError("Root measurement belongs to another source")
+    worker = json.loads(subprocess.check_output([inputs["worker_python"],"-c",WORKER_IDENTITY], text=True))
     # Copy only the released code, never an old campaign or paid response store.
     destination = Path(destination).resolve()
     if destination.exists():
@@ -87,15 +71,12 @@ def prepare(config_path, destination):
     comparison = destination/"common/comparison"
     bound = method/("repeat%02d" % repeat)
     run_id = settings["run_id"]
-    if not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in run_id):
-        raise ValueError("run_id must contain only letters, digits, underscores and hyphens")
     output = branch/"runs"/run_id
     output.mkdir(parents=True)
-    identity = dict(environment=original_binding["task_id"], method="ro", phase="FORMAL_MAIN", repeat=repeat,
+    phase = "USER_RESEARCH" if original_binding.get("adapter") else "FORMAL_MAIN"
+    identity = dict(environment=original_binding["task_id"], method="ro", phase=phase, repeat=repeat,
                     run=run_id, search_seed=41000+repeat, train_seed=51000+repeat)
     cpus = settings["cpus"]
-    if len(cpus)!=4 or len(set(cpus))!=4 or any(type(c) is not int or c<0 for c in cpus):
-        raise ValueError("The native worker requires four explicitly assigned CPU cores")
     binding = dict(original_binding, recbole_root=inputs["recbole_root"])
     # Relative input paths resolve against the supplied binding, never the package.
     base = Path(inputs["binding"]).parent
@@ -111,7 +92,6 @@ def prepare(config_path, destination):
     binding_path = write(bound/"BINDING.json", binding)
     facts_path = write(bound/"SHARED_FACTS.json", facts)
     literature_path = write(bound/"LITERATURE.json", read(inputs["literature"]))
-    worker = json.loads(subprocess.check_output([inputs["worker_python"],"-c",WORKER_IDENTITY], text=True))
     worker.update(recbole_root=inputs["recbole_root"], main_binding=str(common), comparison_root=str(comparison),
                   source_files={**pins(destination), **{str(p):sha(p) for p in Path(inputs["recbole_root"]).rglob("*.py")}},
                   dependency_scope="Pinned interpreter, runtime sources and installed dependency metadata")
@@ -125,7 +105,7 @@ def prepare(config_path, destination):
         api_limits=dict(model_prices=prices,normalized_unit_usd=14,max_normalized_u=.5,max_requests=sys.maxsize,
                         max_input_tokens=128000,max_output_tokens=20000,input_estimate_margin=4096))
     provider_path = write(bound/"PROVIDER_CONFIG.json",provider)
-    evaluator = dict(schema="graph-candidate-evaluator.v1", phase="FORMAL_MAIN", run_identity=identity, output=str(output),
+    evaluator = dict(schema="graph-candidate-evaluator.v1", phase=phase, run_identity=identity, output=str(output),
         active_wall_path=provider["active_wall_path"], provider_config=provider_path, binding=binding_path,
         root_binding=inputs["root_binding"], root_calibration=inputs["root_calibration"], root_calibration_sha256=sha(inputs["root_calibration"]),
         root_gpu_ledger=inputs["root_gpu_ledger"], root_mapping=inputs["root_mapping"], parent_source=inputs["root_source"],
@@ -139,7 +119,7 @@ def prepare(config_path, destination):
         qualification_timeout_seconds=None,worker_timeout_seconds=None,observation_timeout_seconds=None,
         gpu_uuid=settings["gpu_uuid"],cpus=cpus,driver_root=inputs["driver_root"],resource_slots=inputs["resource_slots"])
     evaluator_path=write(bound/"EVALUATOR_CONFIG.json",evaluator)
-    launch=dict(method="ro",output=str(output),evaluator_config=evaluator_path,phase="FORMAL_MAIN",repeat=repeat,
+    launch=dict(method="ro",output=str(output),evaluator_config=evaluator_path,phase=phase,repeat=repeat,
                 search_seed=identity["search_seed"],training_seed=identity["train_seed"],native_python=sys.executable,
                 cpus=cpus,shared_facts=facts_path,literature=literature_path,native_source_sha256=pins(destination),
                 autospace_seed=91025+repeat,campaign_id=run_id)
@@ -162,5 +142,7 @@ def prepare(config_path, destination):
         provider_config_sha256=sha(provider_path),run_identity=identity,native_session_id=run_id,completion_model="gpt-5.6-luna",runtime_pins=pins(declaration)))
     write(method/"RELEASE.json",dict(version=VERSION,original_branch=str(branch),original_source=str(source),pins=pins(destination)))
     write(destination/"TASK.json",dict(entry=str(method/"measured_entry.py"),launch=launch_path,repeat=repeat,
-        resource_slots=inputs["resource_slots"],cpus=cpus,configuration_sha256=sha(config_path),method_version=VERSION))
+        resource_slots=inputs["resource_slots"],cpus=cpus,configuration_sha256=sha(config_path),
+        configuration_hashes=settings["configuration_hashes"],adapter=settings["adapter"],
+        evidence_class="USER_CONFIGURED_SOFTWARE_RUN" if binding.get("adapter") else "LEGACY_PROTOCOL_RUN",method_version=VERSION))
     return destination

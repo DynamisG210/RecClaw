@@ -18,7 +18,7 @@ def bind(module):
     original=graph_native_launch.inspection
     def inspection(inputs,method):
         result=original(inputs,method);result['limits']=dict(LIMITS)
-        result['evidence_class']='FROZEN_GRAPH_SEARCH_VALIDATION'
+        result['evidence_class']=('USER_CONFIGURED_SOFTWARE_RUN' if inputs['evaluator']['phase']=='USER_RESEARCH' else 'FROZEN_GRAPH_SEARCH_VALIDATION')
         return result
     graph_native_launch.inspection=inspection
 

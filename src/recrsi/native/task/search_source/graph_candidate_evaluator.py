@@ -39,7 +39,7 @@ def configure(config,*,worker_process=True):
         value=config.get(key)
         if value is not None:
             raise ValueError('This common experiment has no physical-stage time cap: '+key)
-    if config.get('phase') not in ('BOUNDED_GRAPH_DEVELOPMENT','FORMAL_MAIN'):
+    if config.get('phase') not in ('BOUNDED_GRAPH_DEVELOPMENT','FORMAL_MAIN','USER_RESEARCH'):
         raise ValueError('Candidate execution requires a prospectively bound search phase')
     if len(set(config['cpus']))!=4 or not config['gpu_uuid'].startswith('GPU-'):
         raise ValueError('Owner must bind the graph allocation')
