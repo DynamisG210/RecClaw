@@ -35,7 +35,7 @@ def metrics_for(scores, candidates, positives):
     return metrics
 
 
-def score_pool(model, config, users, candidates):
+def score_pool(model, config, users, candidates, histories=None):
     import torch
     from recbole.data.interaction import Interaction
     model.eval()
@@ -47,6 +47,8 @@ def score_pool(model, config, users, candidates):
             end = min(start + 1024, len(users))
             batch = Interaction({model.USER_ID: torch.as_tensor(users[start:end], dtype=torch.long,
                                                                device=config['device'])})
+            if histories is not None:
+                batch.update(histories[start:end].to(config['device']))
             all_scores = model.full_sort_predict(batch).view(end-start, model.n_items)
             item_ids = torch.as_tensor(candidates[start:end], dtype=torch.long, device=config['device'])
             rows.append(torch.gather(all_scores, 1, item_ids).cpu().numpy())
@@ -59,5 +61,12 @@ def evaluate_dev(model, config, valid_data, pool_spec):
     inter = valid_data._dataset.inter_feat
     labels = dict(zip(inter[model.USER_ID].tolist(), inter[model.ITEM_ID].tolist()))
     assert len(labels) == len(inter) == len(users) and set(labels) == set(map(int, users))
-    return metrics_for(score_pool(model, config, users, candidates), candidates,
+    histories = None
+    if hasattr(model, 'ITEM_SEQ'):
+        # Reorder complete prefix interactions to the frozen pool's user order.
+        index = {int(u): i for i, u in enumerate(inter[model.USER_ID].tolist())}
+        from recbole.data.interaction import Interaction
+        order = [index[int(u)] for u in users]
+        histories = Interaction({key: inter[key][order] for key in (model.ITEM_SEQ, model.ITEM_SEQ_LEN)})
+    return metrics_for(score_pool(model, config, users, candidates, histories), candidates,
                        [labels[int(u)] for u in users])

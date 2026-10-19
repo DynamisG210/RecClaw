@@ -23,6 +23,11 @@ def apply_root_mapping(dataset,mapping,expected_sha256):
             frame=getattr(dataset,feature_name,None)
             if frame is not None and field in frame:
                 frame[field]=remap[frame[field].to_numpy(dtype=np.int64)]
+        if field == 'item_id' and 'item_id_list' in dataset.inter_feat:
+            dataset.inter_feat['item_id_list'] = dataset.inter_feat['item_id_list'].map(
+                lambda values: remap[np.asarray(values, dtype=np.int64)])
+            dataset.field2id_token['item_id_list'] = np.asarray(target, dtype=object)
+            dataset.field2token_id['item_id_list'] = token_to_id
         dataset.field2id_token[field]=np.asarray(target,dtype=object)
         dataset.field2token_id[field]=token_to_id
     # RecBole lookup of side rows is positional by mapped ID, including padding.

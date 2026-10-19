@@ -1,7 +1,7 @@
 {
   "schema": "recrsi.task.v1",
-  "adapter": "recbole-graph-fixed100-v1",
-  "run_id": "my-research-01",
+  "adapter": "recbole-sequential-fixed100-v1",
+  "run_id": "sasrec-cds-01",
   "repeat": 1,
   "task": {
     "binding": "inputs/binding.json",

@@ -12,7 +12,7 @@ import sys
 import pytest
 
 
-@pytest.mark.parametrize("custom", [False, True])
+@pytest.mark.parametrize("custom", [False, True, "sequential"])
 def test_native_worker_train_evaluate_reload(tmp_path, monkeypatch, custom):
     pytest.importorskip('torch')
     import numpy as np
@@ -34,7 +34,12 @@ def test_native_worker_train_evaluate_reload(tmp_path, monkeypatch, custom):
     dev='user_id:token\titem_id:token\n'+''.join(f'u{u}\ti{10+u}\n' for u in range(1,5))
     texts={'train':train,'dev':dev,'user':'user_id:token\n'+''.join(f'u{u}\n' for u in range(1,5)),
            'item':'item_id:token\n'+''.join(f'i{i}\n' for i in range(1,121))}
-    dataset = 'my_catalog' if custom else 'electronics'
+    sequential = custom == 'sequential'
+    if sequential:
+        header = 'user_id:token\titem_id_list:token_seq\titem_id:token\n'
+        texts['train'] = header + ''.join(f'u{u}\t' + ' '.join(f'i{j}' for j in range(1,i)) + f'\ti{i}\n' for u in range(1,5) for i in range(2,11))
+        texts['dev'] = header + ''.join(f'u{u}\t' + ' '.join(f'i{j}' for j in range(1,11)) + f'\ti{10+u}\n' for u in range(1,5))
+    dataset = 'cds' if sequential else 'my_catalog' if custom else 'electronics'
     files={}
     for role,text in texts.items():
         p=data/(dataset+'.'+({'train':'train.inter','dev':'dev.inter'}.get(role,role)))
@@ -60,6 +65,8 @@ class FreshCandidateModel(GeneralRecommender):
     def full_sort_predict(self,interaction):
         return self.users(interaction[self.USER_ID])@self.items.weight.T
 ''')
+    if sequential:
+        model.write_bytes((native/'templates/sasrec.py').read_bytes())
     pool=data/'pool.npz'
     np.savez(pool,users=np.arange(1,5),candidates=np.tile(np.arange(1,101),(4,1)))
     binding=dict(status='FROZEN',line='ngcf',task_id='NGCF_EL_NATIVE_SEARCH_20261013',dataset='electronics',
@@ -75,6 +82,17 @@ class FreshCandidateModel(GeneralRecommender):
         binding.update(catalog_mapping_sha256=hashlib.sha256(json.dumps(mapping,sort_keys=True).encode()).hexdigest(),
                        metric_binding_version="graph.fixed100.ndcg5.hr5.se-style.v1")
         binding["evaluation"].update(seed=72026, secondary_metric="Hit@5")
+    if sequential:
+        template = json.loads((native/'templates/sasrec-cds-binding.json').read_text())
+        binding.update(adapter='recbole-sequential-fixed100-v1', line='sasrec', task_id='sasrec-cds',
+                       metric_binding_version=template['metric_binding_version'], model_config=template['model_config'])
+        binding['model_config'].update(hidden_size=8, inner_size=16, n_layers=1, MAX_ITEM_LIST_LENGTH=10)
+        # RecBole maps target IDs before sequence aliases for this supplied dataset.
+        mapping['item_id'] = ['[PAD]'] + [f'i{i}' for i in range(2,15)] + ['i1'] + [f'i{i}' for i in range(15,121)]
+        binding['catalog_mapping_sha256'] = hashlib.sha256(json.dumps(mapping,sort_keys=True).encode()).hexdigest()
+        # Target i11..i14 maps to10..13; negative IDs15..113 exclude all TRAIN items.
+        np.savez(pool, users=np.arange(4,0,-1), candidates=np.asarray([[9+u]+list(range(15,114)) for u in range(4,0,-1)]))
+        binding['dev_candidate_pool']['sha256'] = worker.digest(pool)
     binding_path = tmp_path / "baseline-binding.json"
     binding_path.write_text(json.dumps(binding))
     worker.inspect_binding(binding,execute=True)
@@ -89,13 +107,21 @@ class FreshCandidateModel(GeneralRecommender):
     assert (tmp_path/'attempt/TRAIN_SIGNAL.jsonl').is_file()
     assert worker.digest(Path(result['checkpoint']))==result['checkpoint_sha256']
 
+    if sequential:
+        import graph_qualification_worker as qualification
+        qualification_binding = dict(binding, catalog_mapping_path=str(tmp_path/'attempt/ID_MAPPING.json'))
+        qualified = qualification.run(qualification_binding, model, tmp_path/'qualification', 51001, 'cpu')
+        assert qualified['status'] == 'QUALIFIED'
+        assert qualified['validation_rows_accessed'] is False
+        assert qualified['optimizer_steps'] == 0
+
     if custom:
         # Assemble a user task from this actual CPU measurement. The dummy
         # host paths/CPU ledger below are inspection fixtures, never run inputs.
         from recrsi.config import initialize, check_config, native_module
         from recrsi.prepare import prepare
         import subprocess
-        project = initialize(tmp_path / "project")
+        project = initialize(tmp_path / "project", adapter="recbole-graph-fixed100-v1")
         cfg = json.loads((project / "task.json").read_text())
         runtime = json.loads((project / "environment.json").read_text())
         ctx = native_module("_worker_test_context", "task/research_line/graph_native_inputs.py")
@@ -112,6 +138,7 @@ class FreshCandidateModel(GeneralRecommender):
         for key, value in records.items():
             assets[key] = project / (key + ".json")
             assets[key].write_text(json.dumps(value))
+        cfg["adapter"] = binding["adapter"]
         cfg["task"] = {k:str(v) for k,v in assets.items()}
         (project / "task.json").write_text(json.dumps(cfg))
         private_api = project / "private.api-config"
@@ -120,7 +147,7 @@ class FreshCandidateModel(GeneralRecommender):
         runtime.update(worker_python=sys.executable, recbole_root=str(Path(recbole.__file__).parent.parent),
                        driver_root=str(project), resource_slots=str(project), api_config=str(private_api))
         (project / "environment.json").write_text(json.dumps(runtime))
-        assert check_config(project / "task.json")["task_id"] == "my-task-v1"
+        assert check_config(project / "task.json")["task_id"] == binding["task_id"]
         prepared = prepare(project / "task.json", tmp_path / "prepared")
         manifest = json.loads((prepared / "TASK.json").read_text())
         assert manifest["evidence_class"] == "USER_CONFIGURED_SOFTWARE_RUN"
@@ -128,6 +155,6 @@ class FreshCandidateModel(GeneralRecommender):
                                    text=True, capture_output=True)
         assert inspected.returncode == 0, inspected.stderr
         report = json.loads(inspected.stdout)
-        assert report["identity"]["environment"] == "my-task-v1"
+        assert report["identity"]["environment"] == binding["task_id"]
         assert report["identity"]["phase"] == "USER_RESEARCH"
         assert report["evidence_class"] == "USER_CONFIGURED_SOFTWARE_RUN"

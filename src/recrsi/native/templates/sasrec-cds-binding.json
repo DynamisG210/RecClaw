@@ -1,0 +1,68 @@
+{
+  "adapter": "recbole-sequential-fixed100-v1",
+  "status": "FROZEN",
+  "task_id": "sasrec-cds",
+  "dataset": "cds",
+  "line": "sasrec",
+  "root_source_sha256": "SET_FROM_ROOT_SOURCE",
+  "catalog_mapping_sha256": "SET_FROM_ACTUAL_BASELINE_MAPPING",
+  "metric_binding_version": "sequential.fixed100.ndcg5.hr5.v1",
+  "model_config": {
+    "n_layers": 2,
+    "n_heads": 2,
+    "hidden_size": 64,
+    "inner_size": 256,
+    "hidden_dropout_prob": 0.5,
+    "attn_dropout_prob": 0.5,
+    "hidden_act": "gelu",
+    "layer_norm_eps": 1e-12,
+    "initializer_range": 0.02,
+    "loss_type": "CE",
+    "MAX_ITEM_LIST_LENGTH": 50
+  },
+  "training": {
+    "epochs": 100,
+    "patience": 10,
+    "eval_step": 1,
+    "batch_size": 256,
+    "learning_rate": 0.001,
+    "weight_decay": 0
+  },
+  "evaluation": {
+    "primary_metric": "NDCG@5",
+    "secondary_metric": "Hit@5",
+    "metrics": [
+      "NDCG",
+      "Hit"
+    ],
+    "topk": [
+      5,
+      10
+    ],
+    "batch_size": 4096,
+    "candidate_universe": "FIXED_100_UNIFORM",
+    "seed": 72026
+  },
+  "data_files": {
+    "train": {
+      "path": "data/cds.train.inter",
+      "sha256": "SET_FROM_YOUR_FILE"
+    },
+    "dev": {
+      "path": "data/cds.dev.inter",
+      "sha256": "SET_FROM_YOUR_FILE"
+    },
+    "user": {
+      "path": "data/cds.user",
+      "sha256": "SET_FROM_YOUR_FILE"
+    },
+    "item": {
+      "path": "data/cds.item",
+      "sha256": "SET_FROM_YOUR_FILE"
+    }
+  },
+  "dev_candidate_pool": {
+    "path": "data/dev_candidates.npz",
+    "sha256": "SET_FROM_YOUR_FILE"
+  }
+}

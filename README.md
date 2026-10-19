@@ -7,7 +7,7 @@ RecRSI takes a recommendation model, a frozen task environment and a finite expe
 The final research path is:
 
 1. **MechSpace**: source-grounded Genesis and Critic calls followed by deterministic assembly of mechanism objects, implementation requirements and composition relations.
-2. **Research Line**: Mechanism Composer, Lineage Refiner, Falsification Designer and Frontier Architect construct hypotheses and complete candidate programs. The graph adapter supports explicit candidate-local mechanism definitions and measured construction parents. Two committed programs are compared by an independent selector; selection preserves their exact source bytes.
+2. **Research Line**: Mechanism Composer, Lineage Refiner, Falsification Designer and Frontier Architect construct hypotheses and complete candidate programs. The source adapter supports explicit candidate-local mechanism definitions and measured construction parents. Two committed programs are compared by an independent selector; selection preserves their exact source bytes.
 3. **Mechanism Feedback**: qualification, executed training signals, validation outcomes and source-linked contrasts update the next research context. Construction-parent, original-root and current-frontier comparisons remain distinct. Negative results and unresolved explanations are retained. The search policy is explicit and frozen; this release does not claim online policy learning.
 
 ## Distribution
@@ -16,7 +16,9 @@ This repository contains executable source, runtime prompts/schemas, installatio
 
 The repository supplies the RecRSI main method in the RecClaw project. Users supply their task assets and host environment. The `recclaw` and `recrsi` commands are aliases.
 
-The supplied adapter is **`recbole-graph-fixed100-v1`**: a single-file pairwise RecBole model, user/item interactions and fixed-100 validation. Your dataset, initial model and training recipe can be supplied through a frozen binding. The historical NGCF/Electronics configuration remains supported via `examples/legacy-task.json`. Sequential, multimodal or other evaluation environments need a corresponding adapter; changing a JSON name does not implement one.
+The default template is **SASRec on Amazon CDs and Vinyl (CDS)**, using `recbole-sequential-fixed100-v1`. It supplies the complete SASRec starting model from the pinned RecBole revision (with its MIT license) and an editable training recipe. Users provide their frozen CDS split, candidate pool and measured baseline. This is a software profile, not a claim to reproduce a historical paper experiment from a dataset name alone.
+
+The `recbole-graph-fixed100-v1` adapter remains available for pairwise graph models; choose it with `recclaw init --adapter recbole-graph-fixed100-v1 --output /path/to/project`. The historical NGCF/Electronics configuration remains supported via `examples/legacy-task.json`. Other environments require their corresponding execution adapter.
 
 ## Install
 
@@ -47,12 +49,12 @@ recclaw run /path/to/new-run
 recclaw run /path/to/new-run --resume
 ```
 
-`init` creates templates without overwriting an existing directory. `check` verifies input hashes, baseline identity and protocol consistency without API calls, GPU claims, user-code execution or worker launches. It does not probe host isolation privileges or provider availability. `prepare` also checks worker dependencies; `inspect` assembles the actual controller without execution.
+`init` defaults to SASRec/CDS and creates `task.json`, `environment.json`, `inputs/root_source.py` and `inputs/binding.json` without overwriting an existing directory. Fill the asset paths and byte hashes in the binding; placeholders intentionally do not pass validation. Supply the actual baseline, mapping, facts and literature inputs described below. `check` verifies input hashes, baseline identity and protocol consistency without API calls, GPU claims, user-code execution or worker launches. It does not probe host isolation privileges or provider availability. `prepare` also checks worker dependencies; `inspect` assembles the actual controller without execution.
 
 **Task configuration** (`examples/task.json`) defines the adapter, run ID, repeat and scientific inputs. Paths resolve relative to this file:
 
-- `binding`: your frozen task identity, model/training parameters, evaluation protocol, data hashes, ID mapping and fixed candidate pool. Custom bindings explicitly declare `adapter: "recbole-graph-fixed100-v1"` and use their own `task_id`, `dataset`, and model `line` names (letters, digits, underscores or hyphens).
-- `root_source`: a complete `candidate.py` exposing `FreshCandidateModel(config, train_dataset)`, `calculate_loss(pairwise Interaction)`, `predict` and `full_sort_predict`. Only TRAIN interactions enter the model. The trusted worker owns optimization, evaluation and checkpoint selection.
+- `binding`: your frozen task identity, model/training parameters, evaluation protocol, data hashes, ID mapping and fixed candidate pool. Custom bindings explicitly declare their task adapter and use their own `task_id`, `dataset`, and model `line` names (letters, digits, underscores or hyphens).
+- `root_source`: a complete `candidate.py` exposing `FreshCandidateModel(config, train_dataset)`, `calculate_loss(Interaction)`, `predict` and `full_sort_predict`. For SASRec, the interaction contains `item_id_list`, `item_length` and the next item; graph models use pairwise interactions. Only TRAIN examples enter the model constructor and optimizer. The trusted worker owns optimization, evaluation and checkpoint selection.
 - `root_binding`, `root_calibration`, `root_gpu_ledger`, `root_mapping`: the exact baseline binding, completed paired-seed baseline result, actual cost ledger and ID mapping from your environment. Preparation neither fabricates nor refits a baseline.
 - `facts`, `literature`: TRAIN-only task context and literature cards. Facts must match the source, data, mapping, model/training/evaluation settings and actual baseline metrics. No held-out TEST observations belong in research context.
 
@@ -66,9 +68,20 @@ Paths support `${VARIABLE}` and `~`; undefined variables fail before preparation
 
 ### Environment input contract
 
+For SASRec/CDS, supply `cds.train.inter` and `cds.dev.inter` with these tab-separated columns:
+
+```text
+user_id:token	item_id_list:token_seq	item_id:token
+u1	i1 i2	i3
+```
+
+Each TRAIN row is a chronological history prefix and its next-item target, in consecutive order within each user. Truncate prefixes to the last `MAX_ITEM_LIST_LENGTH` events (default 50). DEV has one row per evaluated user, whose prefix is the last TRAIN history and whose target is unseen in TRAIN. Neither DEV targets nor TEST events may enter TRAIN prefixes. `cds.user` and `cds.item` list the user/item catalog as described below. Catalog metadata may include IDs; it contains no future interaction labels.
+
+The sequential binding uses `metric_binding_version: "sequential.fixed100.ndcg5.hr5.v1"`. Its editable defaults are in `inputs/binding.json`: two attention layers, two heads, hidden size 64, CE loss and length 50; Adam, learning rate 0.001, batch 256, at most 100 epochs and patience 10. Freeze any edits before baseline and search. Mapping, paired seeds, candidate-pool format and baseline receipts follow the shared contract below. Construct the pool from mapped IDs: one DEV target and 99 distinct negatives, excluding all TRAIN history/targets and padding. Sequence scoring uses each user's prefix, aligned to the pool even if its user order differs from the input file.
+
 The graph adapter accepts four tab-separated RecBole files named `<dataset>.train.inter`, `<dataset>.dev.inter`, `<dataset>.user`, and `<dataset>.item`. Interaction columns are `user_id:token` and `item_id:token`; side files contain the corresponding ID column. In the binding, `data_files` maps `train`, `dev`, `user`, `item` to `{ "path": "...", "sha256": "..." }`. Asset paths resolve against the binding file.
 
-The binding also supplies:
+The graph binding also supplies (the common data, mapping and baseline requirements also apply to SASRec):
 
 - `status: "FROZEN"`, `root_source_sha256`, `catalog_mapping_sha256`, and `model_config`. Model-only fields are `embedding_size`, `n_layers`, `alpha`, `beta`, `gamma`, `reg_weight`, `hidden_size_list`, `message_dropout`.
 - `training`: `epochs`, `patience`, `eval_step`, `batch_size`, `learning_rate`, `weight_decay`, fixed before both baseline and search.
@@ -93,6 +106,6 @@ Outputs are under `new-run/task/research_line/runs/<run_id>/`: MechSpace artifac
 python -m pytest tests -q
 ```
 
-The CPU integration fixtures perform real optimization, fixed-100 scoring and exact checkpoint reload on both the legacy identity and a custom dataset/model identity. Configuration tests cover relative path bases, environment variables, mismatched baseline/data/protocol identities and unknown fields. Other checks cover immutable program selection, actual-parent contrasts and read-only inspection. Installation and the native controller/worker bootstrap are checked separately on Linux. These checks establish software behavior; they are not recommendation-quality measurements. A new paid-provider/CUDA research campaign is not part of the packaging test.
+The CPU integration fixtures perform real optimization, fixed-100 scoring and exact checkpoint reload for legacy graph, custom graph and SASRec sequence inputs. They also check preparation and read-only controller assembly. Configuration tests cover relative path bases, environment variables, mismatched baseline/data/protocol identities and unknown fields. Other checks cover immutable program selection, actual-parent contrasts and read-only inspection. Installation and the native controller/worker bootstrap are checked separately on Linux. These checks establish software behavior; they are not recommendation-quality measurements. A new paid-provider/CUDA research campaign is not part of the packaging test.
 
 Scientific claims must use the accepted common-protocol evidence for each environment. Mechanism prose and static source differences are hypotheses or observations, not component-wise causal proof. Shared-host timings are not exclusive GPU timings, and the accelerated evaluator's validated metric agreement does not imply universal bitwise score equality. This repository makes no universal-best or cross-version pooled superiority claim.

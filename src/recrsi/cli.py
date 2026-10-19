@@ -9,7 +9,7 @@ import re
 import runpy
 import sys
 from .prepare import prepare, read
-from .config import initialize, check_config
+from .config import initialize, check_config, ADAPTERS
 
 
 def readonly_inspection(event, args):
@@ -66,6 +66,7 @@ def main():
     sub=p.add_subparsers(dest="command",required=True)
     init=sub.add_parser("init",help="Create separate task and machine configuration templates")
     init.add_argument("--output",type=Path,required=True)
+    init.add_argument("--adapter", choices=ADAPTERS, default=ADAPTERS[0])
     check=sub.add_parser("check",help="Validate input identities without API, GPU or worker execution")
     check.add_argument("--config",type=Path,required=True)
     prep=sub.add_parser("prepare",help="Bind frozen task inputs to a new run directory")
@@ -78,7 +79,7 @@ def main():
     run.add_argument("--resume",action="store_true")
     args=p.parse_args()
     if args.command=="init":
-        print(json.dumps({"initialized":str(initialize(args.output))}))
+        print(json.dumps({"initialized":str(initialize(args.output, adapter=args.adapter))}))
     elif args.command=="check":
         print(json.dumps(check_config(args.config)))
     elif args.command=="prepare":

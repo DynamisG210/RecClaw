@@ -10,6 +10,8 @@ import re
 
 SCHEMA = "recrsi.task.v1"
 ADAPTER = "recbole-graph-fixed100-v1"
+SEQUENTIAL_ADAPTER = "recbole-sequential-fixed100-v1"
+ADAPTERS = (SEQUENTIAL_ADAPTER, ADAPTER)
 TASK_PATHS = ("binding", "facts", "literature", "root_calibration", "root_binding",
               "root_gpu_ledger", "root_mapping", "root_source")
 ENV_PATHS = ("worker_python", "recbole_root", "driver_root", "api_config", "resource_slots")
@@ -51,13 +53,13 @@ def load_config(path):
     raw = read(path)
     if "schema" in raw:
         exact_keys(raw, {"schema", "adapter", "run_id", "repeat", "task", "environment"}, "task config")
-        if raw["schema"] != SCHEMA or raw["adapter"] != ADAPTER:
-            raise ValueError("Supported schema/adapter: " + SCHEMA + " / " + ADAPTER)
+        if raw["schema"] != SCHEMA or raw["adapter"] not in ADAPTERS:
+            raise ValueError("Supported schema/adapter: " + SCHEMA + " / " + ", ".join(ADAPTERS))
         exact_keys(raw["task"], TASK_PATHS, "task inputs")
         env_path = Path(resolve(raw["environment"], path.parent))
         env = read(env_path)
         exact_keys(env, ENV_KEYS, "environment config")
-        settings = {"run_id": raw["run_id"], "repeat": raw["repeat"], "adapter": ADAPTER}
+        settings = {"run_id": raw["run_id"], "repeat": raw["repeat"], "adapter": raw["adapter"]}
         settings.update({k: resolve(v, path.parent) for k, v in raw["task"].items()})
         settings.update({k: resolve(env[k], env_path.parent, interpreter=k == "worker_python") for k in ENV_PATHS})
         settings.update({k: env[k] for k in ("cpus", "gpu_uuid")})
@@ -97,9 +99,9 @@ def native_module(name, relative):
 def validate_inputs(settings):
     """Read and hash inputs only. No API, imports of user code, or worker launch."""
     binding = read(settings["binding"])
-    if settings["adapter"] == ADAPTER:
-        if binding.get("adapter") != ADAPTER:
-            raise ValueError("A custom task binding must explicitly declare adapter=" + ADAPTER)
+    if settings["adapter"] in ADAPTERS:
+        if binding.get("adapter") != settings["adapter"]:
+            raise ValueError("A custom task binding must explicitly declare adapter=" + settings["adapter"])
     elif binding.get("adapter") is not None:
         raise ValueError("Use the split task schema for a custom adapter binding")
     base = Path(settings["binding"]).parent
@@ -161,14 +163,25 @@ def check_config(path):
                 scope="Input files and protocol identities only; API reachability, GPU, sandbox privileges and worker dependencies are not probed.")
 
 
-def initialize(destination):
+def initialize(destination, adapter=SEQUENTIAL_ADAPTER):
+    if adapter not in ADAPTERS:
+        raise ValueError("Unsupported adapter: " + adapter)
     destination = Path(destination).absolute()
     destination.mkdir(parents=True, exist_ok=False)
-    task = dict(schema=SCHEMA, adapter=ADAPTER, run_id="my-research-01", repeat=1,
+    task = dict(schema=SCHEMA, adapter=adapter, run_id="sasrec-cds-01" if adapter == SEQUENTIAL_ADAPTER else "my-research-01", repeat=1,
                 task={k:"inputs/" + k + (".py" if k == "root_source" else ".json") for k in TASK_PATHS},
                 environment="environment.json")
     environment = {k:"/path/to/" + k for k in ENV_PATHS}
     environment.update(cpus=[0,1,2,3], gpu_uuid="GPU-REPLACE-WITH-ASSIGNED-DEVICE-UUID")
     for name, value in (("task.json", task), ("environment.json", environment)):
         (destination/name).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    if adapter == SEQUENTIAL_ADAPTER:
+        import shutil
+        inputs = destination / "inputs"
+        inputs.mkdir()
+        shutil.copyfile(NATIVE / "templates/sasrec.py", inputs / "root_source.py")
+        shutil.copyfile(NATIVE / "templates/RecBole-LICENSE.txt", inputs / "RecBole-LICENSE.txt")
+        template = read(NATIVE / "templates/sasrec-cds-binding.json")
+        template["root_source_sha256"] = sha(inputs / "root_source.py")
+        (inputs / "binding.json").write_text(json.dumps(template, indent=2) + "\n", encoding="utf-8")
     return destination
