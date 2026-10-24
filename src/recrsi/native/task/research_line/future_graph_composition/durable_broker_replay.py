@@ -1,8 +1,5 @@
-"""Prospective graph-process scope: consume a bound paid response without HTTP.
-
-Requires v4 transport durability, an unchanged native broker, and MAIN's external
-ledger (no broker request_budget). Does not change any stable-task defaults.
-"""
+"""Consume a persisted response through the native broker without another request.
+Uses v4 transport records and the shared API ledger."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace

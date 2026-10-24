@@ -1,4 +1,4 @@
-"""Prospective graph RO input only; install outside the existing execute call."""
+"""Build starting-model context for the graph research organizer."""
 import hashlib
 from contextlib import contextmanager
 from unittest.mock import patch

@@ -1,4 +1,4 @@
-"""Prospective graph single-program role correction; no shared default change."""
+"""Construct graph research guidance for a single candidate program."""
 from contextlib import contextmanager
 from unittest.mock import patch
 

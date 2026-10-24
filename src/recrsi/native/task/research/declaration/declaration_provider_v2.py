@@ -1,8 +1,5 @@
-"""Prospective recoverable declaration consumer; not a released search hook.
-
-The original native schema failure remains authoritative. The output below is a
-separate composite artifact, never an altered HTTP response or broker receipt.
-"""
+"""Recover declarations from persisted provider responses.
+Store the derived declaration separately from the original response and receipt."""
 import copy
 import fcntl
 from email.utils import parsedate_to_datetime

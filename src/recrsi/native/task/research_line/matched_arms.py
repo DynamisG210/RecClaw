@@ -1,8 +1,5 @@
-"""Two prospective method arms on the same repaired graph runtime.
-
-This module changes the permitted research action, not the task, data,
-selector, evaluator, models or budgets. It never launches an experiment.
-"""
+"""Construct two research-action variants on a common graph runtime.
+Task data, candidate selection, evaluation, models, and budgets are shared."""
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch

@@ -1,4 +1,4 @@
-"""Prospective common continuation after a settled native schema failure."""
+"""Continue processing after a recorded response-schema failure."""
 import hashlib,json,fcntl,pickle
 from pathlib import Path
 sha=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest()

@@ -1,4 +1,4 @@
-"""Cold prospective factory: one manifest consumer and native capture per round."""
+"""Bind a manifest consumer and native response capture to each round."""
 from campaign_round_owner import DeclarationRoundOwner
 from campaign_manifest_consumer import ManifestCampaignConsumer
 from native_provider_capture import capture_native_transport

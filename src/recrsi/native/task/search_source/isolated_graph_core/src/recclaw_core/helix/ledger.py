@@ -1,4 +1,4 @@
-"""C-private single-writer development audit ledger."""
+"""Single-writer ledger for research development events."""
 
 from __future__ import annotations
 

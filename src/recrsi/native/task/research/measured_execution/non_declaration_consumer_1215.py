@@ -1,8 +1,5 @@
-"""Explicit cold native consumer hooks. Original broker receipts stay failures.
-
-Install only inside a prospectively frozen, single-owner campaign process.
-No existing search entrypoint imports this preparation module.
-"""
+"""Attach response consumers to a newly configured campaign.
+Preserve original broker receipts alongside derived records."""
 from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib

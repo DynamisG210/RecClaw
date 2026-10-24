@@ -1,4 +1,4 @@
-"""Prospective branch-exhaustion semantics; not an experiment launcher."""
+"""Track branch exhaustion using measured research actions."""
 from contextlib import contextmanager
 import inspect
 import textwrap

@@ -1,9 +1,6 @@
-"""Prospective graph research policy: compare two programs, execute one.
-
-Install before fresh composition. No provider, campaign or fit is launched here.
-The native paid response retains both alternatives; only the selected program is
-projected into the existing source/qualification/training path.
-"""
+"""Compare two proposed programs and evaluate the selected program.
+Retain both alternatives in the provider response and pass the selection
+through candidate qualification and training."""
 import copy
 import hashlib
 import json

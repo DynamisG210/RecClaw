@@ -1,4 +1,4 @@
-"""Prospective graph-only composition boundary; never a campaign launcher."""
+"""Compose graph research policies within one campaign scope."""
 from contextlib import contextmanager
 import hashlib
 import inspect

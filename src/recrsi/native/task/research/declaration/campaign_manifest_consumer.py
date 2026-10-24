@@ -1,8 +1,4 @@
-"""Prospective consumer factory using the native persisted short-storage map.
-
-No current experiment imports this preparation module. Native receipts remain
-unchanged; the short-storage mapping is joined to the sealed request in SQLite.
-"""
+"""Join persisted short-storage mappings to sealed broker requests in SQLite."""
 import hashlib,json,sqlite3
 from pathlib import Path
 from campaign_pending_boundary import PendingCampaignConsumer
