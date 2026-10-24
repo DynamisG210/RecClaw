@@ -76,3 +76,5 @@ NGCF native variation: `python tools/recompute_ngcf_native_variation.py --snapsh
 Supplied SASRec cost variation: `python tools/recompute_sasrec_supplied_cost_variation.py --costs <search_costs.csv> --reference <paper_eight_task_plot_inputs.json> --out <result.json>`. Reports sample SD/range/CV for six methods and checks all twelve supplied means. Does not infer native TEST identity, missing tokens, total invoice cost or per-search quality from method means.
 
 NGCF transfer comparators: `python tools/recompute_ngcf_transfer_comparators.py --results <CURRENT_RESULTS.json> --sources <SOURCES.json> --table <RQ1_main_table.tex> --host <ssh-host> --out <result.json>`. Verifies five comparator methods on CDs/Office against frozen source identities, native TEST bytes and table metrics. Reports source-search and within-refit SD separately. The replaced RO cohort is handled separately by the native-variation tool.
+
+Use `--include-original-office-ro` only to reproduce the original Office RO cohort explicitly retained by the historical Office comparison. This adds nine native results; CDS RO remains excluded. Do not silently apply the CDS/ML1M RO1 replacement to Office.
