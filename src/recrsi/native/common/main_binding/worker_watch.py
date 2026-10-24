@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import select
 import signal
+import subprocess
 import sys
 import time
 
@@ -36,6 +37,30 @@ def open_pidfd(pid):
     return _pidfd_syscall(434, ctypes.c_int(pid), ctypes.c_uint(0))
 
 
+def signal_owned_worker(pidfd):
+    """Use the E2 sudo contract only when the original pidfd lacks permission."""
+    try:
+        _pidfd_syscall(424, ctypes.c_int(pidfd), ctypes.c_int(signal.SIGKILL),
+                       ctypes.c_void_p(), ctypes.c_uint(0))
+    except PermissionError:
+        def target_pid():
+            lines = Path(f'/proc/self/fdinfo/{pidfd}').read_text().splitlines()
+            return int(next(line.split(':', 1)[1] for line in lines if line.startswith('Pid:')))
+
+        pid = target_pid()
+        if pid < 0:
+            return
+        try:
+            birth = int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19])
+        except FileNotFoundError:
+            return
+        if target_pid() != pid:
+            return  # The original worker exited while its identity was read.
+        subprocess.run(['sudo', '-n', '/usr/bin/python3', '-I',
+                        str(Path(__file__).with_name('kill_owned.py')), str(pid), str(birth)],
+                       check=True, timeout=10)
+
+
 def append_event(path, event):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,8 +84,7 @@ def observe(config, pidfd):
         if expired_gpu or expired_active:
             stopped = expired_active or config['allowance'] < config['requested']
             try:
-                _pidfd_syscall(424, ctypes.c_int(pidfd), ctypes.c_int(signal.SIGKILL),
-                               ctypes.c_void_p(), ctypes.c_uint(0))
+                signal_owned_worker(pidfd)
             except ProcessLookupError:
                 pass
     finished_ns = time.time_ns()
