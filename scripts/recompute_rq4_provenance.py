@@ -29,7 +29,7 @@ def comparison(rows):
     deltas = [r["delta_mechanism_minus_summary"] for r in paired]
     return {"paired_states": len(deltas), "wins": sum(d > 0 for d in deltas),
             "ties": sum(d == 0 for d in deltas), "losses": sum(d < 0 for d in deltas),
-            "mean_absolute_delta": mean(deltas), "pairs": paired}
+            "mean_signed_ndcg5_delta": mean(deltas), "pairs": paired}
 
 
 def main():
