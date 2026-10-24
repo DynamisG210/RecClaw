@@ -54,3 +54,11 @@ python tools/analyze_rq1_search_variation.py --searches SEARCH_SUMMARY --protoco
 ```
 
 Computes mean, sample SD, range and coefficient of variation across source searches for quality and reference resource usage. Verifies unique search identities and GPU unit conversion. Comparisons use each task's highest-mean comparator; counts above that mean are descriptive, not paired wins or significance tests. Job time and root allocation remain separate.
+
+## Source-search versus refit variation for transfers
+
+```text
+python tools/recompute_bert_transfer_variation.py --snapshot BERT_TRANSFER_RECORDS --host SSH_HOST --out TRANSFER_VARIATION_JSON
+```
+
+Reads the exact recorded TEST files through read-only SSH and verifies byte hashes and parsed content. Groups by dataset, method and source search repeat before computing three-refit means; reports the SD across source-search means separately from mean within-source refit SD. Transferred winners are not relabeled as new target searches.
