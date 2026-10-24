@@ -13,12 +13,12 @@ p.add_argument('--output',type=Path,required=True)
 p.add_argument('--search-seed',type=int,required=True)
 p.add_argument('--api-config',type=Path,required=True,help='Prospective common provider route; no credentials copied')
 a=p.parse_args()
-S=a.original_state.resolve();A=a.output.resolve();V=S.parent.parent;H=V/'rq2_effective_full_five_arm_v1'
-assert S.name == f'state_{a.state:02d}', 'State directory must match selected state'
+S=a.original_state.resolve();A=a.output.resolve();V=S.parent if a.state==18 else S.parent.parent;H=V/'rq2_effective_full_five_arm_v1'
+assert S.name == ('rq4_feedback_action_space_v1_20261008' if a.state==18 else f'state_{a.state:02d}'), 'State directory must match selected state'
 A.mkdir(exist_ok=False)
 def read(p):return json.loads(p.read_text())
 def write(p,x):p.write_text(json.dumps(x,indent=2)+'\n')
-for name in ('COMMON_RAW.json','HISTORY_MANIFEST.json','PREFIX_RESULT.json','PROSPECTIVE_CONTRACT.json'):
+for name in (('COMMON_M18_RAW.json','PREFIX_RESULT.json','PROSPECTIVE_CONTRACT.json') if a.state==18 else ('COMMON_RAW.json','HISTORY_MANIFEST.json','PREFIX_RESULT.json','PROSPECTIVE_CONTRACT.json')):
     shutil.copyfile(S/name,A/name)
 pins={}
 for arm in ('Raw','Summary','Mechanism'):
@@ -41,6 +41,7 @@ for arm in ('Raw','Summary','Mechanism'):
         shutil.copyfile(source,home/'PAID_FEEDBACK.json')
 source=(S/'entry.py').read_text()
 header="A=Path(__file__).resolve().parent;V=A.parent.parent;H=V/'rq2_effective_full_five_arm_v1';R=A/'runtime';Q=V.parent"
+if a.state==18:header=header.replace('V=A.parent.parent','V=A.parent')
 assert header in source
 source=source.replace(header,f"A=Path(__file__).resolve().parent;V=Path({str(V)!r});H=Path({str(H)!r});R=Path({str(S/'runtime')!r});Q=V.parent\nsys.path.insert(0,{str(S)!r})")
 needle=" home=A/args.arm;cfg=read(home/'EVALUATOR_CONFIG.json');"
