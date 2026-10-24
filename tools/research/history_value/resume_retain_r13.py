@@ -65,11 +65,11 @@ def main(home, original):
                 _, ledger = reference_root(cfg, resources)
                 before_api = resources.api.summary()
                 assert ledger.snapshot()['genuine_count'] == 0, 'Never replay a completed FIT'
-                repair = read(recovery/'RETAIN_R13_REPAIR.json')
+                repair = read(recovery/'RETAIN_R13_REPAIR_V2.json')
                 candidate = Path(repair['repaired'])
                 original_candidate = Path(repair['source'])
                 assert hashlib.sha256((candidate/'main_code.py').read_bytes()).hexdigest() == repair['repaired_sha256']
-                assert hashlib.sha256((original_candidate/'main_code.py').read_bytes()).hexdigest() == repair['original_sha256']
+                assert hashlib.sha256((original_candidate/'main_code.py').read_bytes()).hexdigest() == repair['original_raw_sha256']
                 from e2_shared_contract import REQUIRED_PROGRAM_FILES
                 for name in REQUIRED_PROGRAM_FILES:
                     if name != 'main_code.py':
