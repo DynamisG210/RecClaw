@@ -78,3 +78,5 @@ Supplied SASRec cost variation: `python tools/recompute_sasrec_supplied_cost_var
 NGCF transfer comparators: `python tools/recompute_ngcf_transfer_comparators.py --results <CURRENT_RESULTS.json> --sources <SOURCES.json> --table <RQ1_main_table.tex> --host <ssh-host> --out <result.json>`. Verifies five comparator methods on CDs/Office against frozen source identities, native TEST bytes and table metrics. Reports source-search and within-refit SD separately. The replaced RO cohort is handled separately by the native-variation tool.
 
 Use `--include-original-office-ro` only to reproduce the original Office RO cohort explicitly retained by the historical Office comparison. This adds nine native results; CDS RO remains excluded. Do not silently apply the CDS/ML1M RO1 replacement to Office.
+
+NGCF version sensitivity: `python tools/compare_ngcf_cohort_versions.py --evidence <ngcf_transfer-directory> --out <result.json>` computes original/replacement cohorts, retains Electronics protocol mismatch, and extracts timestamped source decisions and recovery limitations. This does not adopt either version or infer an unrecorded pre-TEST rule.
