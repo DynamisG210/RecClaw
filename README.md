@@ -12,7 +12,7 @@ The default task is SASRec on Amazon CDs and Vinyl. Pairwise graph recommenders 
 
 ## Install and try
 
-Download or clone this repository, open its root directory, and use Python 3.10–3.12. This CPU example runs without an API key or GPU:
+Download or clone this repository, open its root directory, and use Python 3.10–3.11. The pinned RecBole/Ray training dependencies support these Python versions. This CPU example runs without an API key or GPU:
 
 ```bash
 python3.10 -m venv .venv
@@ -88,6 +88,6 @@ NDCG@5 and Hit@5 use fixed 100-item DEV candidate sets. Search uses TRAIN and DE
 python -m pytest tests -q
 ```
 
-Tests cover configuration, native CPU training/evaluation/checkpoint reload, response parsing, watchdog termination, and controller assembly. CI runs the suite and standalone example on Python 3.10 and 3.12.
+Tests cover configuration, native CPU training/evaluation/checkpoint reload, response parsing, watchdog termination, and controller assembly. CI runs the suite and standalone example on Python 3.10 and 3.11.
 
 See [task files](docs/task-format.md), [host setup](docs/host-setup.md), and [anonymous source export](docs/anonymous-release.md). Code is distributed under the [MIT license](LICENSE); [third-party notices](THIRD_PARTY_NOTICES.md) accompany the included SASRec implementation. The package and CLI are named `recrsi`.

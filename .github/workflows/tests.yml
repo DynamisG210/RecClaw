@@ -4,8 +4,9 @@ jobs:
   cpu:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python: ['3.10', '3.12']
+        python: ['3.10', '3.11']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
