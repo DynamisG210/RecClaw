@@ -21,10 +21,11 @@ def read_budget(identity=None):
         raise ValueError('Independent allocation changed')
     allocation=json.loads(allocation_path.read_text())
     if allocation['allocation_id'] not in ('history_value_same_incumbent_pair_20261024_v1',
-                                         'history_value_same_incumbent_pair_20261024_v2'):
+                                         'history_value_same_incumbent_pair_20261024_v2',
+                                         'history_value_same_incumbent_v2_round14_20261024_phase2'):
         raise ValueError('Wrong independent allocation')
     who=data['consumer']
-    if allocation['allocation_id'].endswith('_v2'):
+    if allocation['allocation_id'] != 'history_value_same_incumbent_pair_20261024_v1':
         if who['search_seed'] != allocation['search_seed'] or who['run'] != allocation['campaign_prefix']+'-'+who['arm']:
             raise ValueError('V2 seed or campaign does not match its independent allocation')
     if data['schema']!='recrsi.history-value-budget.v1' or who['arm'] not in ('retain','reset'):

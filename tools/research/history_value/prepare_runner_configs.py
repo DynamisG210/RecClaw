@@ -17,11 +17,12 @@ def save(path, value):
 def prepare(old, allocation_path, output, remote, credential):
     allocation = read(allocation_path)
     if allocation['allocation_id'] not in ('history_value_same_incumbent_pair_20261024_v1',
-                                         'history_value_same_incumbent_pair_20261024_v2'):
+                                         'history_value_same_incumbent_pair_20261024_v2',
+                                         'history_value_same_incumbent_v2_round14_20261024_phase2'):
         raise ValueError('Wrong allocation')
     seed = allocation.get('search_seed', 762001)
     prefix = allocation.get('campaign_prefix', 'history-value-b01-after12')
-    if allocation['allocation_id'].endswith('_v2') and (seed != 762002 or prefix != 'history-value-b01-after12-s762002'):
+    if allocation['allocation_id'] != 'history_value_same_incumbent_pair_20261024_v1' and (seed != 762002 or prefix != 'history-value-b01-after12-s762002'):
         raise ValueError('V2 allocation must bind the preregistered next seed and new identity')
     raw_allocation = allocation_path.read_bytes()
     output.mkdir(parents=True, exist_ok=True)

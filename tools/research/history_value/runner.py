@@ -100,10 +100,11 @@ def compose(home, original, arm, preflight, placement=None, engineering_resume=F
         state_path.with_suffix('.json').write_bytes(canonical_json_bytes(projection) + b'\n')
     adapter = search_adapter(cfg, space)
     seeded = pickle.loads((home/(arm+'_INITIAL_STATE.pkl')).read_bytes())
-    parent_roots = list(seeded.candidate_root_by_capability.values())
-    if len(parent_roots) != 1:
-        raise ValueError('Initial continuation must have one incumbent source')
-    adapter.initial_root = Path(parent_roots[0])
+    historical = pickle.loads((original/'long/search/campaign/ROUND_13_CHECKPOINT.pkl').read_bytes()).state_before
+    incumbent_id = seeded.frontier['incumbent_candidate_id']
+    incumbent = next(c for c in (*seeded.carryover_open_candidates, *historical.carryover_open_candidates)
+                     if c.candidate_id == incumbent_id)
+    adapter.initial_root = Path(seeded.candidate_root_by_capability[incumbent.capability_ref])
     adapter.qualifier = type(adapter.qualifier)(adapter.initial_root)
     execution = MorecROExecution(cfg)
     original_identity = lab_api_broker.LabApiCanaryBrokerV1.sealed_request_identity
@@ -121,7 +122,7 @@ def compose(home, original, arm, preflight, placement=None, engineering_resume=F
         # candidate. Keep it available even when carryover search is empty.
         historical = pickle.loads((original/'long/search/campaign/ROUND_13_CHECKPOINT.pkl').read_bytes()).state_before
         incumbent_id = seeded.frontier['incumbent_candidate_id']
-        incumbent = next(c for c in historical.carryover_open_candidates if c.candidate_id == incumbent_id)
+        # The exact incumbent was resolved from the continued state above.
         original_bind = adapter.bind_implementation_sources
         def bind_sources(*, candidates, candidate_roots):
             parents = tuple(candidates)
