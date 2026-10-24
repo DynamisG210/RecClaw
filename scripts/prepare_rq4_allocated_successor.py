@@ -8,6 +8,7 @@ sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 grant=read(a.allocation);assert grant['api_usd_cap']==3.7 and grant['search_seed']==763006 and grant['max_new_valid_fits']==3
 subprocess.run([sys.executable,str(Path(__file__).with_name('prepare_rq4_native_successor_check.py')),'--original-state',str(a.original_state),'--feedback-root',str(a.feedback_root),'--output',str(a.output),'--search-seed','763006','--api-config',str(a.api_config)],check=True)
 A=a.output.resolve();S=a.original_state.resolve();shutil.copyfile(a.allocation,A/'ALLOCATION.json');shutil.copytree(S/'runtime',A/'runtime')
+paths=read(A/'runtime/ORIGINAL_PATHS.json');paths[0]=str(A/'runtime');write(A/'runtime/ORIGINAL_PATHS.json',paths)
 # This private runtime reads only this stage's finite, independently funded declarations.
 f=A/'runtime/e2_budget_binding.py';s=f.read_text();old="{'genuine': 1, 'reference_api_usd': 11.813253199999998, 'execution_seconds': 15397.553288171997, 'active_seconds': 162934.11051936884}"
 caps={'genuine':1,'reference_api_usd':3.7/3,'execution_seconds':1800,'active_seconds':14400}
