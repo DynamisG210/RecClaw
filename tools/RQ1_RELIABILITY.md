@@ -62,3 +62,11 @@ python tools/recompute_bert_transfer_variation.py --snapshot BERT_TRANSFER_RECOR
 ```
 
 Reads the exact recorded TEST files through read-only SSH and verifies byte hashes and parsed content. Groups by dataset, method and source search repeat before computing three-refit means; reports the SD across source-search means separately from mean within-source refit SD. Transferred winners are not relabeled as new target searches.
+
+## MoRec Electronics transfer
+
+```text
+python tools/recompute_morec_el_transfer.py --plan TEST_PLAN_JSON --analysis TEST_ANALYSIS_JSON --host SSH_HOST --out MOREC_EL_TRANSFER_JSON
+```
+
+Verifies retained TEST bytes, metrics, training-result bytes and checkpoint bytes for all 21 method/seed slots (including Seed), then computes three-refit means and SDs. This cohort transfers one selected program per method; target-search count is zero, not three.
