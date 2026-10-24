@@ -46,3 +46,11 @@ python tools/verify_morec_plan_remote.py --plan FINAL_PLAN_JSON --snapshot SIX_S
 ```
 
 This runs only remote sha256sum on paths pinned by the frozen plan. The output distinguishes missing/changed files and keeps root fallback/cached results in scope. Current adopted cohort composition is applied separately; historical ML1M RO results remain available and must not be pooled with its adopted v3 replacement.
+
+## Search quality and resource dispersion
+
+```text
+python tools/analyze_rq1_search_variation.py --searches SEARCH_SUMMARY --protocol COHORT_PROTOCOL --out VARIATION_JSON
+```
+
+Computes mean, sample SD, range and coefficient of variation across source searches for quality and reference resource usage. Verifies unique search identities and GPU unit conversion. Comparisons use each task's highest-mean comparator; counts above that mean are descriptive, not paired wins or significance tests. Job time and root allocation remain separate.
