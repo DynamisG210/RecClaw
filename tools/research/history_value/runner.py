@@ -19,6 +19,11 @@ def read(p):
 
 def compose(home, original, arm, preflight, placement=None, engineering_resume=False):
     cfg = read(home/arm/'EVALUATOR_CONFIG.json')
+    input_contract = None
+    if (home/'INITIAL_INPUT_CONTRACT_V2.json').exists():
+        from initial_input_contract import bind_initial_prompt, check_fresh_recovery
+        input_contract = read(home/'INITIAL_INPUT_CONTRACT_V2.json')
+        check_fresh_recovery(Path(cfg['output']), input_contract)
     if placement is not None:
         cfg.update(cpus=placement['cpus'], gpu_uuid=placement['gpu_uuid'])
     launch = read(home/arm/'LAUNCH.json')
@@ -120,6 +125,9 @@ def compose(home, original, arm, preflight, placement=None, engineering_resume=F
                 parents += (incumbent,)
             original_bind(candidates=parents, candidate_roots=candidate_roots)
         stack.enter_context(patch.object(adapter, 'bind_implementation_sources', bind_sources))
+        # Make the same incumbent available before the first producer projection,
+        # rather than relying on a later implementation-source binding.
+        bind_sources(candidates=(), candidate_roots=seeded.candidate_root_by_capability)
         recovery = root/'FIRST_PAID_BATCH_RECOVERY.pkl'
         if recovery.exists():
             from recclaw_core.research_line import campaign as campaign_module
@@ -137,9 +145,15 @@ def compose(home, original, arm, preflight, placement=None, engineering_resume=F
         call = stack.enter_context(native_ro_provider(cfg['provider_config']))
         stack.enter_context(patch.object(lab_api_broker.LabApiCanaryBrokerV1,
                                         'sealed_request_identity', identity))
+        def provider_call(**kw):
+            if input_contract is not None and 'prompt' in kw:
+                from initial_input_contract import CONTEXT_MARKER
+                if CONTEXT_MARKER in kw['prompt']:
+                    kw['prompt'] = bind_initial_prompt(kw['prompt'], input_contract)
+            return call(**include_schema(kw))
         composition = compose_standalone_campaign(config,
             resume=(root/'campaign/CAMPAIGN_STATE.pkl').exists(),
-            provider_call=lambda **kw: call(**include_schema(kw)),
+            provider_call=provider_call,
             launch=execution, search_space_adapter=adapter)
         policy = FrozenSearchPolicy(composition).install()
         stack.callback(policy.close)

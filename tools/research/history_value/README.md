@@ -54,10 +54,21 @@ For a prospective version, freeze the same construction-parent options before
 either producer is called and verify the actual request difference boundary.
 Existing completed inputs and results must remain unchanged.
 
+`prepare_initial_contract.py completed.json new_contract_dir` prepares
+`INITIAL_INPUT_CONTRACT_V2.json` and checks the actual recorded serialized prompts
+through the prospective binding function offline. In a separately allocated new
+pair home, the runner reads that manifest, binds identical parent options before
+transport and checks source hashes and non-history fields. History, latest
+observations, context digest and the architect's within-round generated portfolio
+are the explicit allowed differences; parent availability is not. The new
+contract rejects a `FIRST_PAID_BATCH_RECOVERY.pkl` from the old stage. Do not place
+the manifest in a completed run. Offline transformed requests are not new paid
+evidence or proof of a completed native run of this prospective version.
+
 ## Local checks
 
 ```sh
-python -m unittest discover -s tools/research/history_value -p test_prepare_pair.py
+python -m unittest discover -s tools/research/history_value -p 'test_*.py'
 python -m compileall -q tools/research/history_value
 ```
 

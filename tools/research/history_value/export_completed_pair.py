@@ -43,6 +43,7 @@ def export(home, original):
                     'role': trace['receipt']['provider_role'],
                     'request_digest': trace['sealed_request']['request_digest'],
                     'input_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
+                    'request_payload': payload,
                     'context': context})
         unique = {t['logical_call_id']: t for t in traces}
         successes = [e for e in events if e['event'] == 'SUCCESS']
