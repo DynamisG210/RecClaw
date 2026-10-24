@@ -16,16 +16,21 @@ def save(path, value):
 
 def prepare(old, allocation_path, output, remote, credential):
     allocation = read(allocation_path)
-    if allocation['allocation_id'] != 'history_value_same_incumbent_pair_20261024_v1':
+    if allocation['allocation_id'] not in ('history_value_same_incumbent_pair_20261024_v1',
+                                         'history_value_same_incumbent_pair_20261024_v2'):
         raise ValueError('Wrong allocation')
+    seed = allocation.get('search_seed', 762001)
+    prefix = allocation.get('campaign_prefix', 'history-value-b01-after12')
+    if allocation['allocation_id'].endswith('_v2') and (seed != 762002 or prefix != 'history-value-b01-after12-s762002'):
+        raise ValueError('V2 allocation must bind the preregistered next seed and new identity')
     raw_allocation = allocation_path.read_bytes()
     output.mkdir(parents=True, exist_ok=True)
     (output / 'ALLOCATION.json').write_bytes(raw_allocation)
     for arm in ('retain', 'reset'):
         root = remote / arm / 'search'
-        identity = dict(run='history-value-b01-after12-' + arm,
+        identity = dict(run=prefix + '-' + arm,
                         phase='HISTORY_VALUE_SAME_INCUMBENT', method='ro', arm=arm,
-                        block=1, search_seed=762001, train_seed=51001)
+                        block=1, search_seed=seed, train_seed=51001)
         provider = read(old / 'PROVIDER.json')
         limits = dict(provider['api_limits'], max_normalized_u=allocation['api_usd_cap_per_arm']/14)
         provider.update(resource_root=str(root), api_ledger=str(root/'API_EVENTS.jsonl'),
@@ -59,7 +64,7 @@ def prepare(old, allocation_path, output, remote, credential):
     return {'stage': 'FINITE_CONFIGS_BOUND_NOT_LAUNCHED', 'endpoint': allocation['endpoint'],
             'api_cap_per_arm': allocation['api_usd_cap_per_arm'],
             'gpu_seconds_per_arm': allocation['gpu_seconds_cap_per_arm'],
-            'search_seed': 762001, 'training_seed': 51001,
+            'search_seed': seed, 'training_seed': 51001,
             'physical_admission': 'unbound; no GPU or CPU assigned', 'paid_calls': 0}
 
 

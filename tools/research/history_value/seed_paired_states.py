@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 
-def seed(home):
+def seed(home, campaign_prefix='history-value-b01-after12'):
     cfg = json.loads((home / 'EVALUATOR_CONFIG.json').read_text())
     sys.path[:0] = [str(home.parent), str(home.parent / 'runtime'),
                    str(Path(cfg['task_root']) / 'controller_adapter'),
@@ -45,7 +45,7 @@ def seed(home):
               'shared_policy': dataclasses.asdict(policy)}
     states = {}
     for arm in ('retain', 'reset'):
-        identity = 'history-value-b01-after12-' + arm
+        identity = campaign_prefix + '-' + arm
         memory = (copy.deepcopy(old.context.scientific_memory) if arm == 'retain'
                   else {'global_memory': {}, 'by_role': {}})
         context = dataclasses.replace(old.context, campaign_id=identity,
@@ -82,4 +82,6 @@ def seed(home):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('home', type=Path)
-    print(json.dumps(seed(parser.parse_args().home)))
+    parser.add_argument('--campaign-prefix', default='history-value-b01-after12')
+    args = parser.parse_args()
+    print(json.dumps(seed(args.home, args.campaign_prefix)))

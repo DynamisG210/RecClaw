@@ -19,6 +19,10 @@ def read(p):
 
 def compose(home, original, arm, preflight, placement=None, engineering_resume=False):
     cfg = read(home/arm/'EVALUATOR_CONFIG.json')
+    allocation = read(home/'ALLOCATION.json')
+    phase_round_end = allocation.get('phase_round_end', 15)
+    if not 13 <= phase_round_end <= 15:
+        raise ValueError('Phase must remain within the preregistered three-opportunity pair')
     input_contract = None
     if (home/'INITIAL_INPUT_CONTRACT_V2.json').exists():
         from initial_input_contract import bind_initial_prompt, check_fresh_recovery
@@ -202,7 +206,7 @@ def compose(home, original, arm, preflight, placement=None, engineering_resume=F
             return record
         composition.campaign.run_round = bounded_round
         try:
-            records = composition.run(round_count=max(0, 16-composition.campaign.state.next_round_index))
+            records = composition.run(round_count=max(0, phase_round_end+1-composition.campaign.state.next_round_index))
             result = {'stage': 'NATIVE_STAGE_RETURNED', 'rounds': len(records)}
         except SearchResourceStop as error:
             result = {'stage': 'RESOURCE_STOP', 'reason': str(error)}
