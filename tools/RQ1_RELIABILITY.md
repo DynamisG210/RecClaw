@@ -80,3 +80,5 @@ NGCF transfer comparators: `python tools/recompute_ngcf_transfer_comparators.py 
 Use `--include-original-office-ro` only to reproduce the original Office RO cohort explicitly retained by the historical Office comparison. This adds nine native results; CDS RO remains excluded. Do not silently apply the CDS/ML1M RO1 replacement to Office.
 
 NGCF version sensitivity: `python tools/compare_ngcf_cohort_versions.py --evidence <ngcf_transfer-directory> --out <result.json>` computes original/replacement cohorts, retains Electronics protocol mismatch, and extracts timestamped source decisions and recovery limitations. This does not adopt either version or infer an unrecorded pre-TEST rule.
+
+Frozen NGCF source bytes: `python tools/verify_ngcf_source_manifests.py --sources <SOURCES.json> --host <ssh-host> --out <result.json>`. Verifies original source, staged copy and selection manifest for the eighteen original source entries. Replacement RO1 is separate; this is not a DEV-policy or checkpoint verification.
