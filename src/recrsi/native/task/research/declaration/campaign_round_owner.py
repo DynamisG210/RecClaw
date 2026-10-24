@@ -1,4 +1,4 @@
-"""Prospective owner boundary; preserve native STARTED/state while declaration waits."""
+"""Preserve native round state while a declaration request is pending."""
 from dataclasses import dataclass
 from pathlib import Path
 import fcntl,hashlib,json

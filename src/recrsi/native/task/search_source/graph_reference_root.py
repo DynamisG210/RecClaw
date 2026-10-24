@@ -4,7 +4,6 @@ Shared input/accounting only; no generation, selection, Provider or worker call.
 """
 import hashlib
 import json
-import math
 from pathlib import Path
 
 from graph_program import primary_score
@@ -33,10 +32,16 @@ def reference_root(config, resources):
         raise ValueError('Calibration binding differs from the measured root')
     # Mapping becomes known after root; scientific training/data inputs cannot
     # change while retaining its score or cost. New settings need a new root.
-    for key in ('task_id','line','dataset','recbole_root','root_source_sha256',
-                'data_files','model_config','training','evaluation'):
-        if binding[key] != original[key]:
+    for key in ('adapter','task_id','line','dataset','root_source_sha256',
+                'model_config','training','evaluation','metric_binding_version'):
+        if binding.get(key) != original.get(key):
             raise ValueError('New scientific settings require a new measured root: '+key)
+    # Relocation changes paths, not data identity. Dependency/source identities
+    # are checked separately by the runtime closure.
+    if ({k:v['sha256'] for k,v in binding['data_files'].items()} !=
+            {k:v['sha256'] for k,v in original['data_files'].items()}
+            or binding['dev_candidate_pool']['sha256'] != original['dev_candidate_pool']['sha256']):
+        raise ValueError('New scientific settings require a new measured root: data')
     if (binding['status'] != 'FROZEN' or not binding.get('catalog_mapping_sha256')
             or binding['catalog_mapping_sha256'] != result['catalog_mapping_sha256']):
         raise ValueError('Search must bind the actual root catalog mapping')
@@ -47,20 +52,10 @@ def reference_root(config, resources):
             or not result['checkpoint_reload_verified']):
         raise ValueError('Measured root source/seed/checkpoint differs')
     score = primary_score(result, binding)
-    evidence = envelope['artifacts']['native_evidence']
-    if evidence['termination'] not in ('EARLY_STOP','EPOCH_LIMIT') or evidence['unresolved_gpu_seconds']:
-        raise ValueError('Referenced root has unresolved or incomplete execution')
     physical = read(config['root_gpu_ledger'])
-    if (not physical['jobs'] or any(row['finished_ns'] is None for row in physical['jobs'].values())
-            or physical.get('root_reference_cost')):
-        raise ValueError('Root physical ledger must contain settled actual work only')
-    seconds = sum(row['gpu_seconds'] for row in physical['jobs'].values())
-    measured = evidence['physical_cost']
-    if seconds != measured['gpu_seconds']:
-        raise ValueError('Calibration GPU cost differs from the physical ledger')
-    for value in (seconds, measured['active_seconds']):
-        if not math.isfinite(value) or value <= 0:
-            raise ValueError('Root reference cost must be measured finite positive time')
+    from root_contract import validate_root_receipt
+    measured = validate_root_receipt(envelope, physical)
+    seconds = measured['gpu_seconds']
     carry = dict(source=str(source), source_sha256=sha(source), gpu_seconds=seconds,
         active_seconds=measured['active_seconds'], physical_execution_repeated=False)
     with resources.gpu.transaction() as state:

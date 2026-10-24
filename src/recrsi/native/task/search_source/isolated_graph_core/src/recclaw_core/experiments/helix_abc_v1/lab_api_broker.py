@@ -1206,7 +1206,21 @@ class LabApiCanaryBrokerV1:
                 for item in output
                 if isinstance(item, Mapping) and item.get("type") == "message"
             ]
-            if len(messages) != 1:
+            # Responses can emit commentary before the structured final answer.
+            # Select by explicit phase, never by which payload happens to validate.
+            final_messages = [
+                item for item in messages if item.get("phase") == "final_answer"
+            ]
+            if final_messages:
+                if len(final_messages) != 1 or any(
+                    item.get("phase") not in ("commentary", "final_answer")
+                    for item in messages
+                ):
+                    raise LabApiResponseContractError(
+                        LabApiResponseFailureReasonV1.RESPONSES_MESSAGE_SHAPE
+                    )
+                messages = final_messages
+            if len(messages) != 1 or messages[0].get("phase") == "commentary":
                 raise LabApiResponseContractError(
                     LabApiResponseFailureReasonV1.RESPONSES_MESSAGE_SHAPE
                 )

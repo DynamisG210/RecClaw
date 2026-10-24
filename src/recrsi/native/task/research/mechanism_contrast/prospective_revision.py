@@ -1,4 +1,4 @@
-"""Prospective truth and pre-selection parent-computation contrasts, no model execution."""
+"""Construct task and parent-computation contrasts before candidate selection."""
 import hashlib,importlib.util,json,sys
 from pathlib import Path
 N=Path(__file__).resolve().parent

@@ -43,7 +43,8 @@ def task(tmp_path):
     dump(inputs / "root_binding.json", binding)
     dump(inputs / "root_calibration.json", dict(status="SUCCESS", result=dict(task_id="custom-task", train_seed=51001,
         source_sha256=binding["root_source_sha256"], catalog_mapping_sha256=binding["catalog_mapping_sha256"],
-        binding_sha256=sha(inputs / "root_binding.json"), primary_metric="NDCG@5", test_accessed=False, metrics={"ndcg@5":.2,"hit@5":.4})))
+        binding_sha256=sha(inputs / "root_binding.json"), primary_metric="NDCG@5", test_accessed=False, role="root", checkpoint_reload_verified=True, metrics={"ndcg@5":.2,"hit@5":.4}), artifacts={"native_evidence":{"termination":"EPOCH_LIMIT", "unresolved_gpu_seconds":0, "physical_cost":{"gpu_seconds":1.,"active_seconds":2.}}}))
+    dump(inputs / "root_gpu_ledger.json", {"jobs":{"fixture":{"finished_ns":1,"gpu_seconds":1.}}})
     native = native_module("_config_test_native", "task/research_line/graph_native_inputs.py")
     dump(inputs / "facts.json", dict(task_id="custom-task", simulation_context=native.CONTEXT_RULE,
         data_sha256={k:v["sha256"] for k,v in files.items()}, catalog_mapping_sha256=binding["catalog_mapping_sha256"],

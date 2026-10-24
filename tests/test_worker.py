@@ -127,8 +127,10 @@ class FreshCandidateModel(GeneralRecommender):
         ctx = native_module("_worker_test_context", "task/research_line/graph_native_inputs.py")
         assets = {"binding":binding_path, "root_binding":binding_path,
                   "root_source":model, "root_mapping":tmp_path/"attempt/ID_MAPPING.json"}
-        records = dict(root_calibration={"status":"SUCCESS", "result":result},
-            root_gpu_ledger={"software_fixture_cpu_only":True},
+        records = dict(root_calibration={"status":"SUCCESS", "result":result, "artifacts":{"native_evidence":{
+                "termination":result["stop_reason"], "unresolved_gpu_seconds":0, "device":"cpu",
+                "physical_cost":{"gpu_seconds":0.,"active_seconds":1.}}}},
+            root_gpu_ledger={"jobs":{"fixture":{"finished_ns":1,"gpu_seconds":0.}}, "software_fixture_cpu_only":True},
             facts=dict(task_id=binding["task_id"], task="Synthetic custom task integration fixture",
                 root_source_sha256=worker.digest(model), data_sha256={k:v["sha256"] for k,v in files.items()},
                 catalog_mapping_sha256=result["catalog_mapping_sha256"], simulation_context=ctx.CONTEXT_RULE,

@@ -1,4 +1,4 @@
-"""Prospective common graph input binding for all six native controllers."""
+"""Bind common graph task inputs across native controllers."""
 import hashlib
 import json
 from pathlib import Path

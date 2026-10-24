@@ -8,7 +8,7 @@ import subprocess
 import sys
 from .config import load_config, validate_inputs
 
-VERSION = "recrsi-native-1.2.1"
+VERSION = "recrsi-native-1.3.0"
 
 def read(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -93,7 +93,7 @@ def prepare(config_path, destination):
     facts_path = write(bound/"SHARED_FACTS.json", facts)
     literature_path = write(bound/"LITERATURE.json", read(inputs["literature"]))
     worker.update(recbole_root=inputs["recbole_root"], main_binding=str(common), comparison_root=str(comparison),
-                  source_files={**pins(destination), **{str(p):sha(p) for p in Path(inputs["recbole_root"]).rglob("*.py")}},
+                  source_files={**pins(destination), **{str(p):sha(p) for p in (Path(inputs["recbole_root"])/'recbole').rglob("*.py")}},
                   dependency_scope="Pinned interpreter, runtime sources and installed dependency metadata")
     closure_path = write(bound/"RUNTIME_CLOSURE.json", worker)
     prices = {"gpt-5.6-luna":dict(input=.2,output=1.2,cache_read=.2,cache_creation=.2),

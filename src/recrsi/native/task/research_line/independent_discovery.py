@@ -1,10 +1,6 @@
-"""Prospective provider information boundary; never starts an experiment.
-
-Install inside the existing branch scope before composition. DISCOVER receives
-facts and ABI, not an implementation to edit. REFINE is byte-for-byte unchanged.
-Native evidence, parent bindings, selection, materialization and physics remain
-outside this presentation boundary.
-"""
+"""Construct role-specific research inputs.
+DISCOVER receives task facts and the model interface. REFINE receives the
+incumbent implementation. Evaluation and parent bindings use the full records."""
 import copy
 import json
 from contextlib import contextmanager

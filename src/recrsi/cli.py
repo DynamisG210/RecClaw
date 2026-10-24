@@ -5,7 +5,6 @@ from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
-import re
 import runpy
 import sys
 from .prepare import prepare, read
@@ -38,19 +37,12 @@ def enter(task_dir, *, execute=False, resume=False):
         sys.addaudithook(readonly_inspection)
     with ExitStack() as stack:
         if execute:
-            import fcntl
             cpus = set(task["cpus"])
             if not cpus <= os.sched_getaffinity(0):
                 raise ValueError("Requested CPU allocation is outside the current process allocation")
             slots = Path(task["resource_slots"])
-            paths={slots/("CPU%02d_%02d.lock" % (min(cpus),max(cpus))),slots/("CPU%d_%d.lock" % (min(cpus),max(cpus)))}
-            for path in slots.glob("CPU*.lock"):
-                match = re.fullmatch(r"CPU(\d+)_(\d+)\.lock", path.name)
-                if match and cpus.intersection(range(int(match[1]),int(match[2])+1)):
-                    paths.add(path)
-            for path in sorted(paths):
-                handle=stack.enter_context(path.open("a+b"))
-                fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            from .resources import claim_cpus
+            stack.enter_context(claim_cpus(slots, cpus))
             sys.path.insert(0,str(task_dir/"task/root_runtime"))
             from cpu_admission import occupied_cpus
             if cpus & occupied_cpus():
@@ -69,6 +61,25 @@ def main():
     init.add_argument("--adapter", choices=ADAPTERS, default=ADAPTERS[0])
     check=sub.add_parser("check",help="Validate input identities without API, GPU or worker execution")
     check.add_argument("--config",type=Path,required=True)
+    demo=sub.add_parser("demo",help="Train and reload a small synthetic SASRec model on CPU")
+    demo.add_argument("--output",type=Path,required=True)
+    assets=sub.add_parser("assets",help="Build mapped IDs and fixed DEV candidates from your data")
+    assets.add_argument("--project",type=Path,required=True)
+    assets.add_argument("--data-dir",type=Path,required=True)
+    assets.add_argument("--literature",type=Path,required=True)
+    assets.add_argument("--description",required=True)
+    baseline=sub.add_parser("baseline",help="Train the starting model and write baseline receipts")
+    baseline.add_argument("--project",type=Path,required=True)
+    baseline.add_argument("--output",type=Path,required=True)
+    baseline.add_argument("--device",choices=("cpu","cuda"),default="cuda")
+    doctor=sub.add_parser("doctor",help="Check the configured Linux worker and host prerequisites")
+    doctor.add_argument("--environment",type=Path,required=True)
+    split=sub.add_parser("split",help="Build sequential TRAIN/DEV files and a separate held-out TEST file")
+    split.add_argument("--interactions",type=Path,required=True)
+    split.add_argument("--output",type=Path,required=True)
+    split.add_argument("--test-output",type=Path,required=True)
+    split.add_argument("--dataset",default="cds")
+    split.add_argument("--max-length",type=int,default=50)
     prep=sub.add_parser("prepare",help="Bind frozen task inputs to a new run directory")
     prep.add_argument("--config",type=Path,required=True)
     prep.add_argument("--output",type=Path,required=True)
@@ -80,6 +91,21 @@ def main():
     args=p.parse_args()
     if args.command=="init":
         print(json.dumps({"initialized":str(initialize(args.output, adapter=args.adapter))}))
+    elif args.command=="split":
+        from .data import split
+        options=vars(args).copy(); options.pop('command')
+        print(json.dumps(split(**options)))
+    elif args.command in ("demo", "assets", "baseline"):
+        from . import bootstrap
+        options=vars(args).copy()
+        options.pop("command")
+        print(json.dumps(getattr(bootstrap,args.command)(**options)))
+    elif args.command=="doctor":
+        from .doctor import doctor
+        report=doctor(args.environment)
+        print(json.dumps(report,indent=2))
+        if not report['ready']:
+            raise SystemExit(1)
     elif args.command=="check":
         print(json.dumps(check_config(args.config)))
     elif args.command=="prepare":

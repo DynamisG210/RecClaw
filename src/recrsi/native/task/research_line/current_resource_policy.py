@@ -1,4 +1,4 @@
-"""Prospective shared timer/failure policy; preserve raw costs and scientific fit."""
+"""Shared timing and failure accounting for candidate evaluation."""
 import inspect
 import linecache
 from pathlib import Path

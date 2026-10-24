@@ -1,7 +1,5 @@
-"""Prospective pending boundary for the observed native producer Exception catch.
-No original campaign or entrypoint imports this module. Pending is control flow,
-not a ProducerOutcome, a successful native receipt, or a scientific opportunity.
-"""
+"""Preserve pending declaration work across campaign interruption.
+Pending declarations retain the started round until a result is available."""
 from contextlib import contextmanager
 import hashlib,json
 from pathlib import Path

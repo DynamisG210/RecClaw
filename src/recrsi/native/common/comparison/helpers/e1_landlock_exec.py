@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
-"""Fail-closed Landlock ABI-v1 executor for an E1 candidate trainer.
+"""Landlock filesystem policy for unprivileged x86-64 workers.
 
-The caller must first create separate network and IPC namespaces and drop to
-the unprivileged experiment UID.  This launcher verifies those conditions,
-installs an allowlist-only filesystem policy, writes an optional receipt from
-inside the policy, and then execs the requested command.  It uses only the
-Python standard library and supports the x86_64 syscall ABI used by GPU41.
-
-The receipt records, but does not require, PID namespace isolation.  GPU41's
-LXC host denies the procfs remount required by a new PID namespace, and CUDA
-fails with error 304 when a new PID namespace inherits the old procfs view.
-Landlock still exposes only /proc/self to the executed process.
+The caller supplies isolated network/IPC namespaces and read/write roots.
+PID namespace isolation is recorded separately because CUDA requires a
+consistent procfs view.
 """
 
 from __future__ import annotations

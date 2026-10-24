@@ -1,10 +1,6 @@
-"""Q0 common-mode calibration and prior negative-Episode audit.
-
-This module is deliberately DEVELOPMENT_ONLY.  It reuses the accepted
-Producer/OpenSpec/Resolver, shared origin-blind Implementer, materializer,
-Mechanical Qualifier, and matched RecBole runtime.  The parent-equivalent and
-known-good arms are diagnostic instruments, never capability admissions.
-"""
+"""Calibrate the research pipeline with parent-equivalent and known-good controls.
+Controls share the producer, implementer, qualifier, and RecBole runtime;
+their results diagnose pipeline behavior."""
 
 from __future__ import annotations
 

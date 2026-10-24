@@ -1,9 +1,6 @@
-"""Prospective branch allocation on the existing program/native campaign.
-
-No launch or paid permission. Trusted genuine outcomes advance the experiment
-quota. A branch keeps its best parent; two measured non-improving descendants
-return construction to root. Global best and all outcomes remain archived.
-"""
+"""Allocate research branches from measured candidate outcomes.
+A branch retains its best parent. Two non-improving descendants start a new
+branch; the global best and all measured outcomes remain available."""
 import json
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace

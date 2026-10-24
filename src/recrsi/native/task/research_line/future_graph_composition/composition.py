@@ -1,4 +1,4 @@
-"""Prospective graph composition. No release, launcher, or historical recovery."""
+"""Compose graph research roles and runtime adapters."""
 from contextlib import contextmanager
 import hashlib
 import inspect

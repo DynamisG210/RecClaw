@@ -1,4 +1,4 @@
-"""Prospective fixed-100 graph metric contract; no ranking or search replacement."""
+"""Fixed-100 candidate metric definitions for graph recommendation."""
 VERSION = 'graph.fixed100.ndcg5.hr5.se-style.v1'
 
 

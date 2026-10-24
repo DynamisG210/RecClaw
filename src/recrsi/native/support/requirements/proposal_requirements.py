@@ -1,4 +1,4 @@
-"""Prospective graph task input v1. Scope before new Producer construction only."""
+"""Bind task requirements before constructing the research producer."""
 from contextlib import contextmanager
 from unittest.mock import patch
 

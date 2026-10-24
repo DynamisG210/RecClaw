@@ -1,4 +1,4 @@
-"""Prospective limits on existing native campaign; no new selector or scheduler."""
+"""Configure bounded runs using the native campaign scheduler."""
 from contextlib import contextmanager
 from dataclasses import replace
 import os

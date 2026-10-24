@@ -1,11 +1,6 @@
-"""Development-only evidence guard for RecRSI exploration clients.
-
-This module is intentionally not an authority plane.  It helps a Candidate
-Producer or Router detect protocol-changing proposals and classify historical
-observations before they enter search memory.  It never issues an
-ActionContract, EvidenceAdmissionDecision, AdmissibleEvent, claim transition,
-permission, promotion, or gate decision.
-"""
+"""Classify protocol compatibility of proposals and historical observations.
+Research clients use these classifications when constructing search memory.
+Execution admission and experiment-store transitions are handled separately."""
 
 from __future__ import annotations
 

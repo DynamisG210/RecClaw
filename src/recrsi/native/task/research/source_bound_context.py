@@ -1,8 +1,5 @@
-"""Prospective Graph decision input: ledger contrasts and source facts.
-
-No launch, model call, candidate rewriting, optimizer step or TEST access.
-Old completed campaigns must never install this projection on replay.
-"""
+"""Build decision context from ledger contrasts and candidate source facts.
+Apply this projection when constructing a new research decision."""
 import copy
 import hashlib
 import json

@@ -134,6 +134,8 @@ def validate_inputs(settings):
                     binding_sha256=sha(settings["root_binding"]), primary_metric="NDCG@5", test_accessed=False)
     if root["status"] != "SUCCESS" or any(result.get(k) != v for k,v in expected.items()):
         raise ValueError("Baseline must be an actual matching source/data/protocol/seed measurement without TEST access")
+    receipt = native_module("_recrsi_root_contract", "task/search_source/root_contract.py")
+    receipt.validate_root_receipt(root, read(settings["root_gpu_ledger"]))
     metrics = result.get("metrics", {})
     for key in ("ndcg@5", "hit@5"):
         value = metrics.get(key)
