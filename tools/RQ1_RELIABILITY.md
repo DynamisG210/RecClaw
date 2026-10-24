@@ -70,3 +70,5 @@ python tools/recompute_morec_el_transfer.py --plan TEST_PLAN_JSON --analysis TES
 ```
 
 Verifies retained TEST bytes, metrics, training-result bytes and checkpoint bytes for all 21 method/seed slots (including Seed), then computes three-refit means and SDs. This cohort transfers one selected program per method; target-search count is zero, not three.
+
+NGCF native variation: `python tools/recompute_ngcf_native_variation.py --snapshot <ngcf_final_native.json> --table <RQ1_main_table.tex> --host <ssh-host> --out <result.json>` verifies retained remote TEST bytes and computes between-source-search and within-source-refit sample SD separately. Uses the adopted replacement RO1 with original RO2/RO3; CDs is source-program transfer. Recorded checkpoint hashes are not a checkpoint-byte verification.
