@@ -24,11 +24,14 @@ for arm in grant['arms']:
     write(home/'PROVIDER.json',provider)
     cfg=read(home/'EVALUATOR_CONFIG.json');cfg.update(output=str(out),provider_config=str(home/'PROVIDER.json'),active_wall_path=str(out/'ACTIVE_WALL.json'),e2_budget_manifest=str(home/'BUDGET.json'),e2_budget_sha256=sha(home/'BUDGET.json'),worker_timeout_seconds=1800)
     write(home/'EVALUATOR_CONFIG.json',cfg)
-    if arm!='Raw':write(home/'FROZEN_FEEDBACK.json',{'representation':read(home/'PAID_FEEDBACK.json')['response']['proposals'][0],'common_raw_sha256':sha(A/'COMMON_RAW.json'),'only_observation_round':read(A/'PROSPECTIVE_CONTRACT.json')['treated_round']})
+    if arm!='Raw':write(home/('FROZEN_M18_FEEDBACK.json' if a.state==18 else 'FROZEN_FEEDBACK.json'),{'representation':read(home/'PAID_FEEDBACK.json')['response']['proposals'][0],'common_raw_sha256':sha(A/('COMMON_M18_RAW.json' if a.state==18 else 'COMMON_RAW.json')),'only_observation_round':read(A/'PROSPECTIVE_CONTRACT.json')['treated_round']})
 s=(A/'check.py').read_text();s=s.replace(f'R=Path({str(S/"runtime")!r})',f'R=Path({str(A/"runtime")!r})')
 s=s.replace(" assert args.check, 'Offline-only: paid calls and training are prohibited'", f" assert read(A/'ALLOCATION.json')['allocation_id']=={allocation_id!r}")
-start=s.index('    if not args.check:\n     import contextvars');end=s.index('    if args.cpu and args.expected_wire:',start)
+start=s.index('    if not args.check:\n     import contextvars');end=s.index('    stack.enter_context(parent_caller.bind(adapter))' if a.state==18 else '    if args.cpu and args.expected_wire:',start)
 s=s[:start]+s[end:]
+if a.state==18:
+    s=s.replace("ap=argparse.ArgumentParser();","ap=argparse.ArgumentParser();ap.add_argument('--attempt',type=int,required=True);")
+    s=s.replace('ACTION1_', 'INFRA000001_')
 s=s.replace("set({'Raw':[60,61],'Summary':[60,61],'Mechanism':[60,61]}[args.arm] if args.cpu else cfg['cpus'])","set(cfg['cpus'])")
 # The CPU phase builds candidates only. Native qualification interception denies workers.
 compile(s,str(A/'entry.py'),'exec');(A/'entry.py').write_text(s)
