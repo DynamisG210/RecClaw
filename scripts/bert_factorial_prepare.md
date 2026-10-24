@@ -19,17 +19,17 @@ one CPU thread, and no optimizer step; this is not a FIT or quality measurement.
 The model-config adapter is excluded explicitly because the diagnostic passes
 a native mapping. Qualification of the actual wrapped worker remains necessary.
 
-The diagnostic checks finite loss, projection gradients, agreement between
-predict/full-sort interfaces, and equality of initial parameter tensors. This
-guards an observed confound: adding the projection before recursive weight
-initialization changes the RNG stream even under the same seed. The historical
-root/objective pair and combination/score-only pair can have matched parameters
-within each pair without having shared parameters matched across the pairs.
+The diagnostic reports finite loss, projection gradients, predict/full-sort
+agreement, and initial tensor equality for each source pair.
 
-Historical DEV gains are descriptive. The missing score-only result prevents
-computing the interaction. Completing that one cell does not retrospectively
-create a prospective matched-initialization experiment or independent search
-replication. Preserve the legacy root's ABI-equivalence provenance; do not
-relabel it as a newly trained control. Future independent matched blocks require
-an explicit prospective initialization/data/worker/budget contract, retaining
-all outcomes and selecting seeds before observing results.
+`bert_factorial_run.py --config CONFIG.json` executes one allocated cell using
+the recorded native worker and shared CPU/GPU admission modules. The config
+supplies paths and input hashes; the allocation supplies time and resource caps.
+Train/dev bytes are checked against the recorded manifest before admission.
+An existing ATTEMPT.json prevents automatic relaunch. Inspect the original
+worker and persisted budget before diagnosing an interrupted attempt.
+
+The output directory contains BINDING.json, ATTEMPT.json, native worker outputs,
+GPU_BUDGET.json, ACTIVE_WALL.json, and RESULT.json or FAILURE.json. COST.json
+retains the final metering snapshot. Queue time is outside the worker clock;
+worker execution and unresolved reservations remain in the finite GPU ledger.
