@@ -21,3 +21,12 @@ python tools/verify_rq1_checkpoint_chains.py --material NATIVE_REVIEW_MATERIAL -
 ```
 
 This checks retained candidate and checkpoint bytes against the original selection freeze, TEST configuration/result and adopted observation. It reports every check individually, including search seed and checkpoint-only execution. Ancillary files outside the archive remain explicitly unverified by this local command; live hashes must be compared with their original recorded hashes separately. Mutable continuation ledgers must not substitute for the original freeze.
+
+## Historical archive reconciliation
+
+```text
+python tools/reconcile_rq1_frozen_archives.py --comparison REMOTE_ANCILLARY_JSON --archives ARCHIVE_PARENT --out HISTORICAL_RECONCILIATION_JSON
+python tools/recompute_morec_native_test_variation.py --snapshot SIX_SYSTEM_REPORT --ml1m-v3 ADOPTED_V3_REPORT --native HASH_NAMED_TEST_FILES --out MOREC_VARIATION_JSON
+```
+
+Archive reconciliation reads matching members without executing serialized campaign states. It checks preserved evaluation/event prefixes, selected algorithms and existing GPU jobs, and reports the original and continued cost snapshots separately. The MoRec tool verifies native TEST result bytes and recomputes search-level mean/sample SD. The optional explicit v3 report replaces only the adopted ML1M RO cohort; omit it to reproduce the historical cohort. Source and checkpoint fields in these TEST results are identity assertions, not independent byte checks of those artifacts.
