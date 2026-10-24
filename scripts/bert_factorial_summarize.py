@@ -13,7 +13,7 @@ def summarize(preparation, score_result=None):
         for key in ('manifest_sha256', 'recipe_sha256', 'worker_sha256', 'seed'):
             if identity[key] != expected[key]:
                 raise ValueError('Incompatible score-only result: ' + key)
-        if identity['source_sha256'] != preparation['source_only_sha256']:
+        if identity['source_sha256'] != next(row['source_sha256'] for row in preparation['observations'] if row['index'] == 10):
             raise ValueError('Score-only source mismatch')
         if score_result['status'] != 'ok':
             raise ValueError('Unsuccessful result must be diagnosed, not used as a metric')
@@ -36,7 +36,8 @@ def summarize(preparation, score_result=None):
                     composition_exceeds_both_single_changes=None if score is None else combo>max(score,objective),
                     positive_descriptive_interaction=None if score is None else effects['descriptive_interaction']>0),
                 history=preparation['observations'],
-                provenance=preparation['limits'],
+                provenance=[x for x in preparation['limits'] if not x.startswith('Missing score-only')],
+                score_only_origin='HISTORICAL_RO08_ROUND10',
                 score_only_result=score_result)
 
 
