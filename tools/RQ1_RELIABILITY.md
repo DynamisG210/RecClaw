@@ -30,3 +30,11 @@ python tools/recompute_morec_native_test_variation.py --snapshot SIX_SYSTEM_REPO
 ```
 
 Archive reconciliation reads matching members without executing serialized campaign states. It checks preserved evaluation/event prefixes, selected algorithms and existing GPU jobs, and reports the original and continued cost snapshots separately. The MoRec tool verifies native TEST result bytes and recomputes search-level mean/sample SD. The optional explicit v3 report replaces only the adopted ML1M RO cohort; omit it to reproduce the historical cohort. Source and checkpoint fields in these TEST results are identity assertions, not independent byte checks of those artifacts.
+
+## MoRec frozen binding
+
+```text
+python tools/verify_morec_frozen_binding.py --binding BINDING_DIRECTORY --review ADOPTED_V3_REVIEW --native-tests HASH_NAMED_TEST_FILES --out MOREC_V3_NATIVE_CHAIN_JSON
+```
+
+The binding directory contains the original all3_frozen_inputs.json, final_plan.json, FIT_PLAN_1/2/3.json, and REMOTE_PINS.json from a read-only remote SHA-256 collection. The tool checks candidate-file hashes against the original fit plan, actual checkpoint hashes, search/train/evaluation seeds, and native TEST linkage. It does not run training or TEST. Remote pins record their collection time and expected/actual hashes.
