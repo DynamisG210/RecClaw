@@ -6,8 +6,8 @@ p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.a
 with (a.root/'CPU_CONTROLLER.lock').open('a+b') as owner:
     fcntl.flock(owner,fcntl.LOCK_EX|fcntl.LOCK_NB)
     for arm in ('Raw','Summary','Mechanism'):
-        home=a.root/arm
-        if list(home.glob('INFRA*_CPU_ROUND_003_STARTED.json')):raise RuntimeError('Existing paid attempt; diagnose before resume')
+        round_id=json.loads((a.root/'PROSPECTIVE_CONTRACT.json').read_text())['next_round'];home=a.root/arm
+        if list(home.glob(f'INFRA*_CPU_ROUND_{round_id:03d}_STARTED.json')):raise RuntimeError('Existing paid attempt; diagnose before resume')
         cpus=set(json.loads((home/'EVALUATOR_CONFIG.json').read_text())['cpus'])
         deadline=time.monotonic()+1800
         while time.monotonic()<deadline:
@@ -23,7 +23,7 @@ with (a.root/'CPU_CONTROLLER.lock').open('a+b') as owner:
                 except BlockingIOError:
                     pass
                 else:
-                    command=[sys.executable,'-B',str(a.root/'entry.py'),'--arm',arm,'--attempt','1','--round','3','--cpu']
+                    command=[sys.executable,'-B',str(a.root/'entry.py'),'--arm',arm,'--attempt','1','--round',str(round_id),'--cpu']
                     (home/'CPU_ADMISSION.json').write_text(json.dumps({'cpus':sorted(cpus),'locks':[str(p) for p in sorted(paths)],'command':command,'started_ns':time.time_ns()}))
                     with (home/'CPU_RUN.log').open('x') as log:
                         result=subprocess.run(command,stdout=log,stderr=subprocess.STDOUT)

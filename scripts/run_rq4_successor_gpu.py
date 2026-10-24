@@ -8,11 +8,11 @@ from priority_capacity import gpu_capacity
 with (a.root/'GPU_CONTROLLER.lock').open('a+b') as owner:
     fcntl.flock(owner,fcntl.LOCK_EX|fcntl.LOCK_NB)
     for arm in ('Raw','Summary','Mechanism'):
-        home=a.root/arm;cfg=json.loads((home/'EVALUATOR_CONFIG.json').read_text());cpus=set(cfg['cpus']);gpu=cfg['gpu_uuid']
-        if list(home.glob('INFRA*_GPU_ROUND_003_STARTED.json')):raise RuntimeError('Existing GPU attempt requires diagnosis; no automatic replay')
+        round_id=json.loads((a.root/'PROSPECTIVE_CONTRACT.json').read_text())['next_round'];home=a.root/arm;cfg=json.loads((home/'EVALUATOR_CONFIG.json').read_text());cpus=set(cfg['cpus']);gpu=cfg['gpu_uuid']
+        if list(home.glob(f'INFRA*_GPU_ROUND_{round_id:03d}_STARTED.json')):raise RuntimeError('Existing GPU attempt requires diagnosis; no automatic replay')
         deadline=time.monotonic()+14400
         while time.monotonic()<deadline:
-            if not (home/'INFRA000001_CPU_ROUND_003_QUALIFICATION_READY.json').exists():time.sleep(15);continue
+            if not (home/f'INFRA000001_CPU_ROUND_{round_id:03d}_QUALIFICATION_READY.json').exists():time.sleep(15);continue
             with ExitStack() as stack:
                 try:
                     paths={a.slots/f'CPU{min(cpus):02d}_{max(cpus):02d}.lock',a.slots/f'CPU{min(cpus)}_{max(cpus)}.lock'}
@@ -28,7 +28,7 @@ with (a.root/'GPU_CONTROLLER.lock').open('a+b') as owner:
                     admitted=False;reasons=[]
                     for free,ident in reversed(choices):
                         if free<a.required_mib:continue
-                        try:receipt=stack.enter_context(gpu_capacity(a.slots,ident,cfg['driver_root'],a.required_mib,'rq4_state2_three_arm_successor_20261024_v1'))
+                        try:receipt=stack.enter_context(gpu_capacity(a.slots,ident,cfg['driver_root'],a.required_mib,json.loads((a.root/'ALLOCATION.json').read_text())['allocation_id']))
                         except (BlockingIOError,RuntimeError) as error:
                             reasons.append({'gpu':ident,'reason':str(error)});continue
                         gpu=ident;admitted=True;break
@@ -44,7 +44,7 @@ with (a.root/'GPU_CONTROLLER.lock').open('a+b') as owner:
                     config_path=home/'EVALUATOR_CONFIG.json';config_path.write_text(json.dumps(cfg,indent=2)+'\n')
                     binding_path=a.root/'EXECUTION_BINDING.json';binding=json.loads(binding_path.read_text());binding['files'][str(config_path)]=hashlib.sha256(config_path.read_bytes()).hexdigest();binding_path.write_text(json.dumps(binding,indent=2)+'\n')
                     (home/'PHYSICAL_PLACEMENT.json').write_text(json.dumps({'old_gpu':old_gpu,'admitted_gpu':gpu,'time_ns':time.time_ns(),'scientific_inputs_changed':False}))
-                    command=[sys.executable,'-B',str(a.root/'entry.py'),'--arm',arm,'--attempt','1','--round','3','--gpu-fd',str(gpu_handle.fileno())]
+                    command=[sys.executable,'-B',str(a.root/'entry.py'),'--arm',arm,'--attempt','1','--round',str(round_id),'--gpu-fd',str(gpu_handle.fileno())]
                     (home/'GPU_ADMISSION.json').write_text(json.dumps({'receipt':receipt,'cpu_locks':[str(p) for p in sorted(paths)],'command':command,'time_ns':time.time_ns()}))
                     with (home/'GPU_RUN.log').open('x') as log:result=subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,pass_fds=(gpu_handle.fileno(),))
                     if result.returncode:raise RuntimeError(f'{arm} native GPU failure; inspect retained log')
