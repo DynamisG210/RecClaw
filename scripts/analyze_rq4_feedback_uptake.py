@@ -1,0 +1,10 @@
+"""Recompute feedback recommendation-to-proposal coverage for every frozen pool entry."""
+import argparse,hashlib,json
+from pathlib import Path
+p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();rows=[]
+recommendations={(2,'Summary'):['score_cosine'],(2,'Mechanism'):['score_diagonal'],(3,'Summary'):['score_query_gate'],(3,'Mechanism'):['score_query_gate']}
+for (state,arm),target in recommendations.items():
+ feedback=a.root/f'feedback_repeat/outputs/state_{state}/{arm}/FEEDBACK.json';f=json.loads(feedback.read_text())['response']['proposals'][0];text=f if isinstance(f,str) else f['recommended_next_experiments'];assert all(t in text for t in target)
+ chain=a.root/f'state{state}_decisions/DECISION_SOURCE_CHAIN.json';pool=next(r for r in json.loads(chain.read_text())['rows'] if r['arm']==arm)['complete_pool'];valid=[r for r in pool if r['spec'] is not None and not r['failure_code']]
+ rows.append({'state':state,'arm':arm,'feedback_sha256':hashlib.sha256(feedback.read_bytes()).hexdigest(),'chain_sha256':hashlib.sha256(chain.read_bytes()).hexdigest(),'recommendation_text':text,'recommended_primitive_set':target,'roles_total':len(pool),'valid_proposals':len(valid),'exact_recommendation_matches':sum(set(r['primitives'] or [])==set(target) for r in valid),'distinct_valid_primitive_sets':len({tuple(sorted(r['primitives'] or [])) for r in valid}),'all_roles':[{'role':r['role'],'primitives':r['primitives'],'failure_code':r['failure_code'],'digest':r['digest'],'competing_explanation':(r['spec'] or {}).get('competing_explanation'),'hypothesis':(r['spec'] or {}).get('hypothesis')} for r in pool]})
+a.output.write_text(json.dumps({'rows':rows,'method':'Manually source-identified primary recommendations, all frozen pool entries counted without outcome selection; exact primitive set coverage does not measure semantic reasoning quality','new_calls':0,'new_fits':0},indent=2));print(json.dumps([{k:r[k] for k in ('state','arm','roles_total','valid_proposals','exact_recommendation_matches','distinct_valid_primitive_sets')} for r in rows]))

@@ -1,0 +1,41 @@
+"""Prepare an allocated native RQ4 successor block without launching calls or workers."""
+import argparse,hashlib,json,shutil,subprocess,sys
+from pathlib import Path
+p=argparse.ArgumentParser();p.add_argument('--state',type=int,default=2);p.add_argument('--search-seed',type=int,default=763006);p.add_argument('--original-state',type=Path,required=True);p.add_argument('--feedback-root',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--allocation',type=Path,required=True);p.add_argument('--api-config',type=Path,required=True);a=p.parse_args()
+read=lambda p:json.loads(p.read_text(encoding='utf-8-sig'))
+def write(p,x):p.write_text(json.dumps(x,indent=2)+'\n')
+sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+grant=read(a.allocation);assert grant['arms']==['Raw','Summary','Mechanism'] and grant.get('max_new_valid_fits',grant.get('max_valid_fits'))==3
+assert grant.get('state',2)==a.state
+allocation_id=grant['allocation_id'];api_cap=grant['api_usd_cap'];gpu_cap=grant.get('gpu_seconds_cap_per_arm',1800)
+subprocess.run([sys.executable,str(Path(__file__).with_name('prepare_rq4_native_successor_check.py')),'--state',str(a.state),'--original-state',str(a.original_state),'--feedback-root',str(a.feedback_root),'--output',str(a.output),'--search-seed',str(a.search_seed),'--api-config',str(a.api_config)],check=True)
+A=a.output.resolve();S=a.original_state.resolve();shutil.copyfile(a.allocation,A/'ALLOCATION.json');shutil.copytree(S/'runtime',A/'runtime')
+paths=read(A/'runtime/ORIGINAL_PATHS.json');paths[0]=str(A/'runtime');write(A/'runtime/ORIGINAL_PATHS.json',paths)
+# This private runtime reads only this stage's finite, independently funded declarations.
+f=A/'runtime/e2_budget_binding.py';s=f.read_text();old="{'genuine': 1, 'reference_api_usd': 11.813253199999998, 'execution_seconds': 15397.553288171997, 'active_seconds': 162934.11051936884}"
+caps={'genuine':1,'reference_api_usd':api_cap/3,'execution_seconds':gpu_cap,'active_seconds':14400}
+assert old in s;s=s.replace(old,repr(caps));s=s.replace('5400 incremental GPU seconds','1800 incremental GPU seconds');f.write_text(s)
+for arm in grant['arms']:
+    home=A/arm;out=home/'search';out.mkdir();budget=read(home/'BUDGET.json');budget.update(caps=caps,output=str(out),space_reference=None)
+    budget['original_api_limits']['max_requests']=6
+    write(home/'BUDGET.json',budget)
+    provider=read(home/'PROVIDER.json');provider.update(resource_root=str(out),api_ledger=str(out/'API_EVENTS.jsonl'),active_wall_path=str(out/'ACTIVE_WALL.json'),ledger_module_dir=str(A/'runtime'))
+    provider['api_limits'].update(max_requests=6,max_normalized_u=caps['reference_api_usd']/14)
+    write(home/'PROVIDER.json',provider)
+    cfg=read(home/'EVALUATOR_CONFIG.json');cfg.update(output=str(out),provider_config=str(home/'PROVIDER.json'),active_wall_path=str(out/'ACTIVE_WALL.json'),e2_budget_manifest=str(home/'BUDGET.json'),e2_budget_sha256=sha(home/'BUDGET.json'),worker_timeout_seconds=1800)
+    write(home/'EVALUATOR_CONFIG.json',cfg)
+    if arm!='Raw':write(home/('FROZEN_M18_FEEDBACK.json' if a.state==18 else 'FROZEN_FEEDBACK.json'),{'representation':read(home/'PAID_FEEDBACK.json')['response']['proposals'][0],'common_raw_sha256':sha(A/('COMMON_M18_RAW.json' if a.state==18 else 'COMMON_RAW.json')),'only_observation_round':read(A/'PROSPECTIVE_CONTRACT.json')['treated_round']})
+s=(A/'check.py').read_text();s=s.replace(f'R=Path({str(S/"runtime")!r})',f'R=Path({str(A/"runtime")!r})')
+s=s.replace(" assert args.check, 'Offline-only: paid calls and training are prohibited'", f" assert read(A/'ALLOCATION.json')['allocation_id']=={allocation_id!r}")
+start=s.index('    if not args.check:\n     import contextvars');end=s.index('    stack.enter_context(parent_caller.bind(adapter))' if a.state==18 else '    if args.cpu and args.expected_wire:',start)
+s=s[:start]+s[end:]
+if a.state==18:
+    s=s.replace("ap=argparse.ArgumentParser();","ap=argparse.ArgumentParser();ap.add_argument('--attempt',type=int,required=True);")
+    s=s.replace('ACTION1_', 'INFRA000001_')
+s=s.replace("set({'Raw':[60,61],'Summary':[60,61],'Mechanism':[60,61]}[args.arm] if args.cpu else cfg['cpus'])","set(cfg['cpus'])")
+# The CPU phase builds candidates only. Native qualification interception denies workers.
+compile(s,str(A/'entry.py'),'exec');(A/'entry.py').write_text(s)
+shutil.copyfile(S/'COMPLETED_SOURCE_INVENTORY.json',A/'COMPLETED_SOURCE_INVENTORY.json')
+files={str(p):sha(p) for p in A.rglob('*') if p.is_file() and p.suffix in ('.py','.json')}
+write(A/'EXECUTION_BINDING.json',{'contract_sha256':sha(A/'PROSPECTIVE_CONTRACT.json'),'allocation_sha256':sha(A/'ALLOCATION.json'),'files':files})
+print(json.dumps({'stage':'PREPARED_NOT_EXECUTED','root':str(A),'per_arm_api_cap':caps['reference_api_usd'],'calls_cap_per_arm':6,'fits_per_arm':1,'gpu_seconds_per_arm':1800,'new_calls':0,'new_fits':0}))
