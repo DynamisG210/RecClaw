@@ -84,3 +84,5 @@ NGCF version sensitivity: `python tools/compare_ngcf_cohort_versions.py --eviden
 Frozen NGCF source bytes: `python tools/verify_ngcf_source_manifests.py --sources <SOURCES.json> --host <ssh-host> --out <result.json>`. Verifies original source, staged copy and selection manifest for the eighteen original source entries. Replacement RO1 is separate; this is not a DEV-policy or checkpoint verification.
 
 DEV selection recomputation: `python tools/recompute_ngcf_dev_selection.py --freezes <NGCF_WINNER_FREEZE_BINDING.json> --ledgers <NGCF_SELECTION_LEDGERS.json> --out <result.json>`. Implements the inspected native valid/admitted, DEV-only, stable maximum rule. Root entries remain eligible as in native code. It reports historical byte matches separately from current winner/source agreement.
+
+`analyze_ngcf_dev_discovery.py --ledgers NGCF_SELECTION_LEDGERS.json --out NGCF_DEV_DISCOVERY.json` recomputes each original search root-relative DEV gain and candidate frontier in available-index order. It preserves all 18 searches, explicit eligibility denominators, and historical pin differences; these are not TEST outcomes or total paid attempts.
