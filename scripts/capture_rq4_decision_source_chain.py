@@ -5,7 +5,7 @@ p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.a
 read=lambda p:json.loads(p.read_text());sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 rows=[]
 for arm in ('Raw','Summary','Mechanism'):
- h=a.root/arm;ready=h/'INFRA000001_CPU_ROUND_003_QUALIFICATION_READY.json';pool=h/'NATIVE_PROPOSAL_OUTCOMES.json'
+ h=a.root/arm;round_id=read(a.root/'PROSPECTIVE_CONTRACT.json')['next_round'];ready=h/f'INFRA000001_CPU_ROUND_{round_id:03d}_QUALIFICATION_READY.json';pool=h/'NATIVE_PROPOSAL_OUTCOMES.json'
  if not ready.exists():continue
  target=a.output/arm;target.mkdir(exist_ok=True);binding=read(ready);source=Path(binding['candidate_root'])
  for name,digest in binding['source_sha256'].items():
