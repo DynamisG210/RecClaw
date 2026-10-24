@@ -1,9 +1,4 @@
-"""Common qualified graph evaluation. Native controllers retain search policy.
-
-Owner binds completed root, scientific recipe and the common finite evaluation/API budget.
-Qualification/training each use existing E2 isolation and persistent GPU watcher.
-No fallback, implicit retry, root refit or unmetered Provider exists here.
-"""
+"""Qualify and evaluate candidates with shared API and physical resource accounting."""
 import argparse
 import hashlib
 import json
@@ -42,7 +37,7 @@ def configure(config,*,worker_process=True):
     if config.get('phase') not in ('BOUNDED_GRAPH_DEVELOPMENT','FORMAL_MAIN','USER_RESEARCH'):
         raise ValueError('Candidate execution requires a prospectively bound search phase')
     if len(set(config['cpus']))!=4 or not config['gpu_uuid'].startswith('GPU-'):
-        raise ValueError('Owner must bind the graph allocation')
+        raise ValueError('Configure the worker CPU and GPU allocation')
     sys.path.insert(0,read(config['provider_config'])['ledger_module_dir'])
     from budget_binding import install_budget
     install_budget()

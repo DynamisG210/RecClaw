@@ -1,8 +1,6 @@
-"""Trusted SE launcher: filesystem isolation, private IPC, physical memory limit.
+"""Worker launcher with read-only mounts, namespaces, Landlock and memory limits.
 
-SE evaluates within its controller process, so provider networking is retained.
-This deliberately does not claim the E1 network-denied worker contract. Only the
-generic existing Landlock and read-only-mount primitives are reused.
+The prepared job selects isolated networking for candidate workers.
 """
 from __future__ import annotations
 
@@ -92,12 +90,16 @@ def main():
     for path in [run_root, *run_root.rglob("*")]:
         if path.is_symlink():
             raise ValueError("symlink in prepared run tree")
-    memory_parent = Path("/sys/fs/cgroup/memory").resolve(strict=True)
+    unified = Path('/sys/fs/cgroup/cgroup.controllers').exists()
+    memory_parent = Path('/sys/fs/cgroup' if unified else '/sys/fs/cgroup/memory').resolve(strict=True)
     memory_group = memory_parent / f"recclaw-se-e2-{os.getpid()}"
     memory_group.mkdir()
     try:
-        (memory_group / "memory.limit_in_bytes").write_text(str(job["memory_limit_bytes"]))
-        if int((memory_group / "memory.limit_in_bytes").read_text()) != job["memory_limit_bytes"]:
+        limit_file = memory_group / ('memory.max' if unified else 'memory.limit_in_bytes')
+        if not limit_file.exists():
+            raise RuntimeError('Enable the memory controller in the host cgroup subtree')
+        limit_file.write_text(str(job["memory_limit_bytes"]))
+        if int(limit_file.read_text()) != job["memory_limit_bytes"]:
             raise RuntimeError("physical memory limit not installed")
         process = os.fork()
         if process == 0:
@@ -112,10 +114,13 @@ def main():
                 os._exit(125)
         _, status = os.waitpid(process, 0)
         code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -os.WTERMSIG(status)
+        peak_file = memory_group / ('memory.peak' if unified else 'memory.max_usage_in_bytes')
+        hits = (dict(line.split() for line in (memory_group/'memory.events').read_text().splitlines()).get('max', '0')
+                if unified else (memory_group/'memory.failcnt').read_text())
         Path(job["exit_record"]).write_text(json.dumps({
             "exit_code": code,
-            "memory_peak_bytes": int((memory_group / "memory.max_usage_in_bytes").read_text()),
-            "memory_limit_hits": int((memory_group / "memory.failcnt").read_text()),
+            "memory_peak_bytes": int(peak_file.read_text()) if peak_file.exists() else None,
+            "memory_limit_hits": int(hits),
         }, indent=2), encoding="utf-8")
         return code if code >= 0 else 128 - code
     finally:

@@ -1,9 +1,4 @@
-"""Independent graph task worker. Launch inside the existing owner boundary.
-
-No Provider, scheduler, heldout evaluator or generic search controller lives here.
-Without --execute this verifies the proposed binding only. Candidate execution
-requires the existing external isolation, resource meter and timeout launcher.
-"""
+"""Native task worker: train, evaluate and verify checkpoints inside the worker boundary."""
 import argparse
 import hashlib
 import importlib.util
@@ -59,7 +54,7 @@ def inspect_sequences(binding):
 
 def inspect_binding(binding, *, execute=False):
     if execute and binding["status"] != "FROZEN":
-        raise ValueError("Owner must freeze the new task binding before execution")
+        raise ValueError("Freeze the task binding before execution")
     if binding.get("adapter") in ("recbole-graph-fixed100-v1", "recbole-sequential-fixed100-v1"):
         for key in ("task_id", "dataset", "line"):
             value = binding.get(key)
@@ -195,7 +190,7 @@ class GraphMemoryPeak:
             status="COMPLETE" if self.complete else "IN_PROGRESS", phase_events=self.events,
             max_allocated_bytes=self.allocated, max_reserved_bytes=self.reserved,
             telemetry_seconds_excluding_summary_write=self.seconds,
-            timing_basis="Native active/GPU/wall costs include telemetry; epoch timers exclude end-of-phase observation. Do not claim isolated throughput equivalence.",
+            timing_basis="Native active/GPU/wall costs include telemetry; epoch timers exclude end-of-phase observation. Concurrent host workloads are recorded separately.",
             allocator_allowed_bytes=9 * 1024 ** 3,
             unmeasured="Non-PyTorch CUDA/context memory and NVML host-process total; no automatic reservation reduction.")
 
