@@ -53,6 +53,10 @@ def main(home, original):
             sys.path[:0] = [str(home), str(home/'runtime'), str(original),
                            str(Path(cfg['task_root'])/'controller_adapter'),
                            *read(original/'ORIGINAL_RUNTIME_PATHS.json')]
+            # Pin task-native modules before evaluator.configure changes sys.path.
+            import auto_search_space as native
+            import e2_ro_search_space_adapter
+            from morec_ro_execution import search_adapter
             from e2_budget_binding import bind_config
             bind_config(cfg)
             from admission import admitted
@@ -82,8 +86,6 @@ def main(home, original):
                 seeded = pickle.loads((home/'retain_INITIAL_STATE.pkl').read_bytes())
                 parents = list(seeded.candidate_root_by_capability.values())
                 assert len(parents) == 1
-                import auto_search_space as native
-                from morec_ro_execution import search_adapter
                 inputs = read(original/'long/INPUTS.json')
                 space = native.load_search_space_package(Path(inputs['space']['package_root']),
                     expected_source=native.SearchSpaceSource.AUTO_GENERATED,
