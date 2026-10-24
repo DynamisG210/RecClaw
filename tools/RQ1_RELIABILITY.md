@@ -38,3 +38,11 @@ python tools/verify_morec_frozen_binding.py --binding BINDING_DIRECTORY --review
 ```
 
 The binding directory contains the original all3_frozen_inputs.json, final_plan.json, FIT_PLAN_1/2/3.json, and REMOTE_PINS.json from a read-only remote SHA-256 collection. The tool checks candidate-file hashes against the original fit plan, actual checkpoint hashes, search/train/evaluation seeds, and native TEST linkage. It does not run training or TEST. Remote pins record their collection time and expected/actual hashes.
+
+## Frozen-plan remote byte check
+
+```text
+python tools/verify_morec_plan_remote.py --plan FINAL_PLAN_JSON --snapshot SIX_SYSTEM_REPORT --native-tests HASH_NAMED_TEST_FILES --host SSH_HOST --out REMOTE_CHAIN_JSON
+```
+
+This runs only remote sha256sum on paths pinned by the frozen plan. The output distinguishes missing/changed files and keeps root fallback/cached results in scope. Current adopted cohort composition is applied separately; historical ML1M RO results remain available and must not be pooled with its adopted v3 replacement.
