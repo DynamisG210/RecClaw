@@ -49,8 +49,10 @@ def main():
             vals=[r['metrics'][m]['mean'] for r in rs]
             metrics[m]=dict(mean=statistics.mean(vals),source_search_mean_sd=statistics.stdev(vals),
                             mean_within_source_refit_sd=statistics.mean(r['metrics'][m]['refit_sd'] for r in rs))
-        cells.append(dict(dataset=dataset,method=method,source_repeats=[r['source_repeat'] for r in rs],metrics=metrics))
+        cells.append(dict(dataset=dataset,method=method,source_repeats=[r['source_repeat'] for r in rs],
+                          unique_source_programs=len({r['source_sha256'] for r in rs}),metrics=metrics))
     result=dict(snapshot_sha256=hashlib.sha256(a.snapshot.read_bytes()).hexdigest(),native_checks=checks,
+                logical_test_slots=len(records),unique_physical_test_files=len({r['path'] for r in records}),
                 source_search_groups=searches,cells=cells,new_target_searches=0,new_api=0,new_fit=0,new_test=0,
                 interpretation='Existing transferred source-search winners; variation of transferred source-search means and within-source refits are distinct. No independent target search inferred.')
     a.out.write_text(json.dumps(result,indent=2)+'\n')
